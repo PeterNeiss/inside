@@ -270,7 +270,7 @@ constexpr auto as_expected(V&& v) {
     if constexpr (is_expected_v<std::remove_cvref_t<V>>)
         return std::forward<V>(v);
     else
-        return std::expected<std::remove_cvref_t<V>, errc>{std::forward<V>(v)};
+        return std::expected<std::remove_cvref_t<V>, error>{std::forward<V>(v)};
 }
 
 // x / s for one part s (a number, or a quantity of any blade): each part
@@ -284,10 +284,10 @@ constexpr auto divide_parts(const X& x, const S& s) {
         if constexpr ((is_expected_v<decltype(std::get<K>(p) / s)> || ...)) {
             const auto q = std::tuple{as_expected(std::get<K>(p) / s)...};
             using R      = decltype(mv_sum(multivector<>{}, as_part(*std::get<K>(q))...));
-            errc e{};
+            error e{};
             if (((!std::get<K>(q) && (e = std::get<K>(q).error(), true)) || ...))
-                return std::expected<R, errc>{std::unexpect, e};
-            return std::expected<R, errc>{mv_sum(multivector<>{}, as_part(*std::get<K>(q))...)};
+                return std::expected<R, error>{std::unexpect, e};
+            return std::expected<R, error>{mv_sum(multivector<>{}, as_part(*std::get<K>(q))...)};
         } else
             return mv_sum(multivector<>{}, as_part(std::get<K>(p) / s)...);
     }(std::make_index_sequence<std::tuple_size_v<P>>{});

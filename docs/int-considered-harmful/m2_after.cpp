@@ -20,7 +20,7 @@ inline constexpr auto           cts = unit_c<cts_def>;
 
 using reading    = quantity<cts, inside<{0, 4095}>>;   // 12-bit ADC
 using gain_t     = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}>>;
-using millivolts = quantity<si::milli(si::volt), inside<{-5000, 5000}, round_nearest>>;
+using millivolts = quantity<si::milli(si::volt), inside<{-5000, 5000}, round_half_away>>;
 
 template <class A, class B>
 concept comparable = requires(A a, B b) { a < b; };

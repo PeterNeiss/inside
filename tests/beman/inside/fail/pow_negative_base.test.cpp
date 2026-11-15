@@ -9,7 +9,7 @@ using namespace beman::inside;
 int main() {
     using base = inside<{{-4, 4}, per<4>}>;
     using expo = inside<{{0, 2}, per<2>}>;
-    using out  = inside<{{0, 16}, per<16>}, round_nearest>;
+    using out  = inside<{{0, 16}, per<16>}, round_half_away>;
     auto p     = math::pow<out>(base{2}, expo{2});
     (void)p;
 }

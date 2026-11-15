@@ -50,7 +50,7 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
 }
 
 // The same into a fresh Target: the value read-out of policy_ref and
-// policy_buffer. A failed store (errc&, on_error) leaves it at its default
+// policy_buffer. A failed store (error&, on_error) leaves it at its default
 // value (0, or Lower), not garbage.
 template <insidable Target, numeric C, typename P, typename... As>
 constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& actions) {
@@ -66,10 +66,10 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
 // A proxy store of a C into B is proven by the grids under the proxy's flags,
-// or has a channel: an errc& policy or an on_error hook.
+// or has a channel: an error& policy or an on_error hook.
 template <insidable B, typename C, typename P, typename... As>
 inline constexpr bool proxy_store_ok =
-    store_proven<B, C, flags_of<B> | flags_of<P>> || reports_into_errc<P> || has_action<is_error_action, As...>;
+    store_proven<B, C, policy_of<B> | policy_of<P>> || reports_into_errc<P> || has_action<is_error_action, As...>;
 
 // A builtin integer that stands for a number: no bool, no character type.
 // An index converts to one (core.hpp), and a compound assignment takes one.
@@ -88,7 +88,7 @@ template <class A>
 concept step_integer = index_integer<A> && integer_value_storage<lifted_t<A>>;
 template <step_integer A>
 [[nodiscard]] constexpr lifted_t<A> lift_integer(A a) noexcept {
-    return lifted_t<A>::from_raw(static_cast<raw_t<lifted_t<A>>>(a));
+    return lifted_t<A>::from_raw(static_cast<raw_t<lifted_t<A>>>(a), unsafe);
 }
 
 #define BEMAN_INSIDE_WHY_proxy_unproven                                                                         \
@@ -138,7 +138,7 @@ struct policy_buffer {
     [[no_unique_address]] std::tuple<As...> Actions;
 
     template <insidable Target>
-        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>> && proxy_store_ok<Target, B, P, As...>
+        requires inside_assignable<Target, B, policy_of<Target> | policy_of<P>> && proxy_store_ok<Target, B, P, As...>
     constexpr operator Target() {
         return dispatch_new<Target>(Owned, Policy, Actions);
     }
@@ -164,7 +164,7 @@ struct policy_ref {
         return dispatch_assign(Ref, other, Policy, Actions);
     }
     // A constant the grids cannot prove: checked while compiling (above).
-    constexpr B& operator=(const constant_value<B, flags_of<B> | plain_t<P>::Flags>& c) {
+    constexpr B& operator=(const constant_value<B, policy_of<B> | plain_t<P>::Flags>& c) {
         return c.visit([&](const auto& v) -> B& { return dispatch_assign(Ref, v, Policy, Actions); });
     }
     template <insidable C>
@@ -177,7 +177,7 @@ struct policy_ref {
     // `Target t = (a * b).policy<round_toward_zero>();` / `return (a * b).policy<round_toward_zero>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
-        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>> && proxy_store_ok<Target, B, P, As...>
+        requires inside_assignable<Target, B, policy_of<Target> | policy_of<P>> && proxy_store_ok<Target, B, P, As...>
     constexpr operator Target() {
         return dispatch_new<Target>(Ref, Policy, Actions);
     }
@@ -185,27 +185,27 @@ struct policy_ref {
     // A std::expected is never stored implicitly, through a proxy either:
     // check it and store *e, or use B::try_make(e).
     template <numeric C>
-    B& operator=(const std::expected<C, errc>&) = delete ("inside: a std::expected is not stored implicitly - "
-                                                          "check it and store *e, or use T::try_make(e), "
-                                                          "which passes its error on");
+    B& operator=(const std::expected<C, error>&) = delete ("inside: a std::expected is not stored implicitly - "
+                                                           "check it and store *e, or use T::try_make(e), "
+                                                           "which passes its error on");
 
   private:
     // The value an op's result holds (an expected's value type) assigns back.
     template <typename R>
-    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>> &&
+    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, policy_of<B> | policy_of<P>> &&
                                         proxy_store_ok<B, detail::unwrap_t<R>, P, As...>;
     // A divisor whose grid holds 0 needs a channel for the zero, or unsafe.
     template <insidable C>
     static constexpr bool divisor_ok =
         reports_into_errc<P> || has_action<is_error_action, As...> ||
-        !is_checked(flags_of<B> | plain_t<P>::Flags | flags_of<C>) || !grid_of<C>.representable(grid_rational{0});
+        !is_checked(policy_of<B> | plain_t<P>::Flags | policy_of<C>) || !grid_of<C>.representable(grid_rational{0});
 
   public:
     //-------------------------------------------------------------------------
     // insidable RHS overloads — route through the inside's arithmetic, then
     // assign via dispatch_assign so callbacks fire on the narrowing back to B.
     // An expected<inside> result carrying an error (a zero divisor) surfaces
-    // its errc through on_error if registered, else the policy. Constrained on the free op they call and on storing
+    // its error through on_error if registered, else the policy. Constrained on the free op they call and on storing
     // its result back under this policy, so a requires probe sees what compiles: a 1/16 sum does not store into an
     // integer grid without snap.
     //-------------------------------------------------------------------------
@@ -256,8 +256,8 @@ struct policy_ref {
                  divisor_ok<C>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (is_checked(flags_of<C>)) // either operand silences it
-                report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
+            if constexpr (is_checked(policy_of<C>)) // either operand silences it
+                report_error(error::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
         return finalize_arith(div(Ref, rhs, Policy));
@@ -269,8 +269,8 @@ struct policy_ref {
                  divisor_ok<C>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (is_checked(flags_of<C>)) // either operand silences it
-                report_error(errc::division_by_zero, "policy_ref::operator%= division by zero");
+            if constexpr (is_checked(policy_of<C>)) // either operand silences it
+                report_error(error::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
         return finalize_arith(mod(Ref, rhs, Policy));
@@ -293,10 +293,10 @@ struct policy_ref {
   private:
     // A failed op leaves Ref unchanged: on_error takes the failure, else the
     // policy reports it — but `unsafe` skips a zero divisor.
-    constexpr void report_error(errc code, const char* what) {
+    constexpr void report_error(error code, const char* what) {
         if constexpr (has_action<is_error_action, As...>)
             pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if (code != errc::division_by_zero || is_checked(flags_of<B> | plain_t<P>::Flags))
+        else if (code != error::division_by_zero || is_checked(policy_of<B> | plain_t<P>::Flags))
             Policy.report(code);
     }
 

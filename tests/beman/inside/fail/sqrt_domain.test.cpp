@@ -7,7 +7,7 @@
 using namespace beman::inside;
 
 int main() {
-    using level = inside<{{-4, 4}, per<256>}, round_nearest>;
+    using level = inside<{{-4, 4}, per<256>}, round_half_away>;
     auto r      = math::sqrt(level{2.25});
     (void)r;
 }

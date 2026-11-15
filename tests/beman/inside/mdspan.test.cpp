@@ -26,6 +26,7 @@
 // products, and transform_into.
 namespace mdspan_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 namespace {
 template <class E, std::size_t R>
@@ -51,7 +52,7 @@ concept builtin_operand =
     requires(I i, int n) { n <<= i; } || requires(I i, int n) { n >>= i; } || requires(I i) { !i; } ||
     requires(I i, bool b) { i && b; } || requires(I i, double d) { i < d; };
 template <class T, class I>
-concept from_raw_takes = requires(I i) { T::from_raw(i); };
+concept from_raw_takes = requires(I i) { T::from_raw(i, unsafe); };
 template <class T, class I>
 concept assigns_from = requires(T t, I i) { t = i; };
 template <class X, class A>
@@ -98,7 +99,7 @@ TEST(MdspanTest, an_index_converts_to_the_integers_that_hold_it) {
     // cursor, whose end is one past the last index.
     static_assert(!std::is_convertible_v<inside<{-1, 3}>, int> && !std::is_convertible_v<decltype(-row{}), int>);
     static_assert(!std::is_convertible_v<inside<{{0, 3}, per<2>}>, int>);
-    static_assert(!std::is_convertible_v<inside<{{0, 3}, per<2>}, round_nearest>, int>);
+    static_assert(!std::is_convertible_v<inside<{{0, 3}, per<2>}, round_half_away>, int>);
     static_assert(!std::is_convertible_v<cursor<row>, std::size_t>);
     // No builtin operator takes an index, but the subscript and the pointer
     // arithmetic behind it.
@@ -148,16 +149,16 @@ TEST(MdspanTest, compound_assignment_takes_builtin_integers) {
     EXPECT_TRUE(f == 1.5_ins);
     f *= 100;
     EXPECT_TRUE(f == 10);
-    T    t = 5;
-    errc ec{};
+    T     t = 5;
+    error ec{};
     t.policy(ec) += 3;
-    EXPECT_TRUE(t == 8 && ec == errc{});
+    EXPECT_TRUE(t == 8 && ec == error{});
     t.policy(ec) += n * 100;
-    EXPECT_TRUE(t == 8 && ec == errc::overflow);
+    EXPECT_TRUE(t == 8 && ec == error::overflow);
     t.policy<clamp>() *= 1000;
     EXPECT_TRUE(t == 100);
     T u = 1;
-    u.on_error([&](auto&, errc, auto) { n = -1; }) -= 5;
+    u.on_error([&](auto&, error, auto) { n = -1; }) -= 5;
     EXPECT_TRUE(u == 1 && n == -1);
 }
 
@@ -272,7 +273,7 @@ TEST(MdspanTest, submdspan_takes_indices) {
 }
 
 TEST(MdspanTest, value_accessor) {
-    using tenth = inside<{{-10, 10}, per<10>}, round_nearest>;
+    using tenth = inside<{{-10, 10}, per<10>}, round_half_away>;
     const std::array<double, 4> d{0.44, 1.56, 2.5, -0.7};
     const std::mdspan<tenth, std::extents<std::size_t, 4>, std::layout_right, value_accessor<tenth, const double>> v{
         d.data()};
@@ -318,10 +319,10 @@ TEST(MdspanTest, raw_accessor) {
             wrapped{raw.data()};
     EXPECT_TRUE((wrapped[2] == 5000 - 4096));
     // Fixed point: Q8.8 words.
-    std::array<std::uint16_t, 2>                                                                 q{384, 0};
-    const std::mdspan<q8_8, std::extents<std::size_t, 2>, std::layout_right, raw_accessor<q8_8>> words{q.data()};
+    std::array<std::uint16_t, 2>                                                                   q{384, 0};
+    const std::mdspan<uq8_8, std::extents<std::size_t, 2>, std::layout_right, raw_accessor<uq8_8>> words{q.data()};
     EXPECT_TRUE((words[0].get() == 1.5_r));
-    words[1] = q8_8{2.25};
+    words[1] = uq8_8{2.25};
     EXPECT_EQ(q[1], 576);
 }
 
@@ -373,7 +374,7 @@ TEST(MdspanTest, dot_and_matrix_products) {
                    std::mdspan{c.data(), std::extents<std::size_t, 2, 2>{}});
     EXPECT_TRUE((c[0] == 14 && c[1] == 32 && c[2] == 32 && c[3] == 77));
     // The output rounds by its own policy: a sum stored once onto a coarser grid.
-    std::array<inside<{{-500, 500}, 10}, round_nearest>, 2> coarse{};
+    std::array<inside<{{-500, 500}, 10}, round_half_away>, 2> coarse{};
     matrix_vector_product(ma, vx, std::mdspan{coarse.data(), std::extents<std::size_t, 2>{}});
     EXPECT_TRUE((coarse[0] == 10 && coarse[1] == 30));
     // Exact past 64 bits: products of 2^40 accumulate in wide integers.
@@ -386,7 +387,7 @@ TEST(MdspanTest, dot_and_matrix_products) {
 
 TEST(MdspanTest, transform_into) {
     using in_t  = inside<{0, 100}>;
-    using out_t = inside<{{0, 10}, per<1000>}, round_nearest>;
+    using out_t = inside<{{0, 10}, per<1000>}, round_half_away>;
     std::array<in_t, 4>  in{1, 4, 9, 2};
     std::array<out_t, 4> out{};
     transform_into(std::mdspan{in.data(), 4}, std::mdspan{out.data(), 4}, [](in_t v) { return math::sqrt<out_t>(v); });
@@ -413,6 +414,7 @@ TEST(MdspanTest, transform_into) {
 // dot and the matrix products in the elements' and products' units.
 namespace units_mdspan_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
@@ -484,11 +486,12 @@ TEST(UnitsMdspanTest, sums_and_products_carry_units) {
 // `if constexpr` probe over the suite).
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // A writable value accessor over doubles writes each value rounded once.
 TEST(MdspanArmTest, value_accessor_writes_doubles) {
-    using tenth = inside<{{-10, 10}, per<10>}, round_nearest>;
+    using tenth = inside<{{-10, 10}, per<10>}, round_half_away>;
     std::array<double, 2>                                                                                    d{0, 0};
     const std::mdspan<tenth, std::extents<std::size_t, 2>, std::layout_right, value_accessor<tenth, double>> w{
         d.data()};
@@ -517,6 +520,7 @@ TEST(MdspanArmTest, extent_traits) {
 // by the policy like any other.
 namespace wide_raw_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 template <class N, std::size_t K, class R = typename N::raw_type>
 using raw_view = std::mdspan<N, std::extents<std::size_t, K>, std::layout_right, raw_accessor<N, R>>;

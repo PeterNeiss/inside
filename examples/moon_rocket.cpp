@@ -83,8 +83,8 @@ int main() {
     //    a·√(a/μ) is a time; mag_pi puts π in the unit, and the cast to hours
     //    rounds once with the true π.
     const auto rt   = math::sqrt<per<1'000'000'000>>(a / mu);
-    const auto t_h  = value_cast<si::hour, inside<{{0, 200}, per<10>}, round_nearest>>(mag_pi * (a * rt));
-    const auto days = value_cast<si::day, inside<{{0, 10}, per<100>}, round_nearest>>(mag_pi * (a * rt));
+    const auto t_h  = value_cast<si::hour, inside<{{0, 200}, per<10>}, round_half_away>>(mag_pi * (a * rt));
+    const auto days = value_cast<si::day, inside<{{0, 10}, per<100>}, round_half_away>>(mag_pi * (a * rt));
     std::cout << "transfer  = " << t_h << " (" << days << ")\n";
     if (to_string(t_h) != "119.5 h" || to_string(days) != "4.98 d")
         return 1;
@@ -93,9 +93,9 @@ int main() {
     //    kinetic energy by its recipe, so it converts implicitly (in GJ). A
     //    torque has the same dimension but another recipe:
     //      quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v;   // does not compile
-    using gigajoules_t = inside<{{0, 10'000}, per<1000>}, round_nearest>;
+    using gigajoules_t = inside<{{0, 10'000}, per<1000>}, round_half_away>;
     //    (A value_cast into a grid that may not hold the value is an expected.)
-    const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_nearest>>(quantity_cast<isq::speed>(v_peri));
+    const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_half_away>>(quantity_cast<isq::speed>(v_peri));
     const auto checked_ke = value_cast<si::giga(si::joule), gigajoules_t>(m_final * v * v);
     if (!checked_ke)
         return 1;
@@ -106,7 +106,7 @@ int main() {
 
     //    110 kN on 104.5 t, in units of standard gravity (exact: g₀ is rational).
     const quantity<si::kilo(si::newton), inside<{1, 1000}>> thrust{110, si::kilo(si::newton)};
-    const auto acc = value_cast<si2019::standard_gravity, inside<{{0, 10}, per<1000>}, round_nearest>>(thrust / m0);
+    const auto acc = value_cast<si2019::standard_gravity, inside<{{0, 10}, per<1000>}, round_half_away>>(thrust / m0);
     if (!acc)
         return 1;
     std::cout << "a0        = " << *acc << '\n';

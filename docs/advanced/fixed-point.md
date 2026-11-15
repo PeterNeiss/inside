@@ -23,31 +23,31 @@ An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
 65536 bit patterns) is:
 
 ```cpp
-using q8_8 = inside<{{0, rational{65535, 256}}, per<(1 << 8)>}, round_nearest>;   // == beman::inside::q8_8
+using uq8_8 = inside<{{0, rational{65535, 256}}, per<(1 << 8)>}, round_half_away>;   // == beman::inside::uq8_8
 ```
 
-`<beman/inside/inside/formats.hpp>` has the common ones ([Grids](../guide/grids.md#predefined-formats)):
+`<beman/inside/inside/formats.hpp>` has the common ones, in `beman::inside::formats` ([Grids](../guide/grids.md#predefined-formats)):
 
 | Alias | Format | Raw |
 |---|---|---|
-| `q4_4`, `q8_8`, `q16_16` | unsigned Q4.4, Q8.8, Q16.16, `round_nearest` | `uint8_t`, `uint16_t`, `uint32_t` |
-| `unorm8`, `unorm16`, `unorm32` | [0, 1] in steps of 1/(2ᴺ − 1), so 1.0 is exact, `round_nearest` | `uint8_t`, `uint16_t`, `uint32_t` |
+| `uq4_4`, `uq8_8`, `uq16_16` | unsigned Q4.4, Q8.8, Q16.16, `round_half_away` | `uint8_t`, `uint16_t`, `uint32_t` |
+| `unorm8`, `unorm16`, `unorm32` | [0, 1] in steps of 1/(2ᴺ − 1), so 1.0 is exact, `round_half_away` | `uint8_t`, `uint16_t`, `uint32_t` |
 | `uint8` … `uint64`, `int8` … `int64` | the full integer ranges (`int64` from −(2⁶³ − 1)) | the same width |
 
 Any other format is one line: a signed Q1.14 sample is
-`inside<{{-1, 1}, per<(1 << 14)>}, round_nearest>`, a 0.5 °C step
-`inside<{{-40, 60}, 0.5}, round_nearest>`.
+`inside<{{-1, 1}, per<(1 << 14)>}, round_half_away>`, a 0.5 °C step
+`inside<{{-40, 60}, 0.5}, round_half_away>`.
 
 ## What inside adds over a raw Qm.n integer
 
-- **The scale is in the type.** `q8_8{1.5}` stores 384; you never track the
+- **The scale is in the type.** `uq8_8{1.5}` stores 384; you never track the
   radix point or the shifts.
 - **Result grids widen by themselves.** `a * b` has a new grid, computed at
   compile time: Q8.8 × Q8.8 is Q16.16-shaped, exactly, with no headroom
   analysis. Scaling by a constant point (`x * just<c>`) keeps integer storage
   on a scaled lattice.
 - **Storing back is a policy.** Onto a coarser grid a store truncates
-  (`round_toward_zero`), rounds (`round_nearest`, …), saturates (`clamp`), wraps, or
+  (`round_toward_zero`), rounds (`round_half_away`, …), saturates (`clamp`), wraps, or
   reports (checked), chosen per type or per store.
 - **Round once.** `mul<Out>(a, b)` rounds the exact product straight onto
   `Out`, the fixed-point "multiply, then shift with rounding" in one step,
@@ -100,7 +100,7 @@ A unit puts a meaning on the same raw at no cost (see [Units](../guide/units.md)
 #include <beman/inside/units.hpp>
 using namespace beman::inside::units;
 
-using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;     // a 0.5 °C step, a uint8_t
+using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;     // a 0.5 °C step, a uint8_t
 auto room = point<si::degree_Celsius>(celsius{21.4});        // 21.5 ℃: rounded onto the step
 auto body = point<si::degree_Celsius>(celsius{37});
 auto diff = body - room;                                     // 15.5 ℃, a temperature difference
@@ -119,7 +119,7 @@ auto mm = d.in(si::milli(si::metre));                        // 7000000 mm: the 
   with one exact division ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).
 
 [`fixed_point.cpp`](../../examples/fixed_point.cpp) shows the formats table, exact
-products, `mul<q8_8>` onto Q8.8, and the 0.5 °C grid as ℃ points.
+products, `mul<uq8_8>` onto Q8.8, and the 0.5 °C grid as ℃ points.
 
 ## Choosing a grid
 

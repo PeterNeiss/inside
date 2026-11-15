@@ -54,7 +54,7 @@ the stored integer stays, so the conversion is **exact and free**: km → mm on
 | `q.in(u)` | the same quantity in unit `u`, exactly |
 | `q.numerical_value_in(u)` | the number in unit `u`, an inside |
 | `value_cast<Number>(q)` | the quantity on another number type, rounded by it |
-| `Q{q, clamp}`, `Q{v, u, clamp}`, `Q::try_make(v, u)`, `checked_cast<Q>(q)` | the stores of [Policies](policies.md), on quantities |
+| `Q{q, clamp}`, `Q{v, u, clamp}`, `Q::try_make(v, u)`, `exact_cast<Q>(q)` | the stores of [Policies](policies.md), on quantities |
 
 A conversion that would not be exact does not compile: degrees to radians
 multiply by π, which no grid holds. Round it once with

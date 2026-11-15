@@ -21,7 +21,7 @@
 using namespace beman::inside;
 using namespace beman::inside::units;
 
-using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>; // positive: log10 needs it
+using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_half_away>; // positive: log10 needs it
 using length        = quantity<si::metre, length_number>;
 
 int main() {

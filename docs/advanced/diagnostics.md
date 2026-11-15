@@ -38,7 +38,7 @@ last the bound:
 | Bit | Decimal | Flag |
 |---|---:|---|
 | `1<<4` | 16 | `round_toward_zero`: the rounding bit, which every rounding mode carries |
-| `1<<5` | 32 | `round_nearest` (with the rounding bit: 48) |
+| `1<<5` | 32 | `round_half_away` (with the rounding bit: 48) |
 | `1<<6` | 64 | `round_floor` (with the rounding bit: 80) |
 | `1<<7` | 128 | `round_ceil` (with the rounding bit: 144) |
 | `1<<8` | 256 | `round_half_even` (with the rounding bit: 272) |
@@ -49,7 +49,7 @@ last the bound:
 
 The other bits are unused, and an inside rejects a policy that holds one or
 names two rounding modes. `checked`, the default, has no bits: `0` is
-`inside<G>`, and `48` is `round_nearest`. Every policy without the `unsafe`
+`inside<G>`, and `48` is `round_half_away`. Every policy without the `unsafe`
 bit is checked. (The definitions are in `include/beman/inside/inside/policy_flag.hpp`.)
 
 ## Decoding a quantity
@@ -149,7 +149,7 @@ constructor exists, so `std::is_constructible_v<T, int>` is `true`; a generic
 `emplace_back(5_ins)`). A constant that does not fit fails with the text:
 
 ```text
-error: uncaught exception of type 'beman::inside::inside_error'; 'what()': 'inside: a checked
+error: uncaught exception of type 'beman::inside::detail::inside_error'; 'what()': 'inside: a checked
        store in a constant expression is outside the grid's interval - widen the interval, …'
 ```
 

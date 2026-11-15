@@ -24,7 +24,7 @@ int main()
   std::cout << "n / d               = " << n / d << "   (exact)\n";
 
   // Or, if you ask for a rounding, the one you name -- per call.
-  std::cout << "round_nearest     = " << div(n, d, round_nearest) << "\n";
+  std::cout << "round_half_away     = " << div(n, d, round_half_away) << "\n";
   std::cout << "round_floor       = " << div(n, d, round_floor) << "\n";
   std::cout << "round_ceil        = " << div(n, d, round_ceil) << "\n";
   std::cout << "round_toward_zero = " << div(n, d, round_toward_zero) << "\n";

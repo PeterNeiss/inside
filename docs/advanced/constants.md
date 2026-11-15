@@ -46,7 +46,7 @@ precision it needs.
 | Name | Value |
 |---|---|
 | `pi`, `two_pi`, `half_pi` | π, 2π, π/2 |
-| `inv_pi`, `inv_sqrt_pi` | 1/π, 1/√π |
+| `inv_pi`, `inv_sqrtpi` | 1/π, 1/√π |
 | `e`, `log2e`, `log10e` | e, log₂e, log₁₀e |
 | `ln2`, `ln10` | ln 2, ln 10 |
 | `sqrt2`, `sqrt3`, `inv_sqrt2`, `inv_sqrt3` | √2, √3, 1/√2, 1/√3 |

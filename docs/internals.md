@@ -273,7 +273,7 @@ time; there is no `<system_error>` dependency.
 
 The flags are in `policy_flag.hpp`, each a `detail::flag<V>` constant that
 converts to its bits: `round_toward_zero` (the rounding bit `detail::snap`
-alone), `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`
+alone), `round_half_away`, `round_floor`, `round_ceil`, `round_half_even`
 (each a mode bit plus `detail::snap`), `clamp`, `wrap`, `checked` (no bits),
 `unsafe` (= `detail::unsafe_marker | detail::snap`), and the internal
 `detail::none` (no bits, the default of a parameter that adds flags) and
@@ -330,10 +330,10 @@ Two shapes, by role:
 
 | Shape | Role | Why |
 |---|---|---|
-| the policy cascade (`errc&`, clamp, wrap, hooks; else a compile error) | **storing** a value into an inside: construction, assignment, compound assignment | the caller chose the failure behaviour on the type or the store |
-| `std::expected<T, errc>` | every fallible **result**: arithmetic (`/`, `%` by a grid holding 0), queries (`to<T>()`, `try_make`, `parse`) and math (`tan`, `pow`, `sqrt` of a grid that crosses 0) | the caller tests the result and can read the cause; it chains through the lift operators |
+| the policy cascade (`error&`, clamp, wrap, hooks; else a compile error) | **storing** a value into an inside: construction, assignment, compound assignment | the caller chose the failure behaviour on the type or the store |
+| `std::expected<T, error>` | every fallible **result**: arithmetic (`/`, `%` by a grid holding 0), queries (`to<T>()`, `try_make`, `parse`) and math (`tan`, `pow`, `sqrt` of a grid that crosses 0) | the caller tests the result and can read the cause; it chains through the lift operators |
 
-`std::expected<inside, errc>` is larger than an inside (a flag and an `errc`),
+`std::expected<inside, error>` is larger than an inside (a flag and an `error`),
 so it appears only as a **parameter or return value**, never as stored state
 (a member, a container element, iterator state), and only where the operation
 can fail: a result the grids prove total stays a plain inside.
@@ -353,12 +353,12 @@ can fail: a result the grids prove total stays a plain inside.
 | `try_make`, `parse` | expected | `overflow`, `rounding_error`, `invalid_format` (text) |
 | construction, assignment | the cascade | by the channel: `overflow`, `rounding_error`, `not_finite` |
 | `sum<Target>` | expected (`Target` under clamp, wrap or unsafe) | `overflow`, `rounding_error`, once for the total |
-| `mul<Out>`, `div<Out>`, `checked_cast<T>`, `f<Out>(x)`, `value_cast` | `Out`, or expected where it can miss | `overflow`, `rounding_error` |
+| `mul<Out>`, `div<Out>`, `exact_cast<T>`, `f<Out>(x)`, `value_cast` | `Out`, or expected where it can miss | `overflow`, `rounding_error` |
 | a quantity's `/`, `div<C>`, `try_value_cast`, `parse<Q>`, `Q::try_make` | as the inside's | the inside's causes, with the quantity as the value |
 
 Chaining (`inside/detail/lift.hpp`, `arithmetic.hpp`): the expected-lift operators keep an
 `expected` chain intact, so `a / b * gain + offset` stays an
-`expected<inside, errc>` end to end. The first (left) error wins and keeps its
+`expected<inside, error>` end to end. The first (left) error wins and keeps its
 cause; an operation that fails inside the chain reports its own.
 `detail::lift_operand_v<T>` decides which types the lift operators take:
 insides, and quantities (units.hpp specializes it).
@@ -393,14 +393,14 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/grid.hpp` | `grid`, `bounds`, `max_denominator`, `raw_for`, the grid operators |
 | `inside/interval.hpp` | `interval`, its operators, `includes`/`excludes`/`overlaps` |
 | `inside/policy_flag.hpp` | the flags (each a `detail::flag<V>`), `has_flag` (and `detail::is_checked`, `detail::has_any_flag`), the policy validation bits, the rounding precedence, the internal `on_*` factories and `is_*_action` traits |
-| `inside/casts.hpp` | `checked_cast` (the other one-shot stores are the flag constructor, `B{v, clamp}`) |
-| `inside/arithmetic.hpp` | `add`, `sub`, `mul`, `div`, `mod`, `divmod`, `mul<Out>`, `div<Out>`, `add_all`, `mul_all`, `sum`, `min`/`max`/`midpoint`, `dot`/`cross`/`lerp`, `common_inside_t`, the operators and the expected-lift overloads |
+| `inside/casts.hpp` | `exact_cast` (the other one-shot stores are the flag constructor, `B{v, clamp}`) |
+| `inside/arithmetic.hpp` | `add`, `sub`, `mul`, `div`, `mod`, `divmod`, `mul<Out>`, `div<Out>`, `add_all`, `mul_all`, `sum`, `min`/`max`/`midpoint`, `lerp`, `common_inside_t`, the operators and the expected-lift overloads |
 | `inside/range.hpp` | `inside_range<G, P>`, `values<T>` |
 | `inside/cursor.hpp` | `cursor<T, Step>`, `end(t)` |
 | `inside/predicates.hpp` | `conversion_overflows`, `conversion_rounds`, `conversion_loses` |
 | `inside/generic.hpp` | the `inside_assignable` concept, `explain_assignable` (and `detail::inside_assignable_why` behind it) |
 | `inside/numeric_limits.hpp` | `std::numeric_limits` and `std::hash` for insides (part of the umbrella) |
-| `inside/formats.hpp` | the native aliases `uint8` … `q16_16`, `clamp_counter`, `wrap_counter` (opt-in) |
+| `inside/formats.hpp` | the native aliases `uint8` … `uq16_16`, `clamp_counter`, `wrap_counter` (opt-in) |
 | `inside/io.hpp` | the text of insides: `to_string`, `to_string_debug`, `<<`, `>>`, `parse(string_view)`, `std::formatter`, `type_name_of`. Opt-in; with `units/io.hpp` the only headers that bring `<ostream>` and `<format>` |
 | `inside/random.hpp` | `uniform<B>(rng)` (opt-in, `<random>`) |
 | `math.hpp` | `beman::inside::math`: the grid operations, `unit_amplitude<K>`, the transcendentals ([Math](guide/math.md)); includes `math/constants.hpp` |
@@ -420,8 +420,8 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to`/`as`, `parse(first, last)`, hooks, `just`, `_ins` |
 | `inside/detail/numbers.hpp` | the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `wide_builtin`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
-| `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error` (compile time only), the error handler, `raise`, `constexpr_error` |
-| `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` concept (and `detail::numeric`), `raw_t`, `as_rational` |
+| `inside/detail/error.hpp` | `error`, `error_message`, `inside_error` (compile time only), the error handler, `raise`, `constexpr_error` |
+| `inside/detail/introspection.hpp` | `grid_of`, `policy_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` concept (and `detail::numeric`), `raw_t`, `as_rational` |
 | `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_int64`, the Q-format codec, `max_index_of`, `round_quotient` |
 | `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |
 | `inside/detail/lift.hpp` | `lift`, the combinator behind the lift operators; `is_expected_v`, `unwrap_t` |
@@ -496,7 +496,7 @@ Each reason a units operation can be wrong is a deleted overload with a
 message (`= delete("…")`).
 
 **inside's algorithms on quantities** (`mul<C>`, `div<C>`, `sum`, `divmod`,
-`parse`, the predicates, the casts, `dot`/`cross`/`lerp`) all follow one
+`parse`, the predicates, the casts, `lerp`) all follow one
 pattern: convert the operands exactly into the target's unit with `rescale`,
 call the inside function on the numbers, and wrap the result
 (`detail::wrap_out`, `make_quantity`). `mul<C>` and `div<C>` fold the

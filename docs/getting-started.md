@@ -85,24 +85,24 @@ inside<{0, 100}, clamp> y{150};   // 100: saturates
 inside<{0, 359}, wrap>  z{370};   // 10: wraps around
 inside<{0, 100}>        x{50};    // a constant: checked while compiling (150 would not compile)
 int  n = 150;                     // read at run time
-auto m = inside<{0, 100}>::try_make(n);   // a std::expected: errc::overflow
+auto m = inside<{0, 100}>::try_make(n);   // a std::expected: error::overflow
 ```
 
 Nothing throws. A store that the grids cannot prove to fit names what happens
-(`try_make`, `clamp`, `wrap`, an `errc&`, an `on_error` hook) or does not
+(`try_make`, `clamp`, `wrap`, an `error&`, an `on_error` hook) or does not
 compile.
 
 A value between two notches needs permission to round:
 
 ```cpp
-using cents = inside<{{0, 1000}, per<100>}, round_nearest>;
+using cents = inside<{{0, 1000}, per<100>}, round_half_away>;
 cents price{19.999};              // 20.00
 ```
 
-The policies are `clamp`, `wrap`, the rounding modes (`round_nearest`,
+The policies are `clamp`, `wrap`, the rounding modes (`round_half_away`,
 `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`) and
 `unsafe`, which drops the checks. Combine them with `|`:
-`inside<{0, 100}, clamp | round_nearest>`.
+`inside<{0, 100}, clamp | round_half_away>`.
 [Policies](guide/policies.md) has the details, including every way a store
 reports.
 
@@ -113,7 +113,7 @@ An inside does not turn into an `int` by itself. Name the type you want:
 | Write | Gives |
 |---|---|
 | `x.as<int>()` | an `int`; no check where `int` holds the whole grid |
-| `x.to<std::uint8_t>()` | a `std::uint8_t` when every value of the grid fits one, else a `std::expected<std::uint8_t, errc>` that fails if the value does not |
+| `x.to<std::uint8_t>()` | a `std::uint8_t` when every value of the grid fits one, else a `std::expected<std::uint8_t, error>` that fails if the value does not |
 | `double(x)` | a `double`, on a type with a rounding mode |
 | `x.numerator()`, `x.denominator()` | the exact value as a fraction, two insides |
 | `std::cout << x`, `std::format("{}", x)` | the exact value as text |
@@ -156,9 +156,9 @@ its output grid, and it is the same on every platform, at compile time and
 without an FPU. A result is rounded, so the input or the output must allow it:
 
 ```cpp
-using angle = inside<{{-4, 4}, per<(1 << 10)>}, round_nearest>;
+using angle = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
 math::sin(angle{1});                                // 0.841796875: the output grid follows the input
-using out = inside<{{0, 2}, per<100>}, round_nearest>;
+using out = inside<{{0, 2}, per<100>}, round_half_away>;
 math::sqrt<out>(inside<{0, 4}>{2});            // 1.41: you name the output grid
 ```
 
@@ -172,7 +172,7 @@ math::sin<per<1000>>(just<30> * si::degree);   // 0.500
 ## How a value flows
 
 ```cpp
-using mix = inside<{{-4, 4}, per<(1 << 14)>}, round_nearest | clamp>;
+using mix = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away | clamp>;
 // gain and bias are insides too
 sample s = read_input();     // 1. enter the bounded world once
 auto   m = s * gain + bias;  // 2. compute: the types widen, nothing overflows

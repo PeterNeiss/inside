@@ -18,7 +18,7 @@ using detail::wide_rational;
 using detail::wide_sint;
 
 namespace {
-using eighths = inside<{{0, 1}, rational{1, 8}}, round_nearest>;
+using eighths = inside<{{0, 1}, rational{1, 8}}, round_half_away>;
 
 // 1/16, a tie between 0 and 1/8, within ±4 units at every precision: never
 // decided. With deep_extra past the cap (4·24 bits), the driver runs it once
@@ -76,8 +76,8 @@ TEST(MathInstrumentTest, constant_evaluation_gives_the_same_guess) {
 }
 
 TEST(MathInstrumentTest, integer_only_skips_the_fast_tiers) {
-    using in         = inside<{{-4, 4}, per<128>}, round_nearest>; // 1025 slots
-    using out        = inside<{{-1, 1}, per<1024>}, round_nearest>;
+    using in         = inside<{{-4, 4}, per<128>}, round_half_away>; // 1025 slots
+    using out        = inside<{{-1, 1}, per<1024>}, round_half_away>;
     const auto sweep = [] {
         const std::uint64_t before = driver.IntegerRuns.load();
         for (int i = -512; i <= 512; ++i)

@@ -30,7 +30,7 @@ std::string digits(const std::string& s) {
 // A count read at run time, as from input, into the inside T: checked where
 // it comes in, so a value past T's range is an error value here, not later.
 template <insidable T>
-std::expected<T, errc> read(int v) {
+std::expected<T, error> read(int v) {
     volatile int x = v;
     return T::try_make(x);
 }

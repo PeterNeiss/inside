@@ -6,7 +6,7 @@
 #include <beman/inside/math.hpp>
 
 int main() {
-    using from_zero = beman::inside::inside<{0, 8}, beman::inside::round_nearest>;
+    using from_zero = beman::inside::inside<{0, 8}, beman::inside::round_half_away>;
     auto l          = beman::inside::math::log(from_zero{1});
     (void)l;
 }

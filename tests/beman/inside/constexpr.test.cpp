@@ -48,7 +48,7 @@ TEST(ConstexprTest, constexpr_rational_identities) {
 
 // constexpr: rational arithmetic
 TEST(ConstexprTest, constexpr_rational_arithmetic) {
-    // +/-/*//  return std::expected<rational, errc>; the * deref is the canonical
+    // +/-/*//  return std::expected<rational, error>; the * deref is the canonical
     // form used elsewhere in the codebase (mirrors `2_r/3` literal pattern).
     static_assert((rational{3u, 2} + rational{1u, 5}) == rational{17u, 10});
     static_assert((rational{3u, 4} - rational{1u, 4}) == rational{1u, 2});
@@ -122,7 +122,7 @@ TEST(ConstexprTest, constexpr_interval_arithmetic) {
     // division by an interval that straddles zero returns division_by_zero
     constexpr interval zero_crossing{-1, 1};
     static_assert(!((a / zero_crossing).has_value()));
-    static_assert((a / zero_crossing).error() == errc::division_by_zero);
+    static_assert((a / zero_crossing).error() == error::division_by_zero);
 
     // unary minus flips and swaps
     static_assert(-a == interval{-10, 0});
@@ -154,7 +154,7 @@ TEST(ConstexprTest, constexpr_grid_arithmetic_produces_expected_result_grids) {
     // div by a zero-only divisor grid is division_by_zero
     constexpr grid g_zero{{0, 0}, 0};
     static_assert(!((g_a / g_zero).has_value()));
-    static_assert((g_a / g_zero).error() == errc::division_by_zero);
+    static_assert((g_a / g_zero).error() == error::division_by_zero);
 }
 
 // constexpr: grid notch alignment via gcd
@@ -288,12 +288,12 @@ TEST(ConstexprTest, constexpr_unchecked_cast_preserves_in_range_values) {
     static_assert(pct{100, unsafe} == 100);
 }
 
-// constexpr: checked_cast with in-range values
+// constexpr: exact_cast with in-range values
 TEST(ConstexprTest, constexpr_checked_cast_with_in_range_values) {
     using pct = inside<{0, 100}>;
-    static_assert(checked_cast<pct>(42) == 42);
-    static_assert(checked_cast<pct>(100) == 100);
-    static_assert(checked_cast<pct>(0) == 0);
+    static_assert(exact_cast<pct>(42) == 42);
+    static_assert(exact_cast<pct>(100) == 100);
+    static_assert(exact_cast<pct>(0) == 0);
 }
 
 // constexpr: the clamp constructor clamps out-of-range
@@ -333,7 +333,7 @@ TEST(ConstexprTest, constexpr_clamp_cast_with_rounding) {
     using coarse = inside<{{0, 10}, 2}>;
     static_assert(coarse{3.0, clamp | round_floor} == 2);
     static_assert(coarse{3.0, clamp | round_ceil} == 4);
-    static_assert(coarse{3.0, clamp | round_nearest} == 4);
+    static_assert(coarse{3.0, clamp | round_half_away} == 4);
 
     // out of range clamps to boundary
     static_assert(coarse{15.0, clamp | round_floor} == 10);
@@ -438,7 +438,7 @@ TEST(ConstexprTest, constexpr_inside_range_on_fractional_notch_grid) {
 // constexpr: implied_flags
 TEST(ConstexprTest, constexpr_implied_flags) {
     auto noop  = [](auto&, auto) {};
-    auto noerr = [](auto&, errc) {};
+    auto noerr = [](auto&, error) {};
 
     using clamp_tag = on_clamp_t<decltype(noop)>;
     using error_tag = on_error_t<decltype(noerr)>;
@@ -483,14 +483,14 @@ TEST(ConstexprTest, constexpr_just_n_and_ins_literal) {
 // constexpr: lift over multiple expected args
 TEST(ConstexprTest, constexpr_lift_over_multiple_expected_args) {
     constexpr auto plus = [](int a, int b) { return a + b; };
-    constexpr auto good = [](int v) -> std::expected<int, errc> { return v; };
-    constexpr auto bad  = []() -> std::expected<int, errc> { return std::unexpected{errc::overflow}; };
+    constexpr auto good = [](int v) -> std::expected<int, error> { return v; };
+    constexpr auto bad  = []() -> std::expected<int, error> { return std::unexpected{error::overflow}; };
 
     static_assert(*lift(plus, good(2), good(3)) == 5);
 
     // one error → error
     static_assert(!(lift(plus, good(2), bad()).has_value()));
-    static_assert(lift(plus, good(2), bad()).error() == errc::overflow);
+    static_assert(lift(plus, good(2), bad()).error() == error::overflow);
 
     // three-arg fold over a mix of values and expecteds
     constexpr auto sum3 = [](int x, int y, int z) { return x + y + z; };

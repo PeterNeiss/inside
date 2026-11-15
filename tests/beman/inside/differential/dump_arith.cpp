@@ -85,9 +85,9 @@ void dump_arith(rng_t& g, int n) {
     mod_all<inside<{-100, 100}>>(g, n, "trunc");
     mod_all<inside<{-100, 100}, round_floor>>(g, n, "floor");
     mod_all<inside<{-100, 100}, round_ceil>>(g, n, "ceil");
-    mod_all<inside<{-100, 100}, round_nearest>>(g, n, "nearest");
+    mod_all<inside<{-100, 100}, round_half_away>>(g, n, "nearest");
     mod_all<inside<{-100, 100}, round_half_even>>(g, n, "even");
     mod_all<inside<{{-97, 101}, 3}>>(g, n, "trunc");
-    mod_all<inside<{-(1ll << 62), 1ll << 62}, round_nearest>>(g, n, "nearest");
+    mod_all<inside<{-(1ll << 62), 1ll << 62}, round_half_away>>(g, n, "nearest");
 }
 } // namespace diff

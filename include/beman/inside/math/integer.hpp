@@ -372,10 +372,11 @@ constexpr R lattice_inside(const W& v) noexcept {
     else if constexpr (wide_integer<W>) {
         constexpr W lo = static_cast<W>(grid_numerator(lower_of<R>));
         constexpr W n  = static_cast<W>(grid_numerator(notch_of<R>));
-        return R::from_raw(raw_cast<R>(W::divmod(v - lo, n).Quotient));
+        return R::from_raw(raw_cast<R>(W::divmod(v - lo, n).Quotient), unsafe);
     } else
         return R::from_raw(raw_cast<R>((static_cast<std::uint64_t>(v) - static_cast<std::uint64_t>(lower_int64<R>)) /
-                                       static_cast<std::uint64_t>(notch64<R>.Num)));
+                                       static_cast<std::uint64_t>(notch64<R>.Num)),
+                           unsafe);
 }
 
 template <insidable R>
@@ -408,7 +409,7 @@ template <insidable N>
     using R = inside<detail::factorial_grid<N>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n;
-        return R::from_raw({});
+        return R::from_raw({}, unsafe);
     } else {
         // A result within max_count_bits has n ≤ 1754: a builtin count.
         const std::uint64_t v = static_cast<std::uint64_t>(detail::count_value(n));
@@ -431,7 +432,7 @@ template <insidable N, insidable K>
     using R = inside<detail::falling_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
-        return R::from_raw({});
+        return R::from_raw({}, unsafe);
     } else {
         using W = detail::count_work_t<detail::result_bits<R>>;
         using C =
@@ -449,7 +450,7 @@ template <insidable N, insidable K>
     using R = inside<detail::rising_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
-        return R::from_raw({});
+        return R::from_raw({}, unsafe);
     } else {
         using W = detail::count_work_t<detail::result_bits<R>>;
         using C = detail::count_t<N>;
@@ -471,7 +472,7 @@ template <insidable N, insidable K>
     using R = inside<detail::binomial_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
-        return R::from_raw({});
+        return R::from_raw({}, unsafe);
     } else {
         // c·(n − t + i) before the division by i: the limit times a factor.
         using W = detail::count_work_t<detail::result_bits<R> + bit_width_of(detail::count_upper<N>)>;
@@ -494,7 +495,7 @@ template <insidable... Ks>
     using R = inside<detail::multinomial_grid<Ks...>.Grid>;
     if constexpr (detail::point_grid<R>) {
         ((void)ks, ...);
-        return R::from_raw({});
+        return R::from_raw({}, unsafe);
     } else {
         // r·(s − t + i) before the division by i: the limit times a partial sum.
         using W = detail::count_work_t<detail::result_bits<R> + detail::sum_bits<Ks...>>;
@@ -539,7 +540,7 @@ template <insidable A, insidable B>
     using R = inside<detail::gcd_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
-        return R::from_raw({});
+        return R::from_raw({}, unsafe);
     } else if constexpr (!detail::integer_operands<A, B>) {
         constexpr detail::grid_rational u = detail::gcd_unit<A, B>;
         constexpr int bits                = std::max(bit_width_of(grid_numerator(detail::largest_magnitude<A>() / u)),
@@ -570,7 +571,7 @@ template <insidable A, insidable B>
     using R = inside<detail::lcm_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
-        return R::from_raw({});
+        return R::from_raw({}, unsafe);
     } else if constexpr (!detail::integer_operands<A, B>) {
         // |a| / gcd · |b| in units of u, in a type that holds the limit's units.
         constexpr int bits = bit_width_of(grid_numerator(detail::lcm_upper<A, B> / detail::gcd_unit<A, B>));

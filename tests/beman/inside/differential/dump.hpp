@@ -28,7 +28,7 @@ T pick(rng_t& g) {
         k = (g() % 2) ? mx - g() % 3 : g() % 3;
     if (k > mx)
         k = mx;
-    return T::from_raw(beman::inside::detail::raw_from_offset<T>(k));
+    return T::from_raw(beman::inside::detail::raw_from_offset<T>(k), unsafe);
 }
 
 // A value or an expected: the value, or E<code>; an operation the types do

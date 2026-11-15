@@ -283,7 +283,7 @@ constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interva
 
 // Whether g's step count fits uint64: a builtin index (else g stores a wide
 // one), and that count as the builtin (0 when it does not fit). Internal:
-// the public counts are step_count_of<T> and index_t<T>, insides of any size.
+// the public counts are step_count_of<T> and step_t<T>, insides of any size.
 consteval bool max_index_representable(const grid& g) {
     return !(grid_int{std::numeric_limits<std::uint64_t>::max()} < g.step_count());
 }
@@ -560,7 +560,7 @@ template <std::same_as<grid> G>
 // operator/
 //---------------------------------------------------------------------------
 template <std::same_as<grid> G>
-[[nodiscard]] consteval std::expected<grid, errc> operator/(const G& lhs, const G& rhs) {
+[[nodiscard]] consteval std::expected<grid, error> operator/(const G& lhs, const G& rhs) {
     const interval& r = rhs.Interval;
     // A nonzero point divisor c scales the other lattice exactly, as in
     // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer
@@ -574,7 +574,7 @@ template <std::same_as<grid> G>
     if (!includes(r, 0))
         return continuous(*(lhs.Interval / r));
     if (r.Lower == 0 && r.Upper == 0)
-        return std::unexpected{errc::division_by_zero};
+        return std::unexpected{error::division_by_zero};
 
     // The divisor interval holds 0: `step` bounds the nonzero divisor
     // magnitudes from below, splitting it into positive [step, Upper] and
@@ -584,7 +584,7 @@ template <std::same_as<grid> G>
     // continuous value p/q has q ≤ MaxDenominator. An unbounded continuous
     // divisor comes arbitrarily close to zero: no bounded quotient.
     if (rhs.Notch == 0 && rhs.MaxDenominator == 0)
-        return std::unexpected{errc::overflow};
+        return std::unexpected{error::overflow};
     const detail::grid_rational step = rhs.Notch != 0 ? rhs.value_unit() : 1 / rhs.MaxDenominator;
     const interval              pos{step, r.Upper}, neg{r.Lower, -step};
     auto over = [&](const interval& part) { return *(lhs.Interval / part); }; // zero-free: no error

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A calibration pipeline where each step can fail, and the cause matters:
 //   text ──parse──▶ reading ──div<volts>(reading − offset, gain)──▶ volts
-// Every step returns std::expected<…, errc>, so the steps chain with
+// Every step returns std::expected<…, error>, so the steps chain with
 // and_then, and the first failure — malformed text, a value off the grid or
 // out of range, a zero gain — comes out the end with its cause. Steps whose
 // grids prove them total (a gain that cannot be 0) return plain values, and
@@ -24,13 +24,13 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 using reading = quantity<si::volt, inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>>; // ±100 mV, 1 µV steps
-using gain    = inside<{{0, 10}, per<100>}>;                                          // 0 is possible: a dead channel
-using volts   = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round_nearest>>; // the result, 1 µV
+using gain    = inside<{{0, 10}, per<100>}>; // 0 is possible: a dead channel
+using volts   = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round_half_away>>; // the result, 1 µV
 
 constexpr reading offset{just<1, 4000> * si::volt}; // 0.25 mV
 
 // One sample: a reading and the channel's gain, both as text.
-std::expected<volts, errc> calibrate(std::string_view r, std::string_view g) {
+std::expected<volts, error> calibrate(std::string_view r, std::string_view g) {
     return parse<reading>(r).and_then([&](reading x) {
         return parse<gain>(g).and_then([&](gain k) {
             // (x − offset) / k, rounded once into volts: k's grid holds 0, so the
@@ -43,27 +43,27 @@ std::expected<volts, errc> calibrate(std::string_view r, std::string_view g) {
 int main() {
     struct sample {
         std::string_view r, g;
-        errc             expect; // errc{} for success
+        error            expect; // error{} for success
     };
     const sample samples[] = {
-        {"0.0125", "2", errc{}},                  // (12.5 − 0.25) mV / 2 = 0.006125 V
-        {"0.0125x", "2", errc::invalid_format},   // not a number
-        {"0.0000001", "2", errc::rounding_error}, // 0.1 µV: off the 1 µV grid
-        {"0.25", "2", errc::overflow},            // past ±100 mV
-        {"0.0125", "0", errc::division_by_zero},  // a dead channel
-        {"-0.09", "0.01", errc::overflow},        // −9.025 V: past ±1 V
+        {"0.0125", "2", error{}},                  // (12.5 − 0.25) mV / 2 = 0.006125 V
+        {"0.0125x", "2", error::invalid_format},   // not a number
+        {"0.0000001", "2", error::rounding_error}, // 0.1 µV: off the 1 µV grid
+        {"0.25", "2", error::overflow},            // past ±100 mV
+        {"0.0125", "0", error::division_by_zero},  // a dead channel
+        {"-0.09", "0.01", error::overflow},        // −9.025 V: past ±1 V
     };
     for (const auto& s : samples) {
         const auto v = calibrate(s.r, s.g);
         std::cout << "(" << s.r << " - 0.00025) / " << s.g << " -> "
-                  << (v ? to_string(*v) : std::string{"error: "} + errc_message(v.error())) << "\n";
-        if (v ? s.expect != errc{} : v.error() != s.expect)
+                  << (v ? to_string(*v) : std::string{"error: "} + error_message(v.error())) << "\n";
+        if (v ? s.expect != error{} : v.error() != s.expect)
             return 1;
     }
 
     // or_else supplies a fallback for one cause and passes the rest on.
-    const auto fallback = calibrate("0.0125", "0").or_else([](errc e) -> std::expected<volts, errc> {
-        if (e == errc::division_by_zero)
+    const auto fallback = calibrate("0.0125", "0").or_else([](error e) -> std::expected<volts, error> {
+        if (e == error::division_by_zero)
             return volts{0, si::volt};
         return std::unexpected(e);
     });
@@ -73,13 +73,13 @@ int main() {
     // whole expression an expected, and the first error wins.
     const auto chained =
         (reading{just<1, 100> * si::volt} - offset) / gain{0} * just<2> + reading{just<1, 1000> * si::volt};
-    std::cout << "chained -> " << errc_message(chained.error()) << "\n";
+    std::cout << "chained -> " << error_message(chained.error()) << "\n";
 
     // A gain that cannot be 0 makes the division total: a plain value.
     using live_gain   = inside<{{0.5, 10}, per<100>}>;
     const auto always = (reading{just<1, 100> * si::volt} - offset) / live_gain{2};
     static_assert(quantity_like<decltype(always)>);
     std::cout << "zero-free gain -> " << always << "\n";
-    return fallback && *fallback == volts{0, si::volt} && !chained && chained.error() == errc::division_by_zero ? 0
-                                                                                                                : 1;
+    return fallback && *fallback == volts{0, si::volt} && !chained && chained.error() == error::division_by_zero ? 0
+                                                                                                                 : 1;
 }

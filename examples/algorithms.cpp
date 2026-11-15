@@ -14,7 +14,7 @@
 namespace rng = std::ranges;
 using namespace beman::inside;
 
-using celsius  = inside<{{-40, 60}, 0.5}, round_nearest>;
+using celsius  = inside<{{-40, 60}, 0.5}, round_half_away>;
 using channel  = inside<{0, 255}, clamp>;
 using pct      = inside<{0, 100}, clamp>;
 using score    = inside<{0, 1000}>;

@@ -36,6 +36,7 @@
 // policy_actions
 namespace policy_actions_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // clamp policy on assignment
@@ -81,20 +82,20 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
         ASSERT_TRUE(ok.has_value());
         ASSERT_TRUE(ok->to<double>() == 42.5);
 
-        // out-of-range produces errc::overflow
+        // out-of-range produces error::overflow
         auto high = fp::try_make(300.0);
         ASSERT_FALSE(high.has_value());
-        ASSERT_EQ(high.error(), errc::overflow);
+        ASSERT_EQ(high.error(), error::overflow);
 
         auto low = fp::try_make(-0.5);
         ASSERT_FALSE(low.has_value());
 
         // ++ may step past the upper bound: it names a channel
         static_assert(!test::can_step<fp>);
-        fp   top = fp::try_make(255.0).value();
-        errc ec{};
-        top.policy(ec) += inside<grid{notch_of<fp>}>::from_raw({});
-        ASSERT_EQ(ec, errc::overflow);
+        fp    top = fp::try_make(255.0).value();
+        error ec{};
+        top.policy(ec) += inside<grid{notch_of<fp>}>::from_raw({}, unsafe);
+        ASSERT_EQ(ec, error::overflow);
     }
 
     {
@@ -112,7 +113,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
     {
         SCOPED_TRACE("signed Q1.14 (notch 1/16384) — uint16 storage");
-        using sample = inside<{{-1, 1}, per<16384>}, checked | round_nearest>;
+        using sample = inside<{{-1, 1}, per<16384>}, checked | round_half_away>;
         static_assert(sizeof(sample) == 2);
 
         auto s = sample::try_make(0.5);
@@ -218,8 +219,8 @@ TEST(PolicyActionsTest, on_error_action_receives_code_and_message) {
     using c100 = inside<{0, 100}, checked>;
     c100 e{50};
     bool fired = false;
-    e.on_error([&](auto& self, errc code, std::string_view msg) {
-        fired = (code == errc::overflow) && !msg.empty();
+    e.on_error([&](auto& self, error code, std::string_view msg) {
+        fired = (code == error::overflow) && !msg.empty();
         self  = 0;
     })         = 200;
     ASSERT_TRUE(fired);
@@ -242,83 +243,83 @@ TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
     ASSERT_EQ(b, 100);
 }
 
-// The free functions take a policy or an errc&, no hook: a zero divisor is in
+// The free functions take a policy or an error&, no hook: a zero divisor is in
 // the result, as for `/` (on_clamp / on_wrap / on_error are rejected, see
 // fail/arith_unused_action).
 TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
     using c100   = inside<{0, 100}, checked>;
     using u100ic = inside<{0, 100}, checked | round_toward_zero>;
     c100 d{50}, z{0};
-    auto q = div(d, z, make_policy<round_nearest>());
+    auto q = div(d, z, make_policy<round_half_away>());
     ASSERT_FALSE(q.has_value());
-    ASSERT_EQ(q.error(), errc::division_by_zero);
+    ASSERT_EQ(q.error(), error::division_by_zero);
     u100ic l{7}, r{0};
     auto   m = mod(l, r);
     ASSERT_FALSE(m.has_value());
-    ASSERT_EQ(m.error(), errc::division_by_zero);
+    ASSERT_EQ(m.error(), error::division_by_zero);
 }
 
 // A compound op whose exact result is off the grid fails like a store:
 // on_error takes it, and the value is unchanged.
 TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
     using frac = inside<{{0, 1}, max_denominator{std::int64_t{1} << 62}}>;
-    frac f{rational{1, (std::int64_t{1} << 62) - 1}};
-    errc seen{};
-    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += frac{rational{1, (std::int64_t{1} << 62) - 3}};
-    ASSERT_EQ(seen, errc::rounding_error); // the sum's denominator passes the bound
+    frac  f{rational{1, (std::int64_t{1} << 62) - 1}};
+    error seen{};
+    f.on_error([&](auto&, error c, const char*) { seen = c; }) += frac{rational{1, (std::int64_t{1} << 62) - 3}};
+    ASSERT_EQ(seen, error::rounding_error); // the sum's denominator passes the bound
     ASSERT_EQ(f, (rational{1, (std::int64_t{1} << 62) - 1}));
 }
 
-// free-fn div with beman::inside::errc& sets ec on div/0 / success path leaves ec clear
+// free-fn div with beman::inside::error& sets ec on div/0 / success path leaves ec clear
 TEST(PolicyActionsTest, free_fn_div_with_beman_inside_errc_sets_ec_on_div_0__success_path_leaves_ec_clear) {
     using c100 = inside<{0, 100}, checked>;
-    beman::inside::errc ec{};
-    auto                q = div(c100{10}, c100{0}, ec);
-    ASSERT_EQ(ec, errc::division_by_zero);
+    beman::inside::error ec{};
+    auto                 q = div(c100{10}, c100{0}, ec);
+    ASSERT_EQ(ec, error::division_by_zero);
     ASSERT_FALSE(q.has_value());
 
     {
         SCOPED_TRACE("success path leaves ec clear");
-        beman::inside::errc ec2{};
-        auto                r = div(c100{10}, c100{2}, ec2);
-        ASSERT_EQ(ec2, errc{});
+        beman::inside::error ec2{};
+        auto                 r = div(c100{10}, c100{2}, ec2);
+        ASSERT_EQ(ec2, error{});
         ASSERT_TRUE(r.has_value());
     }
 }
 
-// free-fn mod with beman::inside::errc& sets ec on div/0
+// free-fn mod with beman::inside::error& sets ec on div/0
 TEST(PolicyActionsTest, free_fn_mod_with_beman_inside_errc_sets_ec_on_div_0) {
     using u100ic = inside<{0, 100}, checked | round_toward_zero>;
-    beman::inside::errc ec{};
-    auto                m = mod(u100ic{7}, u100ic{0}, ec);
-    ASSERT_EQ(ec, errc::division_by_zero);
+    beman::inside::error ec{};
+    auto                 m = mod(u100ic{7}, u100ic{0}, ec);
+    ASSERT_EQ(ec, error::division_by_zero);
     ASSERT_FALSE(m.has_value());
 }
 
-// free-fn add with beman::inside::errc& compiles and clears on success
+// free-fn add with beman::inside::error& compiles and clears on success
 TEST(PolicyActionsTest, free_fn_add_with_beman_inside_errc_compiles_and_clears_on_success) {
     using c100 = inside<{0, 100}, checked>;
-    beman::inside::errc ec{};
-    auto                sum = add(c100{40}, c100{50}, ec);
-    ASSERT_EQ(ec, errc{});
+    beman::inside::error ec{};
+    auto                 sum = add(c100{40}, c100{50}, ec);
+    ASSERT_EQ(ec, error{});
     ASSERT_EQ(sum, 90);
 
     // SFINAE: the ec form must bind for add / sub / mul / div / mod.
-    static_assert(requires(c100 x, c100 y, beman::inside::errc& e) { add(x, y, e); });
-    static_assert(requires(c100 x, c100 y, beman::inside::errc& e) { sub(x, y, e); });
-    static_assert(requires(c100 x, c100 y, beman::inside::errc& e) { mul(x, y, e); });
-    static_assert(requires(c100 x, c100 y, beman::inside::errc& e) { div(x, y, e); });
+    static_assert(requires(c100 x, c100 y, beman::inside::error& e) { add(x, y, e); });
+    static_assert(requires(c100 x, c100 y, beman::inside::error& e) { sub(x, y, e); });
+    static_assert(requires(c100 x, c100 y, beman::inside::error& e) { mul(x, y, e); });
+    static_assert(requires(c100 x, c100 y, beman::inside::error& e) { div(x, y, e); });
 }
 
 // no-arg div on div/0 returns an error without throwing
 TEST(PolicyActionsTest, no_arg_div_on_div_0_returns_error_without_throwing) {
     // Regression guard for fix 1b's empty_ref/error_ref gate: the no-arg form
-    // must NOT throw on div/0 — it should return errc::division_by_zero.
+    // must NOT throw on div/0 — it should return error::division_by_zero.
     using c100 = inside<{0, 100}, checked>;
     ASSERT_NO_THROW((void)([] {
         auto q = div(c100{10}, c100{0});
         ASSERT_FALSE(q.has_value());
-        ASSERT_EQ(q.error(), errc::division_by_zero);
+        ASSERT_EQ(q.error(), error::division_by_zero);
     }()));
 }
 
@@ -326,25 +327,25 @@ TEST(PolicyActionsTest, no_arg_div_on_div_0_returns_error_without_throwing) {
 TEST(PolicyActionsTest, on_error_catches_rounding_error_on_float_assignment) {
     using coarse = inside<{{0, 10}, 2}>; // notch 2: 3.0 doesn't land
     coarse c{0};
-    errc   seen{};
+    error  seen{};
     bool   fired = false;
-    c.on_error([&](auto& self, errc code, std::string_view) {
+    c.on_error([&](auto& self, error code, std::string_view) {
         fired = true;
         seen  = code;
         self  = 4; // recover to a valid notch value
     })           = 3.0;
     ASSERT_TRUE(fired);
-    ASSERT_EQ(seen, errc::rounding_error);
+    ASSERT_EQ(seen, error::rounding_error);
     ASSERT_EQ(c, 4);
 }
 
 // policy(ec) catches rounding_error on float assignment
 TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment) {
     using coarse = inside<{{0, 10}, 2}>;
-    coarse              c{0};
-    beman::inside::errc ec{};
+    coarse               c{0};
+    beman::inside::error ec{};
     c.policy(ec) = 3.0;
-    ASSERT_EQ(ec, errc::rounding_error);
+    ASSERT_EQ(ec, error::rounding_error);
 }
 
 // The on_wrap carry is an inside for every source kind, so it adds straight
@@ -450,7 +451,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_exact) {
     x.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, 0x1p-45}>{150.7 - 100.0}; }) = 150.7;
     EXPECT_TRUE(exact);
 
-    inside<{0, 100}, round_nearest> r{0};
+    inside<{0, 100}, round_half_away> r{0};
     r.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, per<6>}>{rational{301, 6}}; }) =
         rational{901, 6};
     EXPECT_TRUE(exact);
@@ -480,6 +481,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_exact) {
 // with_methods
 namespace with_methods_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 //---------------------------------------------------------------------------
@@ -617,55 +619,55 @@ TEST(PolicyHandleTest, round_toward_zero_float_rhs_not_on_notch) {
 }
 
 //---------------------------------------------------------------------------
-// policy<round_nearest> (round half away)
+// policy<round_half_away> (round half away)
 //---------------------------------------------------------------------------
-// policy<round_nearest>: float rhs
+// policy<round_half_away>: float rhs
 TEST(PolicyHandleTest, round_nearest_float_rhs) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.policy<round_nearest>() = 3.0;
+    c.policy<round_half_away>() = 3.0;
     ASSERT_EQ(c, 4); // halfway-up: 3 -> 4
-    c.policy<round_nearest>() = 2.99;
+    c.policy<round_half_away>() = 2.99;
     ASSERT_EQ(c, 2);
-    c.policy<round_nearest>() = 3.01;
+    c.policy<round_half_away>() = 3.01;
     ASSERT_EQ(c, 4);
-    c.policy<round_nearest>() = 4.0;
+    c.policy<round_half_away>() = 4.0;
     ASSERT_EQ(c, 4); // exact
 
     using half = inside<{{0, 10}, 0.5}>;
     half h;
-    h.policy<round_nearest>() = 3.3;
+    h.policy<round_half_away>() = 3.3;
     ASSERT_EQ(h, 3.5_r); // 3.5
-    h.policy<round_nearest>() = 3.2;
+    h.policy<round_half_away>() = 3.2;
     ASSERT_EQ(h, 3); // 3.0
 }
 
-// policy<round_nearest>: inside rhs incompatible notches
+// policy<round_half_away>: inside rhs incompatible notches
 TEST(PolicyHandleTest, round_nearest_inside_rhs_incompatible_notches) {
     using coarse = inside<{{0, 10}, 2}>;
     using fine   = inside<{{0, 10}, 1}>;
 
     coarse c{0};
-    c.policy<round_nearest>() = fine{3};
+    c.policy<round_half_away>() = fine{3};
     ASSERT_EQ(c, 4); // 3 -> 4 (round half up)
-    c.policy<round_nearest>() = fine{5};
+    c.policy<round_half_away>() = fine{5};
     ASSERT_EQ(c, 6); // 5 -> 6
-    c.policy<round_nearest>() = fine{4};
+    c.policy<round_half_away>() = fine{4};
     ASSERT_EQ(c, 4); // exact
 }
 
 //---------------------------------------------------------------------------
-// policy<round_toward_zero> vs policy<round_nearest> divergence
+// policy<round_toward_zero> vs policy<round_half_away> divergence
 //---------------------------------------------------------------------------
-// policy<round_toward_zero> vs policy<round_nearest> disagree on halfway
+// policy<round_toward_zero> vs policy<round_half_away> disagree on halfway
 TEST(PolicyHandleTest, round_toward_zero_and_round_nearest_differ_on_a_tie) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
     c.policy<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // toward zero
-    c.policy<round_nearest>() = 3.0;
+    c.policy<round_half_away>() = 3.0;
     ASSERT_EQ(c, 4); // half away from zero
 }
 
@@ -688,7 +690,7 @@ TEST(PolicyHandleTest, the_handle_selects_the_rounding_mode) {
     ASSERT_EQ(c, 2); // toward −∞
     c.policy<round_ceil>() = 3.0;
     ASSERT_EQ(c, 4); // toward +∞
-    c.policy<round_nearest>() = 3.0;
+    c.policy<round_half_away>() = 3.0;
     ASSERT_EQ(c, 4); // half away from zero
     c.policy<round_half_even>() = 3.0;
     ASSERT_EQ(c, 4); // tie → even quotient
@@ -700,7 +702,7 @@ TEST(PolicyHandleTest, the_handle_selects_the_rounding_mode) {
     ASSERT_EQ(c, -4); // toward −∞
     c.policy<round_ceil>() = -3.0;
     ASSERT_EQ(c, -2); // toward +∞
-    c.policy<round_nearest>() = -3.0;
+    c.policy<round_half_away>() = -3.0;
     ASSERT_EQ(c, -4); // half away from zero
     c.policy<round_half_even>() = -3.0;
     ASSERT_EQ(c, -4); // tie → even quotient
@@ -729,7 +731,7 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
     // a*a is 6.25 on the finer 1/100 grid — off small's notch. These compile because
     // the proxy converts to `small`, applying clamp (range) + round_toward_zero (notch).
     small trunc   = (a * a).policy<round_toward_zero>(); // 6.25 → 6.2 (truncate)
-    small nearest = (a * a).policy<round_nearest>();     // 6.25 → 6.3 (nearest)
+    small nearest = (a * a).policy<round_half_away>();   // 6.25 → 6.3 (nearest)
     ASSERT_EQ(trunc, 6.2_r);
     ASSERT_EQ(nearest, 6.3_r);
 
@@ -749,9 +751,9 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
     // target whose interval the value can never enter (conversion stays constrained).
     using big = decltype(small{} * small{});
     static_assert(std::is_same_v<decltype(std::declval<big&>().policy<round_toward_zero>()),
-                                 policy_ref<big, call_policy<flags_of<big> | round_toward_zero>>>);
+                                 policy_ref<big, call_policy<policy_of<big> | round_toward_zero>>>);
     static_assert(std::is_same_v<decltype(std::declval<big>().policy<round_toward_zero>()),
-                                 policy_buffer<big, call_policy<flags_of<big> | round_toward_zero>>>);
+                                 policy_buffer<big, call_policy<policy_of<big> | round_toward_zero>>>);
     static_assert(std::is_convertible_v<decltype(std::declval<big&>().policy<round_toward_zero>()), small>);
     static_assert(std::is_convertible_v<decltype(std::declval<big>().policy<round_toward_zero>()), small>);
     // big keeps small's clamp (a result keeps its operands' shared policy), so it
@@ -765,7 +767,7 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
 } // namespace with_methods_tests
 
 // The replaceable failure handler (beman/inside/inside/detail/error.hpp). A
-// failure a program can expect is a value (an expected, an errc&, a hook); a
+// failure a program can expect is a value (an expected, an error&, a hook); a
 // store the grids cannot prove does not compile without one. What is left -
 // a precondition such as a cursor stepped past its end - funnels through
 // beman::inside::detail::raise -> the installed handler. By default that
@@ -773,18 +775,19 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
 // (a bare-metal reset/log, or here a throw the test can observe).
 namespace error_handler_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 namespace {
 // A custom [[noreturn]] handler that records the code, then escapes via a
 // throw of its own type so the test can observe it (a bare-metal handler
 // would reset/halt instead).
 struct handler_fired {
-    errc        code;
+    error       code;
     const char* what;
 };
-errc g_seen{};
+error g_seen{};
 
-[[noreturn]] void recording_handler(errc code, const char* what) {
+[[noreturn]] void recording_handler(error code, const char* what) {
     g_seen = code;
     throw handler_fired{code, what};
 }
@@ -812,11 +815,11 @@ TEST(ErrorHandlerTest, default_handler_prints_and_aborts) {
 // What a program can expect is reported as a value, not to the handler.
 TEST(ErrorHandlerTest, expected_failures_are_values) {
     using coarse = inside<{{0, 10}, 2}>; // notch 2: 3 doesn't land
-    EXPECT_EQ(checked_cast<coarse>(test::at_run_time(3)).error(), errc::rounding_error);
+    EXPECT_EQ(exact_cast<coarse>(test::at_run_time(3)).error(), error::rounding_error);
     using R = inside<{{0, 1}, per<16>}>;
-    EXPECT_EQ(test::store_error<R>(test::at_run_time(std::numeric_limits<double>::infinity())), errc::not_finite);
+    EXPECT_EQ(test::store_error<R>(test::at_run_time(std::numeric_limits<double>::infinity())), error::not_finite);
     using c100 = inside<{0, 100}, checked>;
-    EXPECT_EQ(c100::try_make(test::at_run_time(200)).error(), errc::overflow);
+    EXPECT_EQ(c100::try_make(test::at_run_time(200)).error(), error::overflow);
 }
 
 // set_error_handler redirects failures and is restorable
@@ -826,15 +829,15 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
         scoped_handler guard{&recording_handler};
         ASSERT_EQ(get_error_handler(), &recording_handler);
 
-        g_seen = errc{};
+        g_seen = error{};
         try {
             step_past_the_end();
             FAIL() << "expected the handler";
         } catch (const handler_fired& f) {
-            ASSERT_EQ(f.code, errc::overflow);
-            ASSERT_EQ(std::string_view{f.what}, errc_message(errc::overflow));
+            ASSERT_EQ(f.code, error::overflow);
+            ASSERT_EQ(std::string_view{f.what}, error_message(error::overflow));
         }
-        ASSERT_EQ(g_seen, errc::overflow);
+        ASSERT_EQ(g_seen, error::overflow);
     }
     // Default restored after the guard.
     ASSERT_EQ(get_error_handler(), before);
@@ -850,10 +853,10 @@ TEST(ErrorHandlerTest, compound_zero_divisor_names_a_channel) {
     using x_t    = inside<{0, 10}, round_toward_zero>;
     using zero_t = inside<{0, 1}>;
     static_assert(!test::can_div<x_t, zero_t>);
-    x_t  x{5};
-    errc ec{};
+    x_t   x{5};
+    error ec{};
     x.policy(ec) /= zero_t{0};
-    EXPECT_EQ(ec, errc::division_by_zero);
+    EXPECT_EQ(ec, error::division_by_zero);
     EXPECT_EQ(x, 5);
 }
 
@@ -861,8 +864,8 @@ TEST(ErrorHandlerTest, compound_zero_divisor_names_a_channel) {
 // race (the weekly TSan run checks it).
 TEST(ErrorHandlerTest, handler_swaps_while_other_threads_raise) {
     // No shared state in the handlers: only the handler pointer is contended.
-    constexpr error_handler_t quiet  = [](errc code, const char* what) { throw handler_fired{code, what}; };
-    constexpr error_handler_t quiet2 = [](errc code, const char* what) { throw handler_fired{code, what}; };
+    constexpr error_handler_t quiet  = [](error code, const char* what) { throw handler_fired{code, what}; };
+    constexpr error_handler_t quiet2 = [](error code, const char* what) { throw handler_fired{code, what}; };
     const scoped_handler      guard{quiet};
     std::atomic<int>          caught{0};
     std::vector<std::thread>  raisers;
@@ -888,18 +891,19 @@ TEST(ErrorHandlerTest, handler_swaps_while_other_threads_raise) {
 
 // The error vocabulary has two shapes, each by role (see docs/internals.md):
 //   policy cascade        — narrowing INTO an inside,
-//   std::expected<T,errc> — every fallible result: division and modulo by a
+//   std::expected<T,error> — every fallible result: division and modulo by a
 //                           grid that holds 0, pow at its pole, queries.
 // These tests cover the expected-lift operators that chain those results.
 namespace error_vocabulary_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 namespace {
 using num_t = inside<{0, 100}>;
 using den_t = inside<{-5, 5}>; // spans zero → division returns expected
 
-std::expected<num_t, errc> num_ok(int v) { return num_t::try_make(v); }
-std::expected<num_t, errc> num_err(errc e) { return std::unexpected{e}; }
+std::expected<num_t, error> num_ok(int v) { return num_t::try_make(v); }
+std::expected<num_t, error> num_err(error e) { return std::unexpected{e}; }
 } // namespace
 
 // expected-lift operators keep the cause end to end
@@ -911,15 +915,15 @@ TEST(ErrorVocabularyTest, expected_lift_operators_keep_the_cause_end_to_end) {
     ASSERT_EQ(*r, *(num_t{3} / den_t{3}) + num_t{4});
     ASSERT_EQ(*r, 5);
 
-    // Error path: the errc propagates through the whole chain.
+    // Error path: the error propagates through the whole chain.
     auto e = (num_t{3} / den_t{0} + num_t{4}) * num_t{2};
     ASSERT_TRUE(!e.has_value());
-    ASSERT_EQ(e.error(), errc::division_by_zero);
+    ASSERT_EQ(e.error(), error::division_by_zero);
 
     // First (left) error wins when two errors meet.
-    auto both = num_err(errc::domain_error) + num_err(errc::overflow);
+    auto both = num_err(error::domain_error) + num_err(error::overflow);
     ASSERT_TRUE(!both.has_value());
-    ASSERT_EQ(both.error(), errc::domain_error);
+    ASSERT_EQ(both.error(), error::domain_error);
 }
 
 // inside division returns expected with the division_by_zero cause
@@ -931,12 +935,12 @@ TEST(ErrorVocabularyTest, inside_division_reports_division_by_zero) {
 
     auto z = num_t{10} / den_t{0};
     ASSERT_TRUE(!z.has_value());
-    ASSERT_EQ(z.error(), errc::division_by_zero);
+    ASSERT_EQ(z.error(), error::division_by_zero);
 
     // A division error keeps its cause through the rest of the chain.
     auto chain = num_t{10} / den_t{0} * num_t{3} + num_t{1};
     ASSERT_TRUE(!chain.has_value());
-    ASSERT_EQ(chain.error(), errc::division_by_zero);
+    ASSERT_EQ(chain.error(), error::division_by_zero);
 }
 
 // division inside an expected chain reports its own cause
@@ -947,7 +951,7 @@ TEST(ErrorVocabularyTest, division_inside_an_expected_chain_reports_its_cause) {
 
     auto z = num_ok(10) / den_t{0};
     ASSERT_TRUE(!z.has_value());
-    ASSERT_EQ(z.error(), errc::division_by_zero);
+    ASSERT_EQ(z.error(), error::division_by_zero);
 }
 
 // operator% chains through expected
@@ -956,7 +960,7 @@ TEST(ErrorVocabularyTest, modulo_chains_through_expected) {
     using mnum = inside<{0, 100}, round_toward_zero>;
     using nz   = inside<{1, 5}, round_toward_zero>;  // divisor grid excludes zero
     using span = inside<{-5, 5}, round_toward_zero>; // divisor grid spans zero
-    auto en    = []() -> std::expected<mnum, errc> { return mnum{17}; };
+    auto en    = []() -> std::expected<mnum, error> { return mnum{17}; };
 
     auto m = en() % nz{5};
     ASSERT_TRUE(m.has_value());
@@ -968,17 +972,18 @@ TEST(ErrorVocabularyTest, modulo_chains_through_expected) {
     ASSERT_EQ(rational{*q}, 2);
     auto z = en() % span{0};
     ASSERT_TRUE(!z.has_value());
-    ASSERT_EQ(z.error(), errc::division_by_zero);
+    ASSERT_EQ(z.error(), error::division_by_zero);
 }
 } // namespace error_vocabulary_tests
 
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 template <class T, class U = T>
-constexpr bool proxy_add_ok = requires(T a, U b, errc& e) { a.policy(e) += b; };
+constexpr bool proxy_add_ok = requires(T a, U b, error& e) { a.policy(e) += b; };
 template <class T, class U = T>
 constexpr bool plain_add_ok = requires(T a, U b) { a += b; };
 template <class Ref, class E>
@@ -998,7 +1003,7 @@ TEST(PolicyTest, wrap_offset_from_a_negative_lower) {
 }
 
 // wrap folds a value whose 64-bit rational steps overflow exactly: it
-// reported errc::overflow (a double past 2^63, INT64_MIN into a 1/4 grid, a
+// reported error::overflow (a double past 2^63, INT64_MIN into a 1/4 grid, a
 // far value on a 2^-62 grid).
 TEST(PolicyTest, wrap_folds_past_the_64_bit_rational) {
     constexpr std::int64_t i64_min = INT64_MIN;
@@ -1014,7 +1019,7 @@ TEST(PolicyTest, wrap_folds_past_the_64_bit_rational) {
     EXPECT_EQ(*digit::try_make(1e30), 6_ins); // the double's exact value, mod 10
     EXPECT_EQ(to_string(*full::try_make<wrap>(1e30)), "5076964154930102272");
     EXPECT_EQ(*fine::try_make(rational{4}), (rational{(1ull << 62) - 3, 1ll << 62})); // 4 mod (1 + 2^-62)
-    EXPECT_EQ(digit::try_make(1.5).error(), errc::rounding_error);                    // no rounding flag
+    EXPECT_EQ(digit::try_make(1.5).error(), error::rounding_error);                   // no rounding flag
 }
 
 // A flag (`clamp`, `round_floor`) or a const policy(ec) as the constructor's
@@ -1024,11 +1029,11 @@ TEST(PolicyTest, named_policy_in_a_constructor) {
     using digit  = inside<{0, 9}>;
     static_assert(digit{12, clamp} == 9 && digit{12, wrap} == 2);
     static_assert(halves{7, round_floor} == 6.5_ins);
-    errc       ec{};
+    error      ec{};
     const auto pol = make_policy<checked>(ec);
     digit      y{12, pol};
     (void)y;
-    EXPECT_EQ(ec, errc::overflow);
+    EXPECT_EQ(ec, error::overflow);
 }
 
 // clamp saturated every out-of-range value but a double finer than 2^-62:
@@ -1038,7 +1043,7 @@ TEST(PolicyTest, continuous_grid_clamps_a_fine_double) {
     EXPECT_EQ(*(inside<{{0, 1}, max_denominator{1000}}, clamp>::try_make(-1e-20)), 0);
     EXPECT_EQ(*(inside<{{1, 2}, max_denominator{1000}}, clamp>::try_make(1e-20)), 1);
     EXPECT_EQ((*inside<sevenths, clamp>::try_make(-1e-20)), 0);
-    EXPECT_EQ((inside<{{0, 1}, max_denominator{1000}}>::try_make(-1e-20).error()), errc::overflow);
+    EXPECT_EQ((inside<{{0, 1}, max_denominator{1000}}>::try_make(-1e-20).error()), error::overflow);
 }
 
 TEST(PolicyTest, policy_handle_compound_is_constrained) {
@@ -1053,34 +1058,34 @@ TEST(PolicyTest, policy_handle_compound_is_constrained) {
 // threw, instead of calling the handler.
 TEST(PolicyTest, on_error_sees_rounding_from_a_continuous_source) {
     using I = inside<{0, 100}>;
-    I    w{7};
-    errc cb{};
-    w.on_error([&](auto&, errc c, const char*) { cb = c; }) /= I{2}; // 7/2
-    EXPECT_EQ(cb, errc::rounding_error);
+    I     w{7};
+    error cb{};
+    w.on_error([&](auto&, error c, const char*) { cb = c; }) /= I{2}; // 7/2
+    EXPECT_EQ(cb, error::rounding_error);
     EXPECT_EQ(w, 7);
 }
 
 TEST(PolicyTest, policy_handle_expected_sink_reports_into_errc) {
-    using ref = decltype(std::declval<inside<{0, 100}>&>().policy(std::declval<errc&>()));
-    static_assert(!stores_expected<ref, std::expected<rational, errc>>);
+    using ref = decltype(std::declval<inside<{0, 100}>&>().policy(std::declval<error&>()));
+    static_assert(!stores_expected<ref, std::expected<rational, error>>);
     static_assert(stores_expected<ref, rational>);
 }
 
-// A failed read-out through the errc& proxy returned an uninitialized
+// A failed read-out through the error& proxy returned an uninitialized
 // target (a compile error in constant evaluation).
 TEST(PolicyTest, policy_handle_failed_read_out_is_initialized) {
     static_assert([] {
-        errc                 ec{};
+        error                ec{};
         inside<{0, 100}>     x{50};
         const inside<{0, 9}> s = x.policy(ec); // 50 is past 9: overflow into ec
-        return ec == errc::overflow && s == 0;
+        return ec == error::overflow && s == 0;
     }());
 }
 
 // wrap on a bounded continuous grid folded before it rounded.
 TEST(PolicyTest, wrap_rounds_first_on_a_bounded_grid) {
     using S = inside<{{0, 1}, max_denominator{2}}, wrap | round_toward_zero>;
-    using N = inside<{{0, 1}, max_denominator{2}}, wrap | round_nearest>;
+    using N = inside<{{0, 1}, max_denominator{2}}, wrap | round_half_away>;
     using C = inside<{{0, 1}, max_denominator{7}}, wrap | round_ceil>;
     EXPECT_EQ(S{-1.3}, 0);
     EXPECT_EQ(N{-1.25}, rational(1, 2));
@@ -1108,27 +1113,27 @@ TEST(PolicyTest, on_clamp_hears_of_infinities) {
 // An on_error action ranked above the type's clamp / wrap policy: the store
 // reported overflow (and kept the old value) instead of saturating or folding.
 TEST(PolicyTest, on_error_does_not_preempt_clamp_or_wrap) {
-    errc code{};
-    auto record = [&](auto&, errc c, const char*) { code = c; };
+    error code{};
+    auto  record = [&](auto&, error c, const char*) { code = c; };
 
     inside<{0, 100}, clamp> c{0};
     c.on_error(record) = 150;
-    EXPECT_EQ(code, errc{});
+    EXPECT_EQ(code, error{});
     EXPECT_EQ(c, 100);
 
     inside<{0, 59}, wrap> w{0};
     w.on_error(record) = 61;
-    EXPECT_EQ(code, errc{});
+    EXPECT_EQ(code, error{});
     EXPECT_EQ(w, 1);
 
     inside<{{rational{1, 2}, rational{21, 2}}, 1}, round_half_even | clamp> h{rational{1, 2}};
     h.on_error(record) = 1e30;
-    EXPECT_EQ(code, errc{});
+    EXPECT_EQ(code, error{});
     EXPECT_EQ(h, rational(21, 2));
 
     inside<{0, 100}> u{7}; // no clamp: on_error still replaces the failure
     u.on_error(record) = 150;
-    EXPECT_EQ(code, errc::overflow);
+    EXPECT_EQ(code, error::overflow);
     EXPECT_EQ(u, 7);
 }
 
@@ -1163,6 +1168,7 @@ TEST(PolicyTest, one_shot_policy_applies_to_dyadic_target) {
     using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::per<4>}>;
     using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::per<4>}>;
     using namespace beman::inside;
+    using namespace beman::inside::formats;
     const RealWide big = RealWide{7.5}, low = RealWide{-1.0};
     EXPECT_EQ(rational{(RealSmall{big, clamp})}, rational{4.0});
     EXPECT_EQ(rational{(RealSmall{low, clamp})}, rational{0.0});
@@ -1193,13 +1199,13 @@ TEST(PolicyTest, policy_handle_zero_divisor_does_not_divide) {
     EXPECT_EQ(b, 6);
     // A checked divisor that may be 0 needs a channel for it.
     static_assert(!test::can_div<decltype(b.policy()), X> && !test::can_mod<decltype(b.policy()), X>);
-    errc ec{};
+    error ec{};
     b.policy(ec) %= X{0};
-    EXPECT_EQ(ec, errc::division_by_zero);
+    EXPECT_EQ(ec, error::division_by_zero);
     EXPECT_EQ(b, 6);
-    ec = errc{};
+    ec = error{};
     b.policy(ec) /= X{3};
-    EXPECT_EQ(ec, errc{});
+    EXPECT_EQ(ec, error{});
     EXPECT_EQ(b, 2);
 }
 
@@ -1211,11 +1217,11 @@ TEST(PolicyTest, policy_handle_zero_divisor_does_not_divide) {
 TEST(PolicyTest, checked_compound_overflow_reports) {
     using c100 = inside<{0, 100}, checked>;
     static_assert(!test::can_add<c100, c100>);
-    c100 a{80};
-    c100 b{50};
-    errc ec{};
+    c100  a{80};
+    c100  b{50};
+    error ec{};
     a.policy(ec) += b; // 130 not in [0,100]
-    ASSERT_EQ(ec, errc::overflow);
+    ASSERT_EQ(ec, error::overflow);
     ASSERT_EQ(a, 80);
 }
 
@@ -1230,8 +1236,8 @@ TEST(PolicyTest, on_error_fires_for_an_out_of_range_double_assignment) {
     using c100 = inside<{0, 100}, checked>;
     c100 e{50};
     bool fired = false;
-    e.on_error([&](auto& self, errc code, std::string_view msg) {
-        fired = (code == errc::overflow) && !msg.empty();
+    e.on_error([&](auto& self, error code, std::string_view msg) {
+        fired = (code == error::overflow) && !msg.empty();
         self  = 0;
     })         = 200.5; // fractional, out of [0,100]
     ASSERT_TRUE(fired);
@@ -1247,7 +1253,7 @@ TEST(PolicyTest, on_error_compound_subtract_that_does_not_fail) {
     using c100 = inside<{0, 100}, checked>;
     c100 acc{50};
     bool fired = false;
-    acc.on_error([&](auto&, errc, const char*) { fired = true; }) -= 10_ins; // 40, in range
+    acc.on_error([&](auto&, error, const char*) { fired = true; }) -= 10_ins; // 40, in range
     ASSERT_FALSE(fired);
     ASSERT_EQ(acc, 40);
 }
@@ -1261,7 +1267,7 @@ TEST(PolicyTest, on_error_compound_subtract_that_does_not_fail) {
 // alone handles only the range, so the off-notch value is a rounding error.
 TEST(PolicyTest, clamp_truncates_an_off_notch_value_in_range) {
     using strict = inside<{{0, 10}, per<2>}, clamp>;
-    ASSERT_EQ(strict::try_make(0.3).error(), errc::rounding_error);
+    ASSERT_EQ(strict::try_make(0.3).error(), error::rounding_error);
 
     using b = inside<{{0, 10}, per<2>}, clamp | round_toward_zero>; // notch 1/2
     b x{0};
@@ -1272,15 +1278,15 @@ TEST(PolicyTest, clamp_truncates_an_off_notch_value_in_range) {
     ASSERT_TRUE((static_cast<rational>(x) == rational{1u, 2}));
 }
 
-// errc_message stringifies every errc
+// error_message stringifies every error
 TEST(PolicyTest, errc_message_stringifies_every_errc) {
-    ASSERT_EQ(std::string_view{errc_message(errc::domain_error)}, "argument outside the function's domain");
-    ASSERT_EQ(std::string_view{errc_message(errc::division_by_zero)}, "division by zero");
-    ASSERT_EQ(std::string_view{errc_message(errc::overflow)}, "value does not fit its range");
-    ASSERT_EQ(std::string_view{errc_message(errc::rounding_error)}, "value is not on the grid");
-    ASSERT_EQ(std::string_view{errc_message(errc::not_finite)}, "non-finite floating-point value");
-    ASSERT_EQ(std::string_view{errc_message(errc::invalid_format)}, "malformed number");
-    ASSERT_EQ(std::string_view{errc_message(static_cast<errc>(999))}, "unknown inside error");
+    ASSERT_EQ(std::string_view{error_message(error::domain_error)}, "argument outside the function's domain");
+    ASSERT_EQ(std::string_view{error_message(error::division_by_zero)}, "division by zero");
+    ASSERT_EQ(std::string_view{error_message(error::overflow)}, "value does not fit its range");
+    ASSERT_EQ(std::string_view{error_message(error::rounding_error)}, "value is not on the grid");
+    ASSERT_EQ(std::string_view{error_message(error::not_finite)}, "non-finite floating-point value");
+    ASSERT_EQ(std::string_view{error_message(error::invalid_format)}, "malformed number");
+    ASSERT_EQ(std::string_view{error_message(static_cast<error>(999))}, "unknown inside error");
 }
 
 //---------------------------------------------------------------------------
@@ -1304,9 +1310,9 @@ TEST(PolicyTest, checked_range_check_fires) {
     using L = inside<{0, 100}, checked>;
     L b{50};
     static_assert(!test::can_add<L, inside<{0, 200}>>);
-    errc ec{};
+    error ec{};
     b.policy(ec) += inside<{0, 200}>{200};
-    ASSERT_EQ(ec, errc::overflow);
+    ASSERT_EQ(ec, error::overflow);
 }
 
 // clamp policy: range check still fires
@@ -1331,6 +1337,7 @@ TEST(PolicyTest, wrap_range_check_fires) {
 // `if constexpr` probe over the suite).
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // policy_ref %= by an unsafe zero divisor reports nothing and leaves the value.
 TEST(PoliciesArmTest, policy_ref_remainder_by_an_unsafe_zero) {
@@ -1344,6 +1351,7 @@ TEST(PoliciesArmTest, policy_ref_remainder_by_an_unsafe_zero) {
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // policy_ref %= by a nonzero divisor stores the remainder.
 TEST(PoliciesArmTest, policy_ref_remainder) {
@@ -1359,6 +1367,7 @@ TEST(PoliciesArmTest, policy_ref_remainder) {
 //---------------------------------------------------------------------------
 namespace wrap_carry_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // The carry of v into a wrap grid, through the hook.

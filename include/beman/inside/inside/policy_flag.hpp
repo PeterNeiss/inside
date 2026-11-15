@@ -45,7 +45,7 @@ concept flag_like = is_flag_v<std::remove_cvref_t<T>>;
 
 // Check model: compile-time checks always run. A store whose success can't be
 // proven statically gets a runtime check that throws (or reports through an
-// errc& parameter), unless `unsafe` appears: in the type, an operand, or the
+// error& parameter), unless `unsafe` appears: in the type, an operand, or the
 // call's policy.
 namespace detail {
 // No bits: the default of a template parameter that adds flags.
@@ -60,7 +60,7 @@ inline constexpr flag<1ull << 4> snap{};
 // `round_toward_zero` — the snap bit alone: truncate toward zero (IEEE 754
 // roundTowardZero). Last in dispatch, after every explicit mode.
 inline constexpr detail::flag<detail::snap>               round_toward_zero{};
-inline constexpr detail::flag<(1ull << 5) | detail::snap> round_nearest{};
+inline constexpr detail::flag<(1ull << 5) | detail::snap> round_half_away{};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → toward zero (rounding_of).
@@ -118,17 +118,17 @@ inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsa
     return (type & ~replaced) | call;
 }
 
-// f with round_nearest added unless it names a mode already, which would win
-// over round_nearest in rounding_of anyway: one mode either way.
+// f with round_half_away added unless it names a mode already, which would win
+// over round_half_away in rounding_of anyway: one mode either way.
 [[nodiscard]] constexpr policy_flag with_default_rounding(policy_flag f) noexcept {
-    return (f & mode_bits) != 0 ? f : f | round_nearest;
+    return (f & mode_bits) != 0 ? f : f | round_half_away;
 }
 } // namespace detail
 
 //---------------------------------------------------------------------------
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
 // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
-// flag` and is correct for composite flags (e.g. `round_nearest` carries
+// flag` and is correct for composite flags (e.g. `round_half_away` carries
 // `snap`), where a bare `set & flag`
 // truthy test would misfire. `has_any_flag` tests for any overlap.
 //---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ namespace detail {
 
 // Runtime checks run unless the flag set carries `unsafe`, which wins over
 // `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
-// default inside out). `inside<G, round_nearest>` and `inside<G, clamp>` are
+// default inside out). `inside<G, round_half_away>` and `inside<G, clamp>` are
 // checked, exactly like the default `inside<G>`.
 [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, unsafe_marker); }
 
@@ -155,7 +155,7 @@ namespace detail {
 namespace detail {
 // The rounding mode a flag set selects — the ONE precedence every rounding
 // path uses (integer and rational storage, division, math stores).
-// An explicit directional or half-even mode beats round_nearest; `snap` alone, or no
+// An explicit directional or half-even mode beats round_half_away; `snap` alone, or no
 // rounding flag at all, truncates toward zero. Ties of `nearest` go half
 // away from zero. round_mode and the shared decision: inside/detail/rounding.hpp.
 
@@ -166,7 +166,7 @@ namespace detail {
         return round_mode::ceil;
     if (has_flag(f, round_half_even))
         return round_mode::half_even;
-    if (has_flag(f, round_nearest))
+    if (has_flag(f, round_half_away))
         return round_mode::nearest;
     return round_mode::trunc;
 }

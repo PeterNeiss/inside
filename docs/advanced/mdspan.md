@@ -141,7 +141,7 @@ auto d = dot(std::mdspan{a.data(), std::extents<std::size_t, 4>{}},
 
 The names follow `std::linalg`, whose algorithms accumulate in the element
 type; an inside's sums widen instead. Extents that differ are a compile error
-where they are static, else `errc::domain_error`. `transform_into` is not
+where they are static, else `error::domain_error`. `transform_into` is not
 `transform`, which argument-dependent lookup would confuse with
 `std::transform(first, last, out, f)`.
 

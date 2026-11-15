@@ -200,7 +200,7 @@ template <insidable B>
 }
 
 // True when R's interval cannot contain zero — so `a / b` can return a plain
-// `inside` instead of `expected<inside, errc>` (see inside/detail/division.hpp). A point
+// `inside` instead of `expected<inside, error>` (see inside/detail/division.hpp). A point
 // grid at 0 is *not* excluded.
 template <insidable R>
 inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
@@ -334,10 +334,11 @@ template <insidable B>
 constexpr void from_value(B& b, std::int64_t val) {
     static_assert(notch64<B>.Num != 0 && abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1);
     if constexpr (value_storage<B>)
-        b = B::from_raw(raw_cast<B>(val));
+        b = B::from_raw(raw_cast<B>(val), unsafe);
     else
         b = B::from_raw(raw_cast<B>((static_cast<std::uint64_t>(val) - static_cast<std::uint64_t>(lower_int64<B>)) /
-                                    notch64<B>.Num));
+                                    notch64<B>.Num),
+                        unsafe);
 }
 
 //-------------------------------------------------------------------------
@@ -441,17 +442,17 @@ inline constexpr bool integer_limits =
     grid_denominator(lower_of<B>) == grid_int{1} && grid_denominator(upper_of<B>) == grid_int{1};
 
 // Whether a store into B under the call policy P uses flag F: B's own flags
-// or P's. Composite flags (e.g. round_nearest = bit5 | snap) require all
+// or P's. Composite flags (e.g. round_half_away = bit5 | snap) require all
 // their bits set — having a subset like just `snap` does NOT match.
 template <insidable B, typename P, policy_flag F>
-inline constexpr bool uses_flag = has_flag(flags_of<B>, F) || plain_t<P>::test(F);
+inline constexpr bool uses_flag = has_flag(policy_of<B>, F) || plain_t<P>::test(F);
 
 // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
 template <insidable L, typename P>
 inline constexpr round_mode rounding_for = uses_flag<L, P, round_floor>       ? round_mode::floor
                                            : uses_flag<L, P, round_ceil>      ? round_mode::ceil
                                            : uses_flag<L, P, round_half_even> ? round_mode::half_even
-                                           : uses_flag<L, P, round_nearest>   ? round_mode::nearest
+                                           : uses_flag<L, P, round_half_away> ? round_mode::nearest
                                                                               : round_mode::trunc;
 
 // ⌊a / b⌋ for grid numbers (b > 0).
@@ -493,9 +494,9 @@ template <insidable L, typename P>
 // v rounded onto L's lattice {Lower + k·Notch} by rounding_for<L, P> (value
 // space, ties half away from zero), for any v — not limited to [Lower,
 // Upper], so wrap can round first and fold an on-lattice value after: a
-// result or step past the rational range is errc::overflow.
+// result or step past the rational range is error::overflow.
 template <insidable L, typename P>
-[[nodiscard]] constexpr std::expected<rational, errc> try_round_to_lattice(rational v) {
+[[nodiscard]] constexpr std::expected<rational, error> try_round_to_lattice(rational v) {
     if constexpr (!notched<L>) // a point: apply_wrap's wrap arm is formed, never run (dispatch rejects it)
         return v;
     else {
@@ -505,7 +506,7 @@ template <insidable L, typename P>
         if (!q)
             return q;
         const auto [base, step] = lattice_step_of<L, P>(*q, v < 0);
-        const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
+        const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, error>{base};
         if (!j)
             return j;
         const auto rel = try_mul(*j, notch64<L>);
@@ -658,7 +659,7 @@ inline constexpr bool notches_compatible = [] {
 template <typename P>
 constexpr bool range_fail(P&& policy) {
     if (policy.checks_range()) {
-        policy.report(errc::overflow);
+        policy.report(error::overflow);
         return true;
     }
     return false;

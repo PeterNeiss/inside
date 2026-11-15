@@ -63,9 +63,9 @@ int main() {
               << "in 20 min       = " << speed.in(si::kilo(si::metre) / si::hour) << '\n';
 
     // math: correctly rounded onto the output grid, the same bits everywhere.
-    using amplitude = inside<{{-1, 1}, per<1000>}, round_nearest>;
+    using amplitude = inside<{{-1, 1}, per<1000>}, round_half_away>;
     auto s = math::sin<amplitude>(just<30> * si::degree);
-    auto r = math::sqrt(inside<{{0, 10}, per<1000>}, round_nearest>{2});
+    auto r = math::sqrt(inside<{{0, 10}, per<1000>}, round_half_away>{2});
     std::cout << "sin 30°         = " << s << '\n'
               << "sqrt 2          = " << r << '\n';
 }

@@ -71,14 +71,14 @@ checks its own results.
 
 <!-- listing: math -->
 ```cpp
-using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_nearest>;
+using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
 auto s = math::sin(angle{1});                    // 0.84149169921875, the nearest 1/16384
 static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<(1 << 14)>});
 auto c = math::cos<per<(1 << 8)>>(angle{1});     // 0.5390625: a coarser notch, named
 
-using level = inside<{{0, 4}, per<(1 << 8)>}, round_nearest>;
+using level = inside<{{0, 4}, per<(1 << 8)>}, round_half_away>;
 auto r = math::sqrt(level{2.25});                // 1.5, on [0, 2]
-// math::sqrt(inside<{{-4, 4}, per<(1 << 8)>}, round_nearest>{2.25}) does not compile:
+// math::sqrt(inside<{{-4, 4}, per<(1 << 8)>}, round_half_away>{2.25}) does not compile:
 // the grid reaches below 0, so take abs(x) or store x into a non-negative grid first
 ```
 
@@ -87,7 +87,7 @@ time and run time agree.**
 
 <!-- listing: math_rounding -->
 ```cpp
-using x_t  = inside<{{1, 16}, per<(1 << 6)>}, round_nearest>;
+using x_t  = inside<{{1, 16}, per<(1 << 6)>}, round_half_away>;
 using down = inside<{{0, 16}, per<(1 << 10)>}, round_floor>;
 using up   = inside<{{0, 16}, per<(1 << 10)>}, round_ceil>;
 
@@ -110,11 +110,11 @@ auto           at_run_time     = math::exp(x_t{1.5});
 using down = inside<{{-1, 1}, per<(1 << 14)>}, round_floor>;
 auto h = math::cos<down>(just<120> * si::degree); // exactly -1/2, even rounding down
 
-using area_t = quantity<square(si::metre), inside<{{0, 100}, per<(1 << 10)>}, round_nearest>>;
+using area_t = quantity<square(si::metre), inside<{{0, 100}, per<(1 << 10)>}, round_half_away>>;
 auto side = math::sqrt(area_t{2, square(si::metre)}); // 1.4140625 m: the unit's root
-static_assert(std::is_same_v<decltype(side)::rep, inside<{{0, 10}, per<(1 << 10)>}, round_nearest>>);
+static_assert(std::is_same_v<decltype(side)::rep, inside<{{0, 10}, per<(1 << 10)>}, round_half_away>>);
 
-using rad_t = inside<{{0, 7}, per<1'000'000>}, round_nearest>;
+using rad_t = inside<{{0, 7}, per<1'000'000>}, round_half_away>;
 auto right = value_cast<si::radian, rad_t>(just<90> * si::degree); // 1.570796 rad: π/2, rounded once
 ```
 
@@ -124,7 +124,7 @@ auto right = value_cast<si::radian, rad_t>(just<90> * si::degree); // 1.570796 r
 
 A function's result is a point of its output grid, and it is the *correctly
 rounded* point: the one the output's rounding mode selects from the true
-value. `round_nearest` takes the nearest point (a tie away from zero),
+value. `round_half_away` takes the nearest point (a tie away from zero),
 `round_floor` the one at or below, and so on, as for any store in the number
 paper. Because the output grid is part of the type, so is the precision. A
 coarse output is cheap, a fine one costs more, and there is no ceiling: an
@@ -165,7 +165,7 @@ A domain limit that the input's *type* violates is ill-formed: `log` of a grid
 that reaches 0, `asin` of a grid past ±1, `sqrt` of a grid that reaches below
 0, `tan` of an interval that holds a pole, `pow` of a base grid below 0. The
 one failure that depends on the *value* is `pow`'s pole, 0 to a negative
-power: `pow` returns `std::expected<Out, errc>` with `division_by_zero` only
+power: `pow` returns `std::expected<Out, error>` with `division_by_zero` only
 when the base grid holds 0 and the exponent grid a negative, as a division by
 a grid that holds 0 does. Every other function returns a plain `inside`, and a
 result past a named `Out` is a store into `Out`, as the number paper's are.
@@ -234,7 +234,7 @@ template<class Out, class... D> constexpr auto fn(const D&... args);       // on
 
 A `Spec` is a notch (`per<K>`, or any rational) or policy flags, in any
 order, at most one notch. The second form returns `Out` (or `expected<Out,
-errc>` where the deduced form returns an `expected`); except for the grid
+error>` where the deduced form returns an `expected`); except for the grid
 operations, `Out` must be an `inside` whose policy names a rounding mode.
 `pow_base` and `pown` take their compile-time argument first:
 `pow_base<10, per<(1 << 10)>>(x)`, `pown<3, Out>(x)`.
@@ -242,7 +242,7 @@ operations, `Out` must be an `inside` whose policy names a rounding mode.
 ```cpp
 namespace std::math {
   template<uint64_t K>                                        // [-1, 1] at resolution 1/K
-    using unit_amplitude = inside<{{-1, 1}, per<K>}, round_nearest>;
+    using unit_amplitude = inside<{{-1, 1}, per<K>}, round_half_away>;
 
   // grid operations: exact
   template<class In> constexpr auto abs(In x);               // [0, max|x|]
@@ -302,7 +302,7 @@ namespace std::units {
 
 | Expression | Result | Errors |
 |---|---|---|
-| `fn<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode: `Out` where `Out`'s range holds `fn`'s range over `x`'s grid or `Out` clamps or wraps, else `expected<Out, errc>` (`overflow` past `Out`) | ill-formed without a rounding mode in `Out`, except for a grid operation; ill-formed for a checked `Out` where no range of `fn` is bounded |
+| `fn<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode: `Out` where `Out`'s range holds `fn`'s range over `x`'s grid or `Out` clamps or wraps, else `expected<Out, error>` (`overflow` past `Out`) | ill-formed without a rounding mode in `Out`, except for a grid operation; ill-formed for a checked `Out` where no range of `fn` is bounded |
 | `fn(x)` | `fn<Out>(x)`, `Out` deduced from `x`'s grid and policy, rounding to nearest unless the policy names a mode | none beyond the function's |
 | `fn<Spec...>(x)` | as `fn(x)`, the range computed on the notch named, and the policy flags named replacing the deduced ones (a rounding mode its mode) | ill-formed for a `Spec` that is neither a notch nor a flag, or for two notches |
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |

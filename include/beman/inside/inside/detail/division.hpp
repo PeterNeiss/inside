@@ -16,7 +16,7 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// division / modulo. `division::div` returns expected<result, errc> exactly
+// division / modulo. `division::div` returns expected<result, error> exactly
 // when the divisor's grid holds zero (a quotient never overflows). The paths,
 // in order: Q-format (same notch + snap), native integer and wide integer
 // (integer-aligned grids + snap), a point quotient, point scale (a nonzero
@@ -39,7 +39,8 @@ namespace beman::inside::detail {
 // Both operands are plain integer grids and the caller accepted integer
 // truncation (snap) — the prerequisite for native integer div / mod.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool integer_ops = ((F | flags_of<L> | flags_of<R>)&snap) && integer_lattice<L> && integer_lattice<R>;
+inline constexpr bool integer_ops =
+    ((F | policy_of<L> | policy_of<R>)&snap) && integer_lattice<L> && integer_lattice<R>;
 
 // ...and every value fits int64, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
@@ -150,7 +151,7 @@ using native_div_t = std::conditional_t<(lower_int64<L> > std::numeric_limits<st
 // The zero-divisor check is skipped when R's grid excludes zero or `unsafe`
 // appears (a zero divisor is then UB, matching the `/= 0` no-op).
 template <insidable L, insidable R, policy_flag F, policy_flag G>
-inline constexpr bool divisor_unchecked = divisor_excludes_zero<R> || !is_checked(G | F | flags_of<L> | flags_of<R>);
+inline constexpr bool divisor_unchecked = divisor_excludes_zero<R> || !is_checked(G | F | policy_of<L> | policy_of<R>);
 
 // Compile-time rounding of a quotient-interval endpoint to an integer index.
 // Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
@@ -180,7 +181,7 @@ struct division {
                       !(grid_int{1} < grid_denominator(notch_of<L>)) || !(grid_of<L> / grid_of<R>).has_value())
             return false;
         else
-            return ((F | flags_of<L> | flags_of<R>)&snap) != 0;
+            return ((F | policy_of<L> | policy_of<R>)&snap) != 0;
     }();
 
     static constexpr bool wide_div_integer = integer_wide_ops<L, R, F>;
@@ -188,7 +189,7 @@ struct division {
     static constexpr bool native_div = native_div_integer || native_div_fixed || wide_div_integer;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
-    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
+    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
 
     // A clear diagnostic when there is no result grid, instead of the
     // expected-deref below failing cryptically. The native integer path forms
@@ -314,7 +315,7 @@ struct division {
     // other quotient is a point or continuous with a denominator bound that
     // sizes its raw (exact_fits). So the only failure is a zero divisor —
     // excluded by the grid → plain `result`.
-    using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
+    using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, error>>;
 
     template <policy_flag G = F, typename E = empty_ref>
     static constexpr return_t div(L, R, call_policy<G, E> = {});
@@ -326,10 +327,10 @@ struct division {
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
 constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
-    // A zero divisor: reported through the policy's errc& (if any) and returned
+    // A zero divisor: reported through the policy's error& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
     // holds zero and no `unsafe` appears).
-    [[maybe_unused]] auto zero = [&] { return report_or_unexpected<result>(policy, errc::division_by_zero); };
+    [[maybe_unused]] auto zero = [&] { return report_or_unexpected<result>(policy, error::division_by_zero); };
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
     if constexpr (native_div_fixed) {
@@ -378,7 +379,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         if constexpr (!zero_unchecked)
             if (rhs == 0)
                 return zero();
-        return result::from_raw(raw_t<result>{});
+        return result::from_raw(raw_t<result>{}, unsafe);
     } else if constexpr (point_divisor) {
         if constexpr (point_scale<R, L, result>)
             return scale_by_point<result, R>(lhs);
@@ -394,7 +395,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         // (A wide operand puts the quotient's numerator or denominator bound
         // past 64 bits: a fraction raw.)
         static_assert(fraction_storage<result>);
-        return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) / d));
+        return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) / d), unsafe);
     } else if constexpr (int_quotient_fits) {
         // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
         // value indices, reduced once — no operand decodes, no checked divide.
@@ -407,14 +408,14 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
             if (d == 0)
                 return zero();
         const std::int64_t n = value_index<std::int64_t>(lhs) * a;
-        return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
+        return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d}, unsafe);
     } else {
         static_assert(exact_fits<exact_op::div, result, L, R>, "a continuous quotient's bound sizes its raw");
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Num == 0)
                 return zero();
-        return result::from_raw(div_unchecked(as_rational(lhs), rhs_r));
+        return result::from_raw(div_unchecked(as_rational(lhs), rhs_r), unsafe);
     }
 }
 //---------------------------------------------------------------------------
@@ -443,7 +444,7 @@ struct modulo {
                                            signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
                                            signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
 
-    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
+    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b,
     // with the tightest bounds every mode allows (the values r can take):
@@ -510,7 +511,7 @@ struct modulo {
 
     // Modulo never overflows (the remainder fits result_grid), so the only
     // failure is a zero divisor — excluded by the grid → plain `result`.
-    using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
+    using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, error>>;
 
     template <policy_flag G = F, typename E = empty_ref>
     static constexpr return_t mod(L, R, call_policy<G, E> = {});
@@ -525,7 +526,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
         const std::int64_t b = value_in_units<std::int64_t, unit>(rhs);
         if constexpr (!zero_unchecked)
             if (b == 0)
-                return report_or_unexpected<result>(policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, error::division_by_zero);
         return from_value_in_units<result, unit>(
             div_rem_rounded(value_in_units<std::int64_t, unit>(lhs), b, rmode).Remainder);
     } else if constexpr (lattice_mod_ops<L, R>) {
@@ -535,7 +536,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
         const I b               = value_in_units<I, unit>(rhs);
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return report_or_unexpected<result>(policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, error::division_by_zero);
         const I a = value_in_units<I, unit>(lhs);
         return exact_result<result>(
             wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit)),
@@ -546,7 +547,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
         const I b = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return report_or_unexpected<result>(policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, error::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
@@ -554,7 +555,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
         const T rhs_val = static_cast<T>(to_value(rhs));
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return report_or_unexpected<result>(policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, error::division_by_zero);
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
@@ -576,7 +577,7 @@ struct quotient_remainder {
 
     static_assert(integer_ops<L, R, FS> || lattice_mod_ops<L, R>, "divmod requires notched grids");
 
-    static constexpr round_mode rmode = rounding_of(FS | flags_of<L> | flags_of<R>);
+    static constexpr round_mode rmode = rounding_of(FS | policy_of<L> | policy_of<R>);
 
     // On a lattice the quotient is the integer round(a/b): its grid holds the
     // quotient interval's limits rounded the same way (rounding is monotone).
@@ -597,7 +598,7 @@ struct quotient_remainder {
 
     using result = divmod_result<quotient, typename modulo<L, R, FS>::result>;
 
-    using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
+    using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, error>>;
 
     // The only failure is a zero divisor.
     template <policy_flag G = F, typename E = empty_ref>
@@ -617,7 +618,7 @@ struct quotient_remainder {
             const I b                 = value_in_units<I, u>(rhs);
             if constexpr (!divisor_unchecked<L, R, F, G>)
                 if (b.is_zero())
-                    return fail(errc::division_by_zero);
+                    return fail(error::division_by_zero);
             const I a = value_in_units<I, u>(lhs);
             const I q = rounded_div<rmode>(a, b);
             return result{exact_result<quotient>(wide_rational<K>{q, I{1}}),
@@ -633,7 +634,7 @@ struct quotient_remainder {
             const I b               = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
             if constexpr (!divisor_unchecked<L, R, F, G>)
                 if (b.is_zero())
-                    return fail(errc::division_by_zero);
+                    return fail(error::division_by_zero);
             const I a = value_in_units<I, grid_rational{1}>(lhs);
             const I q = rounded_div<rmode>(a, b);
             return result{exact_result<Q>(wide_rational<K>{q, I{1}}),
@@ -643,7 +644,7 @@ struct quotient_remainder {
             const T rhs_val = static_cast<T>(to_value(rhs));
             if constexpr (!divisor_unchecked<L, R, F, G>)
                 if (rhs_val == 0)
-                    return fail(errc::division_by_zero);
+                    return fail(error::division_by_zero);
             const T    lhs_val = static_cast<T>(to_value(lhs));
             const auto qr      = div_rem_rounded(lhs_val, rhs_val, rmode);
             result     res{native_quotient<typename division<L, R, FS>::result>(lhs_val, rhs_val, qr.Quotient), {}};

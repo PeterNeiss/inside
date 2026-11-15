@@ -28,8 +28,8 @@ using I = inside<{-1000000, 1000000}>;
 
 // Scalar fast path: must be a bare integer add, no call into any fallback.
 extern "C" long ins_perf_add_fast(long a, long b) {
-    I x = I::from_raw(static_cast<I::raw_type>(a));
-    I y = I::from_raw(static_cast<I::raw_type>(b));
+    I x = I::from_raw(static_cast<I::raw_type>(a), unsafe);
+    I y = I::from_raw(static_cast<I::raw_type>(b), unsafe);
     return static_cast<long>((x + y).raw());
 }
 
@@ -38,7 +38,8 @@ extern "C" void
 ins_perf_add_loop(const long* __restrict a, const long* __restrict b, long* __restrict out, std::size_t n) {
     for (std::size_t i = 0; i < n; ++i)
         out[i] = static_cast<long>(
-            (I::from_raw(static_cast<I::raw_type>(a[i])) + I::from_raw(static_cast<I::raw_type>(b[i]))).raw());
+            (I::from_raw(static_cast<I::raw_type>(a[i]), unsafe) + I::from_raw(static_cast<I::raw_type>(b[i]), unsafe))
+                .raw());
 }
 
 // Multiply fast path: the value-index integer multiply must likewise stay
@@ -46,14 +47,14 @@ ins_perf_add_loop(const long* __restrict a, const long* __restrict b, long* __re
 using M = inside<{-1000, 1000}>;
 
 extern "C" long ins_perf_mul_fast(long a, long b) {
-    M x = M::from_raw(static_cast<M::raw_type>(a));
-    M y = M::from_raw(static_cast<M::raw_type>(b));
+    M x = M::from_raw(static_cast<M::raw_type>(a), unsafe);
+    M y = M::from_raw(static_cast<M::raw_type>(b), unsafe);
     return static_cast<long>((x * y).raw());
 }
 
 // Index raw → double: one convert and one multiply (as_double's
 // index_double codec), no rational decode.
-using D = inside<{{-8, 8}, per<16384>}, round_nearest>;
+using D = inside<{{-8, 8}, per<16384>}, round_half_away>;
 
 extern "C" double ins_perf_to_double(D a) { return static_cast<double>(a); }
 
@@ -64,8 +65,8 @@ extern "C" double ins_perf_to_double(D a) { return static_cast<double>(a); }
 using Q = inside<{{0, 255}, per<256>}, clamp | round_toward_zero>; // (-= names its range handling)
 
 extern "C" long ins_perf_sub_compound(long a, long b) {
-    Q x = Q::from_raw(static_cast<Q::raw_type>(a));
-    x -= Q::from_raw(static_cast<Q::raw_type>(b));
+    Q x = Q::from_raw(static_cast<Q::raw_type>(a), unsafe);
+    x -= Q::from_raw(static_cast<Q::raw_type>(b), unsafe);
     return static_cast<long>(x.raw());
 }
 
@@ -89,14 +90,14 @@ using km_t = units::quantity<units::si::kilo(units::si::metre), inside<{{0, 100}
 using m_t  = units::quantity<units::si::metre, inside<{0, 1000}>>;
 
 extern "C" long ins_perf_unit_in(long a) {
-    const km_t d{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a)),
+    const km_t d{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a), unsafe),
                  units::si::kilo(units::si::metre)};
     return static_cast<long>(d.numerical_value_in(units::si::milli(units::si::metre)).raw());
 }
 
 extern "C" long ins_perf_unit_sum(long a, long b) {
-    const km_t x{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a)),
+    const km_t x{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a), unsafe),
                  units::si::kilo(units::si::metre)};
-    const m_t  y{inside<{0, 1000}>::from_raw(static_cast<m_t::rep::raw_type>(b)), units::si::metre};
+    const m_t  y{inside<{0, 1000}>::from_raw(static_cast<m_t::rep::raw_type>(b), unsafe), units::si::metre};
     return static_cast<long>((x + y).numerical_value_in(units::si::metre).raw());
 }

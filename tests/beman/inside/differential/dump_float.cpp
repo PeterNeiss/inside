@@ -29,7 +29,7 @@ void floats(rng_t& g, int n) {
                     k += static_cast<std::uint64_t>(dk);
                 if (k > mx)
                     k = mx;
-                x = T::from_raw(beman::inside::detail::raw_from_offset<T>(k));
+                x = T::from_raw(beman::inside::detail::raw_from_offset<T>(k), unsafe);
             }
         }
         const float   f = x.template to<float>();

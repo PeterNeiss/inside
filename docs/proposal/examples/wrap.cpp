@@ -15,10 +15,10 @@ int main() {
     level   volume  = 9;
     volume += 5_ins;                          // 14 clamps to 10
 
-    auto n = count::try_make(14);             // unexpected(errc::overflow)
+    auto n = count::try_make(14);             // unexpected(error::overflow)
     // count m = 14;                          // ill-formed: 14 is outside [0, 10]
     // [/listing]
-    if (heading != 10 || volume != 10 || n.has_value() || n.error() != errc::overflow)
+    if (heading != 10 || volume != 10 || n.has_value() || n.error() != error::overflow)
         return 1;
     return 0;
 }

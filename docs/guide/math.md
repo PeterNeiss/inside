@@ -13,7 +13,7 @@ without an FPU.
 #include <beman/inside/math.hpp>
 using namespace beman::inside;
 
-using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_nearest>;
+using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
 auto s = math::sin(angle{1});                   // 0.84149169921875, on the input's notch
 auto c = math::cos<per<(1 << 8)>>(angle{1});    // 0.5390625: the notch you name
 auto h = math::hypot(s, s);                     // √(s² + s²)
@@ -27,10 +27,10 @@ rounded once, by one rounding mode:
 - the call's: `math::exp<round_floor>(x)`;
 - a named output's: `math::sin<Out>(x)`, where `Out` must have a rounding
   mode (it is your type, and its policy forbids rounding without one);
-- otherwise the input type's mode, or `round_nearest` when it names none.
+- otherwise the input type's mode, or `round_half_away` when it names none.
   The deduced output carries that mode.
 
-The rounding mode decides the result: `round_nearest` gives the nearest
+The rounding mode decides the result: `round_half_away` gives the nearest
 point, `round_floor` the one below, and so on.
 
 ## Choosing the output grid
@@ -119,7 +119,7 @@ depends on the *value*, and returns a `std::expected`:
 
 Everything else returns a plain inside. A named output (`fn<Out>`) is plain
 where `Out`'s range holds the function's range over the input grid, or `Out`
-clamps or wraps; otherwise the call returns `std::expected<Out, errc>`, whose
+clamps or wraps; otherwise the call returns `std::expected<Out, error>`, whose
 error is `overflow` for a result past `Out` (the value is rounded once, onto
 `Out`'s notch, either way). Where the library bounds no range (`exp` of
 `|x|` past 4096, `pow` of a base grid reaching 0), a checked `Out` does not

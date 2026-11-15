@@ -157,7 +157,7 @@ pain of knowing.
   // Before: int volume = std::stoi(text);   // any int, and nobody checks
   using volume = inside<{0, 100}>;           // what was always true, now written down
 
-  const auto v = parse<volume>(text);        // expected<volume, errc>: the boundary is where to know
+  const auto v = parse<volume>(text);        // expected<volume, error>: the boundary is where to know
   if (!v)
       return reject(text);
   const auto louder = *v + volume{10};       // inside<{0, 110}>: the type widened, nothing wrapped

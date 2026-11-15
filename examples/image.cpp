@@ -30,7 +30,7 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 using pixel  = inside<{0, 255}>;
-using smooth = inside<{0, 255}, round_nearest>; // a blurred pixel: rounded once
+using smooth = inside<{0, 255}, round_half_away>; // a blurred pixel: rounded once
 // An index: a std::mdspan takes it as it is. clamp: a value past an edge,
 // stored into the index, is the edge.
 using row          = inside<{0, 7}, clamp>;

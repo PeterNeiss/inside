@@ -12,7 +12,7 @@ namespace beman::inside {
 // interval — structural NTTP type (public members only) with inclusive Lower
 // and Upper bounds, and includes / excludes / overlaps. Like `grid`, its
 // + - * / compute result intervals at compile time; division returns
-// errc::division_by_zero when the divisor straddles zero (grid::operator/
+// error::division_by_zero when the divisor straddles zero (grid::operator/
 // re-runs on the two zero-free halves and joins them).
 //---------------------------------------------------------------------------
 struct interval {
@@ -40,10 +40,10 @@ struct interval {
     }
 
     // The span in units of `notch` (the step count of a grid).
-    [[nodiscard]] consteval std::expected<detail::grid_rational, errc>
+    [[nodiscard]] consteval std::expected<detail::grid_rational, error>
     operator/(const detail::grid_rational& notch) const {
         if (notch == 0)
-            return std::unexpected{errc::division_by_zero};
+            return std::unexpected{error::division_by_zero};
         return (Upper - Lower) / notch;
     }
 };
@@ -134,9 +134,9 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 //---------------------------------------------------------------------------
 // operator/
 //---------------------------------------------------------------------------
-[[nodiscard]] consteval std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs) {
+[[nodiscard]] consteval std::expected<interval, error> operator/(const interval& lhs, const interval& rhs) {
     if (includes(rhs, 0))
-        return std::unexpected{errc::division_by_zero};
+        return std::unexpected{error::division_by_zero};
 
     return detail::corner_hull(
         lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper, lhs.Upper / rhs.Lower, lhs.Upper / rhs.Upper);

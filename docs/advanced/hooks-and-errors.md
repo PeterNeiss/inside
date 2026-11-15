@@ -20,7 +20,7 @@ hook also adds the flag it implies: `on_clamp` adds `clamp`, `on_wrap` adds
 |---|---|---|
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)`; the overshoot is an inside |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(x, carry)`; the carry is an inside |
-| `on_error(f)` | a checked store fails (`overflow`, `rounding_error`, `not_finite`), or a compound op does (a zero divisor in `/=` or `%=`); the store's channel | `f(x, errc, const char* message)` |
+| `on_error(f)` | a checked store fails (`overflow`, `rounding_error`, `not_finite`), or a compound op does (a zero divisor in `/=` or `%=`); the store's channel | `f(x, error, const char* message)` |
 
 `f` gets `x` by reference, so it can change the stored value: `on_error`'s
 `f` can store an alternative value. A store takes one hook: clamping,
@@ -28,7 +28,7 @@ wrapping and failing are different outcomes of the same store. A `double`
 through `on_clamp` or `on_wrap` is a constant (stored once while compiling,
 then with the hook); a run-time `double` needs a report channel, since NaN
 fits no clamp. The free functions `add` … `divmod` take no hooks; they return a zero
-divisor as `unexpected(errc::division_by_zero)`, as `/` does.
+divisor as `unexpected(error::division_by_zero)`, as `/` does.
 
 ### The carry
 
@@ -40,7 +40,7 @@ whole range divided by the period (an inside past 64 bits). No carry
 saturates.
 
 ```cpp
-using pos = inside<{{0, 64}, per<16>}, wrap | round_nearest>;
+using pos = inside<{{0, 64}, per<16>}, wrap | round_half_away>;
 pos p{0};
 int wraps = 0;
 p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
@@ -77,7 +77,7 @@ give it a grid (`5_ins`, `just<5>`, or an inside over its range).
 A quantity has the same three hooks. The handle's `=`, `+=` and `-=` take a
 quantity in any unit of the same kind and convert it exactly first; `*=` and
 `/=` take numbers. The hook gets the **quantity**, then the carry (a count of
-periods), the overshoot (a quantity in the same unit) or the errc:
+periods), the overshoot (a quantity in the same unit) or the error:
 
 ```cpp
 quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50, si::second};
@@ -99,10 +99,10 @@ as a last argument, and so does a constructor's second argument:
 ```cpp
 inside<{0, 100}> a{7}, b{2};
 auto q = div(a, b, round_floor);                     // std::expected: 3
-auto r = mod(a, b, round_nearest);                   // std::expected
+auto r = mod(a, b, round_half_away);                   // std::expected
 inside<{0, 10}> h{3.5, round_floor};                 // 3
-errc ec{};
-auto e = div(a, b, make_policy<round_floor>(ec));    // a flag and an errc&
+error ec{};
+auto e = div(a, b, make_policy<round_floor>(ec));    // a flag and an error&
 ```
 
 Each flag is a constant of its own type that converts to `policy_flag`, so the
@@ -111,7 +111,7 @@ combination (`clamp | round_floor`) and a call's policy.
 
 ## Error codes
 
-Errors are reported as a `beman::inside::errc`. The library does not use
+Errors are reported as a `beman::inside::error`. The library does not use
 `std::error_code` or `<system_error>`, and nothing throws.
 
 | Code | Means |
@@ -123,14 +123,14 @@ Errors are reported as a `beman::inside::errc`. The library does not use
 | `not_finite` | a NaN or an infinity came in from a `double` |
 | `invalid_format` | text that is not a number (`parse`, `operator>>`) |
 
-`errc{}` (0) means no error, and `errc_message(e)` gives a short static text.
+`error{}` (0) means no error, and `error_message(e)` gives a short static text.
 
-A store or a free function reports through an `errc&`:
+A store or a free function reports through an `error&`:
 
 ```cpp
-errc ec{};
+error ec{};
 inside<{0, 100}> y{50};
-y.policy(ec) = 200;               // ec == errc::overflow; y keeps 50
+y.policy(ec) = 200;               // ec == error::overflow; y keeps 50
 
 inside<{{0, 10}, 2}> coarse{0};
 inside<{{0, 10}, 1}> fine{3};
@@ -142,13 +142,13 @@ leaves the previous value.
 
 ## Construction that can fail: `try_make`
 
-`T::try_make(v)` returns `std::expected<T, errc>`, and
+`T::try_make(v)` returns `std::expected<T, error>`, and
 `try_make<F>(v)` adds the flags `F` for that one store. Given a
 `std::expected`, it passes the error on, so one fallible step feeds the next
 without unwrapping:
 
 ```cpp
-using volts = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;
+using volts = inside<{{-1, 1}, per<1'000'000>}, round_half_away>;
 inside<{-1000, 1000}> x{500}, offset{100};
 inside<{0, 1000}> gain{400};
 auto v = volts::try_make((x - offset) / gain);   // the division's error, or the store's: 1
@@ -170,10 +170,10 @@ Each operation reports through one channel:
 
 | Operation | A failure goes to |
 |---|---|
-| a store: construction, `=`, `+=` and the other compound ops, `++` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the store's `errc&`; a store the grids cannot prove, with neither, does not compile (a constant is checked while compiling) |
+| a store: construction, `=`, `+=` and the other compound ops, `++` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the store's `error&`; a store the grids cannot prove, with neither, does not compile (a constant is checked while compiling) |
 | `try_make`, `parse`, `to<T>()` where it can fail | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
-| a named output that can miss: `mul<Out>`, `div<Out>`, `sum<T>`, `checked_cast<T>`, `value_cast`, `from_index`, `f<Out>(x)`, mdspan `sum`/`dot`/`matrix_product`/`transform_into` | the returned `std::expected` (`expected<void, errc>` for the mdspan writers) |
+| a named output that can miss: `mul<Out>`, `div<Out>`, `sum<T>`, `exact_cast<T>`, `value_cast`, `from_step`, `f<Out>(x)`, mdspan `sum`/`dot`/`matrix_product`/`transform_into` | the returned `std::expected` (`expected<void, error>` for the mdspan writers) |
 | a precondition: a cursor stepped past its end, a raw read off the grid | the error handler |
 
 `as<T>()` compiles only where the conversion is total; `to<T>()` is its
@@ -201,7 +201,7 @@ through one handler. By default it writes `beman::inside: <message>` to
 `set_error_handler` installs your own:
 
 ```cpp
-[[noreturn]] void on_inside_error(beman::inside::errc code, const char* what) noexcept;
+[[noreturn]] void on_inside_error(beman::inside::error code, const char* what) noexcept;
 
 beman::inside::set_error_handler(&on_inside_error);   // returns the previous handler
 // get_error_handler() reads it; set_error_handler(nullptr) restores the default
@@ -212,7 +212,7 @@ exception of your own (the library is exception-neutral). `what` is a static
 string, so no allocation happens.
 
 In a constant expression a failed check is a compile error that names it: with
-exceptions on, `uncaught exception of type 'beman::inside::inside_error';
+exceptions on, `uncaught exception of type 'beman::inside::detail::inside_error';
 'what()': '…'` (a C++26 constexpr exception, never thrown at run time);
 without, a call to `constexpr_error` whose template argument is the text. There is one handler per program. It
 is atomic, so one thread may install a handler while others raise, and it has

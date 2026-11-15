@@ -46,7 +46,7 @@ rounding mode**, the digits a store at that precision would give. A type
 without a rounding mode, and `rational`, round to nearest with ties to even,
 as `printf` does with a `double`. A width alone keeps the exact text.
 
-| 0.125 and −0.129 with `{:.2f}` | no mode | `round_nearest` | `round_floor` | `round_ceil` | `round_toward_zero` |
+| 0.125 and −0.129 with `{:.2f}` | no mode | `round_half_away` | `round_floor` | `round_ceil` | `round_toward_zero` |
 |---|---|---|---|---|---|
 | prints | `0.12`, `-0.13` | `0.13`, `-0.13` | `0.12`, `-0.13` | `0.13`, `-0.12` | `0.12`, `-0.12` |
 
@@ -67,7 +67,7 @@ locale.
 ## Parsing
 
 `parse<B>(text)` reads one number exactly, with no `double` in between, and
-returns `std::expected<B, errc>`. The text is an optional sign, then a
+returns `std::expected<B, error>`. The text is an optional sign, then a
 literal or a fraction `N/D`: `1'000`, `1.25`, `1.5e2`, `0xff`, `0b1010`,
 `0x1.8p3`, `7/3`, the forms `to_string` prints. Long decimals past 64 bits are
 read exactly too. The value then goes through `B::try_make`, so B's policy
@@ -76,13 +76,13 @@ accepts only a value B holds exactly, whatever B's policy:
 
 ```cpp
 using cents = inside<{{0, 1'000'000}, per<100>}>;
-parse<cents>("1.005");                     // errc::rounding_error
-parse<cents, round_nearest>("1.005");      // 1.01: the tie goes away from zero
+parse<cents>("1.005");                     // error::rounding_error
+parse<cents, round_half_away>("1.005");      // 1.01: the tie goes away from zero
 
-using price = inside<{{0, 1'000'000}, per<100>}, round_nearest | clamp>;
+using price = inside<{{0, 1'000'000}, per<100>}, round_half_away | clamp>;
 parse<price>("1.005");                     // 1.01: price rounds
-parse_exact<price>("1.005");               // errc::rounding_error
-parse_exact<price>("2000000");             // errc::overflow: not clamped
+parse_exact<price>("1.005");               // error::rounding_error
+parse_exact<price>("2000000");             // error::overflow: not clamped
 ```
 
 The core header has the `constexpr` pointer-pair form,

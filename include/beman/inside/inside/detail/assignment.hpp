@@ -57,7 +57,7 @@ struct assignment<L, R> {
         // so the two-way pick is the full clamp.
         const W    v   = static_cast<W>(rhs);
         const bool low = v < fold::lower;
-        lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span));
+        lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span), unsafe);
         if constexpr (clamp_action<plain_t<A>>) // the source minus the limit, exact
             action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of_source(rhs) + -exact_of(lhs)));
     }
@@ -67,7 +67,7 @@ struct assignment<L, R> {
         // Modular wrap on the exact offset rhs − Lower into span + 1 slots, and
         // the exact carry (wrap_carry_grid).
         const auto [carry, w] = fold::fold(static_cast<W>(rhs));
-        lhs                   = L::from_raw(raw_of_slot<L>(w));
+        lhs                   = L::from_raw(raw_of_slot<L>(w), unsafe);
         if constexpr (wrap_action<plain_t<A>>)
             action.Fn(lhs, make_wrap_carry<L, R>(carry));
     }
@@ -80,11 +80,11 @@ struct assignment<L, R> {
 
     static constexpr void store(L& lhs, R rhs) {
         if constexpr (value_storage<L>)
-            lhs = L::from_raw(raw_cast<L>(rhs));
+            lhs = L::from_raw(raw_cast<L>(rhs), unsafe);
         else if constexpr (point_grid<L>)
-            lhs = L::from_raw(0); // a point grid: 0 is the only offset
+            lhs = L::from_raw(0, unsafe); // a point grid: 0 is the only offset
         else if constexpr (q_format_fits<L>)
-            lhs = L::from_raw(q_format_encode<L>(static_cast<std::int64_t>(rhs)));
+            lhs = L::from_raw(q_format_encode<L>(static_cast<std::int64_t>(rhs)), unsafe);
         else {
             // Index storage on a notch 1/K grid over an integer Lower: the
             // offset (rhs − Lower)·K of an in-range rhs is below 2^64, so uint64
@@ -92,7 +92,7 @@ struct assignment<L, R> {
             constexpr std::uint64_t K = static_cast<std::uint64_t>(abs_den(notch64<L>.Den));
             constexpr std::uint64_t lo =
                 lower64<L>.Den < 0 ? std::uint64_t{0} - lower64<L>.Num : lower64<L>.Num; // Lower mod 2^64
-            lhs = L::from_raw(raw_from_offset<L>((static_cast<std::uint64_t>(rhs) - lo) * K));
+            lhs = L::from_raw(raw_from_offset<L>((static_cast<std::uint64_t>(rhs) - lo) * K), unsafe);
         }
     }
 
@@ -229,7 +229,7 @@ struct assignment<L, R> {
     static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action) {
         const bool low = below_lower(rhs);
         // The clamp target is an interval endpoint — a grid point, no rounding.
-        lhs = L::from_raw(endpoint_raw<L>(low));
+        lhs = L::from_raw(endpoint_raw<L>(low), unsafe);
 
         if constexpr (clamp_action<plain_t<A>>) { // the source minus the limit, exact
             if constexpr (std::floating_point<R>)
@@ -318,7 +318,7 @@ struct assignment<L, R> {
         if constexpr (integer_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
         else
-            report_failure(lhs, policy, action, errc::overflow);
+            report_failure(lhs, policy, action, error::overflow);
     }
 
     // Cold and out of line: the exact wide slot for a quotient past the
@@ -349,19 +349,19 @@ struct assignment<L, R> {
     // fine_double_value's result, sized to return in registers (a larger
     // one goes through memory, and the stack protector into the hot path):
     // a rational raw marks a failure by a denominator no value has (0), with
-    // the errc as numerator; an integer raw carries the errc beside it.
+    // the error as numerator; an integer raw carries the error beside it.
     struct fine_result {
-        raw_t<L>       Raw;
-        errc           Code;
-        constexpr errc code() const { return Code; }
+        raw_t<L>        Raw;
+        error           Code;
+        constexpr error code() const { return Code; }
     };
     struct fine_rational_result {
-        rational       Raw;
-        constexpr errc code() const { return Raw.Den == 0 ? static_cast<errc>(Raw.Num) : errc{}; }
+        rational        Raw;
+        constexpr error code() const { return Raw.Den == 0 ? static_cast<error>(Raw.Num) : error{}; }
     };
     using fine_result_t = std::conditional_t<rational_storage<L>, fine_rational_result, fine_result>;
 
-    // P's flags, recording its first failure into an errc instead.
+    // P's flags, recording its first failure into an error instead.
     template <typename P>
     using recording_policy = call_policy<P::Flags, error_ref>;
 
@@ -374,26 +374,26 @@ struct assignment<L, R> {
     [[gnu::cold]] [[gnu::noinline]] static constexpr fine_result_t fine_double_value(double rhs, P policy, A action) {
         L r = [] {
             if constexpr (rational_storage<L>)
-                return L::from_raw(lower64<L>);
+                return L::from_raw(lower64<L>, unsafe);
             else if constexpr (point_storage<L>)
-                return L::from_raw(raw_t<L>{});
+                return L::from_raw(raw_t<L>{}, unsafe);
             else
-                return L::from_raw(static_cast<raw_t<L>>(raw_lo_exact<L>));
+                return L::from_raw(static_cast<raw_t<L>>(raw_lo_exact<L>), unsafe);
         }();
-        errc code{};
+        error code{};
         // A recording on_error stands in for one (dispatch_out_of_range ranks
         // it below clamp and wrap): the order holds.
         if constexpr (error_action<plain_t<A>>)
-            assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, errc c, auto&&) {
+            assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, error c, auto&&) {
                                 code = c;
                             }));
         else {
             assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, std::forward<A>(action));
-            if (code != errc{})
+            if (code != error{})
                 policy.report(code);
         }
         if constexpr (rational_storage<L>) {
-            if (code == errc{})
+            if (code == error{})
                 return {r.raw()};
             rational failed{};
             failed.Num = static_cast<std::uint64_t>(code);
@@ -402,7 +402,7 @@ struct assignment<L, R> {
         } else
             return {r.raw(), code};
     }
-    // Whether a failure returns (errc&, on_error): else it raised, and lhs
+    // Whether a failure returns (error&, on_error): else it raised, and lhs
     // takes the result unconditionally — no branch on the hot path's tail.
     template <typename P, typename A>
     static constexpr bool fine_failure_returns = std::is_same_v<P, recording_policy<P>> || error_action<A>;
@@ -411,11 +411,11 @@ struct assignment<L, R> {
         using Act    = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
         const auto r = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
         if constexpr (!fine_failure_returns<plain_t<P>, plain_t<A>>)
-            lhs = L::from_raw(r.Raw);
-        else if (r.code() == errc{}) [[likely]]
-            lhs = L::from_raw(r.Raw);
+            lhs = L::from_raw(r.Raw, unsafe);
+        else if (r.code() == error{}) [[likely]]
+            lhs = L::from_raw(r.Raw, unsafe);
         else if constexpr (error_action<plain_t<A>>)
-            action.Fn(lhs, r.code(), errc_message(r.code()));
+            action.Fn(lhs, r.code(), error_message(r.code()));
     }
 
     template <typename P, typename A = no_action>
@@ -431,18 +431,18 @@ struct assignment<L, R> {
             // a rounding policy, else reported (but unsafe).
             if (abs_den(rv.Den) > to_rational(grid_of<L>.MaxDenominator).Num) [[unlikely]] {
                 if constexpr (uses_flag<L, P, snap>) {
-                    lhs = L::from_raw(rational_of(onto_bound<L, plain_t<P>>(exact_of(rv))));
+                    lhs = L::from_raw(rational_of(onto_bound<L, plain_t<P>>(exact_of(rv))), unsafe);
                     return;
-                } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
-                    return report_failure(lhs, policy, action, errc::rounding_error);
+                } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                    return report_failure(lhs, policy, action, error::rounding_error);
             }
-            lhs = L::from_raw(rv);
+            lhs = L::from_raw(rv, unsafe);
         } else if constexpr (point_grid<L>)
-            lhs = L::from_raw({}); // a point: its value is the type
+            lhs = L::from_raw({}, unsafe); // a point: its value is the type
         else {
             // Store the k-th notch slot: raw_from_offset<L> covers index and
             // value raws.
-            auto store_slot = [&](auto k) { lhs = L::from_raw(raw_from_offset<L>(k)); };
+            auto store_slot = [&](auto k) { lhs = L::from_raw(raw_from_offset<L>(k), unsafe); };
 
             constexpr bool has_round_flag = uses_flag<L, P, snap>; // every round_* flag contains snap
             // The slot onum/den when it is exact or P rounds; false otherwise
@@ -472,7 +472,7 @@ struct assignment<L, R> {
                 if constexpr (!has_round_flag)
                     if (static_cast<double>(j) * static_cast<double>(notch64<L>) != v && policy.checks_rounding())
                         [[unlikely]]
-                        return report_failure(lhs, policy, action, errc::rounding_error);
+                        return report_failure(lhs, policy, action, error::rounding_error);
                 store_slot(static_cast<std::uint64_t>(j - lo));
                 return;
             }
@@ -546,7 +546,7 @@ struct assignment<L, R> {
             const wide_slot_result slot     = shortcut ? rational_slot_cold<P>(rv) : rational_slot<P>(rv);
             if constexpr (!has_round_flag)
                 if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
-                    return report_failure(lhs, policy, action, errc::rounding_error);
+                    return report_failure(lhs, policy, action, error::rounding_error);
             store_slot(slot.Slot);
         }
     }
@@ -660,7 +660,7 @@ struct assignment<L, R> {
                 // clamps or overflows, but a fold needs the exact value.
                 if constexpr (uses_flag<L, P, wrap>)
                     if (!is_finite(d)) {
-                        report_failure(lhs, policy, action, errc::overflow);
+                        report_failure(lhs, policy, action, error::overflow);
                         return lhs;
                     }
                 return assign_exact<R>(lhs, exact_of_long_double(rhs), policy, std::forward<A>(action));
@@ -672,11 +672,11 @@ struct assignment<L, R> {
             if constexpr (std::floating_point<R>)
                 if (!is_finite(rhs) || huge(rhs)) [[unlikely]] {
                     if (rhs != rhs) {
-                        report_failure(lhs, policy, action, errc::not_finite);
+                        report_failure(lhs, policy, action, error::not_finite);
                         return lhs;
                     }
                     if (!is_finite(rhs) && !uses_flag<L, P, clamp>) {
-                        report_failure(lhs, policy, action, errc::not_finite);
+                        report_failure(lhs, policy, action, error::not_finite);
                         return lhs;
                     }
                     // ±∞ clamps by its stand-in and reports the overshoot grid's end.
@@ -717,7 +717,7 @@ struct assignment<L, R> {
                         apply_clamp(lhs, rhs, policy, action);
                         return lhs;
                     }
-                report_failure(lhs, policy, action, errc::not_finite);
+                report_failure(lhs, policy, action, error::not_finite);
                 return lhs;
             }
 
@@ -731,7 +731,7 @@ struct assignment<L, R> {
             if constexpr (rounds_before_range_check<L, plain_t<P>>)
                 if (!huge(rhs))
                     if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(rational{rhs}); rr.Ok) {
-                        lhs = L::from_raw(rr.Raw);
+                        lhs = L::from_raw(rr.Raw, unsafe);
                         return lhs;
                     }
             // Fractional path has no wrap *action* branch (Wrappable = false).
@@ -858,7 +858,7 @@ struct assignment<L, R> {
   private:
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
-        lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < lower64<L>));
+        lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < lower64<L>), unsafe);
         // The overshoot rhs − clamped, exact on its grid (assign_exact.hpp).
         if constexpr (clamp_action<plain_t<A>>)
             action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of(rhs) + -exact_of(lhs)));
@@ -877,7 +877,7 @@ struct assignment<L, R> {
             using fold             = unit_fold<L, grid_numerator(lower_of<R>), grid_numerator(upper_of<R>)>;
             using W                = typename fold::W;
             const auto [excess, w] = fold::fold(static_cast<W>(grid_numerator(as_rational(rhs))));
-            lhs                    = L::from_raw(raw_of_slot<L>(w));
+            lhs                    = L::from_raw(raw_of_slot<L>(w), unsafe);
             if constexpr (wrap_action<plain_t<A>>)
                 action.Fn(lhs, make_wrap_carry<L, R>(excess)); // carry as an inside
         } else if constexpr (wrap_action<plain_t<A>>) {
@@ -927,9 +927,9 @@ struct assignment<L, R> {
         else if constexpr (is_integer_mapping) {
             // exact: Factor and Offset have integer denominators, no rounding ambiguity
             if constexpr (Offset == 0 && Factor == 1 && same_storage<L, R>)
-                lhs = L::from_raw(raw_cast<L>(rhs.raw()));
+                lhs = L::from_raw(raw_cast<L>(rhs.raw()), unsafe);
             else
-                lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
+                lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())), unsafe);
         } else if constexpr (affine_map.Ok) {
             // Folded non-integer mapping: one multiply-add, then the same
             // round_quotient (invariant under reduction — bit-identical to the
@@ -939,15 +939,16 @@ struct assignment<L, R> {
             const std::int64_t  num      = affine_map.Add + r_offset * affine_map.Mul;
             const std::uint64_t q        = round_quotient<L, P>(static_cast<std::uint64_t>(num < 0 ? -num : num),
                                                                 static_cast<std::uint64_t>(affine_map.Den));
-            lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<std::int64_t>(q)) : raw_from_offset<L>(q));
+            lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<std::int64_t>(q)) : raw_from_offset<L>(q),
+                              unsafe);
         } else {
             // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
             // A step past the 64-bit rational takes the exact wide store.
             const auto r_offset = [&] {
                 if constexpr (point_storage<R>) // a point's raw holds nothing: the mapping is Offset alone
-                    return std::expected<rational, errc>{rational{0}};
+                    return std::expected<rational, error>{rational{0}};
                 else if constexpr (raw_lo<R> == 0)
-                    return std::expected<rational, errc>{rational{rhs.raw()}};
+                    return std::expected<rational, error>{rational{rhs.raw()}};
                 else
                     return try_sub(rational{rhs.raw()}, lower64<R>);
             }();
@@ -963,8 +964,8 @@ struct assignment<L, R> {
             // (same as the scalar path), honouring every rounding mode.
             std::uint64_t q = round_quotient<L, P>(rat.Num, ad);
             // rat is the L-offset; raw_from_offset<L> adds lower64<L> back for value storage.
-            lhs =
-                L::from_raw((rat.Den < 0) ? raw_from_offset<L>(-static_cast<std::int64_t>(q)) : raw_from_offset<L>(q));
+            lhs = L::from_raw(
+                (rat.Den < 0) ? raw_from_offset<L>(-static_cast<std::int64_t>(q)) : raw_from_offset<L>(q), unsafe);
         }
     }
 
@@ -980,7 +981,7 @@ struct assignment<L, R> {
                 using W     = work_int_t<same_notch_bits<L, R>>;
                 const W raw = static_cast<W>(rhs.raw()) + static_cast<W>(same_notch_shift<L, R>);
                 if (raw >= static_cast<W>(raw_lo_exact<L>) && raw <= static_cast<W>(raw_hi_exact<L>)) [[likely]] {
-                    lhs = L::from_raw(static_cast<raw_t<L>>(raw));
+                    lhs = L::from_raw(static_cast<raw_t<L>>(raw), unsafe);
                     return lhs;
                 }
             }
@@ -1017,7 +1018,7 @@ struct assignment<L, R> {
                     // (The integer mapping above lands on the lattice: nothing to round.)
                     if constexpr (rounds_before_range_check<L, plain_t<P>>)
                         if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(as_rational(rhs)); rr.Ok) {
-                            lhs = L::from_raw(rr.Raw);
+                            lhs = L::from_raw(rr.Raw, unsafe);
                             return lhs;
                         }
                     if (clamp_or_fail(lhs, rhs, policy, action))
@@ -1047,7 +1048,7 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
         return assign_exact<rational>(lhs, exact_of_grid<K>(v), policy, no_action{});
     if (!v.is_integer()) {
         no_action none;
-        report_failure(lhs, policy, none, errc::overflow);
+        report_failure(lhs, policy, none, error::overflow);
         return lhs;
     }
     const wide_rational<K> one{wide_sint<K>{1}, wide_sint<K>{1}};

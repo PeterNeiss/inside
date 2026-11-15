@@ -133,7 +133,7 @@ void prop_round_trip(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter       = i;
             auto     raw = random_in_range_raw<B>(s.rng);
-            B        b   = B::from_raw(raw);
+            B        b   = B::from_raw(raw, unsafe);
             rational v   = to_rational(b);
             FUZZ_REQUIRE(s, v >= detail::lower64<B>);
             FUZZ_REQUIRE(s, v <= detail::upper64<B>);
@@ -263,8 +263,8 @@ void prop_arith_vs_rational(fuzz_state& s, long iters) {
         s.current_prop = "arith_vs_rational";
         for (long i = 0; i < iters; ++i) {
             s.iter      = i;
-            B        a  = B::from_raw(random_in_range_raw<B>(s.rng));
-            B        b  = B::from_raw(random_in_range_raw<B>(s.rng));
+            B        a  = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
+            B        b  = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
             rational ar = to_rational(a);
             rational br = to_rational(b);
 
@@ -284,8 +284,8 @@ void prop_mul_vs_rational(fuzz_state& s, long iters) {
         s.current_prop = "mul_vs_rational";
         for (long i = 0; i < iters; ++i) {
             s.iter                = i;
-            B        a            = B::from_raw(random_in_range_raw<B>(s.rng));
-            B        b            = B::from_raw(random_in_range_raw<B>(s.rng));
+            B        a            = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
+            B        b            = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
             rational ar           = to_rational(a);
             rational br           = to_rational(b);
             auto     mul_actual_b = a * b;
@@ -301,8 +301,8 @@ void prop_cross_add(fuzz_state& s, long iters, const char* pair_name) {
     s.current_grid = pair_name;
     for (long i = 0; i < iters; ++i) {
         s.iter                = i;
-        A        a            = A::from_raw(random_in_range_raw<A>(s.rng));
-        B        b            = B::from_raw(random_in_range_raw<B>(s.rng));
+        A        a            = A::from_raw(random_in_range_raw<A>(s.rng), unsafe);
+        B        b            = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
         rational ar           = to_rational(a);
         rational br           = to_rational(b);
         auto     sum_actual_b = a + b;
@@ -345,7 +345,7 @@ void prop_negation(fuzz_state& s, long iters) {
         s.current_prop = "negation";
         for (long i = 0; i < iters; ++i) {
             s.iter       = i;
-            B        a   = B::from_raw(random_in_range_raw<B>(s.rng));
+            B        a   = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
             auto     neg = -a;
             rational ar  = to_rational(a);
             rational nr  = to_rational(neg);
@@ -379,16 +379,16 @@ void prop_compound_add_inside(fuzz_state& s, long iters) {
             std::uniform_int_distribution<std::int64_t> delta_dist(-slack_lo, slack_hi);
             std::int64_t                                delta = delta_dist(s.rng);
             B                                           b     = test::store<B>(start);
-            errc ec{}; // (the sum stays in range by construction; its type cannot show it)
+            error ec{}; // (the sum stays in range by construction; its type cannot show it)
             b.policy(ec) += test::store<Delta>(delta);
-            FUZZ_REQUIRE(s, b == start + delta && ec == errc{});
+            FUZZ_REQUIRE(s, b == start + delta && ec == error{});
         }
     }
 }
 
 template <insidable B>
 void prop_modulo(fuzz_state& s, long iters) {
-    // Only applies to integer-aligned grids; result is expected<inside, errc>.
+    // Only applies to integer-aligned grids; result is expected<inside, error>.
     // mod requires a rounding mode, so derive a typed alias.
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "modulo";
@@ -400,8 +400,8 @@ void prop_modulo(fuzz_state& s, long iters) {
             // sample two random values.
             for (long i = 0; i < iters; ++i) {
                 s.iter = i;
-                BI a   = BI::from_raw(random_in_range_raw<BI>(s.rng));
-                BI b   = BI::from_raw(random_in_range_raw<BI>(s.rng));
+                BI a   = BI::from_raw(random_in_range_raw<BI>(s.rng), unsafe);
+                BI b   = BI::from_raw(random_in_range_raw<BI>(s.rng), unsafe);
                 if (b == 0)
                     continue; // possible if hi <= 0 and zero is in range
                 auto         r        = mod(a, b, round_toward_zero);
@@ -417,10 +417,10 @@ void prop_modulo(fuzz_state& s, long iters) {
             // Zero is in range: sample b until non-zero.
             for (long i = 0; i < iters; ++i) {
                 s.iter = i;
-                BI a   = BI::from_raw(random_in_range_raw<BI>(s.rng));
+                BI a   = BI::from_raw(random_in_range_raw<BI>(s.rng), unsafe);
                 BI b   = test::store<BI>(0);
                 do {
-                    b = BI::from_raw(random_in_range_raw<BI>(s.rng));
+                    b = BI::from_raw(random_in_range_raw<BI>(s.rng), unsafe);
                 } while (b == 0);
                 auto         r        = mod(a, b, round_toward_zero);
                 std::int64_t expected = as<std::int64_t>(a) % as<std::int64_t>(b);
@@ -469,7 +469,7 @@ void prop_div_by_zero(fuzz_state& s, long iters) {
         B zero{0};
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
-            auto a = B::from_raw(random_in_range_raw<B>(s.rng));
+            auto a = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
             auto q = a / zero;
             FUZZ_REQUIRE(s, !q.has_value());
         }
@@ -484,8 +484,8 @@ void prop_spaceship_symmetry(fuzz_state& s, long iters) {
         s.current_prop = "spaceship_symmetry";
         for (long i = 0; i < iters; ++i) {
             s.iter      = i;
-            B    a      = B::from_raw(random_in_range_raw<B>(s.rng));
-            B    b      = B::from_raw(random_in_range_raw<B>(s.rng));
+            B    a      = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
+            B    b      = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
             auto cmp_ab = (a <=> b);
             auto cmp_ba = (b <=> a);
             if (cmp_ab == std::strong_ordering::equal)
@@ -502,27 +502,27 @@ void prop_spaceship_symmetry(fuzz_state& s, long iters) {
 }
 
 // Helper: run `fn`, which stores through a reporting channel and returns the
-// errc it reported, and verify it is the expected one.
+// error it reported, and verify it is the expected one.
 template <typename Fn>
-bool reports_with(errc expected, Fn&& fn) {
+bool reports_with(error expected, Fn&& fn) {
     return fn() == expected;
 }
 
 // As above, but accepts any of the listed errcs (the int64-probe stage and
 // the post-probe narrowing stage may legitimately fire different codes).
 template <typename Fn>
-bool reports_with_any(std::initializer_list<errc> codes, Fn&& fn) {
-    const errc got = fn();
+bool reports_with_any(std::initializer_list<error> codes, Fn&& fn) {
+    const error got = fn();
     for (auto c : codes)
         if (got == c)
             return true;
     return false;
 }
 
-// The errc of a fallible result (errc{} for a value).
+// The error of a fallible result (error{} for a value).
 template <typename R>
-errc error_of(const R& r) {
-    return r ? errc{} : r.error();
+error error_of(const R& r) {
+    return r ? error{} : r.error();
 }
 
 // (Removed: prop_compound_int64_overflow — it forced add/sub/mul_overflow by
@@ -546,10 +546,10 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter             = i;
             std::int64_t start = dist(s.rng);
-            FUZZ_REQUIRE(s, reports_with(errc::division_by_zero, [&] {
+            FUZZ_REQUIRE(s, reports_with(error::division_by_zero, [&] {
                              B                    b = test::store<B>(start);
                              const inside<{0, 1}> zero{0};
-                             errc                 ec{};
+                             error                ec{};
                              b.policy(ec) /= zero;
                              return ec;
                          }));
@@ -580,10 +580,10 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
             bool         overshoots = (sum < lo || sum > hi);
             if (!overshoots)
                 continue;
-            FUZZ_REQUIRE(s, reports_with(errc::overflow, [&] {
-                             B    b     = test::store<B>(start);
-                             B    delta = test::store<B>(hi);
-                             errc ec{};
+            FUZZ_REQUIRE(s, reports_with(error::overflow, [&] {
+                             B     b     = test::store<B>(start);
+                             B     delta = test::store<B>(hi);
+                             error ec{};
                              b.policy(ec) += delta;
                              return ec;
                          }));
@@ -593,7 +593,7 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_non_notch_assign(fuzz_state& s, long iters) {
-    // Targets the off-notch store in assignment.hpp: round_nearest, round_toward_zero's
+    // Targets the off-notch store in assignment.hpp: round_half_away, round_toward_zero's
     // silent floor, the checked rounding_error report (throws), and the silent
     // floor under unsafe. Only meaningful for fixed-point grids (notch != 1).
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
@@ -601,7 +601,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
         // The catalogue's B already uses the default `checked` policy, so a non-
         // notch-aligned assignment to B must throw rounding_error.
         using BIR                = inside<grid_of<B>, round_toward_zero>; // silent floor
-        using BRN                = inside<grid_of<B>, round_nearest>;     // nearest
+        using BRN                = inside<grid_of<B>, round_half_away>;   // nearest
         using BNONE              = inside<grid_of<B>, unsafe>;            // unchecked (unsafe carries the rounding)
         constexpr rational notch = detail::notch64<B>;
         constexpr rational lo    = detail::lower64<B>;
@@ -624,40 +624,40 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
             // `mid` is an exact half between on_notch (lower) and next_notch (higher).
             // The library rounds in VALUE space (storage.hpp round_quotient): round_toward_zero
             // and `none` truncate TOWARD ZERO (not floor — that's round_floor), and
-            // round_nearest rounds HALF AWAY FROM ZERO. So the expected notch is the
+            // round_half_away rounds HALF AWAY FROM ZERO. So the expected notch is the
             // smaller-|·| candidate for round_toward_zero and the larger-|·| candidate for
-            // round_nearest. For mid >= 0 these are on_notch / next_notch; for mid < 0
+            // round_half_away. For mid >= 0 these are on_notch / next_notch; for mid < 0
             // they swap — which is what the negative-Lower grids exercise.
             const bool on_smaller  = beman::inside::detail::abs(on_notch) <= beman::inside::detail::abs(next_notch);
             rational   toward_zero = on_smaller ? on_notch : next_notch; // round_toward_zero, or none
-            rational   away_zero   = on_smaller ? next_notch : on_notch; // round_nearest
+            rational   away_zero   = on_smaller ? next_notch : on_notch; // round_half_away
             const bool tz_in       = toward_zero >= lo && toward_zero <= hi;
             const bool az_in       = away_zero >= lo && away_zero <= hi;
 
             // Default-policy (checked) B: must throw rounding_error (sign-independent).
-            FUZZ_REQUIRE(s, reports_with(errc::rounding_error, [&] {
-                             B    b;
-                             errc ec{};
+            FUZZ_REQUIRE(s, reports_with(error::rounding_error, [&] {
+                             B     b;
+                             error ec{};
                              b.policy(ec) = mid;
                              return ec;
                          }));
 
             // round_toward_zero: silent truncate toward zero.
             if (tz_in)
-                FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
-                                 BIR  b;
-                                 errc ec{};
+                FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
+                                 BIR   b;
+                                 error ec{};
                                  b.policy(ec) = mid;
                                  rational got = b;
                                  FUZZ_REQUIRE(s, got == toward_zero);
                                  return ec;
                              }));
 
-            // round_nearest: silent round half away from zero.
+            // round_half_away: silent round half away from zero.
             if (az_in)
-                FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
-                                 BRN  b;
-                                 errc ec{};
+                FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
+                                 BRN   b;
+                                 error ec{};
                                  b.policy(ec) = mid;
                                  rational got = b;
                                  FUZZ_REQUIRE(s, got == away_zero);
@@ -667,9 +667,9 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
             // Unchecked policy (unsafe): silent truncate toward zero (assignment.hpp).
             // (`none` is checked like every policy without `unsafe`.)
             if (tz_in)
-                FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
+                FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
                                  BNONE b;
-                                 errc  ec{};
+                                 error ec{};
                                  b.policy(ec) = mid;
                                  rational got = b;
                                  FUZZ_REQUIRE(s, got == toward_zero);
@@ -702,9 +702,9 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
             s.iter   = i;
             double v = mantissa(s.rng) * std::pow(2.0, exp_dist(s.rng));
             // round_toward_zero → silent floor; should not throw and should land on 0.
-            FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
-                             BIR  b;
-                             errc ec{};
+            FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
+                             BIR   b;
+                             error ec{};
                              b.policy(ec) = v;
                              rational got = b;
                              // Floored toward lo, but for tiny v near zero the floor is 0 (or lo).
@@ -741,10 +741,10 @@ void prop_expected_throws(fuzz_state& s) {
     std::string what;
     try {
         (void)(B{7} / B{0}).value();
-    } catch (const std::bad_expected_access<errc>& e) {
+    } catch (const std::bad_expected_access<error>& e) {
         got_throw = true;
         what      = e.what();
-        FUZZ_REQUIRE(s, e.error() == errc::division_by_zero);
+        FUZZ_REQUIRE(s, e.error() == error::division_by_zero);
     } catch (...) {
     } // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
     FUZZ_REQUIRE(s, got_throw);
@@ -753,7 +753,7 @@ void prop_expected_throws(fuzz_state& s) {
     // No inside stores an expected; try_make passes its error on.
     using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
     static_assert(!std::is_constructible_v<Q, decltype(B{7} / B{0})>);
-    FUZZ_REQUIRE(s, Q::try_make(B{7} / B{0}).error() == errc::division_by_zero);
+    FUZZ_REQUIRE(s, Q::try_make(B{7} / B{0}).error() == error::division_by_zero);
 }
 
 template <insidable B>
@@ -769,15 +769,15 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
         s.current_prop = "compound_add_same_inside";
         for (long i = 0; i < iters; ++i) {
             s.iter             = i;
-            B           a      = B::from_raw(random_in_range_raw<B>(s.rng));
-            B           delta  = B::from_raw(random_in_range_raw<B>(s.rng));
+            B           a      = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
+            B           delta  = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
             rational    ar     = to_rational(a);
             rational    dr     = to_rational(delta);
             const exact expect = exact{ar} + exact{dr};
             // Skip if result lands outside the grid (avoids checked-policy throw).
             if (expect < exact{detail::lower64<B>} || expect > exact{detail::upper64<B>})
                 continue;
-            errc ec{}; // (in range by the check above; the type cannot show it)
+            error ec{}; // (in range by the check above; the type cannot show it)
             a.policy(ec) += delta;
             FUZZ_REQUIRE(s, exact{to_rational(a)} == expect);
         }
@@ -809,13 +809,13 @@ void prop_raw_rational_arith(fuzz_state& s, long iters) {
             // Skip if assignment would push outside the grid.
             if (ar < lo || ar > hi || br < lo || br > hi)
                 continue;
-            B           a           = B::from_raw(ar);
-            B           b           = B::from_raw(br);
+            B           a           = B::from_raw(ar, unsafe);
+            B           b           = B::from_raw(br, unsafe);
             auto        sum         = a + b;
             auto        prod        = a * b;
             const exact expect_sum  = exact{ar} + exact{br};
             const exact expect_prod = exact{ar} * exact{br};
-            // sum/prod is either inside<...> or std::expected<inside<...>, errc> depending
+            // sum/prod is either inside<...> or std::expected<inside<...>, error> depending
             // on whether the operation needs an overflow check (driven by policy).
             auto check = [&](auto v, const exact& expected) {
                 if constexpr (requires { v.has_value(); }) {
@@ -865,12 +865,12 @@ void prop_casts(fuzz_state& s, long iters) {
             // notch == 1, so floor/ceil/round are no-ops after the clamp.
             FUZZ_REQUIRE(s, B{v, clamp | round_floor} == cl);
             FUZZ_REQUIRE(s, B{v, clamp | round_ceil} == cl);
-            FUZZ_REQUIRE(s, B{v, clamp | round_nearest} == cl);
+            FUZZ_REQUIRE(s, B{v, clamp | round_half_away} == cl);
             if (v >= lo && v <= hi) {
-                FUZZ_REQUIRE(s, checked_cast<B>(v) == v);
+                FUZZ_REQUIRE(s, exact_cast<B>(v) == v);
                 FUZZ_REQUIRE(s, B{v, unsafe} == v);
             } else
-                FUZZ_REQUIRE(s, error_of(checked_cast<B>(v)) == errc::overflow);
+                FUZZ_REQUIRE(s, error_of(exact_cast<B>(v)) == error::overflow);
         }
     }
 }
@@ -914,7 +914,7 @@ void prop_predicates(fuzz_state& s, long iters) {
             FUZZ_REQUIRE(s, !conversion_rounds<B>(v)); // integer grid never truncates
             bool lossy = conversion_loses<B>(v);
             bool threw =
-                reports_with_any({errc::overflow, errc::rounding_error}, [&] { return error_of(checked_cast<B>(v)); });
+                reports_with_any({error::overflow, error::rounding_error}, [&] { return error_of(exact_cast<B>(v)); });
             FUZZ_REQUIRE(s, lossy == threw);
         }
     } else if constexpr (DyadicNotch<B>) {
@@ -938,7 +938,7 @@ void prop_predicates(fuzz_state& s, long iters) {
                 FUZZ_REQUIRE(s, !conversion_overflows<B>(mid));
                 FUZZ_REQUIRE(s, conversion_rounds<B>(mid));
                 FUZZ_REQUIRE(s, conversion_loses<B>(mid));
-                FUZZ_REQUIRE(s, error_of(checked_cast<B>(mid)) == errc::rounding_error);
+                FUZZ_REQUIRE(s, error_of(exact_cast<B>(mid)) == error::rounding_error);
             }
             // Above the top notch: overflow (lossy).
             constexpr double over = static_cast<double>((hi + notch));
@@ -988,13 +988,13 @@ void prop_range(fuzz_state& s, long iters) {
 //---------------------------------------------------------------------------
 void prop_cmath_exact(fuzz_state& s, long iters) {
     // abs/floor/ceil/round/trunc/fmod against exact rational oracles.
-    using M        = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using M        = inside<{{-8, 8}, per<16384>}, round_half_away>;
     s.current_grid = "cmath";
     s.current_prop = "cmath_exact";
     for (long i = 0; i < iters; ++i) {
         s.iter      = i;
-        M        x  = M::from_raw(random_in_range_raw<M>(s.rng));
-        M        y  = M::from_raw(random_in_range_raw<M>(s.rng));
+        M        x  = M::from_raw(random_in_range_raw<M>(s.rng), unsafe);
+        M        y  = M::from_raw(random_in_range_raw<M>(s.rng), unsafe);
         rational xr = x, yr = y;
         FUZZ_REQUIRE(s, rational{math::abs(x)} == beman::inside::detail::abs(xr));
         FUZZ_REQUIRE(s, rational{math::floor(x)} == rational{floor(xr)});
@@ -1007,19 +1007,19 @@ void prop_cmath_exact(fuzz_state& s, long iters) {
             const auto  r   = math::fmod(x, y); // y's grid spans 0: expected
             FUZZ_REQUIRE(s, r.has_value() && exact{to_rational(*r)} == rem);
         } else
-            FUZZ_REQUIRE(s, math::fmod(x, y).error() == errc::division_by_zero);
+            FUZZ_REQUIRE(s, math::fmod(x, y).error() == error::division_by_zero);
     }
 }
 
 void prop_sqrt(fuzz_state& s, long iters) {
-    using In       = inside<{{0, 4}, per<65536>}, round_nearest>;
-    using Out      = inside<{{0, 2}, per<16384>}, round_nearest>;
+    using In       = inside<{{0, 4}, per<65536>}, round_half_away>;
+    using Out      = inside<{{0, 2}, per<16384>}, round_half_away>;
     s.current_grid = "cmath";
     s.current_prop = "sqrt";
     const rational tol{4, 16384}; // ~2 output notches (double-rounding)
     for (long i = 0; i < iters; ++i) {
         s.iter          = i;
-        In       x      = In::from_raw(random_in_range_raw<In>(s.rng));
+        In       x      = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
         rational xr     = x;
         rational rr     = Out{math::sqrt(x)};
         double   oracle = std::sqrt(static_cast<double>(xr));
@@ -1029,10 +1029,10 @@ void prop_sqrt(fuzz_state& s, long iters) {
     // A second grid, [0, 1] (one reaching below 0 is a compile error:
     // fail/sqrt_domain).
     s.current_prop = "sqrt_unit";
-    using SIn      = inside<{{0, 1}, per<65536>}, round_nearest>;
+    using SIn      = inside<{{0, 1}, per<65536>}, round_half_away>;
     for (long i = 0; i < iters; ++i) {
         s.iter        = i;
-        SIn        x  = SIn::from_raw(random_in_range_raw<SIn>(s.rng));
+        SIn        x  = SIn::from_raw(random_in_range_raw<SIn>(s.rng), unsafe);
         rational   xr = x;
         const auto r  = math::sqrt(x);
         FUZZ_REQUIRE(s, approx_le(rational{r}, rational{std::sqrt(static_cast<double>(xr))}, tol));
@@ -1040,14 +1040,14 @@ void prop_sqrt(fuzz_state& s, long iters) {
 }
 
 void prop_sin_cos(fuzz_state& s, long iters) {
-    using A        = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using A        = inside<{{-8, 8}, per<16384>}, round_half_away>;
     s.current_grid = "cmath";
     s.current_prop = "sin_cos";
     const rational tol{8, 16384};
     const rational id_tol{64, 16384};
     for (long i = 0; i < iters; ++i) {
         s.iter      = i;
-        A        a  = A::from_raw(random_in_range_raw<A>(s.rng));
+        A        a  = A::from_raw(random_in_range_raw<A>(s.rng), unsafe);
         double   ad = static_cast<double>(a);
         rational sn = math::sin(a);
         rational cs = math::cos(a);
@@ -1059,13 +1059,13 @@ void prop_sin_cos(fuzz_state& s, long iters) {
 }
 
 void prop_tan(fuzz_state& s, long iters) {
-    using A        = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_nearest>; // one branch
+    using A        = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_half_away>; // one branch
     s.current_grid = "cmath";
     s.current_prop = "tan";
     const rational tol{16, 1024};
     for (long i = 0; i < iters; ++i) {
         s.iter        = i;
-        A          a  = A::from_raw(random_in_range_raw<A>(s.rng));
+        A          a  = A::from_raw(random_in_range_raw<A>(s.rng), unsafe);
         double     ad = static_cast<double>(a);
         const auto t  = math::tan(a); // plain: the branch holds no pole
         double     o  = std::tan(ad);
@@ -1080,52 +1080,52 @@ void prop_exp_log(fuzz_state& s, long iters) {
     s.current_grid = "cmath";
 
     {
-        using In       = inside<{{-4, 4}, per<16384>}, round_nearest>;
+        using In       = inside<{{-4, 4}, per<16384>}, round_half_away>;
         s.current_prop = "exp2";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::exp2(x)}, std::exp2(xd), 0.01, rational{8, 16384}));
         }
     }
     {
-        using In       = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest>;
+        using In       = inside<{{0x1p-8_r, 256}, per<16384>}, round_half_away>;
         s.current_prop = "log2";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_le(rational{math::log2(x)}, rational{std::log2(xd)}, rational{16, 16384}));
         }
     }
     {
-        using In       = inside<{{-10, 10}, per<16384>}, round_nearest>;
+        using In       = inside<{{-10, 10}, per<16384>}, round_half_away>;
         s.current_prop = "exp";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::exp(x)}, std::exp(xd), 0.01, rational{4, 256}));
         }
     }
     {
-        using In       = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest>;
+        using In       = inside<{{0x1p-8_r, 256}, per<256>}, round_half_away>;
         s.current_prop = "log";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             // log's auto output is Q.8 (notch 1/256), so accuracy is a few Q.8 ULP.
             FUZZ_REQUIRE(s, approx_le(rational{math::log(x)}, rational{std::log(xd)}, rational{8, 256}));
         }
     }
     {
-        using In       = inside<{{-9, 9}, per<16384>}, round_nearest>;
+        using In       = inside<{{-9, 9}, per<16384>}, round_half_away>;
         s.current_prop = "pow_base";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             double o  = std::pow(10.0, xd);
             if (o > 60000.0)
@@ -1136,15 +1136,15 @@ void prop_exp_log(fuzz_state& s, long iters) {
 }
 
 void prop_atan2(fuzz_state& s, long iters) {
-    using In       = inside<{{-1, 1}, per<16384>}, round_nearest>;
+    using In       = inside<{{-1, 1}, per<16384>}, round_half_away>;
     s.current_grid = "cmath";
     s.current_prop = "atan2";
     const rational tol{16, 16384}; // radians: a few output notches
     const double   pi = std::numbers::pi_v<double>;
     for (long i = 0; i < iters; ++i) {
         s.iter      = i;
-        In       y  = In::from_raw(random_in_range_raw<In>(s.rng));
-        In       x  = In::from_raw(random_in_range_raw<In>(s.rng));
+        In       y  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
+        In       x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
         rational yr = y, xr = x;
         if (yr == 0 && xr == 0)
             continue; // degenerate
@@ -1163,10 +1163,10 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // Inverse trig — input [-1, 1], output radians.
     {
-        using In = inside<{{-1, 1}, per<65536>}, round_nearest>;
+        using In = inside<{{-1, 1}, per<65536>}, round_half_away>;
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
-            In     x       = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x       = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd      = static_cast<double>(x);
             s.current_prop = "atan";
             FUZZ_REQUIRE(s, approx_le(rational{math::atan(x)}, rational{std::atan(xd)}, tol));
@@ -1179,10 +1179,10 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // Hyperbolic — input [-10, 10].
     {
-        using In = inside<{{-10, 10}, per<65536>}, round_nearest>;
+        using In = inside<{{-10, 10}, per<65536>}, round_half_away>;
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
-            In     x       = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x       = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd      = static_cast<double>(x);
             s.current_prop = "sinh";
             FUZZ_REQUIRE(s, approx_rel(rational{math::sinh(x)}, std::sinh(xd), 0.01, tol));
@@ -1195,11 +1195,11 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // log10 — input (0, 1024].
     {
-        using In       = inside<{{1, 1024}, per<65536>}, round_nearest>;
+        using In       = inside<{{1, 1024}, per<65536>}, round_half_away>;
         s.current_prop = "log10";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_le(rational{math::log10(x)}, rational{std::log10(xd)}, tol));
         }
@@ -1207,11 +1207,11 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // cbrt — signed input.
     {
-        using In       = inside<{{-16, 16}, per<65536>}, round_nearest>;
+        using In       = inside<{{-16, 16}, per<65536>}, round_half_away>;
         s.current_prop = "cbrt";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::cbrt(x)}, std::cbrt(xd), 0.01, tol));
         }
@@ -1219,12 +1219,12 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // hypot — two signed inputs.
     {
-        using In       = inside<{{-16, 16}, per<65536>}, round_nearest>;
+        using In       = inside<{{-16, 16}, per<65536>}, round_half_away>;
         s.current_prop = "hypot";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
-            In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            In     y  = In::from_raw(random_in_range_raw<In>(s.rng));
+            In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
+            In     y  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             double xd = static_cast<double>(x);
             double yd = static_cast<double>(y);
             FUZZ_REQUIRE(s, approx_rel(rational{math::hypot(x, y)}, std::hypot(xd, yd), 0.01, tol));
@@ -1233,13 +1233,13 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // pow — positive base, returns expected.
     {
-        using B        = inside<{{1, 16}, per<65536>}, round_nearest>;
-        using E        = inside<{{-4, 8}, per<65536>}, round_nearest>;
+        using B        = inside<{{1, 16}, per<65536>}, round_half_away>;
+        using E        = inside<{{-4, 8}, per<65536>}, round_half_away>;
         s.current_prop = "pow";
         for (long i = 0; i < iters; ++i) {
             s.iter        = i;
-            B          b  = B::from_raw(random_in_range_raw<B>(s.rng));
-            E          e  = E::from_raw(random_in_range_raw<E>(s.rng));
+            B          b  = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
+            E          e  = E::from_raw(random_in_range_raw<E>(s.rng), unsafe);
             double     bd = static_cast<double>(b);
             double     ed = static_cast<double>(e);
             double     o  = std::pow(bd, ed);
@@ -1264,7 +1264,7 @@ void prop_wrap_fractional(fuzz_state& s, long iters) {
             s.current_prop = name;
             for (long i = 0; i < iters; ++i) {
                 s.iter       = i;
-                Src      src = Src::from_raw(random_in_range_raw<Src>(s.rng));
+                Src      src = Src::from_raw(random_in_range_raw<Src>(s.rng), unsafe);
                 rational v   = src;
                 Dst      d{src};
                 rational out = d;
@@ -1279,18 +1279,18 @@ void prop_wrap_fractional(fuzz_state& s, long iters) {
         };
 
     struct A {
-        using type = inside<{{0, 1}, per<4>}, wrap | round_nearest>;
+        using type = inside<{{0, 1}, per<4>}, wrap | round_half_away>;
     };
     struct B1 {
-        using type = inside<{{-2, 2}, per<4>}, round_nearest>;
+        using type = inside<{{-2, 2}, per<4>}, round_half_away>;
     };
     check(A{}, B1{}, "wf_0_1_q4", rational{5, 4}, rational{0}, rational{1}, rational{1, 4});
 
     struct C {
-        using type = inside<{{rational{1, 2}, rational{5, 2}}, per<2>}, wrap | round_nearest>;
+        using type = inside<{{rational{1, 2}, rational{5, 2}}, per<2>}, wrap | round_half_away>;
     };
     struct D {
-        using type = inside<{{-4, 4}, per<2>}, round_nearest>;
+        using type = inside<{{-4, 4}, per<2>}, round_half_away>;
     };
     check(C{}, D{}, "wf_half_q2", rational{5, 2}, rational{1, 2}, rational{5, 2}, rational{1, 2});
 }
@@ -1337,9 +1337,9 @@ void run_props(fuzz_state& s, long iters, const char* name) {
 //---------------------------------------------------------------------------
 void prop_math_tiers(fuzz_state& s, long iters) {
     namespace engine              = beman::inside::math::detail::engine;
-    using A                       = inside<{{-8, 8}, per<16384>}, round_nearest>; // angle / general
-    using P                       = inside<{{0, 4}, per<16384>}, round_nearest>;  // sqrt domain
-    using O                       = inside<{{-8, 8}, per<1048576>}, round_nearest>;
+    using A                       = inside<{{-8, 8}, per<16384>}, round_half_away>; // angle / general
+    using P                       = inside<{{0, 4}, per<16384>}, round_half_away>;  // sqrt domain
+    using O                       = inside<{{-8, 8}, per<1048576>}, round_half_away>;
     s.current_grid                = "cmath";
     s.current_prop                = "math_tiers";
     constexpr std::size_t E       = engine::input_limbs<A>;
@@ -1348,14 +1348,14 @@ void prop_math_tiers(fuzz_state& s, long iters) {
 
     for (long i = 0; i < iters; ++i) {
         s.iter       = i;
-        const A    a = A::from_raw(random_in_range_raw<A>(s.rng));
+        const A    a = A::from_raw(random_in_range_raw<A>(s.rng), unsafe);
         const auto x = engine::exact_input(a);
         FUZZ_REQUIRE(s, math::sin<O>(a).raw() == integer(engine::trig_core<E, Mag, engine::trig::sin, 1>{x}));
         FUZZ_REQUIRE(s, math::cos<O>(a).raw() == integer(engine::trig_core<E, Mag, engine::trig::cos, 1>{x}));
         FUZZ_REQUIRE(s, math::tanh<O>(a).raw() == integer(engine::hyp_core<E, Mag, engine::hyp::tanh, 1>{x}));
         FUZZ_REQUIRE(s, math::atan<O>(a).raw() == integer(engine::atan_core<E>{x}));
 
-        const P p = P::from_raw(random_in_range_raw<P>(s.rng));
+        const P p = P::from_raw(random_in_range_raw<P>(s.rng), unsafe);
         FUZZ_REQUIRE(
             s, math::sqrt<O>(p).raw() == integer(engine::sqrt_core<engine::input_limbs<P>>{engine::exact_input(p)}));
     }

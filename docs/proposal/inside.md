@@ -92,14 +92,14 @@ static_assert(std::is_same_v<decltype(sum), inside<{0, 200}>>);
 static_assert(sizeof(percent) == 1);
 
 percent c{sum - just<100>, clamp};  // -100..100 into 0..100: the store names what happens
-auto    bad = percent::try_make(sum); // expected<percent, errc>
+auto    bad = percent::try_make(sum); // expected<percent, error>
 ```
 
 **The notch is an exact rational, and the rounding is named in the type.**
 
 <!-- listing: money -->
 ```cpp
-using cents = inside<{{0, 1'000'000}, per<100>}, round_nearest>;
+using cents = inside<{{0, 1'000'000}, per<100>}, round_half_away>;
 
 cents price = 0.1_ins, tax = 0.2_ins;   // exactly 1/10 and 2/10
 auto  total = price + tax;              // exactly 3/10 — no 0.30000000000000004
@@ -122,7 +122,7 @@ heading += 20_ins;                        // 370 wraps to 10
 level   volume  = 9;
 volume += 5_ins;                          // 14 clamps to 10
 
-auto n = count::try_make(14);             // unexpected(errc::overflow)
+auto n = count::try_make(14);             // unexpected(error::overflow)
 // count m = 14;                          // ill-formed: 14 is outside [0, 10]
 ```
 
@@ -149,8 +149,8 @@ using any  = inside<{0, 10}>;              // may be zero
 using some = inside<{1, 10}>;              // never zero
 
 auto q = num{7} / some{3};                 // exactly 7/3, a plain value
-auto r = num{7} / any{3};                  // std::expected<..., errc>
-auto z = num{7} / any{0};                  // unexpected(errc::division_by_zero)
+auto r = num{7} / any{3};                  // std::expected<..., error>
+auto z = num{7} / any{0};                  // unexpected(error::division_by_zero)
 static_assert(!std::is_same_v<decltype(q), decltype(r)>);
 
 using whole = inside<{0, 100}, round_floor>;
@@ -169,15 +169,15 @@ sensor raw   = 725;
 static_assert(conversion_overflows<level>(725));
 auto top  = level{raw, clamp};                      // 10: saturated
 auto deg  = inside<{0, 359}>{raw, wrap};            // 5: 725 mod 360
-auto fit  = checked_cast<level>(sensor{7});              // expected<level, errc>: 7
-auto near = level{6.5, clamp | round_nearest};       // 7: a tie goes away from zero
+auto fit  = exact_cast<level>(sensor{7});              // expected<level, error>: 7
+auto near = level{6.5, clamp | round_half_away};       // 7: a tie goes away from zero
 
 using quarter = inside<{{0, 10}, per<4>}>;
 quarter q = 2.75_ins;
 auto num  = q.numerator();                               // 11: the value is 11/4
-auto i    = q.to<int>();                                 // unexpected(errc::rounding_error)
+auto i    = q.to<int>();                                 // unexpected(error::rounding_error)
 auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
-auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(errc::domain_error)
+auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(error::domain_error)
 ```
 
 **A call or a single store can take another policy, and an action sees what
@@ -300,7 +300,7 @@ plain and its precision is known at compile time. When either operand's policy
 names a rounding, an integer division rounds onto the integers, and a division
 of two values on the same notch `1/K` rounds onto that notch. `a % b` takes
 two lattices; its remainder belongs to the quotient truncated, or rounded by
-the policy's mode, and lies on the lattice of the gcd of the two steps. Either operator returns `std::expected<inside, errc>` when the
+the policy's mode, and lies on the lattice of the gcd of the two steps. Either operator returns `std::expected<inside, error>` when the
 divisor's grid holds zero, and a plain `inside` when it does not.
 
 ## Policies
@@ -309,16 +309,16 @@ A policy says what a store into a grid does with a value that is not on it.
 
 | Policy | Out of range | Off the notch |
 |---|---|---|
-| `checked` (default) | reports `errc::overflow` | reports `errc::rounding_error` |
+| `checked` (default) | reports `error::overflow` | reports `error::rounding_error` |
 | `clamp` | the nearest limit | (as checked) |
 | `wrap` | modulo the interval | (as checked) |
-| `round_toward_zero`, `round_nearest`, `round_floor`, `round_ceil`, `round_half_even` | (as checked) | rounds |
+| `round_toward_zero`, `round_half_away`, `round_floor`, `round_ceil`, `round_half_even` | (as checked) | rounds |
 | `unsafe` | precondition | truncates |
 
-Flags combine (`clamp | round_nearest`). A store that can never succeed (a
+Flags combine (`clamp | round_half_away`). A store that can never succeed (a
 source interval disjoint from the target without `clamp` or `wrap`, or a source
 notch that does not land on the target's without a rounding) is ill-formed.
-`round_nearest` sends a tie away from zero; `round_half_even` to the even
+`round_half_away` sends a tie away from zero; `round_half_even` to the even
 point, counted from the lattice's anchor.
 
 ## No bare scalars
@@ -334,7 +334,7 @@ Every policy checks a narrowing store unless it says `unsafe`, and nothing
 throws. A store has five outcomes: it clamps, wraps, takes an alternative
 value, reports, or does not compile. A store the grids prove (every value of
 the source fits) is plain. Any other store names its channel before it runs:
-a flag (`clamp`, `wrap`, a rounding mode), an `errc&` (`b.policy(ec) = v`), an
+a flag (`clamp`, `wrap`, a rounding mode), an `error&` (`b.policy(ec) = v`), an
 `on_error` action, `try_make`, or `unsafe`; without one it is ill-formed. A
 constant is checked while compiling: the constructor from a value the grids
 cannot prove is `consteval`, so `count m = 14;` with `count` on `[0, 10]` is
@@ -349,11 +349,11 @@ Fallible results are values only where failure is possible at run time:
 divisor whose grid holds zero. A
 total operation returns a plain
 value, so the type says whether failure is possible. A function that stores
-into an output it names (`mul<Out>`, `sum<T>`, `checked_cast<T>`, `f<Out>(x)`)
-returns `expected<Out, errc>` exactly where the result can miss `Out`.
+into an output it names (`mul<Out>`, `sum<T>`, `exact_cast<T>`, `f<Out>(x)`)
+returns `expected<Out, error>` exactly where the result can miss `Out`.
 
 Fallible results chain. The operators also accept a `std::expected<inside,
-errc>` operand, so `a / b * gain + offset` stays one `expected` from end to
+error>` operand, so `a / b * gain + offset` stays one `expected` from end to
 end. The first error passes through with its cause, and an operation that fails
 later in the chain reports its own. An `inside` never stores an `expected`
 implicitly: `B x = a / b;` is ill-formed, and `B::try_make(a / b)` passes the
@@ -367,12 +367,12 @@ installing one is safe while other threads raise.
 A store applies the target's policy. A conversion names its own, so the reader
 sees at the call what happens to a value that does not fit:
 
-- `B{v, clamp}` saturates into `B`'s interval; `B{v, clamp | round_nearest}` (or
+- `B{v, clamp}` saturates into `B`'s interval; `B{v, clamp | round_half_away}` (or
   another rounding mode) also rounds onto `B`'s notch. The flags of `B{v, F}`
   replace `B`'s own of the same kind.
 - `B{v, wrap}` folds `v` modulo `B`'s interval.
-- `checked_cast<B>(v)` stores `v` exactly whatever `B`'s policy is: `B`
-  where the grids prove it, else `expected<B, errc>` with `overflow` or
+- `exact_cast<B>(v)` stores `v` exactly whatever `B`'s policy is: `B`
+  where the grids prove it, else `expected<B, error>` with `overflow` or
   `rounding_error`.
 - `B{v, unsafe}` makes the fit a precondition.
 
@@ -385,7 +385,7 @@ overflow.
 
 Out of an `inside`, `to<T>()` returns `T` where the grid proves the
 conversion total (every value an integer in `T`'s range, or a rounding named;
-every floating-point `T`), else `std::expected<T, errc>`. An integer `T`
+every floating-point `T`), else `std::expected<T, error>`. An integer `T`
 gets the value exactly; a fractional value needs permission to round, as a
 store does: it rounds by the call's mode (`to<int, round_floor>()`), else by
 the type's, and with neither it is `rounding_error`. `overflow` reports a value
@@ -396,8 +396,8 @@ returning `T`, and is ill-formed elsewhere; it requires a rounding policy for
 a floating-point `T`. `numerator()` and `denominator()`
 give the exact value in lowest terms, the sign on the numerator, as insides on
 the integers that hold those parts of every value of the grid. `index()` gives
-a value's notch index, an `index_t<B>` = `inside<{0, step_count}>` with `B`'s
-storage, and `B::from_index(i)` goes back. Run-time values are insides: a
+a value's step (its count of notches above the lower limit), a `step_t<B>` = `inside<{0, step_count}>` with `B`'s
+storage, and `B::from_step(i)` goes back. Run-time values are insides: a
 `grid_number` is a compile-time value, its arithmetic `consteval`, so `N - 1`
 with a constant `N` is evaluated while compiling wherever it appears, and
 counting at run time stays exact on any grid, past 2⁶⁴ points too.
@@ -409,7 +409,7 @@ another:
 
 - **One call.** The functions `add`, `sub`, `mul`, `div`, `mod` and `divmod`
   compute what the operators compute, with trailing arguments: a flag or a
-  policy (`div(a, b, round_floor)`, or `make_policy<F>(ec)`), an `errc&` that receives
+  policy (`div(a, b, round_floor)`, or `make_policy<F>(ec)`), an `error&` that receives
   a failure, or actions. `divmod` returns
   `divmod_result{Quotient, Remainder}` from one division, consistent with the
   rounding: `q·b + r == a`.
@@ -425,7 +425,7 @@ what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
 |---|---|---|
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(b, overshoot)`; the overshoot is an `inside`, the source minus the limit, exactly |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(b, carry)`; the carry is an `inside` whose grid holds every possible carry |
-| `on_error(f)` | a checked store fails, or a compound assignment does (a zero divisor in `/=`); the store's channel | `f(b, errc, message)` |
+| `on_error(f)` | a checked store fails, or a compound assignment does (a zero divisor in `/=`); the store's channel | `f(b, error, message)` |
 
 `f` receives the destination by reference and may change it. An action implies
 its flag (`on_clamp` adds `clamp`, `on_wrap` adds `wrap`). A store takes one
@@ -495,11 +495,11 @@ namespace std {
   // so it is a template argument, combines with |, and is a call's policy
   using policy_flag = @*unsigned integer type*@;
   inline constexpr @*flag*@ checked, clamp, wrap, round_toward_zero,
-                          round_nearest, round_floor, round_ceil,
+                          round_half_away, round_floor, round_ceil,
                           round_half_even, unsafe;
 
   // errors
-  enum class errc { domain_error = 1, division_by_zero, overflow,
+  enum class error { domain_error = 1, division_by_zero, overflow,
                     rounding_error, not_finite, invalid_format };
   // (no exception type: a run-time failure is a value or a precondition)
 
@@ -512,23 +512,23 @@ namespace std {
     template<class A, class Pol> constexpr inside(A value, Pol p); // p a flag or make_policy<F>(ec):
                                                           // its rounding mode / clamp / wrap replace P's
     template<policy_flag F = checked, class A>               // the store by P | F
-      static constexpr expected<inside, errc> try_make(A value);
+      static constexpr expected<inside, error> try_make(A value);
 
     // out of an inside
     template<class T, policy_flag Round = checked>                // T arithmetic; Round: checked or a mode
-      constexpr expected<T, errc> to() const;
+      constexpr expected<T, error> to() const;
     template<class T, policy_flag Round = checked> constexpr T as() const; // to<T, Round>() where total
     constexpr inside<@*numerator grid*@> numerator() const;      // lowest terms, the sign here
     constexpr inside<@*denominator grid*@> denominator() const;  // > 0
-    constexpr index_t<inside> index() const noexcept;            // (value - Lower) / Notch
-    template<class I> static constexpr inside from_index(const I& i);  // Lower + i·Notch, a store by P
-    template<class I, class Pol> static constexpr inside from_index(const I& i, Pol p);
+    constexpr step_t<inside> index() const noexcept;            // (value - Lower) / Notch
+    template<class I> static constexpr inside from_step(const I& i);  // Lower + i·Notch, a store by P
+    template<class I, class Pol> static constexpr inside from_step(const I& i, Pol p);
     template<policy_flag F = checked, class I>
-      static constexpr expected<inside, errc> try_from_index(const I& i);
+      static constexpr expected<inside, error> try_from_step(const I& i);
 
     // a policy or actions for one store (the proxy owns the value of an rvalue)
     template<policy_flag F = checked> constexpr @*store-proxy*@ policy();
-    template<policy_flag F = checked> constexpr @*store-proxy*@ policy(errc& ec);
+    template<policy_flag F = checked> constexpr @*store-proxy*@ policy(error& ec);
     template<class F> constexpr @*store-proxy*@ on_clamp(F f);  // also on_wrap, on_error
 
     constexpr inside<-G, P> operator-() const;
@@ -541,16 +541,16 @@ namespace std {
 
   // observers
   template<class B> constexpr grid grid_of;
-  template<class B> constexpr policy_flag flags_of;
+  template<class B> constexpr policy_flag policy_of;
   template<class B> constexpr grid_number lower_of, upper_of, notch_of;
-  template<class B> using index_t = inside<grid{0, grid_of<B>.step_count()}>;  // a point when 0
+  template<class B> using step_t = inside<grid{0, grid_of<B>.step_count()}>;   // a point when 0
   template<class B> constexpr inside<grid{grid_of<B>.step_count()}> step_count_of;
 
   // constants
   template<auto N, auto D = 1> constexpr inside<grid{N/D}> just; // the point N/D
   template<char... Cs> constexpr auto operator""_ins();      // a point grid; suffix to be renamed
 
-  // operators (L, R are inside types, or expected<inside, errc>)
+  // operators (L, R are inside types, or expected<inside, error>)
   template<class L, class R> constexpr auto operator+(L, R);   // widened result grid
   template<class L, class R> constexpr auto operator-(L, R);
   template<class L, class R> constexpr auto operator*(L, R);
@@ -560,17 +560,17 @@ namespace std {
   template<class L, class R> constexpr auto operator<=>(const L&, const R&);
 
   // conversions
-  template<class B, class N> constexpr B checked_cast(N v);
+  template<class B, class N> constexpr B exact_cast(N v);
   template<class B, class N> constexpr bool conversion_overflows(N v) noexcept;
   template<class B, class N> constexpr bool conversion_rounds(N v) noexcept;
   template<class B, class N> constexpr bool conversion_loses(N v) noexcept;  // either
-  template<class T, policy_flag Round = checked, class B> constexpr expected<T, errc> to(const B&);
+  template<class T, policy_flag Round = checked, class B> constexpr expected<T, error> to(const B&);
   template<class T, policy_flag Round = checked, class B> constexpr T as(const B&);
 
-  // a policy for one call: a flag, or make_policy (with an errc&)
+  // a policy for one call: a flag, or make_policy (with an error&)
   template<policy_flag F = checked> constexpr @*call-policy*@ make_policy();
-  template<policy_flag F = checked> constexpr @*call-policy*@ make_policy(errc& ec);
-  template<class L, class R, class... Args>                   // Args: none, a flag, a policy or an errc&;
+  template<policy_flag F = checked> constexpr @*call-policy*@ make_policy(error& ec);
+  template<class L, class R, class... Args>                   // Args: none, a flag, a policy or an error&;
     constexpr auto add(const L&, const R&, Args&&...);        // also sub, mul, div, mod
   template<class Q, class R> struct divmod_result { Q Quotient; R Remainder; };
   template<class L, class R, class... Args>
@@ -589,7 +589,7 @@ namespace std {
 | Expression | Result | Notes |
 |---|---|---|
 | `inside<G, P>{v}` | stores `v` by `P` | proven by the grids, or a constant (`consteval`); ill-formed when no value of `v`'s type can fit, and for a run-time `v` the grids cannot prove |
-| `B::try_make<F>(v)` | `expected<B, errc>` | the store under `P | F`, reporting |
+| `B::try_make<F>(v)` | `expected<B, error>` | the store under `P | F`, reporting |
 | `-a` | `inside<-G, P>` | mirrored interval, same notch |
 | `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
 | `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; continuous as for `+` |
@@ -599,16 +599,16 @@ namespace std {
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); ill-formed where the step may leave the grid without `clamp`/`wrap`; absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy: ill-formed where the grids cannot prove it and `P` has no `clamp`/`wrap`; `b.policy(ec) += x` reports |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer or a rational; no floating-point operand (0.1 is not 1/10) |
-| `b.to<T>()` | `T` where total, else `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
+| `b.to<T>()` | `T` where total, else `expected<T, error>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
 | `b.as<T>()` | `T` | where `to<T>()` is total; else ill-formed. A floating-point `T` needs a rounding policy |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
-| `b.index()`, `B::from_index(i)` | `(b − L)/n` as an `index_t<B>`; `L + i·n` | `from_index` is plain when `i`'s grid lies in `[0, step_count]`, else `expected<B, errc>` (plain under a call's `clamp`/`wrap`) |
+| `b.step()`, `B::from_step(i)` | `(b − L)/n` as a `step_t<B>`; `L + i·n` | `from_step` is plain when `i`'s grid lies in `[0, step_count]`, else `expected<B, error>` (plain under a call's `clamp`/`wrap`) |
 | `B{v, clamp | M}` | `v` saturated into `B`, rounded by `M` | `M == checked`: off the notch as `B`'s policy |
 | `B{v, wrap}` | `v` modulo `B`'s interval | |
-| `checked_cast<B>(v)` | `v`, or `expected<B, errc>` where it can fail | `overflow`, `rounding_error` |
+| `exact_cast<B>(v)` | `v`, or `expected<B, error>` where it can fail | `overflow`, `rounding_error` |
 | `B{v, unsafe}` | `v` | precondition: `v` fits |
 | `conversion_overflows<B>(v)`, `conversion_rounds<B>(v)` | what `B{v}` would report or round | a rounding that brings `v` in is a rounding |
-| `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `errc&`: a zero divisor sets it (and stays in the `expected`) |
+| `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `error&`: a zero divisor sets it (and stays in the `expected`) |
 | `divmod(a, b, …)` | `{q, r}`, `q·b + r == a` | as `/` and `%` |
 | `b.policy<clamp>() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
 | `b.on_wrap(f) += v` etc. | `b += v`, `f` called when the policy acts | ill-formed: two of `on_clamp`, `on_wrap`, `on_error`, or two of one kind |
@@ -624,12 +624,12 @@ below is a candidate for a later paper:
    operators, printing and reading the exact value.
 2. **Algorithms**: `sum<Target>` with one deferred check, `add_all`,
    `mul_all`, `mul<Out>` / `div<Out>` (one rounding, no intermediate
-   grid), `min`, `max`, `midpoint`, `lerp`, `dot` and `cross`.
+   grid), `min`, `max`, `midpoint` and `lerp`.
 3. **Iterating a grid**: `cursor<T, Step>` for loops, the range
    `inside_range` and `values<T>` (every value of `T`), and `uniform<B>(rng)`,
    which samples a grid exactly.
 4. **Predefined types**: `uint8` … `int64` on their full ranges,
-   `unorm8`/`unorm16`, the Q formats (`q8_8`), `clamp_counter` and
+   `unorm8`/`unorm16`, the Q formats (`uq8_8`), `clamp_counter` and
    `wrap_counter`.
 5. **A public exact rational type** and its literals.
 
@@ -680,7 +680,7 @@ The repository's `docs/resources.md` compares their features.
    names.
 2. **Failure of a checked store.** Proposed: no run-time failure path of its
    own. A store the grids cannot prove names its channel (a flag, an
-   `errc&`, an action, `try_make`) or is ill-formed; a constant is checked
+   `error&`, an action, `try_make`) or is ill-formed; a constant is checked
    while compiling. The cost is that `is_constructible_v<B, int>` is `true`
    for a `consteval` constructor that a run-time `int` cannot call. What
    remains are preconditions (a cursor past its end), which reach a

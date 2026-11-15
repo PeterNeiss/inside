@@ -37,7 +37,7 @@ int main()
   std::cout << "F    = " << pc::faraday_constant.in(si::coulomb / si::mole) << "\n";
 
   // hbar = h/2pi: the factor of pi rounds once, onto a 10^-45 grid.
-  using fine = inside<{{0, 1}, 1e-45_g}, round_nearest>;
+  using fine = inside<{{0, 1}, 1e-45_g}, round_half_away>;
   std::cout << std::format("hbar = {:.9e}\n", value_cast<si::joule * si::second, fine>(pc::reduced_planck_constant));
   return 0;
 }

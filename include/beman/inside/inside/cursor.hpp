@@ -37,12 +37,12 @@ consteval grid cursor_grid(const auto& step) {
 template <detail::steppable T, auto Step = notch_of<detail::step_number_t<T>>>
 using cursor = detail::step_rebind_t<T,
                                      inside<detail::cursor_grid<detail::step_number_t<T>>(Step),
-                                            flags_of<detail::step_number_t<T>> | detail::cursor_marker>>;
+                                            policy_of<detail::step_number_t<T>> | detail::cursor_marker>>;
 
 // end(t): a cursor's past-the-end value, one step past T's Upper. Only a
 // cursor has one — on any other inside its Upper is a value, not an end.
 template <detail::steppable B>
-    requires(has_flag(flags_of<detail::step_number_t<B>>, detail::cursor_marker))
+    requires(has_flag(policy_of<detail::step_number_t<B>>, detail::cursor_marker))
 [[nodiscard]] constexpr auto end(const B&) noexcept {
     constexpr auto top = just<upper_of<detail::step_number_t<B>>>;
     return detail::stepping<B>::make(top);

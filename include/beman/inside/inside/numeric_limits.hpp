@@ -72,8 +72,8 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
         namespace d = ::beman::inside::detail;
         if constexpr (d::wide_valued<B>) {
-            B                   b{};
-            beman::inside::errc ec{};
+            B                    b{};
+            beman::inside::error ec{};
             d::assign_exact<d::rational>(b,
                                          d::exact_of_grid<d::exact_limbs<B>>(v),
                                          beman::inside::make_policy<P>(ec),

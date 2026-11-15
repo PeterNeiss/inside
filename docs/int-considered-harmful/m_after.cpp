@@ -13,14 +13,14 @@
 using namespace beman::inside;
 
 // Dollars in 1-cent steps, up to $10M. The scale is part of the type.
-using money = inside<{{0, 10'000'000}, per<100>}, round_nearest>;
+using money = inside<{{0, 10'000'000}, per<100>}, round_half_away>;
 
 int main()
 {
   money subtotal{2'684'354.56};
 
   // subtotal * 0.08 widens; nothing can overflow. Assigning back into
-  // `money` snaps to the nearest cent, because `money` says round_nearest.
+  // `money` snaps to the nearest cent, because `money` says round_half_away.
   auto  tax_exact = subtotal * 0.08_ins;
   money tax       = tax_exact;
 
@@ -38,7 +38,7 @@ int main()
 
   // The intermediate really is exact: a grid in thirds of a cent stores
   // the same value with nothing rounded away.
-  using third_cent = inside<{{0, 10'000'000}, per<300>}, round_nearest>;
+  using third_cent = inside<{{0, 10'000'000}, per<300>}, round_half_away>;
   third_cent discount_exact = disc_exact;
 
   std::cout << "\ndiscount on a 1/300 grid       = $" << discount_exact

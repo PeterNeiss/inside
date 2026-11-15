@@ -83,7 +83,7 @@ int main()
   std::vector<checked_u8> na(kN), nb(kN), nc(kN), nd(kN);
   std::vector<part>       ba(kN), bb(kN), bc(kN), bd(kN);
 
-  errc ec{};   // a run-time int into part: reported, checked once below
+  error ec{};   // a run-time int into part: reported, checked once below
   for (int i = 0; i < kN; ++i)
   {
     int v1 = i % 50, v2 = (i * 7) % 50, v3 = (i * 13) % 50, v4 = (i * 29) % 50;
@@ -92,7 +92,7 @@ int main()
     ba[i] = part{v1, make_policy<checked>(ec)}; bb[i] = part{v2, make_policy<checked>(ec)};
     bc[i] = part{v3, make_policy<checked>(ec)}; bd[i] = part{v4, make_policy<checked>(ec)};
   }
-  if (ec != errc{})
+  if (ec != error{})
     return 1;
 
   const double native = time_ns_per_op([&] {

@@ -36,6 +36,7 @@
 // inside_to
 namespace inside_to_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // inside::to<unsigned T>
@@ -45,9 +46,9 @@ TEST(InsideToTest, to_is_plain_where_it_cannot_fail) {
     using digits = inside<{0, 9}>;
     using money  = inside<{{0, 100}, per<100>}>;
     static_assert(std::same_as<decltype(digits{}.to<std::uint8_t>()), std::uint8_t>);
-    static_assert(std::same_as<decltype(inside<{0, 1000}>{}.to<std::uint8_t>()), std::expected<std::uint8_t, errc>>);
-    static_assert(std::same_as<decltype(inside<{-5, 5}>{}.to<unsigned>()), std::expected<unsigned, errc>>);
-    static_assert(std::same_as<decltype(money{}.to<int>()), std::expected<int, errc>>); // 0.25 does not round
+    static_assert(std::same_as<decltype(inside<{0, 1000}>{}.to<std::uint8_t>()), std::expected<std::uint8_t, error>>);
+    static_assert(std::same_as<decltype(inside<{-5, 5}>{}.to<unsigned>()), std::expected<unsigned, error>>);
+    static_assert(std::same_as<decltype(money{}.to<int>()), std::expected<int, error>>); // 0.25 does not round
     static_assert(std::same_as<decltype(money{}.to<int, round_floor>()), int>);
     static_assert(std::same_as<decltype(money{}.to<double>()), double>);
     EXPECT_EQ((money{2.75}.to<int, round_floor>()), 2);
@@ -68,7 +69,7 @@ TEST(InsideToTest, inside_to_unsigned_t) {
         using B = inside<{0, 1000}>;
         auto r  = B{500}.to<std::uint8_t>();
         ASSERT_FALSE(r.has_value());
-        ASSERT_EQ(r.error(), errc::overflow);
+        ASSERT_EQ(r.error(), error::overflow);
     }
 
     {
@@ -76,20 +77,20 @@ TEST(InsideToTest, inside_to_unsigned_t) {
         using B = inside<{-10, 10}>;
         auto r  = B{-5}.to<std::uint8_t>();
         ASSERT_FALSE(r.has_value());
-        ASSERT_EQ(r.error(), errc::domain_error);
+        ASSERT_EQ(r.error(), error::domain_error);
     }
 
     {
         SCOPED_TRACE("a fractional value needs permission to round");
         using B = inside<{{0, 1}, per<2>}>;
-        ASSERT_EQ(B{0.5}.to<std::uint8_t>().error(), errc::rounding_error); // no rounding named
-        ASSERT_TRUE((B{0.5}.to<std::uint8_t, round_toward_zero>() == 0));   // 0.5 -> 0
+        ASSERT_EQ(B{0.5}.to<std::uint8_t>().error(), error::rounding_error); // no rounding named
+        ASSERT_TRUE((B{0.5}.to<std::uint8_t, round_toward_zero>() == 0));    // 0.5 -> 0
         ASSERT_TRUE(B{1}.to<std::uint8_t>().value() == 1);
     }
 
     {
         SCOPED_TRACE("Q-format fast path");
-        using B = inside<{{0, 255}, per<256>}, round_nearest>;
+        using B = inside<{{0, 255}, per<256>}, round_half_away>;
         ASSERT_TRUE(B{42.5}.to<std::uint8_t>() == 43); // the type's mode: a tie away from zero
     }
 }
@@ -104,19 +105,19 @@ TEST(InsideToTest, inside_to_signed_t) {
     }
 
     {
-        SCOPED_TRACE("overflow upward -> errc::overflow");
+        SCOPED_TRACE("overflow upward -> error::overflow");
         using B = inside<{0, 1000}>;
         auto r  = B{500}.to<std::int8_t>();
         ASSERT_FALSE(r.has_value());
-        ASSERT_EQ(r.error(), errc::overflow);
+        ASSERT_EQ(r.error(), error::overflow);
     }
 
     {
-        SCOPED_TRACE("overflow downward -> errc::overflow");
+        SCOPED_TRACE("overflow downward -> error::overflow");
         using B = inside<{-1000, 0}>;
         auto r  = B{-500}.to<std::int8_t>();
         ASSERT_FALSE(r.has_value());
-        ASSERT_EQ(r.error(), errc::overflow);
+        ASSERT_EQ(r.error(), error::overflow);
     }
 }
 
@@ -164,7 +165,7 @@ TEST(InsideToTest, integers_are_read_with_as_or_to) {
     ASSERT_EQ(narrow{42}.as<std::int64_t>(), 42);
     // A grid past T's range reports the value that does not fit.
     ASSERT_EQ(narrow{42}.to<std::int8_t>(), std::int8_t{42});
-    ASSERT_EQ((inside<{0, 300}>{300}.to<std::uint8_t>()), std::unexpected{errc::overflow});
+    ASSERT_EQ((inside<{0, 300}>{300}.to<std::uint8_t>()), std::unexpected{error::overflow});
 }
 
 // An index reads as a size_t: as<std::size_t>() keeps no check on an
@@ -180,7 +181,7 @@ TEST(InsideToTest, as_size_t_indexes_a_container) {
 
 // operator double is gated on rounding policy
 TEST(InsideToTest, operator_double_is_gated_on_rounding_policy) {
-    using B_round  = inside<{{0, 1}, per<2>}, round_nearest>;
+    using B_round  = inside<{{0, 1}, per<2>}, round_half_away>;
     using B_ignore = inside<{{0, 1}, per<2>}, round_toward_zero>;
     using B_strict = inside<{{0, 1}, per<2>}, checked>;
     using B_floor  = inside<{{0, 1}, per<2>}, round_floor>;
@@ -198,7 +199,7 @@ TEST(InsideToTest, operator_double_is_gated_on_rounding_policy) {
 // as<T>() is a non-expected shortcut for to<T>().value()
 TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
     using narrow = inside<{0, 100}>;
-    using frac   = inside<{{0, 100}, per<10>}, round_nearest>;
+    using frac   = inside<{{0, 100}, per<10>}, round_half_away>;
 
     // Matches the integer-extraction value path.
     ASSERT_TRUE(narrow{42}.as<std::int64_t>() == 42);
@@ -233,7 +234,7 @@ concept has_member_to = requires(B b) { b.template to<T>(); };
 // as<floating> shares operator double's policy gate
 TEST(InsideToTest, as_floating_shares_operator_double_s_policy_gate) {
     using strict_b  = inside<{0, 100}>; // no rounding flag
-    using rounded_b = inside<{0, 100}, round_nearest>;
+    using rounded_b = inside<{0, 100}, round_half_away>;
 
     // Strict: both spellings of the direct double read are rejected;
     // to<double>() stays the explicit opt-in.
@@ -254,7 +255,7 @@ TEST(InsideToTest, as_floating_shares_operator_double_s_policy_gate) {
 TEST(InsideToTest, as_is_total_and_to_reports) {
     using s = inside<{-5, 5}>;
     static_assert(!has_member_as<s, unsigned>);
-    ASSERT_EQ(s{-1}.to<unsigned>().error(), errc::domain_error);
+    ASSERT_EQ(s{-1}.to<unsigned>().error(), error::domain_error);
     ASSERT_EQ(s{3}.as<int>(), 3);
 }
 } // namespace inside_to_tests
@@ -262,6 +263,7 @@ TEST(InsideToTest, as_is_total_and_to_reports) {
 // constant
 namespace constant_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 //---------------------------------------------------------------------------
@@ -414,6 +416,7 @@ TEST(ConstantTest, just_numerator_denominator) {
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 #define WIDE_LONG_DOUBLE (LDBL_MANT_DIG > DBL_MANT_DIG)
@@ -424,7 +427,7 @@ concept compares_with = requires(T t, F f) { t == f; } || requires(T t, F f) { t
 template <class B, class S>
 constexpr bool can_clamp_cast = requires(S s) { B{s, clamp}; };
 template <class B, class S>
-constexpr bool can_checked_cast = requires(S s) { checked_cast<B>(s); };
+constexpr bool can_checked_cast = requires(S s) { exact_cast<B>(s); };
 template <class O, class I>
 constexpr bool can_abs = requires(I x) { math::abs<O>(x); };
 template <std::int64_t E, class I>
@@ -440,7 +443,7 @@ TEST(ConversionTest, predicates_on_tiny_doubles) {
     using unit = inside<{{0, 1}, per<100>}>;
     static_assert(conversion_rounds<unit>(1e-20) && !conversion_overflows<unit>(1e-20));
     static_assert(conversion_overflows<unit>(-1e-20) && !conversion_rounds<unit>(-1e-20));
-    static_assert(conversion_rounds<inside<{{0, 1}, per<100>}, round_nearest>>(-1e-20));
+    static_assert(conversion_rounds<inside<{{0, 1}, per<100>}, round_half_away>>(-1e-20));
 }
 
 TEST(ConversionTest, no_comparison_with_floating_point) {
@@ -458,11 +461,11 @@ TEST(ConversionTest, to_rounds_before_the_range_check) {
     using H = inside<{{-0.5, 200}, 0.5}>;
     static_assert(*H{-0.5}.to<unsigned, round_toward_zero>() == 0u);
     static_assert(*H{127.5}.to<std::int8_t, round_toward_zero>() == 127);
-    static_assert(H{127.5}.to<std::int8_t>().error() == errc::rounding_error);
-    static_assert(H{127.5}.to<int, round_nearest>() == 128 && H{127.5}.to<int, round_floor>() == 127);
-    static_assert(inside<{{0, 10}, per<4>}, round_nearest>{2.75}.to<int>() == 3); // the type's own mode
-    static_assert(H{128}.to<std::int8_t>().error() == errc::overflow);
-    static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == errc::domain_error);
+    static_assert(H{127.5}.to<std::int8_t>().error() == error::rounding_error);
+    static_assert(H{127.5}.to<int, round_half_away>() == 128 && H{127.5}.to<int, round_floor>() == 127);
+    static_assert(inside<{{0, 10}, per<4>}, round_half_away>{2.75}.to<int>() == 3); // the type's own mode
+    static_assert(H{128}.to<std::int8_t>().error() == error::overflow);
+    static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == error::domain_error);
 }
 
 // A bounded continuous grid rejects a denominator past its bound: so does
@@ -484,7 +487,7 @@ TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
     static_assert(!can_clamp_cast<halves, three> && can_checked_cast<halves, three>); // 3 is off the .5 lattice
     // An output that may miss a result (|0| = 0) makes it an expected.
     static_assert(can_abs<digit, small> && can_abs<inside<{1, 10}>, small>);
-    EXPECT_EQ((math::abs<inside<{1, 10}>>(small{0}).error()), errc::overflow);
+    EXPECT_EQ((math::abs<inside<{1, 10}>>(small{0}).error()), error::overflow);
     static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, max_denominator{1000}}>>);
     EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
     EXPECT_EQ((digit{small{-3}, clamp}), 0_ins);
@@ -494,8 +497,8 @@ TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
 // bits) and guessed for doubles past the 64-bit rationals.
 TEST(ConversionTest, predicates_decide_exactly) {
     using F = inside<{{0, 1}, rational{1, 1ll << 61}}>;
-    using C = inside<{{0, 2}, rational{1, 1ll << 61}}, round_nearest>;
-    using N = inside<{{0, 10}, rational{1, 3}}, round_nearest>;
+    using C = inside<{{0, 2}, rational{1, 1ll << 61}}, round_half_away>;
+    using N = inside<{{0, 10}, rational{1, 3}}, round_half_away>;
     EXPECT_FALSE(conversion_rounds<F>(0x1p-61));
     EXPECT_TRUE(conversion_rounds<F>(0x1p-62));
     EXPECT_TRUE(conversion_overflows<N>(1e30));
@@ -507,7 +510,7 @@ TEST(ConversionTest, predicates_decide_exactly) {
     static_assert(!conversion_rounds<C>(rational{3, 1ll << 61}));
     // A bounded continuous grid rounds before its range check: 22/21 rounds
     // onto 1 in sevenths (rounding, not overflow), as the exact path decides.
-    using S = inside<grid{interval{0, 1}, max_denominator{7}}, round_nearest>;
+    using S = inside<grid{interval{0, 1}, max_denominator{7}}, round_half_away>;
     static_assert(conversion_rounds<S>(rational{22, 21}) && !conversion_overflows<S>(rational{22, 21}));
     static_assert(!conversion_rounds<S>(rational{3, 2}) && conversion_overflows<S>(rational{3, 2}));
 }
@@ -517,7 +520,7 @@ TEST(ConversionTest, predicates_decide_exactly) {
 TEST(ConversionTest, continuous_predicates_see_the_rational_store) {
     using C        = inside<{{-1, 1}, max_denominator{std::int64_t{1} << 62}}>;
     const double d = 0x1.644cb4ec9ec46p-20;
-    EXPECT_EQ(C::try_make(d).error(), errc::rounding_error);
+    EXPECT_EQ(C::try_make(d).error(), error::rounding_error);
     EXPECT_FALSE(conversion_overflows<C>(d));
     EXPECT_TRUE(conversion_loses<C>(d));
     EXPECT_FALSE(conversion_overflows<C>(0.25));
@@ -548,10 +551,10 @@ TEST(ConversionTest, numerator_past_int64) {
 // The one-shot casts OR-ed their flags with the type's, so the type's
 // rounding mode or clamp won.
 TEST(ConversionTest, casts_override_the_declared_policy) {
-    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_nearest}), 3);
-    EXPECT_EQ((inside<{0, 100}, round_half_even>{2.5, clamp | round_nearest}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_half_away}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_half_even>{2.5, clamp | round_half_away}), 3);
     EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_ceil}), 3);
-    EXPECT_EQ((inside<{0, 100}, round_ceil>{2.2, clamp | round_nearest}), 2);
+    EXPECT_EQ((inside<{0, 100}, round_ceil>{2.2, clamp | round_half_away}), 2);
     EXPECT_EQ((inside<{0, 100}, clamp>{150, wrap}), 49);
     EXPECT_EQ((inside<{0, 100}, wrap>{150, clamp}), 100);
     EXPECT_EQ((inside<{0, 100}, round_floor>{7.9, clamp}), 7); // the type's rounding stays
@@ -585,18 +588,20 @@ TEST(ConversionTest, to_long_double_is_rounded_once) {
 // double 1 + 2^-24, a tie the float broke to even (1), not up.
 TEST(ConversionTest, to_float_rounds_once) {
     using T     = inside<{{0, 2}, per<(1ll << 60)>}>;
-    const T x   = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1));
-    const T low = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) - 1));
-    const T tie = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36)));
+    const T x   = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1), unsafe);
+    const T low = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) - 1), unsafe);
+    const T tie = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36)), unsafe);
     EXPECT_EQ(x.to<float>(), 1.0f + 0x1p-23f);
     EXPECT_EQ(low.to<float>(), 1.0f);
     EXPECT_EQ(tie.to<float>(), 1.0f); // a true tie: to even
-    static_assert(T::from_raw((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1).to<float>() == 1.0f + 0x1p-23f);
+    static_assert(T::from_raw((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1, unsafe).to<float>() ==
+                  1.0f + 0x1p-23f);
 }
 
 // The noexcept conversion predicates classify non-finite input instead of raising.
 TEST(ConversionTest, predicates_handle_non_finite_input) {
     using namespace beman::inside;
+    using namespace beman::inside::formats;
     using B          = inside<{0, 10}>;
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
@@ -609,16 +614,16 @@ TEST(ConversionTest, predicates_handle_non_finite_input) {
 }
 
 //---------------------------------------------------------------------------
-// checked_cast (casts.hpp) — the success return (was static_assert only)
+// exact_cast (casts.hpp) — the success return (was static_assert only)
 //---------------------------------------------------------------------------
-// checked_cast returns the value on the in-range happy path (runtime)
+// exact_cast returns the value on the in-range happy path (runtime)
 TEST(ConversionTest, checked_cast_in_range_at_run_time) {
     using pct = inside<{0, 100}>;
-    pct p     = *checked_cast<pct>(test::at_run_time(42)); // an int may not fit: an expected
+    pct p     = *exact_cast<pct>(test::at_run_time(42)); // an int may not fit: an expected
     ASSERT_EQ(p, 42);
 
     using coarse = inside<{{0, 10}, 2}>;
-    ASSERT_TRUE(checked_cast<coarse>(4) == coarse{4}); // on-notch, in-range
+    ASSERT_TRUE(exact_cast<coarse>(4) == coarse{4}); // on-notch, in-range
 }
 
 //---------------------------------------------------------------------------
@@ -639,8 +644,8 @@ TEST(ConversionTest, conversion_rounds_is_false_out_of_range) {
 //---------------------------------------------------------------------------
 // inside -> dyadic conversion lands on the grid
 TEST(ConversionTest, to_a_dyadic_grid_lands_on_the_grid) {
-    using src_t = inside<{-2, 2}>;                             // integer-backed source
-    using rb    = inside<{{-2, 2}, per<1024>}, round_nearest>; // dyadic target
+    using src_t = inside<{-2, 2}>;                               // integer-backed source
+    using rb    = inside<{{-2, 2}, per<1024>}, round_half_away>; // dyadic target
 
     src_t src{1};
     rb    dst = src; // insidable -> dyadic store
@@ -663,7 +668,7 @@ TEST(ConversionTest, implicit_integer_conversion_of_an_index_only) {
     static_assert(indexes_a_vector<idx>);
     static_assert(!std::is_convertible_v<off, std::int64_t> && !std::is_constructible_v<int, off>);
     static_assert(!casts_to_int64<off> && !indexes_a_vector<off>);
-    static_assert(!std::is_convertible_v<inside<{{0, 9}, per<2>}, round_nearest>, std::int64_t>);
+    static_assert(!std::is_convertible_v<inside<{{0, 9}, per<2>}, round_half_away>, std::int64_t>);
     static_assert(!std::is_convertible_v<inside<{0, 10'000'000'000}>, int>); // would narrow silently
     static_assert(std::is_convertible_v<inside<{0, 10'000'000'000}>, std::int64_t>);
 
@@ -703,7 +708,7 @@ TEST(ConversionTest, rational_of_a_q_format_value) {
 TEST(ConversionTest, rational_of_a_fractional_q_format_value) {
     using fp = inside<{{0, 255}, 0x1p-8_r}, unsafe>;
     // Raw=128 → value 128/256 = 0.5.
-    auto     b = fp::from_raw(128);
+    auto     b = fp::from_raw(128, unsafe);
     rational r = b;
     ASSERT_EQ(r, 0.5_r);
 }
@@ -715,7 +720,7 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
     using Q = inside<{-4, 4, just<1, 8>}>; // dyadic, negative Lower
     static_assert(index_storage<Q> && q_format_fits<Q>);
     for (std::int64_t k = 0; k <= 64; ++k) {
-        Q                  q = Q::from_raw(static_cast<Q::raw_type>(k));
+        Q                  q = Q::from_raw(static_cast<Q::raw_type>(k), unsafe);
         const rational     r{q};
         const std::int64_t num = static_cast<std::int64_t>((r.Den < 0) ? std::uint64_t{0} - r.Num : r.Num);
         EXPECT_EQ(q.numerator(), num);
@@ -740,6 +745,7 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
 // `if constexpr` probe over the suite).
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // The exact paths of the conversion predicates: a double past the 64-bit
@@ -749,7 +755,7 @@ TEST(ConversionsArmTest, predicates_on_the_exact_paths) {
     EXPECT_TRUE(conversion_overflows<I>(1e30) && !conversion_rounds<I>(1e30));
     EXPECT_TRUE(conversion_overflows<I>(1e30L));
     // Just past Upper, onto the bound by the grid's rounding: rounds.
-    using C = inside<{{0, 1}, max_denominator{10}}, round_nearest>;
+    using C = inside<{{0, 1}, max_denominator{10}}, round_half_away>;
     EXPECT_TRUE(!conversion_overflows<C>(1.0L + 0x1p-63L) && conversion_rounds<C>(1.0L + 0x1p-63L));
     using P = inside<{1180591620717411303424_g, 1180591620717411303424_g}>; // the point 2^70
     EXPECT_TRUE(!conversion_overflows<P>(0x1p70) && !conversion_rounds<P>(0x1p70));
@@ -771,13 +777,14 @@ TEST(ConversionsArmTest, rounds_on_a_point_and_past_the_64_bit_steps) {
 TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
     using T = inside<{{-12000000000000000000_g, 12000000000000000000_g}, just<3, 2>}>;
     static_assert(detail::rational_readable<T>);
-    const T t = T::from_index(15333333333333333333_ins); // 10999999999999999999.5
+    const T t = T::from_step(15333333333333333333_ins); // 10999999999999999999.5
     EXPECT_DEATH((void)rational{t}, "beman::inside: inside: value past the 64-bit rationals"); // a precondition
 }
 } // namespace reached_arms_tests
 
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // A continuous grid whose bound passes 64 bits (small limits, a fraction raw)
 // takes the predicates' exact path: the 64-bit one read the bound as a 64-bit
@@ -796,6 +803,7 @@ TEST(ConversionsPinnedTest, predicates_on_a_bound_past_64_bits) {
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // to<long double>() and to<float>() of exact values past the type's range
@@ -803,8 +811,8 @@ using detail::rational;
 TEST(ConversionsArmTest, floats_of_values_past_the_range) {
     using Big = inside<{{0, detail::grid_rational{detail::grid_int{1} << 20000}},
                         detail::grid_rational{detail::grid_int{1} << 19990}}>;
-    EXPECT_EQ(Big::from_index(1024_ins).to<long double>(), std::numeric_limits<long double>::infinity());
-    EXPECT_EQ(Big::from_index(1024_ins).to<float>(), std::numeric_limits<float>::infinity());
+    EXPECT_EQ(Big::from_step(1024_ins).to<long double>(), std::numeric_limits<long double>::infinity());
+    EXPECT_EQ(Big::from_step(1024_ins).to<float>(), std::numeric_limits<float>::infinity());
     using F = inside<{0, 340282366920938463463374607431768211456_g}>; // to 2^128
     EXPECT_EQ(F{just<340282366920938463463374607431768211456_g>}.to<float>(), std::numeric_limits<float>::infinity());
     using T = inside<{{0, 1}, max_denominator{detail::grid_rational{detail::grid_int{1} << 20000}}}>;
@@ -823,6 +831,7 @@ TEST(ConversionsArmTest, rational_of_a_long_double) {
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // A notch-0 point (inside<grid{5}>; {5, 5} derives notch 1) rounds nothing,
@@ -838,6 +847,7 @@ TEST(ConversionsArmTest, notch_zero_point_and_reversed_comparison) {
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // A rational against a long double finer than a double.
@@ -857,6 +867,7 @@ TEST(ConversionsArmTest, rational_against_a_long_double) {
 #if BEMAN_INSIDE_HAS_INT128
 namespace wide_builtin_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 template <class S, class U>
@@ -878,8 +889,8 @@ void check_wide_builtins() {
     EXPECT_TRUE((inside<{0, 100}, clamp>{big} == 100));
     EXPECT_TRUE((inside<{0, 100}, clamp>{-big} == 0));
     EXPECT_TRUE((inside<{0, 9}, wrap>{big} == 9)); // 2^70 ≡ 4 (mod 10)
-    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(big))), errc::overflow);
-    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(ubig))), errc::overflow);
+    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(big))), error::overflow);
+    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(ubig))), error::overflow);
     EXPECT_TRUE((inside<{{0, 10}, per<4>}, clamp>{big} == 10));
     EXPECT_TRUE((inside<{{rational{1, 2}, rational{21, 2}}, 1}, clamp>{big} == rational{21, 2}));
     EXPECT_TRUE((inside<{{0, 10}, max_denominator{3}}, clamp>{big} == 10));
@@ -901,7 +912,7 @@ void check_wide_builtins() {
     EXPECT_FALSE((inside<{-5, 5}>{-3}.template to<U>().has_value()));
     EXPECT_TRUE(W{big}.template to<S>() == big);
     EXPECT_TRUE(u64{18446744073709551615u}.template to<U>() == U{18446744073709551615u});
-    EXPECT_TRUE(W::from_index(big) == W{big});
+    EXPECT_TRUE(W::from_step(big) == W{big});
 
     // A 64-bit rational has no such integer.
     EXPECT_DEATH((void)rational{test::at_run_time(big)}, "beman::inside"); // (detail) a precondition
@@ -940,6 +951,7 @@ TEST(ConversionTest, uniform_from_a_generator_past_64_bits) {
 // int64 is std::int64_t's whole range; its negation and |x| reach 2^63.
 namespace int64_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 TEST(ConversionTest, int64_full_range) {
     static_assert(lower_of<int64> == -9223372036854775808_g && upper_of<int64> == 9223372036854775807_g);
     static_assert(std::is_same_v<int64::raw_type, std::int64_t>);

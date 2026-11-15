@@ -78,7 +78,7 @@ int main() {
         return 1;
 
     // 5. Euler's identity, onto a grid of 2^-20.
-    using fine       = inside<{{-4, 4}, per<(1 << 20)>}, round_nearest>;
+    using fine       = inside<{{-4, 4}, per<(1 << 20)>}, round_half_away>;
     const fine pi    = math::pi; // π rounded onto 2^-20
     const auto euler = math::exp(pi * i);
     std::cout << "e^(iπ) = " << euler << '\n';

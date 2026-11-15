@@ -63,13 +63,13 @@ int main() {
     pool.release(42);
     std::cout << "\nafter release(42): " << pool.allocated.size() << " IDs\n";
 
-    // try_make returns std::expected<inside, errc>: a value on success, the
+    // try_make returns std::expected<inside, error>: a value on success, the
     // failure reason on out-of-range / rounding / overflow inputs. Either way
     // no exception is thrown.
     auto bad  = pool_id::try_make(2000);
     auto good = pool_id::try_make(123);
-    std::cout << "\ntry_make(2000) -> " << (bad ? to_string(*bad) : errc_message(bad.error())) << "\n";
-    std::cout << "try_make( 123) -> " << (good ? to_string(*good) : errc_message(good.error())) << "\n";
+    std::cout << "\ntry_make(2000) -> " << (bad ? to_string(*bad) : error_message(bad.error())) << "\n";
+    std::cout << "try_make( 123) -> " << (good ? to_string(*good) : error_message(good.error())) << "\n";
 
     return 0;
 }

@@ -22,44 +22,44 @@ notches and the double-double tier.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `bd296534a9ce84c21f33ef960ef7093d1ed696c30362850e079e0f8d11bd16ca` | certified |
-| `sin` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 2097153 | 0 | 0 | `96d062c0fb5dad365fc34f2fbe0267bc8221549dc0c0d073b9c2af55101f5420` | certified |
-| `sin` | `{[-4, 4], 1/262144} round_nearest` | `{[-4, 4], 1/4503599627370496} round_nearest, clamp` | 2097153 | 0 | 0 | `cb6ec5f179ede4f711df64053771bda1346a21921395b0963a64e647d30ff6e8` | certified |
-| `sin` | `{[-4, 4], 1/100000} round_nearest` | `{[-64, 64], 1/1000} round_toward_zero, clamp` | 800001 | 0 | 0 | `ff7aa51509c5dec45e6e196abafc7543fab2d3317b31ba73794e1f1f884cadbe` | certified |
-| `cos` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_ceil, clamp` | 2097153 | 0 | 0 | `6bd771ca03ab8d4e86cd5513b6f32aeddef61ea0649ca3606bc248b918808aa7` | certified |
-| `cos` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1000} round_nearest, clamp` | 2097153 | 0 | 0 | `8bb00c8dee9f252a9e9921fe0f4529e3e7ad4cf1ba6da6ad4a1ff3f7825a9a3e` | certified |
-| `tan` | `{[-25/16, 25/16], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 819201 | 0 | 0 | `e3dd67d6795db26f350044bd25690afc57e44c92a55ee59553c82059c4087067` | certified |
-| `tan` | `{[51/32, 75/16], 1/262144} round_nearest` | `{[-1048576, 1048576], 1/16} round_nearest` | 811009 | 0 | 0 | `1e2c11d15c7bd3744feb8e77caaea99e51f54f2e74871ef217e0f05fe38b207f` | certified |
-| `atan` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 2097153 | 0 | 0 | `840cd9b5e943beba09737e3db75cfd62b384b6bb155f2b76961715b822051084` | certified |
-| `atan` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1048576} round_half_even, clamp` | 2097153 | 0 | 0 | `1a93f532747ff8114ddacf8f67d2919523826212c9403e969b693212dac88efb` | certified |
-| `exp` | `{[-8, 8], 1/65536} round_nearest` | `{[0, 1048576], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `cc0a7cc76475f2e929eac09dc840c3336ffb79aae48c47f8fbb9b3b70efce45a` | certified |
-| `exp` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 2097153 | 0 | 0 | `482d6798b073f935a84b8774f67e160ee2dccfc1424299ac937853a6029373e7` | certified |
-| `exp2` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `3aa83b6e0b78e43322637630eb2dab260d0009cda72c475423f74f208db20203` | certified |
-| `sinh` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 2097153 | 0 | 0 | `e6ba08879a2b38c1815d01621787c7455422d8e1b1cb0e26b58eb6b692c43d73` | certified |
-| `cosh` | `{[-8, 8], 1/65536} round_nearest` | `{[0, 1048576], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `9a3af51f22ed2b2785f42bd80cdb7eda8be7104c9898538a0729e00d851ce787` | certified |
-| `tanh` | `{[-8, 8], 1/65536} round_nearest` | `{[-64, 64], 1/16} round_ceil, clamp` | 1048577 | 0 | 0 | `7e244ccd048ce4b699aa4fd7c2b57ec776211aaf3f1f4f567f24f3c84536a14c` | certified |
-| `tanh` | `{[-8, 8], 1/65536} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 1048577 | 0 | 0 | `562c14a6cc5f51a727f0b78e5f905c2fd13ba1ed487feaea33447255d48733d2` | certified |
-| `log` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/16} round_ceil, clamp` | 1048576 | 0 | 0 | `6f25a7da3bcba1952eeac70d9d3f870ca9f52fa95871ba1f5c72f3f8193a33d2` | certified |
-| `log` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 1048576 | 0 | 0 | `78d282332137e46647701e584fed529900447c6d33c74ce2bc43957313b72b7b` | certified |
-| `log2` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 1048576 | 0 | 0 | `3a97950401c2d203f399d77de7d5f8b627468341d825c2cbf3155ada777f5b71` | certified |
-| `log10` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/1000} round_nearest, clamp` | 1048576 | 0 | 0 | `ff0ab3fb6734e26856067066ce1636bbb8332639e4bbf93b786083563402d6eb` | certified |
-| `sqrt` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 1048576 | 0 | 0 | `21ecde5056e8c8b771cade2ba6b19fe08cec0b9690ca461702c4d934d1855a1f` | certified |
-| `sqrt` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/1048576} round_half_even, clamp` | 1048576 | 0 | 0 | `35a409a13dc7ab7bba6687c8376df8eed0c48f9da2ee44845a1d3fb5ceba44e6` | certified |
-| `cbrt` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `5bd20249adeaefdbf5c3e9745f9807df5c12d079f0dbd89845a982ea266ea307` | certified |
-| `cbrt` | `{[-4, 4], 1/262144} round_nearest` | `{[-4, 4], 1/4503599627370496} round_nearest, clamp` | 2097153 | 0 | 0 | `ac91d7574d759af9cb5a9a55cf6585fcd69a24aa4699bae649d3d9cc6631e1f4` | certified |
-| `asin` | `{[-1, 1], 1/524288} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `3efbb25efbdfb5e8333788b8c386a33c2f1a03dd61487ec3079cc5b14b15e781` | certified |
-| `asin` | `{[-1, 1], 1/524288} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 1048577 | 0 | 0 | `273fe4011db17adca8e45799b65954bdd73699a5b1303746d052cfabcc6455c5` | certified |
-| `acos` | `{[-1, 1], 1/524288} round_nearest` | `{[-64, 64], 1/16} round_ceil, clamp` | 1048577 | 0 | 0 | `e05947210f7f036bf9236fb8cd13cd6466cc7fb3f28d010ff6a3c70204ce93a7` | certified |
-| `asinh` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 2097153 | 0 | 0 | `601f688ffc62adb440f38141280b708dfb3837d2dce6c71b8b0e6834e863baa6` | certified |
-| `acosh` | `{[1, 1025], 1/1024} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 1048577 | 0 | 0 | `94eb70d23fe07fd22414e56fc8421b64e6f251d33f9285e5eaedd93a6ebfce55` | certified |
-| `atanh` | `{[-1023/1024, 1023/1024], 1/1024} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2047 | 0 | 0 | `44f6924876dfc601e7692a3886a3d4b90fe31f4d6c6d7157d3346efb7bfff205` | certified |
-| `pow_base<10>` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 2097153 | 0 | 0 | `41ab954ec5b6a77fd42a71a58a4457000f486f1877a205c7b1ddb6cdbdeabc0f` | certified |
-| `sin` | `{[-2, 2], 1/16} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 65 | 0 | 0 | `e9d21e588a1e224b43780a7dbbc1395c39ff490712a23a1b0e5edad069953da5` | certified |
-| `exp` | `{[-2, 2], 1/16} round_nearest` | `{[-64, 64], 1/16} round_ceil, clamp` | 65 | 0 | 0 | `9a284ba0d8dc2fdc09d6e8a779219f14cdf18f56d0d87aad754bfe32b741fb9a` | certified |
-| `atan` | `{[-16, 16], 1/32} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 1025 | 0 | 0 | `0e0c101b7514fd3e31bf010c0aafd469de69a4a4caba78536b91226eb2a7dbbc` | certified |
-| `atan2` | `{[-16, 16], 1/32} round_nearest × {[-16, 16], 1/32} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 1050625 | 0 | 0 | `9a65cb2a39267dcef2456d31b5a52c221601845ffd7d4fea2f815672953ee7d4` | certified |
-| `hypot` | `{[-16, 16], 1/32} round_nearest × {[-16, 16], 1/32} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 1050625 | 0 | 0 | `5be81db03628e8cebc03790ebcf0f49cdbd56cffc4b2610ec663cb5b7ee821e7` | certified |
-| `pow` | `{[1/64, 16], 1/64} round_nearest × {[-4, 4], 1/8} round_nearest` | `{[-1048576, 1048576], 1/16} round_nearest` | 66560 | 0 | 0 | `f5933e0978be082791ad8ce1b8a7b4d1d70bad34fc9384f42896ec0866ddaaa8` | certified |
+| `sin` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `bd296534a9ce84c21f33ef960ef7093d1ed696c30362850e079e0f8d11bd16ca` | certified |
+| `sin` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 2097153 | 0 | 0 | `96d062c0fb5dad365fc34f2fbe0267bc8221549dc0c0d073b9c2af55101f5420` | certified |
+| `sin` | `{[-4, 4], 1/262144} round_half_away` | `{[-4, 4], 1/4503599627370496} round_half_away, clamp` | 2097153 | 0 | 0 | `cb6ec5f179ede4f711df64053771bda1346a21921395b0963a64e647d30ff6e8` | certified |
+| `sin` | `{[-4, 4], 1/100000} round_half_away` | `{[-64, 64], 1/1000} round_toward_zero, clamp` | 800001 | 0 | 0 | `ff7aa51509c5dec45e6e196abafc7543fab2d3317b31ba73794e1f1f884cadbe` | certified |
+| `cos` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_ceil, clamp` | 2097153 | 0 | 0 | `6bd771ca03ab8d4e86cd5513b6f32aeddef61ea0649ca3606bc248b918808aa7` | certified |
+| `cos` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/1000} round_half_away, clamp` | 2097153 | 0 | 0 | `8bb00c8dee9f252a9e9921fe0f4529e3e7ad4cf1ba6da6ad4a1ff3f7825a9a3e` | certified |
+| `tan` | `{[-25/16, 25/16], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_half_away, clamp` | 819201 | 0 | 0 | `e3dd67d6795db26f350044bd25690afc57e44c92a55ee59553c82059c4087067` | certified |
+| `tan` | `{[51/32, 75/16], 1/262144} round_half_away` | `{[-1048576, 1048576], 1/16} round_half_away` | 811009 | 0 | 0 | `1e2c11d15c7bd3744feb8e77caaea99e51f54f2e74871ef217e0f05fe38b207f` | certified |
+| `atan` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_half_away, clamp` | 2097153 | 0 | 0 | `840cd9b5e943beba09737e3db75cfd62b384b6bb155f2b76961715b822051084` | certified |
+| `atan` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/1048576} round_half_even, clamp` | 2097153 | 0 | 0 | `1a93f532747ff8114ddacf8f67d2919523826212c9403e969b693212dac88efb` | certified |
+| `exp` | `{[-8, 8], 1/65536} round_half_away` | `{[0, 1048576], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `cc0a7cc76475f2e929eac09dc840c3336ffb79aae48c47f8fbb9b3b70efce45a` | certified |
+| `exp` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 2097153 | 0 | 0 | `482d6798b073f935a84b8774f67e160ee2dccfc1424299ac937853a6029373e7` | certified |
+| `exp2` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `3aa83b6e0b78e43322637630eb2dab260d0009cda72c475423f74f208db20203` | certified |
+| `sinh` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 2097153 | 0 | 0 | `e6ba08879a2b38c1815d01621787c7455422d8e1b1cb0e26b58eb6b692c43d73` | certified |
+| `cosh` | `{[-8, 8], 1/65536} round_half_away` | `{[0, 1048576], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `9a3af51f22ed2b2785f42bd80cdb7eda8be7104c9898538a0729e00d851ce787` | certified |
+| `tanh` | `{[-8, 8], 1/65536} round_half_away` | `{[-64, 64], 1/16} round_ceil, clamp` | 1048577 | 0 | 0 | `7e244ccd048ce4b699aa4fd7c2b57ec776211aaf3f1f4f567f24f3c84536a14c` | certified |
+| `tanh` | `{[-8, 8], 1/65536} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 1048577 | 0 | 0 | `562c14a6cc5f51a727f0b78e5f905c2fd13ba1ed487feaea33447255d48733d2` | certified |
+| `log` | `{[1/1024, 1024], 1/1024} round_half_away` | `{[-64, 64], 1/16} round_ceil, clamp` | 1048576 | 0 | 0 | `6f25a7da3bcba1952eeac70d9d3f870ca9f52fa95871ba1f5c72f3f8193a33d2` | certified |
+| `log` | `{[1/1024, 1024], 1/1024} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 1048576 | 0 | 0 | `78d282332137e46647701e584fed529900447c6d33c74ce2bc43957313b72b7b` | certified |
+| `log2` | `{[1/1024, 1024], 1/1024} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 1048576 | 0 | 0 | `3a97950401c2d203f399d77de7d5f8b627468341d825c2cbf3155ada777f5b71` | certified |
+| `log10` | `{[1/1024, 1024], 1/1024} round_half_away` | `{[-64, 64], 1/1000} round_half_away, clamp` | 1048576 | 0 | 0 | `ff0ab3fb6734e26856067066ce1636bbb8332639e4bbf93b786083563402d6eb` | certified |
+| `sqrt` | `{[1/1024, 1024], 1/1024} round_half_away` | `{[-64, 64], 1/16} round_half_away, clamp` | 1048576 | 0 | 0 | `21ecde5056e8c8b771cade2ba6b19fe08cec0b9690ca461702c4d934d1855a1f` | certified |
+| `sqrt` | `{[1/1024, 1024], 1/1024} round_half_away` | `{[-64, 64], 1/1048576} round_half_even, clamp` | 1048576 | 0 | 0 | `35a409a13dc7ab7bba6687c8376df8eed0c48f9da2ee44845a1d3fb5ceba44e6` | certified |
+| `cbrt` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `5bd20249adeaefdbf5c3e9745f9807df5c12d079f0dbd89845a982ea266ea307` | certified |
+| `cbrt` | `{[-4, 4], 1/262144} round_half_away` | `{[-4, 4], 1/4503599627370496} round_half_away, clamp` | 2097153 | 0 | 0 | `ac91d7574d759af9cb5a9a55cf6585fcd69a24aa4699bae649d3d9cc6631e1f4` | certified |
+| `asin` | `{[-1, 1], 1/524288} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `3efbb25efbdfb5e8333788b8c386a33c2f1a03dd61487ec3079cc5b14b15e781` | certified |
+| `asin` | `{[-1, 1], 1/524288} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 1048577 | 0 | 0 | `273fe4011db17adca8e45799b65954bdd73699a5b1303746d052cfabcc6455c5` | certified |
+| `acos` | `{[-1, 1], 1/524288} round_half_away` | `{[-64, 64], 1/16} round_ceil, clamp` | 1048577 | 0 | 0 | `e05947210f7f036bf9236fb8cd13cd6466cc7fb3f28d010ff6a3c70204ce93a7` | certified |
+| `asinh` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_half_away, clamp` | 2097153 | 0 | 0 | `601f688ffc62adb440f38141280b708dfb3837d2dce6c71b8b0e6834e863baa6` | certified |
+| `acosh` | `{[1, 1025], 1/1024} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 1048577 | 0 | 0 | `94eb70d23fe07fd22414e56fc8421b64e6f251d33f9285e5eaedd93a6ebfce55` | certified |
+| `atanh` | `{[-1023/1024, 1023/1024], 1/1024} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 2047 | 0 | 0 | `44f6924876dfc601e7692a3886a3d4b90fe31f4d6c6d7157d3346efb7bfff205` | certified |
+| `pow_base<10>` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 2097153 | 0 | 0 | `41ab954ec5b6a77fd42a71a58a4457000f486f1877a205c7b1ddb6cdbdeabc0f` | certified |
+| `sin` | `{[-2, 2], 1/16} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 65 | 0 | 0 | `e9d21e588a1e224b43780a7dbbc1395c39ff490712a23a1b0e5edad069953da5` | certified |
+| `exp` | `{[-2, 2], 1/16} round_half_away` | `{[-64, 64], 1/16} round_ceil, clamp` | 65 | 0 | 0 | `9a284ba0d8dc2fdc09d6e8a779219f14cdf18f56d0d87aad754bfe32b741fb9a` | certified |
+| `atan` | `{[-16, 16], 1/32} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 1025 | 0 | 0 | `0e0c101b7514fd3e31bf010c0aafd469de69a4a4caba78536b91226eb2a7dbbc` | certified |
+| `atan2` | `{[-16, 16], 1/32} round_half_away × {[-16, 16], 1/32} round_half_away` | `{[-64, 64], 1/16} round_half_away, clamp` | 1050625 | 0 | 0 | `9a65cb2a39267dcef2456d31b5a52c221601845ffd7d4fea2f815672953ee7d4` | certified |
+| `hypot` | `{[-16, 16], 1/32} round_half_away × {[-16, 16], 1/32} round_half_away` | `{[-64, 64], 1/1048576} round_half_away, clamp` | 1050625 | 0 | 0 | `5be81db03628e8cebc03790ebcf0f49cdbd56cffc4b2610ec663cb5b7ee821e7` | certified |
+| `pow` | `{[1/64, 16], 1/64} round_half_away × {[-4, 4], 1/8} round_half_away` | `{[-1048576, 1048576], 1/16} round_half_away` | 66560 | 0 | 0 | `f5933e0978be082791ad8ce1b8a7b4d1d70bad34fc9384f42896ec0866ddaaa8` | certified |
 
 ## Pairs the examples use
 
@@ -70,63 +70,63 @@ more inputs than exhaustion can compute.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[-3217/1024, 3217/1024], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 102945 | 0 | 0 | `f29b1c193ac480dfa4f8e35fd7ed0f396288a6b3a0622f5bbd4e15d466d8fa57` | certified |
-| `cos` | `{[-3217/1024, 3217/1024], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 102945 | 0 | 0 | `7333edda8bfa627b4a95b4e7416aa459bd47df449fc1b31a5c7e76fb1005ddff` | certified |
-| `asin` | `{[-1, 1], 1/4096} round_nearest` | `{[-3217/2048, 3217/2048], 1/4096} round_nearest` | 8193 | 0 | 0 | `7fdb8f24ad5550b15b354d8c963fc534d7e5e09e7bc10d04d53a4035df3d79f5` | certified |
-| `acos` | `{[-1, 1], 1/4096} round_nearest` | `{[0, 3217/1024], 1/4096} round_nearest` | 8193 | 0 | 0 | `810c89e56e31b187e823abde7186179ad08f700097c20a5686f720de16b86e4f` | certified |
-| `atan2` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[-3217/1024, 3217/1024], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `0ea93bb107289163a5a711080b2cd223197ba1d0cdefe478bf4ac1af66f1191d` | certified |
-| `hypot` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[0, 23171/16384], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `5e3d50b8cd3b9da832a977a3aa1faae71d5e4b55ac1bf466c46344bd276fcd70` | certified |
-| `atan2` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[-3294199/1048576, 3294199/1048576], 1/1048576} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~14 h 43 min) |
-| `hypot` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[0, 46341/32], 1/256} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~19 h 38 min) |
+| `sin` | `{[-3217/1024, 3217/1024], 1/16384} round_half_away` | `{[-1, 1], 1/16384} round_half_away` | 102945 | 0 | 0 | `f29b1c193ac480dfa4f8e35fd7ed0f396288a6b3a0622f5bbd4e15d466d8fa57` | certified |
+| `cos` | `{[-3217/1024, 3217/1024], 1/16384} round_half_away` | `{[-1, 1], 1/16384} round_half_away` | 102945 | 0 | 0 | `7333edda8bfa627b4a95b4e7416aa459bd47df449fc1b31a5c7e76fb1005ddff` | certified |
+| `asin` | `{[-1, 1], 1/4096} round_half_away` | `{[-3217/2048, 3217/2048], 1/4096} round_half_away` | 8193 | 0 | 0 | `7fdb8f24ad5550b15b354d8c963fc534d7e5e09e7bc10d04d53a4035df3d79f5` | certified |
+| `acos` | `{[-1, 1], 1/4096} round_half_away` | `{[0, 3217/1024], 1/4096} round_half_away` | 8193 | 0 | 0 | `810c89e56e31b187e823abde7186179ad08f700097c20a5686f720de16b86e4f` | certified |
+| `atan2` | `{[-1, 1], 1/16384} round_half_away × {[-1, 1], 1/16384} round_half_away` | `{[-3217/1024, 3217/1024], 1/16384} round_half_away` | 1073807361 | 0 | 0 | `0ea93bb107289163a5a711080b2cd223197ba1d0cdefe478bf4ac1af66f1191d` | certified |
+| `hypot` | `{[-1, 1], 1/16384} round_half_away × {[-1, 1], 1/16384} round_half_away` | `{[0, 23171/16384], 1/16384} round_half_away` | 1073807361 | 0 | 0 | `5e3d50b8cd3b9da832a977a3aa1faae71d5e4b55ac1bf466c46344bd276fcd70` | certified |
+| `atan2` | `{[-1024, 1024], 1/256} round_half_away × {[-1024, 1024], 1/256} round_half_away` | `{[-3294199/1048576, 3294199/1048576], 1/1048576} round_half_away` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~14 h 43 min) |
+| `hypot` | `{[-1024, 1024], 1/256} round_half_away × {[-1024, 1024], 1/256} round_half_away` | `{[0, 46341/32], 1/256} round_half_away` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~19 h 38 min) |
 
 ### audio_math.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `exp` | `{[-4, 4], 1/1024} round_nearest` | `{[75/4096, 894537/16384], 1/16384} round_nearest` | 8193 | 0 | 0 | `8be94bf2017946d52914e3b2cf11dc8e8802fad740cb1fa0211b2c8cb13cd0a8` | certified |
-| `exp2` | `{[0, 4], 1/2} round_nearest` | `{[1, 16], 1/16384} round_nearest` | 9 | 0 | 0 | `02c1498e58196a42851514085cb2763c43082b6e4c6646ce41fe30a7993a8c63` | certified |
-| `exp2` | `{[0, 4], 1/1024} round_nearest` | `{[1, 16], 1/16384} round_nearest` | 4097 | 0 | 0 | `5433cd272cdfb76e8afc5321f3d2c79f49f5bd7facbe37c27fb0a228728c2fe9` | certified |
-| `tanh` | `{[-4, 4], 1/2048} round_nearest` | `{[-2047/2048, 2047/2048], 1/2048} round_nearest` | 16385 | 0 | 0 | `bf8bcb44db70b7fa12ce3703eae15034fbf86962549086756ca910afcf6cd3e6` | certified |
-| `sinh` | `{[-4, 4], 1/2048} round_nearest` | `{[-27945/1024, 27945/1024], 1/2048} round_nearest` | 16385 | 0 | 0 | `8a8d00fecb36b076e66c7c1af335a5c1fb31fffb4410a9fc06c41a102c65051e` | certified |
-| `cosh` | `{[-4, 4], 1/2048} round_nearest` | `{[1, 6991/256], 1/2048} round_nearest` | 16385 | 0 | 0 | `8268cd63f662dff5dd54ce59da9681cf8b1fdfd0223d11073f8581a8ebe39e40` | certified |
-| `log2` | `{[1/16, 16], 1/1024} round_nearest` | `{[-4, 4], 1/1024} round_nearest` | 16321 | 0 | 0 | `ca1c9b44a9255ec6196091fe34bce03bb732e9d4765274eb7bec3d5d0a53f93c` | certified |
-| `cbrt` | `{[0, 64], 1/256} round_nearest` | `{[0, 4], 1/256} round_nearest` | 16385 | 0 | 0 | `4764dd2fb6e6a553c61cb00195d5715f2a23b22e03ac2cdb7f1862a87d79f759` | certified |
+| `exp` | `{[-4, 4], 1/1024} round_half_away` | `{[75/4096, 894537/16384], 1/16384} round_half_away` | 8193 | 0 | 0 | `8be94bf2017946d52914e3b2cf11dc8e8802fad740cb1fa0211b2c8cb13cd0a8` | certified |
+| `exp2` | `{[0, 4], 1/2} round_half_away` | `{[1, 16], 1/16384} round_half_away` | 9 | 0 | 0 | `02c1498e58196a42851514085cb2763c43082b6e4c6646ce41fe30a7993a8c63` | certified |
+| `exp2` | `{[0, 4], 1/1024} round_half_away` | `{[1, 16], 1/16384} round_half_away` | 4097 | 0 | 0 | `5433cd272cdfb76e8afc5321f3d2c79f49f5bd7facbe37c27fb0a228728c2fe9` | certified |
+| `tanh` | `{[-4, 4], 1/2048} round_half_away` | `{[-2047/2048, 2047/2048], 1/2048} round_half_away` | 16385 | 0 | 0 | `bf8bcb44db70b7fa12ce3703eae15034fbf86962549086756ca910afcf6cd3e6` | certified |
+| `sinh` | `{[-4, 4], 1/2048} round_half_away` | `{[-27945/1024, 27945/1024], 1/2048} round_half_away` | 16385 | 0 | 0 | `8a8d00fecb36b076e66c7c1af335a5c1fb31fffb4410a9fc06c41a102c65051e` | certified |
+| `cosh` | `{[-4, 4], 1/2048} round_half_away` | `{[1, 6991/256], 1/2048} round_half_away` | 16385 | 0 | 0 | `8268cd63f662dff5dd54ce59da9681cf8b1fdfd0223d11073f8581a8ebe39e40` | certified |
+| `log2` | `{[1/16, 16], 1/1024} round_half_away` | `{[-4, 4], 1/1024} round_half_away` | 16321 | 0 | 0 | `ca1c9b44a9255ec6196091fe34bce03bb732e9d4765274eb7bec3d5d0a53f93c` | certified |
+| `cbrt` | `{[0, 64], 1/256} round_half_away` | `{[0, 4], 1/256} round_half_away` | 16385 | 0 | 0 | `4764dd2fb6e6a553c61cb00195d5715f2a23b22e03ac2cdb7f1862a87d79f759` | certified |
 
 ### units.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[0, 7], 1/1000000} round_nearest` | `{[-1, 1], 1/1000000} round_nearest` | 7000001 | 0 | 0 | `d8012699e473073ce5ca3c5394878d6d80ee5d74e6fbca913a0d24a7f7eda52c` | certified |
-| `cos` | `{[0, 7], 1/1000000} round_nearest` | `{[-1, 1], 1/1000000} round_nearest` | 7000001 | 0 | 0 | `65e42dbe80f225da30f54ef68af9e1fca665662ec2b05966d82c8d20f84984c3` | certified |
+| `sin` | `{[0, 7], 1/1000000} round_half_away` | `{[-1, 1], 1/1000000} round_half_away` | 7000001 | 0 | 0 | `d8012699e473073ce5ca3c5394878d6d80ee5d74e6fbca913a0d24a7f7eda52c` | certified |
+| `cos` | `{[0, 7], 1/1000000} round_half_away` | `{[-1, 1], 1/1000000} round_half_away` | 7000001 | 0 | 0 | `65e42dbe80f225da30f54ef68af9e1fca665662ec2b05966d82c8d20f84984c3` | certified |
 
 ### decibels.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `log10` | `{[1/256, 4], 1/65536} round_nearest` | `{[-97/40, 5/8], 1/40} round_nearest` | 261889 | 0 | 0 | `cab0a8a7196c52b2fe919a6a61710bf86fa341bcaadb9403953dde31d9168621` | certified |
-| `pow_base<10>` | `{[-6/5, 3/5], 1/40} round_nearest` | `{[1/256, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
+| `log10` | `{[1/256, 4], 1/65536} round_half_away` | `{[-97/40, 5/8], 1/40} round_half_away` | 261889 | 0 | 0 | `cab0a8a7196c52b2fe919a6a61710bf86fa341bcaadb9403953dde31d9168621` | certified |
+| `pow_base<10>` | `{[-6/5, 3/5], 1/40} round_half_away` | `{[1/256, 4], 1/65536} round_half_away` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
 
 ### audio_mixer.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `pow_base<10>` | `{[-6/5, 3/5], 1/40} round_nearest` | `{[0, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
+| `pow_base<10>` | `{[-6/5, 3/5], 1/40} round_half_away` | `{[0, 4], 1/65536} round_half_away` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
 
 ### moon_rocket.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sqrt` | `{[977000000/1993002209, 979500000/1993002209], 2500/1993002209} checked` | `{[140030741/200000000, 701048929/1000000000], 1/1000000000} round_nearest` | 1001 | 0 | 0 | `4162c4b13289d8784b8a2c7e60949585205e0e09bf90d7e740250f55b7a55d0f` | certified |
+| `sqrt` | `{[977000000/1993002209, 979500000/1993002209], 2500/1993002209} checked` | `{[140030741/200000000, 701048929/1000000000], 1/1000000000} round_half_away` | 1001 | 0 | 0 | `4162c4b13289d8784b8a2c7e60949585205e0e09bf90d7e740250f55b7a55d0f` | certified |
 
 ### huge_angles.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~7.9e+04 years) |
-| `cos` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~8.2e+04 years) |
+| `sin` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_half_away` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~7.9e+04 years) |
+| `cos` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_half_away` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~8.2e+04 years) |
 
 ### solar_system.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `hypot` | `{[-10000000000000, 10000000000000], 1/1000000000} checked × {[-10000000000000, 10000000000000], 1/1000000000} checked` | `{[0, 14142135623730951/1000], 1/1000} round_nearest` | > 1.8e+19 | – | – | – | skipped: > 1.8e+19 inputs, over --max-slots (~1e+06 years) |
+| `hypot` | `{[-10000000000000, 10000000000000], 1/1000000000} checked × {[-10000000000000, 10000000000000], 1/1000000000} checked` | `{[0, 14142135623730951/1000], 1/1000} round_half_away` | > 1.8e+19 | – | – | – | skipped: > 1.8e+19 inputs, over --max-slots (~1e+06 years) |

@@ -83,7 +83,7 @@ static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
 auto total = trip + just<800> * si::metre;                     // 13300 m: the sum runs in metres
 auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
 auto kmh   = speed.in(km / si::hour);                          // 39.9 km/h, exactly
-inside<{0, 1000}, round_nearest | clamp> laps = trip / (just<400> * si::metre); // 31: km / m is a number
+inside<{0, 1000}, round_half_away | clamp> laps = trip / (just<400> * si::metre); // 31: km / m is a number
 static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
 ```
 
@@ -246,7 +246,7 @@ construction from a number and its unit apply `Rep`'s policy, and
 actions. `q.policy<F>()` and `q.policy(ec)` store under `Rep`'s policy plus
 `F`. `Q::try_make(v, u)`, the flag constructors `Q{q, clamp}` and
 `Q{v, u, clamp}` (a flag or `make_policy<F>(ec)` for one store, `q` a quantity
-converted exactly), `checked_cast<Q>(q)`, `value_cast` and `try_value_cast`
+converted exactly), `exact_cast<Q>(q)`, `value_cast` and `try_value_cast`
 convert into a quantity type, and `conversion_overflows<Q>(v, u)` and its
 siblings answer for a number `v` in unit `u`. `min`, `max` and `midpoint` run in the common unit,
 as `+` does, and the free arithmetic takes a per-call policy as in the number
@@ -312,7 +312,7 @@ namespace std::units {
     template<policy_flag F = checked, class V, class U> static constexpr auto try_make(const V&, U);
     template<class Q2, class Pol> constexpr quantity(const Q2& q, Pol p);   // q converted exactly
     template<class V, class U, class Pol> constexpr quantity(V&& number, U unit, Pol p);
-    template<policy_flag F = checked> constexpr auto policy();       // also policy(errc&)
+    template<policy_flag F = checked> constexpr auto policy();       // also policy(error&)
     template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
     // ++, --, compound assignment: a store by Rep's policy
   };
@@ -324,13 +324,13 @@ namespace std::units {
   template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
   template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
   // try_value_cast<...>(q): the same through Rep2::try_make, an expected
-  template<class Q, class X> constexpr Q checked_cast(const X& x);  // x in Q's unit, or a quantity
+  template<class Q, class X> constexpr Q exact_cast(const X& x);  // x in Q's unit, or a quantity
   template<class Q, class N> constexpr bool conversion_overflows(N v) noexcept; // v in Q's unit; also
                                                                 // conversion_rounds, conversion_loses
   template<reference A, class VA, reference B, class VB, class... Args>
     constexpr auto divmod(const quantity<A, VA>&, const quantity<B, VB>&, Args&&...); // in the common unit
   // add, sub, mod (common unit), mul, div (units multiply; or a quantity and a number):
-  // the number paper's free arithmetic, Args a flag, a policy or an errc&
+  // the number paper's free arithmetic, Args a flag, a policy or an error&
 
   // points
   struct point_origin {                                       // absolute, or at an exact offset from one
@@ -389,7 +389,7 @@ below is a candidate for a later paper or revision:
    number, then the unit symbol (`unit_symbol`: "kg m²/s²", "km/h"), in UTF-8 or
    ASCII; `parse<Q>` reads a number in `Q`'s unit.
 2. **Algorithms on quantities**: `sum<Q>`, `add_all`, `mul_all`,
-   `mul<Out>` / `div<Out>`, `min`, `max`, `lerp`, `dot` and `cross`,
+   `mul<Out>` / `div<Out>`, `min`, `max` and `lerp`,
    as for `inside`.
 3. **The catalog**: about 80 ISQ kinds, the SI units and prefixes (quecto …
    quetta, exact past 64 bits), the international units, and `percent` and

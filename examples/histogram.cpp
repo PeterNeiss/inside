@@ -22,12 +22,14 @@
 #include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
+
+using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 constexpr auto ms = si::milli(si::second);
 
 // Latency samples in [0, 100] ms with 0.1 ms resolution.
-using latency_t = quantity<ms, inside<{{0, 100}, per<10>}, round_nearest>>;
+using latency_t = quantity<ms, inside<{{0, 100}, per<10>}, round_half_away>>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
 using bin_count_t = clamp_counter<9>; // saturating per-bin count (caps at bar height 9)

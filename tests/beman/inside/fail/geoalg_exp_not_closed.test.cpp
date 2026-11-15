@@ -18,7 +18,7 @@ int main() {
     constexpr auto e2 = unit_c<e2_def>;
     constexpr auto e3 = unit_c<e3_def>;
     constexpr auto e4 = unit_c<e4_def>;
-    using I           = inside<{{-1, 1}, per<64>}, round_nearest>;
+    using I           = inside<{{-1, 1}, per<64>}, round_half_away>;
     using dom         = multivector<quantity<e1 * e2, I>, quantity<e3 * e4, I>>;
     using cod         = multivector<I, quantity<e1 * e2, I>, quantity<e3 * e4, I>, quantity<e1 * e2 * e3 * e4, I>>;
     const dom x{I{1} * (e1 * e2) + I{1} * (e3 * e4)};

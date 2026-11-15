@@ -39,7 +39,7 @@ using slot_id_t = inside<{0, 15}>;
 using packet_offset_t = quantity<pkt, inside<{0, 63}>>;
 
 // Timestamp in 1/8 ms — fixed-point precision tied to the audio frame.
-using timestamp_t = quantity<ms, inside<{{0, 8000}, per<8>}, round_nearest>>;
+using timestamp_t = quantity<ms, inside<{{0, 8000}, per<8>}, round_half_away>>;
 
 int main() {
     constexpr std::size_t        window = values<slot_id_t>.size(); // 16
@@ -63,7 +63,7 @@ int main() {
         const auto idx = slot_id_t{seq, wrap};
 
         bool stored = true;
-        slots[idx].on_error([&](auto&, errc, auto) {
+        slots[idx].on_error([&](auto&, error, auto) {
             std::cout << "[dropped: offset " << offset << " too far past base " << base << "]\n";
             ++dropped;
             stored = false;

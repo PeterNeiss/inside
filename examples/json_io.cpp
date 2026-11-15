@@ -35,11 +35,11 @@ inline constexpr named_unit     item_def{"item", spec_c<items_def>};
 inline constexpr auto           item = unit_c<item_def>;
 } // namespace
 
-using order_id   = inside<{0, 9'000'000'000'000'000'000}>;                                  // 64-bit IDs
-using price_t    = quantity<USD / item, inside<{{0, 1'000'000}, per<100>}, round_nearest>>; // to the cent
-using quantity_t = quantity<item, inside<{1, 1000}>>;                                       // whole items
-using ratio_t    = inside<{{0, 1}, per<100>}>;                                              // a discount, 1 %
-using total_t    = quantity<USD, inside<{{0, 1'000'000'000}, per<100>}, round_nearest>>;    // rounded once
+using order_id   = inside<{0, 9'000'000'000'000'000'000}>;                                    // 64-bit IDs
+using price_t    = quantity<USD / item, inside<{{0, 1'000'000}, per<100>}, round_half_away>>; // to the cent
+using quantity_t = quantity<item, inside<{1, 1000}>>;                                         // whole items
+using ratio_t    = inside<{{0, 1}, per<100>}>;                                                // a discount, 1 %
+using total_t    = quantity<USD, inside<{{0, 1'000'000'000}, per<100>}, round_half_away>>;    // rounded once
 
 // A flat JSON object of numbers: key → the number's text. Minimal on purpose
 // (no nesting, strings or escapes) — just enough to feed parse.
@@ -65,12 +65,12 @@ struct order {
 };
 
 // Every field parsed; the errors, by key, if any failed.
-std::expected<order, std::vector<std::pair<std::string, errc>>> read_order(std::string_view json) {
-    const auto                                fields = scan(json);
-    std::vector<std::pair<std::string, errc>> errors;
-    auto                                      get = [&]<typename B>(const char* key, B& out) {
+std::expected<order, std::vector<std::pair<std::string, error>>> read_order(std::string_view json) {
+    const auto                                 fields = scan(json);
+    std::vector<std::pair<std::string, error>> errors;
+    auto                                       get = [&]<typename B>(const char* key, B& out) {
         const auto it = fields.find(key);
-        const auto v  = it == fields.end() ? std::expected<B, errc>{std::unexpected(errc::invalid_format)}
+        const auto v  = it == fields.end() ? std::expected<B, error>{std::unexpected(error::invalid_format)}
                                            : parse_exact<B>(it->second);
         if (v)
             out = *v;
@@ -112,6 +112,6 @@ int main() {
     const auto                 b   = read_order(bad);
     std::cout << "\nread   " << bad << "\n";
     for (const auto& [key, e] : b.error())
-        std::cout << "  " << key << ": " << errc_message(e) << "\n";
+        std::cout << "  " << key << ": " << error_message(e) << "\n";
     return !b && b.error().size() == 3 ? 0 : 1; // id malformed; price off the cent grid; quantity below 1
 }

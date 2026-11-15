@@ -74,7 +74,7 @@ rational oracle_round(rational v, const grid& g, round_mode m) {
 template <policy_flag F>
 constexpr round_mode mode_of = F == round_floor       ? round_mode::floor
                                : F == round_ceil      ? round_mode::ceil
-                               : F == round_nearest   ? round_mode::nearest
+                               : F == round_half_away ? round_mode::nearest
                                : F == round_half_even ? round_mode::half_even
                                                       : round_mode::trunc;
 
@@ -180,7 +180,7 @@ void check_store_rational() {
         SCOPED_TRACE(::testing::Message() << "v=" << to_string(v) << " grid=" << to_string(G));
         const rational want = oracle_round(v, G, mode_of<F>);
         if (!includes(G.Interval, want)) {
-            EXPECT_NE(test::store_error<B>(v), errc{});
+            EXPECT_NE(test::store_error<B>(v), error{});
             continue;
         }
         EXPECT_EQ(static_cast<rational>(test::store<B>(v)), want);
@@ -195,7 +195,7 @@ void check_store_rational() {
 
 template <grid G>
 void check_store_all_modes() {
-    check_store_rational<G, round_nearest>();
+    check_store_rational<G, round_half_away>();
     check_store_rational<G, round_floor>();
     check_store_rational<G, round_ceil>();
     check_store_rational<G, round_half_even>();
@@ -212,29 +212,29 @@ TEST(UnanchoredGridTest, store_rounds_in_value_space) {
 }
 
 TEST(UnanchoredGridTest, store_rounds_dyadic_offsets) {
-    check_store_rational<quarter_off, round_nearest>();
+    check_store_rational<quarter_off, round_half_away>();
     check_store_rational<quarter_off, round_floor>();
     check_store_rational<quarter_off, round_ceil>();
     check_store_rational<quarter_off, round_half_even>();
     check_store_rational<quarter_off, round_toward_zero>();
-    check_store_rational<sym_off, round_nearest>();
+    check_store_rational<sym_off, round_half_away>();
     check_store_rational<sym_off, round_toward_zero>();
     check_store_rational<half_off, round_half_even>();
 }
 
 TEST(UnanchoredGridTest, store_rounds_with_exact_storage) {
-    check_store_rational<quarter_off, round_nearest>();
+    check_store_rational<quarter_off, round_half_away>();
     check_store_rational<sym_off, round_toward_zero>();
     check_store_rational<third_off, round_half_even>();
 }
 
 TEST(UnanchoredGridTest, off_lattice_store_is_an_error_without_rounding) {
     using half = inside<half_off>;
-    EXPECT_EQ(test::store_error<half>(test::at_run_time(1)), errc::rounding_error);
-    EXPECT_EQ(test::store_error<half>(test::at_run_time(rational{1})), errc::rounding_error);
+    EXPECT_EQ(test::store_error<half>(test::at_run_time(1)), error::rounding_error);
+    EXPECT_EQ(test::store_error<half>(test::at_run_time(rational{1})), error::rounding_error);
     EXPECT_EQ(static_cast<rational>(half{1.5}), 1.5_r);
     EXPECT_FALSE(half::try_make(2).has_value());
-    EXPECT_EQ(half::try_make(2).error(), errc::rounding_error);
+    EXPECT_EQ(half::try_make(2).error(), error::rounding_error);
 }
 
 //---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ void check_convert() {
 
 template <grid To, grid From>
 void check_convert_all_modes() {
-    check_convert<To, round_nearest, From>();
+    check_convert<To, round_half_away, From>();
     check_convert<To, round_floor, From>();
     check_convert<To, round_ceil, From>();
     check_convert<To, round_half_even, From>();
@@ -289,7 +289,7 @@ TEST(UnanchoredGridTest, assignability) {
     static_assert(!inside_assignable<half, fine>); // finer
     static_assert(inside_assignable<fine, half>);  // half's lattice lies on fine's
     static_assert(!inside_assignable<ints, half>);
-    static_assert(inside_assignable<half, ints, round_nearest>);
+    static_assert(inside_assignable<half, ints, round_half_away>);
     EXPECT_EQ(static_cast<rational>(test::store<fine>(half{2.5})), 2.5_r);
     EXPECT_EQ(static_cast<rational>(half{on_half{3.5}}), 3.5_r);
 }
@@ -358,25 +358,25 @@ TEST(UnanchoredGridTest, compound_assignment) {
             SCOPED_TRACE(::testing::Message() << to_string(x) << " , " << to_string(y));
             const auto s = static_cast<rational>(exact{x} + exact{y});
             half       a = test::store<half>(x);
-            errc       ea{}; // (the sum may leave half's range: a reported store)
+            error      ea{}; // (the sum may leave half's range: a reported store)
             a.policy(ea) += test::store<ints>(y);
             if (includes(half_off.Interval, s)) {
-                EXPECT_EQ(ea, errc{});
+                EXPECT_EQ(ea, error{});
                 EXPECT_EQ(static_cast<rational>(a), s);
             } else
-                EXPECT_EQ(ea, errc::overflow);
+                EXPECT_EQ(ea, error::overflow);
             half       b = test::store<half>(x);
             const auto d = static_cast<rational>(exact{x} - exact{y});
-            errc       eb{};
+            error      eb{};
             b.policy(eb) -= test::store<ints>(y);
             if (includes(half_off.Interval, d)) {
-                EXPECT_EQ(eb, errc{});
+                EXPECT_EQ(eb, error{});
                 EXPECT_EQ(static_cast<rational>(b), d);
             } else
-                EXPECT_EQ(eb, errc::overflow);
+                EXPECT_EQ(eb, error::overflow);
         }
     // a sum on another lattice rounds back by the policy
-    errc                          ec{};
+    error                         ec{};
     inside<half_off, round_floor> h{2.5};
     h.policy(ec) += inside<half_off>{0.5};
     EXPECT_EQ(static_cast<rational>(h), 2.5_r); // 3 floors to 2.5
@@ -389,15 +389,15 @@ TEST(UnanchoredGridTest, compound_assignment) {
     i.policy(ec) -= 1_ins;
     i.policy(ec) -= 1_ins;
     EXPECT_EQ(static_cast<rational>(i), 3.5_r);
-    EXPECT_EQ(ec, errc{});
+    EXPECT_EQ(ec, error{});
 }
 
 //---------------------------------------------------------------------------
 // clamp and wrap
 //---------------------------------------------------------------------------
 TEST(UnanchoredGridTest, clamp_and_wrap) {
-    using clamped = inside<half_off, clamp | round_nearest>;
-    using wrapped = inside<half_off, wrap | round_nearest>;
+    using clamped = inside<half_off, clamp | round_half_away>;
+    using wrapped = inside<half_off, wrap | round_half_away>;
     EXPECT_EQ(static_cast<rational>(clamped{-3}), 0.5_r);
     EXPECT_EQ(static_cast<rational>(clamped{100}), 10.5_r);
     EXPECT_EQ(static_cast<rational>(clamped{0.6}), 0.5_r);
@@ -442,7 +442,7 @@ TEST(UnanchoredGridTest, text) {
     EXPECT_EQ(to_string(inside<half_off>{2.5}), "2.5");
     EXPECT_EQ(to_string(inside<third_off>{rational{4, 3}}), "4/3");
     EXPECT_FALSE(parse<inside<half_off>>("2").has_value());
-    EXPECT_EQ(static_cast<rational>(*parse<inside<half_off>, round_nearest>("2.1")), 2.5_r);
+    EXPECT_EQ(static_cast<rational>(*parse<inside<half_off>, round_half_away>("2.1")), 2.5_r);
 }
 
 //---------------------------------------------------------------------------
@@ -472,7 +472,7 @@ TEST(UnanchoredGridTest, range_limits_random) {
     static_assert(!std::is_convertible_v<inside<half_off>, std::int64_t>); // no silent truncation
     static_assert(!std::is_convertible_v<inside<{-1, 10}>, std::int64_t>);
     // as<std::int64_t>() rounds by the policy's mode
-    EXPECT_EQ((inside<half_off, round_nearest>{2.5}.as<std::int64_t>()), 3);
+    EXPECT_EQ((inside<half_off, round_half_away>{2.5}.as<std::int64_t>()), 3);
     EXPECT_EQ((inside<half_off, round_floor>{2.5}.as<std::int64_t>()), 2);
     EXPECT_EQ((inside<half_off, round_toward_zero>{2.5}.as<std::int64_t>()), 2);
     EXPECT_EQ((inside<quarter_off, round_toward_zero>{-1.75}.as<std::int64_t>()), -1);
@@ -540,9 +540,9 @@ void expect_rounded(rational got, double value, round_mode m) {
 
 template <policy_flag F>
 void check_math_mode() {
-    using in_t             = inside<{{-2.75_r, 2.25_r}, 0.5_r}, round_nearest>;
-    using tan_t            = inside<{{-1.25_r, 1.25_r}, 0.5_r}, round_nearest>; // in_t's values on tan's branch
-    using pos_t            = inside<{{0.3_r, 9.9_r}, 0.4_r}, round_nearest>;    // 0.3, 0.7, …
+    using in_t             = inside<{{-2.75_r, 2.25_r}, 0.5_r}, round_half_away>;
+    using tan_t            = inside<{{-1.25_r, 1.25_r}, 0.5_r}, round_half_away>; // in_t's values on tan's branch
+    using pos_t            = inside<{{0.3_r, 9.9_r}, 0.4_r}, round_half_away>;    // 0.3, 0.7, …
     using out_t            = inside<{{-20.0625_r, 20.0625_r}, rational{1, 8}}, F>;
     using dec_t            = inside<{{-4.05_r, 4.05_r}, 0.1_r}, F>;
     constexpr round_mode m = mode_of<F>;
@@ -566,7 +566,7 @@ void check_math_mode() {
             if (const auto p = test::reported([&] { return math::pow<out_t>(y, x); }))
                 expect_rounded<out_t>(static_cast<rational>(*p), std::pow(e, d), m);
             else { // past Out: an expected holding overflow
-                EXPECT_EQ(p.error(), errc::overflow);
+                EXPECT_EQ(p.error(), error::overflow);
                 EXPECT_GT(std::pow(e, d), 20.0);
             }
         }
@@ -581,7 +581,7 @@ void check_math_mode() {
 } // namespace
 
 TEST(UnanchoredGridTest, math_rounds_correctly) {
-    check_math_mode<round_nearest>();
+    check_math_mode<round_half_away>();
     check_math_mode<round_floor>();
     check_math_mode<round_ceil>();
     check_math_mode<round_half_even>();
@@ -589,15 +589,15 @@ TEST(UnanchoredGridTest, math_rounds_correctly) {
 }
 
 TEST(UnanchoredGridTest, math) {
-    using in_t  = inside<{{-2.75_r, 2.25_r}, 0.5_r}, round_nearest>;          // −2.75 … 2.25
-    using ref_t = inside<{{-2.75_r, 2.25_r}, rational{1, 4}}, round_nearest>; // anchored, same values
+    using in_t  = inside<{{-2.75_r, 2.25_r}, 0.5_r}, round_half_away>;          // −2.75 … 2.25
+    using ref_t = inside<{{-2.75_r, 2.25_r}, rational{1, 4}}, round_half_away>; // anchored, same values
     for (const rational x : slots<grid_of<in_t>>()) {
         SCOPED_TRACE(to_string(x));
         const in_t  a = test::store<in_t>(x);
         const ref_t r = test::store<ref_t>(x);
         // an unanchored input gives the same result as the same value anchored
-        using fixed = inside<{{0, 17}, rational{1, 64}}, round_nearest>;
-        using unit  = inside<{{-1, 1}, rational{1, 1024}}, round_nearest>;
+        using fixed = inside<{{0, 17}, rational{1, 64}}, round_half_away>;
+        using unit  = inside<{{-1, 1}, rational{1, 1024}}, round_half_away>;
         EXPECT_EQ((math::exp<fixed>(a)), (math::exp<fixed>(r)));
         EXPECT_EQ(math::sin<unit>(a), math::sin<unit>(r));
         EXPECT_EQ(math::floor(a), math::floor(r));
@@ -608,9 +608,9 @@ TEST(UnanchoredGridTest, math) {
         EXPECT_EQ(static_cast<rational>(math::copysign(a, inside<{-1, 1}>{-1})), -abs(x));
     }
     // abs of an offset lattice: |x| for x on ±0.25 + k/2
-    static_assert(grid_of<decltype(math::abs(inside<sym_off, round_nearest>{}))>.Notch == 0.5_r);
+    static_assert(grid_of<decltype(math::abs(inside<sym_off, round_half_away>{}))>.Notch == 0.5_r);
     // sqrt of an exact square lands exactly on the offset lattice
-    using sq_t     = inside<{{0.5_r, 4.5_r}, 1}, round_nearest>;
+    using sq_t     = inside<{{0.5_r, 4.5_r}, 1}, round_half_away>;
     using sq_floor = inside<{{0.5_r, 4.5_r}, 1}, round_floor>;
     using quarters = inside<{{0, 64}, rational{1, 4}}>;
     using whole    = inside<{0, 64}>;
@@ -620,8 +620,8 @@ TEST(UnanchoredGridTest, math) {
     EXPECT_EQ(static_cast<rational>(*math::sqrt<sq_t>(whole{4})), 2.5_r);
     EXPECT_EQ(static_cast<rational>(*math::sqrt<sq_floor>(whole{4})), 1.5_r);
     // out of range through the policy: a checked output reports
-    using small = inside<{{0.5_r, 2.5_r}, 1}, round_nearest>;
-    EXPECT_EQ(math::exp<small>(whole{3}).error(), errc::overflow);
-    using clamped = inside<{{0.5_r, 2.5_r}, 1}, round_nearest | clamp>;
+    using small = inside<{{0.5_r, 2.5_r}, 1}, round_half_away>;
+    EXPECT_EQ(math::exp<small>(whole{3}).error(), error::overflow);
+    using clamped = inside<{{0.5_r, 2.5_r}, 1}, round_half_away | clamp>;
     EXPECT_EQ(static_cast<rational>(math::exp<clamped>(whole{3})), 2.5_r);
 }

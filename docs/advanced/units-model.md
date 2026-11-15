@@ -101,7 +101,7 @@ tight hull of the operands. (mp-units forms the sum from the unscaled
 numbers; here a valid mixed-unit sum cannot overflow.)
 
 `*` and `/` multiply the units and specs, and inside's `*` and `/` the
-numbers. A divisor whose grid holds 0 gives `std::expected<quantity, errc>`.
+numbers. A divisor whose grid holds 0 gives `std::expected<quantity, error>`.
 `pow<N>(q)` is a repeated exact product.
 
 ## Quantity kinds
@@ -242,20 +242,20 @@ the numbers, so it still rounds once and checks once.
 
 | Spelling | Does |
 |---|---|
-| `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry (a count of periods), the overshoot (a quantity in Q's unit) or the errc |
+| `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry (a count of periods), the overshoot (a quantity in Q's unit) or the error |
 | `q.policy<F>() = d`, `q.policy(ec) += d` | a store under the number's policy plus `F`, or setting `ec` instead of raising; `=`, `+=` and `-=` take quantities, `*=` and `/=` numbers |
 | `Q{q, clamp \| Round}`, `Q{q, wrap}` | a quantity, converted to Q's unit exactly first |
 | `Q{v, u, clamp}` | a number `v` in unit `u`, as `Q{v, u}` takes it |
-| `checked_cast<Q>(q)` | a quantity, stored exactly or reported |
+| `exact_cast<Q>(q)` | a quantity, stored exactly or reported |
 | `Q::try_make<F>(v, u)` | the number's `try_make` of `v` in unit `u` |
 | `min(a, b)`, `max(a, b)`, `midpoint(a, b)` | in the common unit, as `+`; `midpoint` is exact |
 | `q.as<T>()`, `q.to<T>()` | a dimensionless quantity's number as a built-in |
 | `++q`, `q--` | one notch of the number up or down, under its policy |
 | `mul<C>(a, b)`, `div<C>(a, b)` (a flag may follow: `mul<C>(a, b, round_floor)`) | a·b or a/b rounded once into `C`: a quantity type, or its number (the unit is the product's; a plain inside for a dimensionless result); the factor between units folds into the exact product |
 | `add_all(…)`, `mul_all(…)`, `sum<Q>(range)` | the folds; `sum<Q>` takes quantities in any unit that converts to Q's |
-| `add(a, b, args…)`, `sub`, `mod`, `mul`, `div` | inside's free arithmetic with a per-call flag or `errc&`: sums in the common unit, products and quotients with the units multiplied |
+| `add(a, b, args…)`, `sub`, `mod`, `mul`, `div` | inside's free arithmetic with a per-call flag or `error&`: sums in the common unit, products and quotients with the units multiplied |
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
-| `dot`, `cross`, `lerp` | on quantity components: `dot` of two px vectors is px²; `lerp`'s t is a number |
+| `lerp` | on quantities in their common unit; `lerp`'s t is a number |
 | `units::parse<Q, F>(text)`, `units::parse_exact<Q>(text)` | the number, read in Q's unit |
 | `conversion_overflows<Q>(v, u)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number `v` in unit `u` against Q's grid |
 | `values<Q>`, `cursor<Q, Step>` | the number's grid, as quantities; `Step` is a number in Q's unit |

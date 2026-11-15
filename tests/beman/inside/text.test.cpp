@@ -28,6 +28,7 @@
 // format
 namespace format_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // rational to_string: decimal forms
@@ -46,10 +47,10 @@ TEST(FormatTest, rational_to_string_decimal_forms) {
 
 // rational to_string: no finite decimal prints N/D, the form parse reads
 TEST(FormatTest, errc_as_text) {
-    EXPECT_EQ(to_string(errc::division_by_zero), "division by zero");
+    EXPECT_EQ(to_string(error::division_by_zero), "division by zero");
     std::ostringstream os;
-    os << errc::overflow;
-    EXPECT_EQ(os.str(), errc_message(errc::overflow));
+    os << error::overflow;
+    EXPECT_EQ(os.str(), error_message(error::overflow));
 }
 
 TEST(FormatTest, rational_to_string_fraction_forms) {
@@ -78,7 +79,7 @@ TEST(FormatTest, rational_to_string_long_decimals) {
 
 // −0 prints as 0
 TEST(FormatTest, negative_zero_prints_as_zero) {
-    using Q = inside<{{-4, 4}, per<1024>}, round_nearest>;
+    using Q = inside<{{-4, 4}, per<1024>}, round_half_away>;
     EXPECT_EQ(beman::inside::to_string(-Q{0}), "0");
 }
 
@@ -88,7 +89,7 @@ TEST(FormatTest, to_string_round_trips_through_parse) {
     for (const third v : {third{rational{7, 3}}, third{rational{-1, 3}}, third{rational{29, 3}}})
         ASSERT_EQ(parse<third>(beman::inside::to_string(v)), v);
     using fine   = inside<{{0, 1}, per<std::int64_t{1} << 52>}>;
-    const fine e = fine::from_raw(1);
+    const fine e = fine::from_raw(1, unsafe);
     ASSERT_EQ(parse<fine>(beman::inside::to_string(e)), e);
 }
 
@@ -200,7 +201,7 @@ TEST(FormatTest, std_format_exact_specs) {
     EXPECT_EQ(std::format("[{:>6}] [{:.4f}]", third{rational{7, 3}}, third{rational{7, 3}}), "[   7/3] [2.3333]");
     // A wide value past 2^53: exact digits a double cannot give.
     using fine     = inside<{{0, std::uint64_t{1} << 34}, per<(std::uint64_t{1} << 32)>}>;
-    const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
+    const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1}, unsafe);
     EXPECT_EQ(std::format("{:.12f}", odd), "8589934592.000000000233");
     EXPECT_EQ(std::format("{:.15e}", odd), "8.589934592000000e+09");
     EXPECT_THROW((void)std::vformat("{:x}", std::make_format_args(odd)), std::format_error);
@@ -219,15 +220,15 @@ TEST(FormatTest, std_format_specs_follow_the_rounding_policy) {
     };
     EXPECT_EQ(row.template operator()<checked>(), "0.12 0.13 -0.12 -0.13");
     EXPECT_EQ(row.template operator()<round_half_even>(), "0.12 0.13 -0.12 -0.13");
-    EXPECT_EQ(row.template operator()<round_nearest>(), "0.13 0.13 -0.13 -0.13");
+    EXPECT_EQ(row.template operator()<round_half_away>(), "0.13 0.13 -0.13 -0.13");
     EXPECT_EQ(row.template operator()<round_floor>(), "0.12 0.12 -0.13 -0.13");
     EXPECT_EQ(row.template operator()<round_ceil>(), "0.13 0.13 -0.12 -0.12");
     EXPECT_EQ(row.template operator()<round_toward_zero>(), "0.12 0.12 -0.12 -0.12");
     using floor_t = inside<{{-2, 2}, per<1000>}, round_floor>;
     EXPECT_EQ(std::format("{:.1e}", floor_t{rational{135, 1000}}), "1.3e-01");
     // The same digits a store at that precision gives.
-    using cents_nearest = inside<{{-2, 2}, per<100>}, round_nearest>;
-    using milli_nearest = inside<{{-2, 2}, per<1000>}, round_nearest>;
+    using cents_nearest = inside<{{-2, 2}, per<100>}, round_half_away>;
+    using milli_nearest = inside<{{-2, 2}, per<1000>}, round_half_away>;
     const milli_nearest m{rational{125, 1000}};
     EXPECT_EQ(std::format("{:.2f}", m), beman::inside::to_string(cents_nearest{m}));
 }
@@ -333,6 +334,7 @@ TEST(FormatTest, continuous_grid_with_integer_bounds_formats_the_fraction) {
 // Text input: parse<B> (exact, through B::try_make) and operator>>.
 namespace parse_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 namespace {
 template <class B>
@@ -342,15 +344,15 @@ rational value_of(std::string_view s) {
     return r ? rational{*r} : rational{};
 }
 template <class B>
-errc error_of(std::string_view s) {
+error error_of(std::string_view s) {
     auto r = parse<B>(s);
     EXPECT_FALSE(r.has_value()) << s;
-    return r ? errc{} : r.error();
+    return r ? error{} : r.error();
 }
 } // namespace
 
 TEST(ParseTest, accepts_the_literal_grammar_signs_and_fractions) {
-    using wide = inside<{{-100000, 100000}, per<1024>}, round_nearest>;
+    using wide = inside<{{-100000, 100000}, per<1024>}, round_half_away>;
     EXPECT_EQ(value_of<wide>("42"), rational{42});
     EXPECT_EQ(value_of<wide>("-1.25"), (rational{-5, 4}));
     EXPECT_EQ(value_of<wide>("+0.5"), (rational{1, 2}));
@@ -371,15 +373,15 @@ TEST(ParseTest, accepts_the_literal_grammar_signs_and_fractions) {
 TEST(ParseTest, reports_malformed_text_range_and_notch_errors) {
     using pct = inside<{0, 100}>;
     for (std::string_view bad : {"", "-", "abc", "1.2.3", "12x", "1e", "0x", " 5", "5 ", "0b102", "1/"})
-        EXPECT_EQ(error_of<pct>(bad), errc::invalid_format) << bad;
-    EXPECT_EQ(error_of<pct>("150"), errc::overflow);
-    EXPECT_EQ(error_of<pct>("-1"), errc::overflow);
-    EXPECT_EQ(error_of<pct>("2.5"), errc::rounding_error);
-    EXPECT_EQ(error_of<pct>("1/0"), errc::division_by_zero);
-    EXPECT_EQ(error_of<pct>("99999999999999999999999"), errc::overflow);
+        EXPECT_EQ(error_of<pct>(bad), error::invalid_format) << bad;
+    EXPECT_EQ(error_of<pct>("150"), error::overflow);
+    EXPECT_EQ(error_of<pct>("-1"), error::overflow);
+    EXPECT_EQ(error_of<pct>("2.5"), error::rounding_error);
+    EXPECT_EQ(error_of<pct>("1/0"), error::division_by_zero);
+    EXPECT_EQ(error_of<pct>("99999999999999999999999"), error::overflow);
 
     // The policy applies: rounding and clamping instead of errors.
-    using rpct = inside<{0, 100}, round_nearest | clamp>;
+    using rpct = inside<{0, 100}, round_half_away | clamp>;
     EXPECT_EQ(value_of<rpct>("2.5"), rational{3});
     EXPECT_EQ(value_of<rpct>("150"), rational{100});
 }
@@ -410,7 +412,7 @@ TEST(ParseTest, from_chars_is_constexpr) {
     constexpr auto       r      = parse<inside<{{0, 1}, per<4>}>>(text, text + 4);
     static_assert(r.has_value() && rational{*r} == rational{3, 4});
     constexpr const char bad[] = "1.5";
-    static_assert(parse<inside<{{0, 1}, per<4>}>>(bad, bad + 3).error() == errc::overflow);
+    static_assert(parse<inside<{{0, 1}, per<4>}>>(bad, bad + 3).error() == error::overflow);
 }
 
 // Fractional trailing zeros and the exponent of zero carry no value: they must
@@ -425,93 +427,94 @@ TEST(ParseTest, trailing_zeros_and_zero_exponent) {
     EXPECT_EQ(value_of<B>("0x1.80000000000000000p1"), 3);
     EXPECT_EQ(value_of<B>("2.50e0"), (rational{5, 2}));
     // Past the 64-bit rational: parsed exactly, then off the 1/100 grid.
-    EXPECT_EQ(error_of<B>("1.00000000000000000000001"), errc::rounding_error);
-    using N = inside<{{0, 10}, per<100>}, round_nearest>;
+    EXPECT_EQ(error_of<B>("1.00000000000000000000001"), error::rounding_error);
+    using N = inside<{{0, 10}, per<100>}, round_half_away>;
     EXPECT_EQ(value_of<N>("1.004999999999999999999999"), 1);
     static_assert(1.250000000000000000000_r == rational{5, 4});
 }
 
 TEST(ParseTest, per_call_flags) {
     using cents = inside<{{0, 100}, per<100>}>; // checked: off-grid is an error
-    EXPECT_EQ(parse<cents>("1.005").error(), errc::rounding_error);
-    EXPECT_EQ((rational{*parse<cents, round_nearest>("1.005")}), (rational{101, 100}));
+    EXPECT_EQ(parse<cents>("1.005").error(), error::rounding_error);
+    EXPECT_EQ((rational{*parse<cents, round_half_away>("1.005")}), (rational{101, 100}));
     EXPECT_EQ((rational{*parse<cents, round_floor>("1.009")}), (rational{1}));
     EXPECT_EQ((rational{*parse<cents, clamp>("150")}), rational{100});
     // Long decimals take the exact parse, with the same flags.
-    EXPECT_EQ((rational{*parse<cents, round_nearest>("1.004999999999999999999999")}), rational{1});
+    EXPECT_EQ((rational{*parse<cents, round_half_away>("1.004999999999999999999999")}), rational{1});
 }
 
 TEST(ParseTest, exact_rejects_what_the_policy_would_round_or_clamp) {
-    using price = inside<{{0, 100}, per<100>}, round_nearest | clamp>;
+    using price = inside<{{0, 100}, per<100>}, round_half_away | clamp>;
     EXPECT_EQ(rational{*parse<price>("1.005")}, (rational{101, 100})); // rounded
-    EXPECT_EQ(parse_exact<price>("1.005").error(), errc::rounding_error);
-    EXPECT_EQ(parse_exact<price>("150").error(), errc::overflow);
-    EXPECT_EQ(parse_exact<price>("1.0x").error(), errc::invalid_format);
+    EXPECT_EQ(parse_exact<price>("1.005").error(), error::rounding_error);
+    EXPECT_EQ(parse_exact<price>("150").error(), error::overflow);
+    EXPECT_EQ(parse_exact<price>("1.0x").error(), error::invalid_format);
     EXPECT_EQ(rational{*parse_exact<price>("12.34")}, (rational{1234, 100}));
     static_assert(std::is_same_v<decltype(parse_exact<price>("1"))::value_type, price>);
-    EXPECT_EQ(parse_exact<price>("1.004999999999999999999999").error(), errc::rounding_error);
+    EXPECT_EQ(parse_exact<price>("1.004999999999999999999999").error(), error::rounding_error);
 }
 
 TEST(ParseTest, try_make_takes_an_expected) {
-    using volts = inside<{{-1, 1}, per<1000>}, round_nearest>;
+    using volts = inside<{{-1, 1}, per<1000>}, round_half_away>;
     using any   = inside<{0, 100}>;
     EXPECT_EQ(rational{*volts::try_make(any{1} / any{3})}, (rational{333, 1000}));
-    EXPECT_EQ(volts::try_make(any{1} / any{0}).error(), errc::division_by_zero);
-    EXPECT_EQ(volts::try_make(any{3} / any{2}).error(), errc::overflow);
+    EXPECT_EQ(volts::try_make(any{1} / any{0}).error(), error::division_by_zero);
+    EXPECT_EQ(volts::try_make(any{3} / any{2}).error(), error::overflow);
     using strict = inside<{{-1, 1}, per<1000>}>;
-    EXPECT_EQ(strict::try_make(any{1} / any{3}).error(), errc::rounding_error);
-    EXPECT_EQ(rational{*strict::try_make<round_nearest>(any{1} / any{3})}, (rational{333, 1000}));
+    EXPECT_EQ(strict::try_make(any{1} / any{3}).error(), error::rounding_error);
+    EXPECT_EQ(rational{*strict::try_make<round_half_away>(any{1} / any{3})}, (rational{333, 1000}));
 }
 } // namespace parse_tests
 
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // Text past the 64-bit parse: the wide fallback reads the whole grammar
 // (hex, binary, p exponents, separators), and a value too fine even for it
 // stores by a same-sign stand-in below every grid step.
 TEST(TextTest, parse_past_64_bits) {
-    using H  = inside<{{0, 1}, per<100>}, round_nearest>;
+    using H  = inside<{{0, 1}, per<100>}, round_half_away>;
     using HC = inside<{{0, 1}, per<100>}, round_ceil>;
     using S  = inside<{{0, 1}, per<100>}>;
     EXPECT_EQ(*parse<H>(std::string_view{"1e-200"}), 0);
     EXPECT_EQ(*parse<HC>(std::string_view{"1e-200"}), rational(1, 100));
-    EXPECT_EQ(parse<S>(std::string_view{"1e-200"}).error(), errc::rounding_error);
+    EXPECT_EQ(parse<S>(std::string_view{"1e-200"}).error(), error::rounding_error);
     EXPECT_EQ(*parse<HC>(std::string_view{"-1e-200"}), 0);
     EXPECT_EQ(*parse<HC>(std::string_view{"1e-5000"}), rational(1, 100)); // past the wide parse
-    EXPECT_EQ(parse_exact<S>(std::string_view{"1e-5000"}).error(), errc::rounding_error);
+    EXPECT_EQ(parse_exact<S>(std::string_view{"1e-5000"}).error(), error::rounding_error);
     EXPECT_TRUE(*parse<uint64>(std::string_view{"0x1p63"}) == (std::uint64_t{1} << 63));
     EXPECT_EQ(*parse<H>(std::string_view{"0x1p-70"}), 0);
     EXPECT_TRUE(*parse<uint64>(std::string_view{"18'446'744'073'709'551'615"}) == ~std::uint64_t{0});
     const std::string third = "0." + std::string(299, '3') + "4";
     EXPECT_EQ(*parse<H>(std::string_view{third}), rational(33, 100));
     const std::string over_half = "0.5" + std::string(298, '0') + "1";
-    EXPECT_EQ((*parse<inside<{0, 1}, round_nearest>>(std::string_view{over_half})), 1);
+    EXPECT_EQ((*parse<inside<{0, 1}, round_half_away>>(std::string_view{over_half})), 1);
 }
 
 // Text past the wide parse ignored clamp (1e1300 overflowed) and N/D text
 // had no tiny stand-in.
 TEST(TextTest, from_chars_stand_ins_for_huge_and_fraction_text) {
-    using price = inside<{{0, 1'000'000}, per<100>}, round_nearest | clamp>;
+    using price = inside<{{0, 1'000'000}, per<100>}, round_half_away | clamp>;
     EXPECT_EQ(*parse<price>("1e1300"), 1'000'000);
     EXPECT_EQ(*parse<price>("-1e1300"), 0);
     EXPECT_EQ(*parse<price>("1/3e5000"), 0);
     EXPECT_EQ(*parse<price>("1e-5000"), 0);
     using checked_price = inside<{{0, 1'000'000}, per<100>}>;
-    EXPECT_EQ(parse<checked_price>("1e1300").error(), errc::overflow);
-    EXPECT_EQ(parse_exact<price>("1/3e5000").error(), errc::rounding_error);
-    EXPECT_EQ(parse_exact<price>("1e1300").error(), errc::overflow);
+    EXPECT_EQ(parse<checked_price>("1e1300").error(), error::overflow);
+    EXPECT_EQ(parse_exact<price>("1/3e5000").error(), error::rounding_error);
+    EXPECT_EQ(parse_exact<price>("1e1300").error(), error::overflow);
 }
 
 // parse_exact rounded off-grid wide text onto a bounded continuous
 // grid under a rounding policy instead of reporting rounding_error.
 TEST(TextTest, from_chars_exact_bounded_continuous) {
-    using B = inside<grid{{0, 1}, max_denominator{5}}, round_nearest>;
-    EXPECT_EQ(parse_exact<B>("0.40000000000000000000000000001").error(), errc::rounding_error);
-    EXPECT_EQ(parse_exact<B>("1e-5000").error(), errc::rounding_error);
-    EXPECT_EQ(parse_exact<B>("0.41").error(), errc::rounding_error);
+    using B = inside<grid{{0, 1}, max_denominator{5}}, round_half_away>;
+    EXPECT_EQ(parse_exact<B>("0.40000000000000000000000000001").error(), error::rounding_error);
+    EXPECT_EQ(parse_exact<B>("1e-5000").error(), error::rounding_error);
+    EXPECT_EQ(parse_exact<B>("0.41").error(), error::rounding_error);
     EXPECT_EQ(*parse_exact<B>("0.4"), rational(2, 5));
 }
 
@@ -531,6 +534,7 @@ TEST(TextTest, rational_to_string_zero_pads_short_decimal_fractions) {
 // `if constexpr` probe over the suite).
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // parse_exact takes a fraction exactly: onto a lattice, onto a point, and
@@ -538,12 +542,13 @@ using detail::rational;
 TEST(TextArmTest, parse_exact_of_a_fraction) {
     EXPECT_EQ((rational{*parse_exact<inside<{{0, 1}, per<4>}>>("1/2")}), (rational{1, 2}));
     EXPECT_TRUE((*parse_exact<inside<{5, 5}>>("10/2") == 5));
-    EXPECT_EQ((parse_exact<inside<{{0, 1}, per<4>}>>("1/0").error()), errc::division_by_zero);
+    EXPECT_EQ((parse_exact<inside<{{0, 1}, per<4>}>>("1/0").error()), error::division_by_zero);
 }
 } // namespace reached_arms_tests
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // Run-time parse: upper-case hex digits, a separator in an exponent, a dot in
@@ -552,11 +557,11 @@ using detail::rational;
 TEST(TextArmTest, parse_of_the_scanner_edge_cases) {
     EXPECT_TRUE((*parse<inside<{0, 1000}>>("0xFF") == 255));
     EXPECT_TRUE((*parse<inside<{0, 100000}>>("1e0'3") == 1000));
-    EXPECT_EQ((parse<inside<{0, 1000}>>("0b1.1").error()), errc::invalid_format);
-    using F = inside<{{0, 1}, max_denominator{1000000000000000000_g}}>;            // 10^18
-    EXPECT_EQ(parse<F>("0x0.0000000000000001p0").error(), errc::rounding_error);   // 2^-64
-    EXPECT_EQ(parse<F>("0x1.8p-63").error(), errc::rounding_error);                // 3·2^-64
-    EXPECT_EQ(parse<F>("0.0000000000000000000001").error(), errc::rounding_error); // 10^-22
+    EXPECT_EQ((parse<inside<{0, 1000}>>("0b1.1").error()), error::invalid_format);
+    using F = inside<{{0, 1}, max_denominator{1000000000000000000_g}}>;             // 10^18
+    EXPECT_EQ(parse<F>("0x0.0000000000000001p0").error(), error::rounding_error);   // 2^-64
+    EXPECT_EQ(parse<F>("0x1.8p-63").error(), error::rounding_error);                // 3·2^-64
+    EXPECT_EQ(parse<F>("0.0000000000000000000001").error(), error::rounding_error); // 10^-22
     EXPECT_TRUE((*parse<F>("0x1p-2") == rational{1, 4}));
 }
 
@@ -595,20 +600,22 @@ TEST(TextArmTest, to_string_of_a_huge_grid_number) {
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // Text past the wide parse stands in by its magnitude: tiny rounds to 0,
 // huge is past the grid.
 TEST(TextArmTest, numbers_past_the_wide_parse) {
-    using I = inside<{{0, 10}, per<1024>}, round_nearest>;
+    using I = inside<{{0, 10}, per<1024>}, round_half_away>;
     EXPECT_TRUE((*parse<I>("1e-5000") == 0));
     EXPECT_TRUE((*parse<I>("0x1p-5000") == 0));
     EXPECT_TRUE((*parse<I>("0.0001e-5000") == 0));
-    EXPECT_EQ(parse<I>("1e5000").error(), errc::overflow);
+    EXPECT_EQ(parse<I>("1e5000").error(), error::overflow);
 }
 } // namespace reached_arms_tests
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // parse_exact of a fraction onto a notch-0 point.
 TEST(TextArmTest, parse_exact_onto_a_notch_zero_point) { EXPECT_TRUE((*parse_exact<inside<grid{5}>>("10/2") == 5)); }
@@ -616,11 +623,12 @@ TEST(TextArmTest, parse_exact_onto_a_notch_zero_point) { EXPECT_TRUE((*parse_exa
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // 1e-19 reduces to a denominator past int64: taken exactly, off a small bound;
 // a grid number of 512 to 4096 bits prints in full.
 TEST(TextArmTest, denominator_past_int64_and_a_kilobit_grid_number) {
-    EXPECT_EQ((parse<inside<{{0, 1}, max_denominator{1000}}>>("1e-19").error()), errc::rounding_error);
+    EXPECT_EQ((parse<inside<{{0, 1}, max_denominator{1000}}>>("1e-19").error()), error::rounding_error);
     constexpr auto g = detail::grid_rational{detail::grid_int{1} << 1000} / 7;
     EXPECT_EQ(to_string(g).substr(0, 12), "107150860718");
 }
@@ -630,6 +638,7 @@ TEST(TextArmTest, denominator_past_int64_and_a_kilobit_grid_number) {
 // and a signed grid past 64 bits print as std::format prints an integer.
 namespace integer_format_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 TEST(FormatTest, integer_types_past_int64) {
     using u64 = inside<{0, 18446744073709551615_g}>;

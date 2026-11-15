@@ -80,8 +80,8 @@ int main() {
     // 5. q from its angle: θ/2 = π/3 about n = (i + j + k)/√3, so each
     //    coefficient of the bivector is π/(3√3) = 0.6045997880780726…,
     //    stored onto a grid of 2^-20.
-    using coef_t = inside<{{-1, 1}, per<(1 << 20)>}, round_nearest>;
-    using part_t = inside<{{-1, 1}, per<(1 << 16)>}, round_nearest>;
+    using coef_t = inside<{{-1, 1}, per<(1 << 20)>}, round_half_away>;
+    using part_t = inside<{{-1, 1}, per<(1 << 16)>}, round_half_away>;
     using rotor  = multivector<part_t, quantity<i, part_t>, quantity<j, part_t>, quantity<k, part_t>>;
     const coef_t c{just<6045997880780726, 10000000000000000>};
     const rotor  from_angle = math::exp<rotor>(c * i + c * j + c * k);

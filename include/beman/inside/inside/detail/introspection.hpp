@@ -10,7 +10,7 @@
 
 //---------------------------------------------------------------------------
 // introspection — an inside's template parameters as values (grid_of<B>,
-// flags_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
+// policy_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
 // insidable / numeric concepts, and the basic plumbing every layer uses
 // (plain_t, as_rational, raw_t). The storage shapes build
 // on it in inside/detail/storage.hpp.
@@ -48,17 +48,17 @@ inline constexpr grid grid_of = detail::inside_params<std::remove_cvref_t<B>>::g
 
 namespace detail {
 template <typename T>
-inline constexpr policy_flag flags_of_impl = none;
+inline constexpr policy_flag policy_of_impl = none;
 template <grid G, policy_flag P>
-inline constexpr policy_flag flags_of_impl<inside<G, P>> = P;
+inline constexpr policy_flag policy_of_impl<inside<G, P>> = P;
 template <policy_flag V>
-inline constexpr policy_flag flags_of_impl<flag<V>> = V;
+inline constexpr policy_flag policy_of_impl<flag<V>> = V;
 } // namespace detail
 
-// flags_of<X> — the policy flags of an inside, of a one-shot `call_policy<F, E>`
+// policy_of<X> — the policy flags of an inside, of a one-shot `call_policy<F, E>`
 // (inside/detail/call_policy.hpp) or of a named flag; `none` for anything else, such as an action.
 template <typename X>
-inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
+inline constexpr policy_flag policy_of = detail::policy_of_impl<std::remove_cvref_t<X>>;
 
 namespace detail {
 // The policy of an arithmetic result (and of the common type): the one both
@@ -68,11 +68,11 @@ namespace detail {
 template <insidable L, insidable R>
 inline constexpr policy_flag result_flags = [] {
     constexpr auto neutral = []<class B>(std::type_identity<B>) {
-        return grid_of<B>.Interval.Lower == grid_of<B>.Interval.Upper && flags_of<B> == 0;
+        return grid_of<B>.Interval.Lower == grid_of<B>.Interval.Upper && policy_of<B> == 0;
     };
-    constexpr policy_flag f = neutral(std::type_identity<L>{})   ? flags_of<R>
-                              : neutral(std::type_identity<R>{}) ? flags_of<L>
-                              : flags_of<L> == flags_of<R>       ? flags_of<L>
+    constexpr policy_flag f = neutral(std::type_identity<L>{})   ? policy_of<R>
+                              : neutral(std::type_identity<R>{}) ? policy_of<L>
+                              : policy_of<L> == policy_of<R>     ? policy_of<L>
                                                                  : policy_flag{0};
     return f & ~cursor_marker;
 }();

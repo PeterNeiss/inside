@@ -1211,7 +1211,7 @@ struct deduced {
                   "math::exp: a deduced output takes the argument's notch - its parts need one, or name it: "
                   "exp<per<K>>(x)");
     static constexpr policy_flag flags = ::beman::inside::math::detail::spec_flags(
-        ::beman::inside::detail::with_default_rounding(flags_of<num_t<std::tuple_element_t<0, typename D::DP>>> &
+        ::beman::inside::detail::with_default_rounding(policy_of<num_t<std::tuple_element_t<0, typename D::DP>>> &
                                                        ~::beman::inside::detail::cursor_marker),
         S);
     static consteval grid_rational limit(double m) {

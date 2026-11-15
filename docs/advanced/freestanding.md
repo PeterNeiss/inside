@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 The core has **no `<system_error>` dependency**, builds no `std::string` on
 its own, and never throws: a failure a program can expect is a value (a
-`std::expected`, an `errc&`, a hook), and a precondition goes to one
+`std::expected`, an `error&`, a hook), and a precondition goes to one
 **replaceable handler**. The math engine needs no FPU. This page shows how to
 build without exceptions or floating point, and where the limits are. It is
 also the home of `BEMAN_INSIDE_MATH_NO_FP`.
@@ -63,7 +63,7 @@ For anything other than that, install your own handler:
 #include <beman/inside/inside.hpp>
 
 // The handler must not return (raise() traps if it does): log, reset, longjmp.
-[[noreturn]] void on_inside_error(beman::inside::errc code, const char* what) noexcept {
+[[noreturn]] void on_inside_error(beman::inside::error code, const char* what) noexcept {
     board_log(static_cast<int>(code), what);   // `what` is a static message
     board_fault_reset();
     for (;;) {}
@@ -75,7 +75,7 @@ int main() {
 }
 ```
 
-`what` is a static, null-terminated string (`errc_message(code)` by default):
+`what` is a static, null-terminated string (`error_message(code)` by default):
 no allocation, no `<string>`.
 
 ### 2. Drop the text layer
@@ -98,11 +98,11 @@ Report state through the handler and the error codes instead.
 
 Besides the handler, errors come back as values, without `std::error_code`:
 
-- construction through `try_make`, an `std::expected<inside, errc>`;
-- stores and free functions through an `errc&` out-parameter;
+- construction through `try_make`, an `std::expected<inside, error>`;
+- stores and free functions through an `error&` out-parameter;
 - `clamp` and `wrap` policies, which never fail;
 - `std::expected` results of division, math and named outputs (`mul<Out>`,
-  `sum<T>`, `checked_cast<T>`). Test `has_value()` and read `error()`; don't
+  `sum<T>`, `exact_cast<T>`). Test `has_value()` and read `error()`; don't
   call `.value()`, which would throw.
 
 [Hooks and errors](hooks-and-errors.md#error-codes) shows the surface.

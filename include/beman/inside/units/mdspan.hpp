@@ -44,23 +44,23 @@ struct element_traits<Q> {
         auto numbers =
             std::forward<Rng>(r) | std::views::transform([](const P& p) { return units::detail::value_of(p); });
         N    out{};
-        auto policy = make_policy<flags_of<N>>();
+        auto policy = make_policy<policy_of<N>>();
         sum_into(numbers, out, policy);
         return Q{units::detail::quantity_access::make<units::quantity<P::reference, N>>(out)};
     }
     template <class Rng>
-    static constexpr std::expected<Q, errc> try_total(Rng&& r) {
+    static constexpr std::expected<Q, error> try_total(Rng&& r) {
         using P = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
         using N = numbers_of<P>;
         auto numbers =
             std::forward<Rng>(r) | std::views::transform([](const P& p) { return units::detail::value_of(p); });
-        return try_store<N, flags_of<N>>([&](N& out, auto&& policy) { sum_into(numbers, out, policy); })
+        return try_store<N, policy_of<N>>([&](N& out, auto&& policy) { sum_into(numbers, out, policy); })
             .transform([](const N& t) {
                 return Q{units::detail::quantity_access::make<units::quantity<P::reference, N>>(t)};
             });
     }
     template <class V>
-    static constexpr std::expected<Q, errc> try_store_of(const V& v) {
+    static constexpr std::expected<Q, error> try_store_of(const V& v) {
         return units::try_value_cast<Q>(v);
     }
 

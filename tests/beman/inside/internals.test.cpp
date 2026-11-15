@@ -34,6 +34,7 @@
 // rational
 namespace rational_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 namespace {
@@ -213,7 +214,7 @@ TEST(RationalTest, rational_arithmetic) {
         static_assert(rational_inv(rational{2u, 3}) == rational{3u, 2});
     }
 
-    // The checked operators return std::expected<rational, errc>; an implicit
+    // The checked operators return std::expected<rational, error>; an implicit
     // converting constructor unwraps that into a plain rational so coefficient
     // expressions read as ordinary arithmetic (no .value()). Overflow is a
     // compile error in constant evaluation.
@@ -251,7 +252,7 @@ TEST(RationalTest, rational_arithmetic) {
 
     {
         SCOPED_TRACE("division by zero -> division_by_zero");
-        ASSERT_EQ(try_div(1_r, 0_r).error(), errc::division_by_zero);
+        ASSERT_EQ(try_div(1_r, 0_r).error(), error::division_by_zero);
     }
 
     {
@@ -297,9 +298,9 @@ TEST(RationalTest, rational_arithmetic) {
 // rational overflow detection
 TEST(RationalTest, rational_overflow_detection) {
     {
-        SCOPED_TRACE("the checked steps return errc::overflow");
+        SCOPED_TRACE("the checked steps return error::overflow");
         ASSERT_FALSE(try_add(rational{M}, 1_r).has_value());
-        ASSERT_EQ(try_add(rational{M}, 1_r).error(), errc::overflow);
+        ASSERT_EQ(try_add(rational{M}, 1_r).error(), error::overflow);
         ASSERT_FALSE(try_mul(rational{M}, 2_r).has_value());
         ASSERT_FALSE(try_div(rational{M}, rational{1u, 2}).has_value());
     }
@@ -341,7 +342,7 @@ TEST(RationalTest, rational_overflow_detection) {
     }
 
     {
-        SCOPED_TRACE("sub overflow returning errc::overflow");
+        SCOPED_TRACE("sub overflow returning error::overflow");
         // -M - 1 would overflow on the negative side
         ASSERT_FALSE(try_sub(rational{M, -1}, 1_r).has_value());
     }
@@ -436,7 +437,7 @@ TEST(RationalTest, rational_conversion_to_integer_float) {
         ASSERT_TRUE(pos.to<unsigned>().value() == 2u);
         auto r = neg.to<unsigned>();
         ASSERT_FALSE(r.has_value());
-        ASSERT_EQ(r.error(), errc::domain_error);
+        ASSERT_EQ(r.error(), error::domain_error);
     }
 }
 
@@ -925,6 +926,7 @@ TEST(WideIntTest, limb_mul_and_div_paths_agree) {
 // numbers
 namespace numbers_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // safe_abs handles INT_MIN without UB
@@ -1124,6 +1126,7 @@ TEST(NumbersTest, scale_pow2_matches_ldexp) {
 // boundary values per width, signedness, and use in constant evaluation.
 namespace overflow_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 using namespace beman::inside::detail; // the overflow helpers are internal
 
@@ -1173,6 +1176,7 @@ TEST(OverflowTest, usable_in_constant_evaluation) {
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 #define WIDE_LONG_DOUBLE (LDBL_MANT_DIG > DBL_MANT_DIG)
@@ -1263,9 +1267,9 @@ TEST(InternalsTest, rational_and_long_double) {
 
 // rational::to<T> checks that the quotient fits T.
 TEST(InternalsTest, rational_to_checks_width) {
-    static_assert(rational{300}.to<std::uint8_t>().error() == errc::overflow);
+    static_assert(rational{300}.to<std::uint8_t>().error() == error::overflow);
     static_assert(rational{255}.to<std::uint8_t>().value() == 255);
-    static_assert(rational{-1}.to<std::uint8_t>().error() == errc::domain_error);
+    static_assert(rational{-1}.to<std::uint8_t>().error() == error::domain_error);
 }
 
 //---------------------------------------------------------------------------
@@ -1299,7 +1303,7 @@ TEST(InternalsTest, rational_gcd_lcm_that_overflows_uint64_returns_overflow) {
     std::int64_t a = (std::int64_t{1} << 40) + 1;
     std::int64_t b = (std::int64_t{1} << 40) + 3;
     ASSERT_FALSE((gcd(rational{1u, a}, rational{1u, b}).has_value()));
-    ASSERT_EQ((gcd(rational{1u, a}, rational{1u, b}).error()), errc::overflow);
+    ASSERT_EQ((gcd(rational{1u, a}, rational{1u, b}).error()), error::overflow);
 }
 
 //---------------------------------------------------------------------------

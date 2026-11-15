@@ -11,7 +11,7 @@ between two notches.
 ```cpp
 inside<{0, 100}, clamp>              b{150};   // 100: saturates
 inside<{0, 359}, wrap>               c{370};   // 10: wraps around
-inside<{{0, 10}, 2}, round_nearest>  d{3.2};   // 4: rounds to the nearest notch
+inside<{{0, 10}, 2}, round_half_away>  d{3.2};   // 4: rounds to the nearest notch
 inside<{0, 100}>                     a{50};    // 50: a constant, checked while compiling
 // inside<{0, 100}>                  e{150};   // ❌ does not compile: 150 is outside
 ```
@@ -32,14 +32,14 @@ stored value fits, the store names what happens, before it runs.
 | (none) | the default, also spelled `checked`: a store the grids cannot prove names a channel (below) |
 | `clamp` | out of range: store the nearer limit |
 | `wrap` | out of range: fold it back by the period, Upper − Lower + Notch |
-| `round_nearest` | between notches: the nearest notch, a tie away from zero |
+| `round_half_away` | between notches: the nearest notch, a tie away from zero |
 | `round_half_even` | between notches: the nearest notch, a tie to the even one |
 | `round_floor`, `round_ceil` | between notches: toward −∞, toward +∞ |
 | `round_toward_zero` | between notches: toward zero |
 | `unsafe` | no checks at all: out of range is undefined behaviour, and a value between notches truncates |
 
 Combine a range flag and a rounding flag with `|`:
-`inside<{0, 100}, clamp | round_nearest>` saturates and rounds in one store.
+`inside<{0, 100}, clamp | round_half_away>` saturates and rounds in one store.
 That is the usual type for an API boundary, such as an actuator command.
 
 - Every policy without `unsafe` still checks what it does not handle:
@@ -57,7 +57,7 @@ A type's policy applies to every store. For one store, name the flags there:
 ```cpp
 using pct = inside<{0, 100}>;
 pct p{150, clamp};                 // 100: a new value under clamp
-pct q{3.7, round_nearest};         // 4
+pct q{3.7, round_half_away};         // 4
 
 pct x{50};
 x.policy<clamp>() = 150;           // 100: one assignment under clamp
@@ -73,18 +73,18 @@ Three channels report a failed store as a value:
 
 ```cpp
 int  n = 200;                     // read at run time
-auto m = pct::try_make(n);        // a std::expected: !m, m.error() == errc::overflow
+auto m = pct::try_make(n);        // a std::expected: !m, m.error() == error::overflow
 
-errc ec{};
+error ec{};
 pct y{50};
-y.policy(ec) = n;                 // ec == errc::overflow; y keeps 50
+y.policy(ec) = n;                 // ec == error::overflow; y keeps 50
 ```
 
-- `T::try_make(v)` returns `std::expected<T, errc>`. Under `clamp` or `wrap`
+- `T::try_make(v)` returns `std::expected<T, error>`. Under `clamp` or `wrap`
   it always succeeds (a NaN aside).
-- `x.policy(ec) = v` reports into an `errc&`. The first error is kept, and a
+- `x.policy(ec) = v` reports into an `error&`. The first error is kept, and a
   failed store leaves the old value.
-- `x.on_error(f) = v` calls `f(x, errc, message)`, which may store an
+- `x.on_error(f) = v` calls `f(x, error, message)`, which may store an
   alternative value.
 
 The error codes are `overflow` (does not fit), `rounding_error` (between
@@ -109,7 +109,7 @@ seconds.on_wrap([&](auto&, auto carry) { minutes += carry; }) = 125;
 |---|---|---|
 | `x.on_clamp(f)` | a value is saturated | `f(x, overshoot)` |
 | `x.on_wrap(f)` | a value is folded back | `f(x, carry)`: the number of periods |
-| `x.on_error(f)` | a checked store fails; its channel | `f(x, errc, message)` |
+| `x.on_error(f)` | a checked store fails; its channel | `f(x, error, message)` |
 
 The carry and the overshoot are insides, so they add straight into another
 inside. A hook you do not call costs nothing.
@@ -134,18 +134,18 @@ using pct       = inside<{0, 100}>;
 int        n    = 150;                  // read at run time
 const auto step = 1_ins;
 pct x{50};                              // a constant: checked while compiling
-auto y = pct::try_make(n);              // a run-time int: std::expected<pct, errc>
+auto y = pct::try_make(n);              // a run-time int: std::expected<pct, error>
 pct  z{n, clamp};                       // or clamp, wrap, a rounding mode
-errc ec{};
-x.policy(ec) += step;                   // an errc&: the first error is kept
-x.on_error([](auto& s, errc, auto) { s = 0_ins; }) += step;   // an alternative value
+error ec{};
+x.policy(ec) += step;                   // an error&: the first error is kept
+x.on_error([](auto& s, error, auto) { s = 0_ins; }) += step;   // an alternative value
 x = pct::try_make(n).value_or(pct{0});  // the same, as an expected
 pct u{n, unsafe};                       // the fit is your precondition
 // x += step;                           // ❌ does not compile: x + step may pass 100
 ```
 
 A loop that accumulates names the channel once: `acc.policy(ec) += x` with
-one `errc` checked after the loop, or an accumulator type with `clamp`. A
+one `error` checked after the loop, or an accumulator type with `clamp`. A
 `double` from outside needs a report channel (`try_make`, `policy(ec)`,
 `on_error`) or `unsafe`, since NaN fits no clamp.
 
@@ -153,10 +153,10 @@ one `errc` checked after the loop, or an accumulator type with `clamp`. A
 
 | Operation | A failure goes to |
 |---|---|
-| a store: construction, `=`, `+=`, …, `++` | the channel it names: an `errc&`, `on_error`, `try_make`'s expected; with none, a store the grids cannot prove does not compile |
+| a store: construction, `=`, `+=`, …, `++` | the channel it names: an `error&`, `on_error`, `try_make`'s expected; with none, a store the grids cannot prove does not compile |
 | `try_make`, `to<T>()` where it can fail, `parse` | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
-| a named output that can miss: `mul<Out>`, `sum<T>`, `checked_cast<T>`, `f<Out>(x)`, `value_cast` | the returned `std::expected` |
+| a named output that can miss: `mul<Out>`, `sum<T>`, `exact_cast<T>`, `f<Out>(x)`, `value_cast` | the returned `std::expected` |
 | a precondition: a cursor past its end, a raw read off the grid | the error handler, which prints and aborts by default |
 
 An inside never stores a `std::expected`: check it and store `*e`, or pass it

@@ -7,7 +7,7 @@
 // so defining BEMAN_INSIDE_NO_STRING drops it (and its heavy includes) wholesale.
 //
 // Provides:
-//   * to_string(rational | interval | grid | insidable | arithmetic | errc)
+//   * to_string(rational | interval | grid | insidable | arithmetic | error)
 //   * to_string_debug(insidable)        — value + raw + raw type + grid
 //   * operator<< and operator>> (one token, failbit on error)
 //   * parse<B, F>(std::string_view), parse_exact<B>(std::string_view)
@@ -312,9 +312,9 @@ inline std::ostream& operator<<(std::ostream& stream, beman::inside::detail::rat
 }
 
 // An error code as its message: "division by zero".
-[[nodiscard]] inline std::string to_string(errc e) { return errc_message(e); }
+[[nodiscard]] inline std::string to_string(error e) { return error_message(e); }
 
-inline std::ostream& operator<<(std::ostream& stream, errc e) { return stream << errc_message(e); }
+inline std::ostream& operator<<(std::ostream& stream, error e) { return stream << error_message(e); }
 
 template <insidable B>
 inline std::ostream& operator<<(std::ostream& stream, B b) {
@@ -325,11 +325,11 @@ inline std::ostream& operator<<(std::ostream& stream, B b) {
 // parse<B, F>(text) / parse_exact<B>(text) — the std::string_view
 // forms of the pointer-pair overloads.
 template <insidable B, policy_flag F = detail::none>
-[[nodiscard]] constexpr std::expected<B, errc> parse(std::string_view text) {
+[[nodiscard]] constexpr std::expected<B, error> parse(std::string_view text) {
     return parse<B, F>(text.data(), text.data() + text.size());
 }
 template <insidable B>
-[[nodiscard]] constexpr std::expected<B, errc> parse_exact(std::string_view text) {
+[[nodiscard]] constexpr std::expected<B, error> parse_exact(std::string_view text) {
     return parse_exact<B>(text.data(), text.data() + text.size());
 }
 
@@ -605,8 +605,8 @@ struct exact_format_spec {
 // names one (as storing at that precision would round), else ties to even.
 template <insidable B>
 inline constexpr round_mode display_rounding =
-    has_any_flag(flags_of<B>, round_floor | round_ceil | round_nearest | round_half_even | snap)
-        ? rounding_of(flags_of<B>)
+    has_any_flag(policy_of<B>, round_floor | round_ceil | round_half_away | round_half_even | snap)
+        ? rounding_of(policy_of<B>)
         : round_mode::half_even;
 } // namespace beman::inside::detail
 

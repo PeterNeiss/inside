@@ -41,7 +41,7 @@ Multiplying by a constant scales by an exact fraction, and a store rounds the
 result where the type allows it:
 
 ```cpp
-using money = inside<{{0, 1'000'000}, per<100>}, round_nearest>;
+using money = inside<{{0, 1'000'000}, per<100>}, round_half_away>;
 money subtotal{45.07};
 money tax{subtotal * just<8, 100>};   // 3.61: 8 %, rounded once to the cent
 ```
@@ -60,7 +60,7 @@ auto f = x / inside<{1, 10}>{3};    // a plain value, 7/3: this divisor cannot b
 auto g = x / 5_ins;                 // a plain value, 1.4, on notch 1/5
 ```
 
-A `std::expected` result carries `errc::division_by_zero` when the divisor
+A `std::expected` result carries `error::division_by_zero` when the divisor
 was 0. Check it before you store it.
 
 **Integer division.** A rounding mode on either operand, or on the call,
@@ -81,7 +81,7 @@ once:
 ```cpp
 using eth   = inside<{{0, 1'000'000'000}, 1e-18_r}>;            // to the wei
 using price = inside<{{0, 100'000'000}, per<100>}>;             // dollars per ETH
-using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_nearest>;
+using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_half_away>;
 
 eth   balance{rational{15, 10}};
 price rate{rational{345678, 100}};
@@ -129,8 +129,8 @@ auto clipped = sum<inside<{0, 100}, clamp>>(v);  // 100: the total, clamped once
 A `total += x` loop checks at every step, which also stops the compiler from
 vectorizing it; `sum` runs at about half the speed of a native loop.
 
-For 2-D geometry, `dot(ax, ay, bx, by)` and `cross(ax, ay, bx, by)` widen
-the same way. A squared distance is `dot(dx, dy, dx, dy)`. `lerp(a, b, t)`
+Geometry needs no helpers: `ax * bx + ay * by` and `ax * by - ay * bx` widen
+the same way, so a dot or cross product cannot overflow. `lerp(a, b, t)`
 with `t` in [0, 1] lies between `a` and `b`, and its type says so.
 
 ## Compound assignment
@@ -165,7 +165,7 @@ unwrapping:
 ```cpp
 lvl zero{0};
 auto r1 = a / inside<{1, 255}>{4} + lvl{10};   // a plain value: 35
-auto r2 = a / zero + lvl{10};                  // std::expected: errc::division_by_zero
+auto r2 = a / zero + lvl{10};                  // std::expected: error::division_by_zero
 ```
 
 To store the end of a chain, check it and store `*r`, or call

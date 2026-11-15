@@ -86,13 +86,13 @@ consteval policy_flag spec_flags(policy_flag r, const out_spec& s) {
     return (s.Flags & (mode_bits | snap)) != 0 ? f : with_default_rounding(f);
 }
 template <insidable R, out_spec S>
-using with_spec_flags_t = inside<grid_of<R>, spec_flags(flags_of<R>, S)>;
+using with_spec_flags_t = inside<grid_of<R>, spec_flags(policy_of<R>, S)>;
 
 // An exact output R on notch N: its range rounded outward onto N.
 template <insidable R, grid_rational N>
 using on_notch_t = inside<
     grid{{grid_round<round_mode::floor>(lower_of<R> / N) * N, grid_round<round_mode::ceil>(upper_of<R> / N) * N}, N},
-    flags_of<R>>;
+    policy_of<R>>;
 
 // A rounding function's deduced output over insides In… for specs S: on the
 // named notch, else on its own (the arguments' notch, which they need then).
@@ -100,7 +100,7 @@ using on_notch_t = inside<
 template <class F, out_spec S, class... In>
 consteval auto rounding_output() {
     if constexpr (!F::template domain<In...>)
-        return std::type_identity<inside<{0, 1}, round_nearest>>{};
+        return std::type_identity<inside<{0, 1}, round_half_away>>{};
     else if constexpr (S.HasNotch)
         return std::type_identity<typename F::template result_on<S.Notch, In...>>{};
     else {
@@ -182,7 +182,7 @@ concept takes = kind_of<F, Args...>::takes;
 
 //---------------------------------------------------------------------------
 // A named output f<C>(x): C itself where C's range holds every value f takes
-// over the input grids (or C clamps or wraps), else std::expected<C, errc>.
+// over the input grids (or C clamps or wraps), else std::expected<C, error>.
 // The value is computed once onto a twin of C - C's notch and lattice, an
 // interval that holds every value - then stored into C exactly, so the
 // failure is only the range, and the rounding stays one.
@@ -217,7 +217,7 @@ consteval bool in_domain() {
 
 template <class F, class O, class... In>
 consteval bool named_fits() {
-    if constexpr (!is_checked(flags_of<O>) || has_any_flag(flags_of<O>, clamp | wrap) || !in_domain<F, In...>())
+    if constexpr (!is_checked(policy_of<O>) || has_any_flag(policy_of<O>, clamp | wrap) || !in_domain<F, In...>())
         return true;
     else if constexpr (!range_bounded<F, In...>)
         return false;
@@ -245,7 +245,7 @@ consteval grid named_twin_grid() {
 template <class F, class O, class... In>
 consteval auto named_twin() {
     if constexpr (F::rounds)
-        return std::type_identity<inside<named_twin_grid<F, O, In...>(), flags_of<O>>>{};
+        return std::type_identity<inside<named_twin_grid<F, O, In...>(), policy_of<O>>>{};
     else
         return std::type_identity<typename F::template result<In...>>{};
 }

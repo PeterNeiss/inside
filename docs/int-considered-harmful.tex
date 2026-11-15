@@ -735,7 +735,7 @@ The listing shows three things:
 Division returns a plain value when two things hold: the divisor's grid
 excludes zero, and the exact quotient provably fits. The operand grids decide
 both at compile time, and every integer grid satisfies the second. Otherwise
-division returns \code{std::expected<inside, errc>}.
+division returns \code{std::expected<inside, error>}.
 
 \lstinputlisting[firstline=14,lastline=36]{int-considered-harmful/b02_divzero.cpp}
 \begin{lstlisting}[style=term]
@@ -755,7 +755,7 @@ process in \S2.4 becomes a value you can test.
 \lstinputlisting[firstline=16,lastline=30]{int-considered-harmful/b07_rounding.cpp}
 \begin{lstlisting}[style=term]
 n / d               = -3.5   (exact)
-round_nearest     = -4
+round_half_away     = -4
 round_floor       = -4
 round_ceil        = -3
 round_toward_zero = -3
@@ -787,11 +787,11 @@ policy<clamp>() 150 -> 100
 \noindent
 Wrapping is available, but here you request it, and it is well-defined. The
 default is \code{checked}, and every policy checks unless it says
-\code{unsafe}. For example, \code{round\_nearest} rounds first and then still
+\code{unsafe}. For example, \code{round\_half\_away} rounds first and then still
 range-checks the result. To turn the check off, you have to write the word.
 Nothing throws: a constant out of range does not compile, and a run-time value
 the grids cannot prove names how a failure is reported (\code{try\_make}, an
-\code{errc}, an \code{on\_error} hook) or how it is resolved (\code{clamp},
+\code{error}, an \code{on\_error} hook) or how it is resolved (\code{clamp},
 \code{wrap}).
 
 \subsection{Negation reflects the type}
@@ -1077,7 +1077,7 @@ matches the caller's role:
 Shape & Spelling & When \\
 \midrule
 Plain value & \code{a + b}, a store the grids prove & The type proves the operation cannot fail. \\
-\code{expected<T,errc>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{mul<Out>}, \code{math::tan} & It can fail at runtime. A math argument outside the domain for the whole input grid is a compile error instead. \\
+\code{expected<T,error>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{mul<Out>}, \code{math::tan} & It can fail at runtime. A math argument outside the domain for the whole input grid is a compile error instead. \\
 Error code & \code{x.policy(ec) = v} & Hot paths and loops; the first error sticks. \\
 Callback & \code{on\_clamp}, \code{on\_wrap}, \code{on\_error} & The event is expected and carries data, or a value replaces a failed store. \\
 Compile error & a store the grids cannot prove, with no channel & The default (\code{checked}): nothing throws, so a store names its outcome. \\
@@ -1091,7 +1091,7 @@ an \code{expected}, as it does for an \code{inside}. The codes form a small clos
 does not fit is always \code{overflow}, whichever path found it:
 
 \begin{lstlisting}
-enum class errc { domain_error, division_by_zero, overflow,
+enum class error { domain_error, division_by_zero, overflow,
                   rounding_error, not_finite, invalid_format };
 \end{lstlisting}
 
@@ -1236,7 +1236,7 @@ a competent programmer would write it
 \item \code{native checked}: a hand-rolled bounded struct that throws on
       violation;
 \item \code{inside<checked>}: the inputs and the narrowing store report into
-      an \code{errc} (a run-time \code{int} names its channel), checked after
+      an \code{error} (a run-time \code{int} names its channel), checked after
       the run.
 \end{itemize}
 \file{p02\_fair\_bench.cpp} measures all five contenders on the same data: a
@@ -1263,7 +1263,7 @@ Implementation & ns/op & vs.\ unchecked & enforces? & vs.\ safe native \\
 The guarantee itself costs 4--15\% in plain C++. \code{inside<checked>} runs at
 88.9\% of the hand-rolled checked struct. The difference is the reporting: the
 struct's \code{throw} never returns, so the compiler drops the failure path from
-the loop, while a check that reports into an \code{errc} continues with a
+the loop, while a check that reports into an \code{error} continues with a
 defined value and keeps the channel's address live.
 \code{inside<unsafe>} matches unchecked native. This is a favourable pattern:
 a tight, predictable loop. It shows that the gap is small \emph{when you
@@ -1295,7 +1295,7 @@ Operation & Emitted & Check? \\
 
 \noindent
 Checks appear in only two places: entering from a raw integer, and narrowing
-into a smaller grid. Both name their channel (here an \code{errc}); the record
+into a smaller grid. Both name their channel (here an \code{error}); the record
 of a failure is a cold call out of line. The narrowing check is the same instructions as the native
 struct's. A native checked type must re-validate after \emph{every} step of a
 chain. \code{inside} lets intermediates widen and checks only the final store.
@@ -1358,7 +1358,7 @@ run.
 \end{benchtable}
 
 \noindent
-A checked element-wise loop reports each element's store into an \code{errc}
+A checked element-wise loop reports each element's store into an \code{error}
 (\code{acc.policy(ec) += v}) and so cannot vectorise.
 \code{beman::inside::sum} checks the total instead and is 3.6$\times$ faster.
 Without the check, both loops vectorise like native code.

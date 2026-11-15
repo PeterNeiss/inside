@@ -34,6 +34,8 @@
 #include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
+
+using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {

@@ -27,8 +27,8 @@
 using namespace beman::inside;
 using namespace beman::inside::units;
 
-using q14     = inside<{{-2, 2}, per<(1 << 14)>}, round_nearest>; // Q1.14
-using coord   = inside<{{-100, 100}, per<(1 << 8)>}, round_nearest>;
+using q14     = inside<{{-2, 2}, per<(1 << 14)>}, round_half_away>; // Q1.14
+using coord   = inside<{{-100, 100}, per<(1 << 8)>}, round_half_away>;
 using matrix  = std::extents<std::size_t, 2, 2>;
 using vector2 = std::extents<std::size_t, 2>;
 using degrees = quantity<si::degree, inside<{0, 360}>>;
@@ -85,7 +85,7 @@ int main() {
     std::array<fib, 4>       power{1, 0, 0, 1};
     std::array<fib, 4>       next{};
     // fib's range holds no product of two fib matrices: matrix_product
-    // returns an expected<void, errc>, the first element that does not fit.
+    // returns an expected<void, error>, the first element that does not fit.
     for (int n = 1; n <= 92; ++n) {
         if (!matrix_product(std::mdspan{power.data(), matrix{}},
                             std::mdspan{step.data(), matrix{}},
@@ -100,6 +100,6 @@ int main() {
         std::mdspan{power.data(), matrix{}}, std::mdspan{step.data(), matrix{}}, std::mdspan{next.data(), matrix{}});
     if (f94)
         return 1; // F(94) must not fit
-    std::cout << "F(94)       " << errc_message(f94.error()) << "\n";
+    std::cout << "F(94)       " << error_message(f94.error()) << "\n";
     return 0;
 }

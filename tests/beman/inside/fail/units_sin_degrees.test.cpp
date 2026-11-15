@@ -7,6 +7,6 @@
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    auto s = math::sin(quantity<si::degree, inside<{0, 90}, round_nearest>>{30, si::degree});
+    auto s = math::sin(quantity<si::degree, inside<{0, 90}, round_half_away>>{30, si::degree});
     (void)s;
 }

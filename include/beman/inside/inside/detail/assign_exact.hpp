@@ -26,7 +26,7 @@ namespace beman::inside::detail {
 template <insidable L, typename P, typename A>
 inline constexpr bool needs_runtime_range_check =
     clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> ||
-    range_handled(flags_of<L> | plain_t<P>::Flags);
+    range_handled(policy_of<L> | plain_t<P>::Flags);
 
 // Shared out-of-range policy cascade. Order: clamp/wrap *actions*, then
 // clamp/wrap *policy* bits, then an on_error action, then `range_fail`. The
@@ -56,7 +56,7 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
         do_wrap();
         return true;
     } else if constexpr (error_action<PA>) { // on_error replaces the failure, not a clamp or wrap
-        action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
+        action.Fn(lhs, error::overflow, error_message(error::overflow));
         return true;
     } else
         return range_fail(policy);
@@ -64,9 +64,9 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
 
 // A failure goes to an on_error action when there is one, else the policy.
 template <typename L, typename P, typename A>
-constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
+constexpr void report_failure(L& lhs, P& policy, A& action, error code) {
     if constexpr (error_action<plain_t<A>>)
-        action.Fn(lhs, code, errc_message(code));
+        action.Fn(lhs, code, error_message(code));
     else
         policy.report(code);
 }
@@ -114,11 +114,11 @@ using clamp_overshoot_t = beman::inside::inside<clamp_overshoot_grid<L, R>()>;
 template <insidable Result, std::size_t K>
 constexpr Result exact_value_result(const wide_rational<K>& v) noexcept {
     if constexpr (fraction_storage<Result>)
-        return Result::from_raw(fraction_raw_of<raw_t<Result>>(v));
+        return Result::from_raw(fraction_raw_of<raw_t<Result>>(v), unsafe);
     else if constexpr (rational_storage<Result>)
-        return Result::from_raw(rational_of(v));
+        return Result::from_raw(rational_of(v), unsafe);
     else if constexpr (point_storage<Result>)
-        return Result::from_raw(raw_t<Result>{});
+        return Result::from_raw(raw_t<Result>{}, unsafe);
     else
         return exact_result<Result>(v);
 }
@@ -250,7 +250,7 @@ constexpr wide_rational<std::max(K, exact_limbs<L>)> onto_bound(const wide_ratio
 // on_wrap action the carry in the same shape as on the builtin paths.
 template <typename R, insidable L, typename P, typename A, std::size_t K>
 constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& action) {
-    auto fail = [&](errc code) { report_failure(lhs, policy, action, code); };
+    auto fail = [&](error code) { report_failure(lhs, policy, action, code); };
     if constexpr (fraction_storage<L>) {
         // A continuous grid past 64 bits: the value itself, reduced, when it
         // lies within the limits. (The raw is sized from the limits and the
@@ -263,12 +263,12 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             constexpr wide_rational<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
             if (bound.Num < reduced(x).Den) [[unlikely]] {
                 if constexpr (uses_flag<L, P, snap>) {
-                    lhs = L::from_raw(fraction_raw_of<raw_t<L>>(onto_bound<L, plain_t<P>>(x)));
+                    lhs = L::from_raw(fraction_raw_of<raw_t<L>>(onto_bound<L, plain_t<P>>(x)), unsafe);
                     return;
-                } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
-                    return fail(errc::rounding_error);
+                } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                    return fail(error::rounding_error);
             }
-            lhs = L::from_raw(fraction_raw_of<raw_t<L>>(x));
+            lhs = L::from_raw(fraction_raw_of<raw_t<L>>(x), unsafe);
         };
         wide_rational<KK> x{v};
         // Round first, as the builtin stores do: a value just past a limit
@@ -317,7 +317,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                 const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
                 const bool              low = x < lo;
                 if (!low && !(hi < x)) {
-                    fail(errc::rounding_error);
+                    fail(error::rounding_error);
                     return lhs;
                 }
                 dispatch_out_of_range<true>(
@@ -336,7 +336,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                         const auto              q = floor_divmod(t.Num, t.Den).Quot;
                         const auto              f = try_rational(x + -(wide_rational<KK>{q, wide_sint<KK>{1}} * span));
                         if (!f)
-                            return fail(errc::rounding_error);
+                            return fail(error::rounding_error);
                         assignment<L, rational>::assign(lhs, *f, policy, no_action{});
                         if constexpr (wrap_action<plain_t<A>>)
                             action.Fn(lhs, make_wrap_carry<L, R>(q));
@@ -378,7 +378,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                     policy,
                     action,
                     [&] {
-                        lhs = L::from_raw(raw_of_slot<L>(low ? I{0} : count));
+                        lhs = L::from_raw(raw_of_slot<L>(low ? I{0} : count), unsafe);
                         if constexpr (clamp_action<plain_t<A>>) {
                             // The overshoot rhs − bound, shaped like the builtin paths'.
                             const auto over = v + wide_rational<KK>{I{-1}, I{1}} *
@@ -388,10 +388,10 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                     },
                     [&] {
                         if (inexact)
-                            fail(errc::rounding_error); // folds off the notch too
+                            fail(error::rounding_error); // folds off the notch too
                         else {
                             const auto [q, w] = floor_divmod(index, count + I{1});
-                            lhs               = L::from_raw(raw_of_slot<L>(w));
+                            lhs               = L::from_raw(raw_of_slot<L>(w), unsafe);
                             if constexpr (wrap_action<plain_t<A>>)
                                 action.Fn(lhs, make_wrap_carry<L, R>(q));
                         }
@@ -399,10 +399,10 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                 return lhs;
         }
         if (inexact) [[unlikely]] {
-            fail(errc::rounding_error);
+            fail(error::rounding_error);
             return lhs;
         }
-        lhs = L::from_raw(raw_of_slot<L>(index));
+        lhs = L::from_raw(raw_of_slot<L>(index), unsafe);
         return lhs;
     }
 }

@@ -34,10 +34,10 @@ void rad_to_deg(rng_t& g, int n, const char* mode) {
 } // namespace
 
 void dump_pi(rng_t& g, int n) {
-    deg_to_rad<inside<{{-13, 13}, per<(1ll << 40)>}, round_nearest>>(g, n, "nearest");
+    deg_to_rad<inside<{{-13, 13}, per<(1ll << 40)>}, round_half_away>>(g, n, "nearest");
     deg_to_rad<inside<{{-13, 13}, per<(1ll << 40)>}, round_floor>>(g, n, "floor");
     deg_to_rad<inside<{{-13, 13}, per<1'000'003>}, round_ceil>>(g, n, "ceil");
     rad_to_deg<inside<{{-800, 800}, per<7>}, round_half_even>>(g, n, "even");
-    rad_to_deg<inside<{{-800, 800}, per<1000>}, round_nearest>>(g, n, "nearest");
+    rad_to_deg<inside<{{-800, 800}, per<1000>}, round_half_away>>(g, n, "nearest");
 }
 } // namespace diff

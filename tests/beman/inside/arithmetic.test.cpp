@@ -38,6 +38,7 @@ using beman::inside::test::exact;
 // inside_arithmetic
 namespace inside_arithmetic_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // inside add
@@ -67,9 +68,9 @@ TEST(InsideArithmeticTest, inside_add_mixed_notch_with_offset_storage) {
     // sum was only correct when the lhs offset happened to be 0 or notches were
     // equal. These exercise different notches AND a non-zero (and negative-Lower)
     // offset, which is where the bug surfaced.
-    using fine   = inside<{{-4, 4}, per<16>}, round_nearest>;
-    using coarse = inside<{{-8, 8}, per<256>}, round_nearest>;
-    using offset = inside<{{0, 4}, per<16>}, round_nearest>;
+    using fine   = inside<{{-4, 4}, per<16>}, round_half_away>;
+    using coarse = inside<{{-8, 8}, per<256>}, round_half_away>;
+    using offset = inside<{{0, 4}, per<16>}, round_half_away>;
 
     ASSERT_EQ((fine{0} + coarse{2}), 2);   // was -1.75
     ASSERT_EQ((offset{1} + coarse{2}), 3); // was 2.0625
@@ -149,11 +150,11 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     }
 
     {
-        SCOPED_TRACE("division by zero -> errc::division_by_zero");
+        SCOPED_TRACE("division by zero -> error::division_by_zero");
         using ui = inside<{0, 100}, round_toward_zero>;
         ui a{51}, zero{0};
         ASSERT_FALSE((a / zero).has_value());
-        ASSERT_EQ((a / zero).error(), errc::division_by_zero);
+        ASSERT_EQ((a / zero).error(), error::division_by_zero);
     }
 
     {
@@ -209,7 +210,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         static_assert(!(is_expected_v<decltype(a / p)>));
         static_assert(a / p == 14);
 
-        // Divisor whose grid contains zero → std::expected<inside, errc>.
+        // Divisor whose grid contains zero → std::expected<inside, error>.
         static_assert(is_expected_v<decltype(a / s)>);
         ASSERT_TRUE((a / s).has_value());
         ASSERT_EQ(*(a / s), 21);
@@ -248,7 +249,7 @@ TEST(InsideArithmeticTest, inside_modulo) {
     // mod-by-zero — runtime only: the `is_constant_evaluated()` throw short-circuits.
     ui a_rt{17}, zero{0};
     ASSERT_FALSE((a_rt % zero).has_value());
-    ASSERT_EQ((a_rt % zero).error(), errc::division_by_zero);
+    ASSERT_EQ((a_rt % zero).error(), error::division_by_zero);
 
     using si = inside<{-100, 100}, round_toward_zero>;
     constexpr si sa{-17}, sb{5};
@@ -265,8 +266,8 @@ TEST(InsideArithmeticTest, inside_expected_ops_propagate_error) {
     using u8 = inside<{1, 255}>;
     constexpr u8 a{100}, b{10};
     struct ex {
-        static constexpr std::expected<u8, errc> ok(u8 v) { return v; }
-        static constexpr std::expected<u8, errc> none() { return std::unexpected{errc::overflow}; }
+        static constexpr std::expected<u8, error> ok(u8 v) { return v; }
+        static constexpr std::expected<u8, error> none() { return std::unexpected{error::overflow}; }
     };
 
     // +
@@ -275,7 +276,7 @@ TEST(InsideArithmeticTest, inside_expected_ops_propagate_error) {
     static_assert(*(ex::ok(a) + ex::ok(b)) == 110);
     static_assert(!((ex::none() + b).has_value()));
     static_assert(!((a + ex::none()).has_value()));
-    static_assert((a + ex::none()).error() == errc::overflow);
+    static_assert((a + ex::none()).error() == error::overflow);
 
     // -
     static_assert(*(ex::ok(a) - b) == 90);
@@ -296,13 +297,13 @@ TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wr
     using frac   = inside<{{-10, 10}, max_denominator{100}}>;
     frac f1      = (2_r / 3);
     frac f2      = (1_r / 3);
-    auto ok      = [](frac v) -> std::expected<frac, errc> { return v; };
-    auto failing = []() -> std::expected<frac, errc> { return std::unexpected{errc::overflow}; };
+    auto ok      = [](frac v) -> std::expected<frac, error> { return v; };
+    auto failing = []() -> std::expected<frac, error> { return std::unexpected{error::overflow}; };
 
     ASSERT_EQ(*(ok(f1) + f2), 1);
     ASSERT_EQ(*(f1 + ok(f2)), 1);
     ASSERT_FALSE((failing() + f2).has_value());
-    static_assert(std::is_same_v<decltype(ok(f1) + f2), std::expected<decltype(f1 + f2), errc>>);
+    static_assert(std::is_same_v<decltype(ok(f1) + f2), std::expected<decltype(f1 + f2), error>>);
     static_assert(std::is_same_v<decltype(ok(f1) / f2), decltype(f1 / f2)>); // already expected
 
     ASSERT_EQ(*(ok(f1) - f2), (1_r / 3));
@@ -310,24 +311,24 @@ TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wr
 
     using pfrac = inside<{{1, 10}, max_denominator{100}}>;
     pfrac p1 = 3, p2 = 2;
-    auto  pok = [](pfrac v) -> std::expected<pfrac, errc> { return v; };
+    auto  pok = [](pfrac v) -> std::expected<pfrac, error> { return v; };
     ASSERT_EQ(*(pok(p1) / p2), (3_r / 2));
 }
 
-// The free div reports a zero divisor in its result, and into an errc&.
+// The free div reports a zero divisor in its result, and into an error&.
 TEST(InsideArithmeticTest, free_div_reports_a_zero_divisor) {
     using c100 = inside<{0, 100}, checked>;
     c100 d{50}, z{0};
 
-    errc seen{};
-    auto q = div(d, z, seen);
-    ASSERT_EQ(seen, errc::division_by_zero);
+    error seen{};
+    auto  q = div(d, z, seen);
+    ASSERT_EQ(seen, error::division_by_zero);
     ASSERT_FALSE(q.has_value());
-    ASSERT_EQ(q.error(), errc::division_by_zero);
+    ASSERT_EQ(q.error(), error::division_by_zero);
 
     auto q_def = div(d, z);
     ASSERT_FALSE(q_def.has_value());
-    ASSERT_EQ(q_def.error(), errc::division_by_zero);
+    ASSERT_EQ(q_def.error(), error::division_by_zero);
 }
 
 // unary -_ins composes through the literal parser
@@ -384,14 +385,14 @@ TEST(InsideArithmeticTest, scalars_need_a_grid_to_join_inside_arithmetic) {
     // programmer must give the scalar a grid (`1_ins` / `just<1>`). Only comparisons
     // (`b == 5`) against a raw scalar stay ergonomic.
     ASSERT_EQ(b, 5);
-    errc ec{}; // (b + 1 may leave b's grid: a reported store)
+    error ec{}; // (b + 1 may leave b's grid: a reported store)
     b.policy(ec) += 1_ins;
     ASSERT_EQ(b, 6);
 }
 
 // exact scalar math stays in inside-space
 TEST(InsideArithmeticTest, exact_scalar_math_stays_in_inside_space) {
-    using rn = inside<{{-100, 100}, per<16>}, round_nearest>;
+    using rn = inside<{{-100, 100}, per<16>}, round_half_away>;
     rn a{0.5_r}; // 0.5
 
     // The old mixed-mode `inside op rational` overloads are gone: a scalar joins
@@ -429,9 +430,9 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     ASSERT_TRUE(beman::inside::sum<clamped>(v) == 100);
 
     // Q-format elements (index raw): exact fractional accumulation.
-    using q = inside<{{0, 4}, per<256>}, round_nearest>;
+    using q = inside<{{0, 4}, per<256>}, round_half_away>;
     std::vector<q> qs(3, q{rational{1, 256}});
-    using qsum = inside<{{0, 16}, per<256>}, round_nearest>;
+    using qsum = inside<{{0, 16}, per<256>}, round_half_away>;
     ASSERT_EQ(rational{*beman::inside::sum<qsum>(qs)}, (rational{3, 256}));
 
     // 64-bit raws whose index total passes 64 bits: summed exactly.
@@ -444,7 +445,7 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     // policy (not bad_expected_access).
     using cont = inside<{{0, 1}, max_denominator{10}}>;
     std::vector<cont> c{cont{rational{3, 5}}, cont{rational{7, 10}}};
-    ASSERT_EQ(beman::inside::sum<cont>(c).error(), errc::overflow); // 13/10
+    ASSERT_EQ(beman::inside::sum<cont>(c).error(), error::overflow); // 13/10
 
     // Blocks: 32-bit lanes take ⌊(2^32 − 1)/max raw⌋ elements (unsigned)
     // or ⌊(2^31 − 1)/max |raw|⌋ (signed) at a time; ranges longer than a
@@ -499,7 +500,7 @@ TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
     auto w = b + 1_ins;
     static_assert(!std::same_as<decltype(w), pct>); // widened grid
     ASSERT_EQ(w, 6);
-    errc ec{}; // (b + 1 may leave b's grid: a reported store)
+    error ec{}; // (b + 1 may leave b's grid: a reported store)
     b.policy(ec) += 1_ins;
     ASSERT_EQ(b, 6);
     ASSERT_TRUE(b < 10);
@@ -510,19 +511,19 @@ TEST(InsideArithmeticTest, inside_space_geometry_helpers_dot_cross_lerp) {
     using coord = inside<{-10, 10}>;
 
     // dot(a, b) = ax*bx + ay*by ; cross(a, b) = ax*by - ay*bx (z-component).
-    static_assert(dot(coord{3}, coord{4}, coord{1}, coord{2}) == 11);
-    static_assert(cross(coord{3}, coord{4}, coord{1}, coord{2}) == 2);
+    static_assert(coord{3} * coord{1} + coord{4} * coord{2} == 11);
+    static_assert(coord{3} * coord{2} - coord{4} * coord{1} == 2);
 
     // Perpendicular vectors: dot is zero, cross is the signed area.
-    static_assert(dot(coord{1}, coord{0}, coord{0}, coord{1}) == 0);
-    static_assert(cross(coord{1}, coord{0}, coord{0}, coord{1}) == 1);
+    static_assert(coord{1} * coord{0} + coord{0} * coord{1} == 0);
+    static_assert(coord{1} * coord{1} - coord{0} * coord{0} == 1);
 
     // Each result widens past either input grid — no overflow possible.
-    static_assert(!std::same_as<decltype(dot(coord{1}, coord{0}, coord{0}, coord{1})), coord>);
+    static_assert(!std::same_as<decltype(coord{1} * coord{0} + coord{0} * coord{1}), coord>);
 
     // lerp(a, b, t) = a + (b - a) * t, with t a [0, 1] fixed-point inside.
     using val = inside<{0, 10}>;
-    using t_t = inside<{{0, 1}, per<4>}, round_nearest>;
+    using t_t = inside<{{0, 1}, per<4>}, round_half_away>;
     static_assert(lerp(val{2}, val{8}, t_t{0}) == 2);   // t = 0 -> a
     static_assert(lerp(val{2}, val{8}, t_t{1}) == 8);   // t = 1 -> b
     static_assert(lerp(val{2}, val{8}, t_t{0.5}) == 5); // midpoint (exact)
@@ -540,6 +541,7 @@ TEST(InsideArithmeticTest, inside_space_geometry_helpers_dot_cross_lerp) {
 // result grid; comparison is order-exact).
 namespace cross_grid_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 namespace {
@@ -664,7 +666,7 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     static_assert(whole{3} + quarters{0.75_r} == 3.75_r);
 
     using tenths       = inside<{{0, 100}, per<10>}>;
-    using quarter_grid = inside<{{0, 100}, per<4>}, round_nearest>;
+    using quarter_grid = inside<{{0, 100}, per<4>}, round_half_away>;
     static_assert(detail::assignment<quarter_grid, tenths>::affine_map.Ok);
 
     // fp-backed operands: the sum is exact either way.
@@ -682,14 +684,14 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
 TEST(CrossGridTest, cross_grid_assign_keeps_the_value) {
     // An inside source stores its exact value; rounding only where the source
     // is off the target grid.
-    using thirds = inside<{{0, 4}, per<3>}, round_nearest>;
+    using thirds = inside<{{0, 4}, per<3>}, round_half_away>;
 
-    using index_src = inside<{{0, 4}, per<3>}, round_nearest>;
-    thirds from_index;
-    from_index = index_src{rational{7, 3}};
-    ASSERT_EQ(rational{from_index}, (rational{7, 3}));
+    using index_src = inside<{{0, 4}, per<3>}, round_half_away>;
+    thirds from_step;
+    from_step = index_src{rational{7, 3}};
+    ASSERT_EQ(rational{from_step}, (rational{7, 3}));
 
-    using wide_thirds = inside<{{-4, 4}, per<3>}, round_nearest>;
+    using wide_thirds = inside<{{-4, 4}, per<3>}, round_half_away>;
     thirds from_exact;
     from_exact = test::store<thirds>(wide_thirds{rational{5, 3}});
     ASSERT_EQ(rational{from_exact}, (rational{5, 3}));
@@ -699,14 +701,14 @@ TEST(CrossGridTest, cross_grid_assign_keeps_the_value) {
     from_value_raw = value_src{3};
     ASSERT_EQ(rational{from_value_raw}, rational{3});
 
-    using dyadic_src = inside<{{0, 4}, per<256>}, round_nearest>;
-    using dyadic     = inside<{{0, 4}, per<256>}, round_nearest>;
+    using dyadic_src = inside<{{0, 4}, per<256>}, round_half_away>;
+    using dyadic     = inside<{{0, 4}, per<256>}, round_half_away>;
     dyadic from_dyadic;
     from_dyadic = dyadic_src{rational{513, 256}};
     ASSERT_EQ(rational{from_dyadic}, (rational{513, 256}));
 
     // rounding still happens when the source is off the target grid
-    using units = inside<{{0, 4}, 1}, round_nearest>;
+    using units = inside<{{0, 4}, 1}, round_half_away>;
     units rounded;
     rounded = index_src{rational{7, 3}}; // 2.33 -> 2 on the unit grid
     ASSERT_EQ(rational{rounded}, rational{2});
@@ -717,7 +719,7 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
     // Q-format (index raw) vs integral scalar takes the cross-multiplied
     // integer arm; every verdict must match the exact rational comparison,
     // including at A's numeric_limits extremes.
-    using q88 = inside<{{0, 255}, per<256>}, round_nearest>;
+    using q88 = inside<{{0, 255}, per<256>}, round_half_away>;
     static_assert(scalar_index_cmp_fits<q88, int>);
 
     auto agree = [](auto probe, auto scalar) {
@@ -736,7 +738,7 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
     }
 
     // offset index grid (negative Lower -> nonzero bias)
-    using offset_q = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using offset_q = inside<{{-8, 8}, per<16384>}, round_half_away>;
     static_assert(scalar_index_cmp_fits<offset_q, int>);
     for (int scalar : {std::numeric_limits<int>::min(), -9, -8, -1, 0, 1, 8, std::numeric_limits<int>::max()}) {
         agree(offset_q{-8}, scalar);
@@ -769,6 +771,7 @@ TEST(CrossGridTest, continuous_plus_notched_is_continuous) {
 // signed
 namespace signed_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // signed storage type selection
@@ -806,15 +809,15 @@ TEST(SignedTest, signed_construction_and_arithmetic) {
     auto quot = x / y;
     ASSERT_EQ(*quot, -0.5_r);
 
-    s32  acc{100}, delta{-30};
-    errc ec{}; // (a sum the grids cannot prove: reported)
+    s32   acc{100}, delta{-30};
+    error ec{}; // (a sum the grids cannot prove: reported)
     acc.policy(ec) += delta;
     ASSERT_EQ(acc, 70);
 
     s32 acc2{50};
     acc2.policy(ec) += -75_ins;
     ASSERT_EQ(acc2, -25);
-    ASSERT_EQ(ec, errc{});
+    ASSERT_EQ(ec, error{});
 }
 
 // signed storage uses the type's full range, including its minimum
@@ -899,8 +902,8 @@ TEST(SignedTest, signed_clamp_wrap) {
 // signed expected helpers
 TEST(SignedTest, signed_expected_helpers) {
     using s32    = inside<{-100000, 100000}>;
-    auto a       = []() -> std::expected<s32, errc> { return s32{42}; };
-    auto failing = []() -> std::expected<s32, errc> { return std::unexpected{errc::overflow}; };
+    auto a       = []() -> std::expected<s32, error> { return s32{42}; };
+    auto failing = []() -> std::expected<s32, error> { return std::unexpected{error::overflow}; };
 
     auto sum = a() + s32{-100};
     ASSERT_TRUE(sum.has_value());
@@ -932,6 +935,7 @@ TEST(SignedTest, comparison_across_grids) {
 // Result types are part of the API, so these pin the tight forms.
 namespace result_grids_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 namespace {
 template <class T>
@@ -999,7 +1003,7 @@ void expect_all_modes() {
     expect_tight_remainder<mode::trunc, round_toward_zero, GA, GB>(true);
     expect_tight_remainder<mode::floor, round_floor, GA, GB>(true);
     expect_tight_remainder<mode::ceil, round_ceil, GA, GB>(true);
-    expect_tight_remainder<mode::nearest, round_nearest, GA, GB>(false);
+    expect_tight_remainder<mode::nearest, round_half_away, GA, GB>(false);
 }
 } // namespace
 
@@ -1080,31 +1084,32 @@ TEST(ResultGridsTest, quantities_take_the_numbers_tight_types) {
 // expected_arithmetic
 namespace expected_arithmetic_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 namespace {
-using exp_r = std::expected<rational, errc>;
+using exp_r = std::expected<rational, error>;
 
 // Fallible-result stand-ins: std::expected travels only as a return value or
 // parameter, so the tests build operands with these instead of storing them.
 constexpr exp_r good(rational r) { return r; }
-constexpr exp_r bad(errc e = errc::overflow) { return std::unexpected{e}; }
+constexpr exp_r bad(error e = error::overflow) { return std::unexpected{e}; }
 } // namespace
 
 // No inside stores a std::expected - not by construction, =, or a compound
 // op: check it and store *e, or use try_make(e), which passes the error on.
 TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
-    using b_t = inside<{{0, 1}, per<16>}, round_nearest>;
+    using b_t = inside<{{0, 1}, per<16>}, round_half_away>;
     static_assert(!std::is_constructible_v<b_t, exp_r> && !std::is_convertible_v<exp_r, b_t>);
     static_assert(!std::is_assignable_v<b_t&, exp_r>);
-    static_assert(!std::is_constructible_v<b_t, std::expected<b_t, errc>>);
+    static_assert(!std::is_constructible_v<b_t, std::expected<b_t, error>>);
 
     const auto g = good(0.5_r);
     ASSERT_TRUE(g.has_value());
     b_t v = test::store<b_t>(*g);
     ASSERT_EQ(rational{v}, 0.5_r);
     ASSERT_EQ(*b_t::try_make(good(0.25_r)), 0.25_r);
-    ASSERT_EQ(b_t::try_make(bad(errc::division_by_zero)).error(), errc::division_by_zero);
+    ASSERT_EQ(b_t::try_make(bad(error::division_by_zero)).error(), error::division_by_zero);
 }
 
 // A division whose divisor grid holds 0, into a clamp type: try_make passes
@@ -1113,8 +1118,8 @@ TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
 TEST(ExpectedArithmeticTest, zero_divisor_into_a_clamp_type_is_reported) {
     inside<{0, 10}> a{4};
     inside<{0, 2}>  b{0};
-    using c_t = inside<{0, 100}, clamp | round_nearest>;
-    EXPECT_EQ(c_t::try_make(a / b).error(), errc::division_by_zero);
+    using c_t = inside<{0, 100}, clamp | round_half_away>;
+    EXPECT_EQ(c_t::try_make(a / b).error(), error::division_by_zero);
     b = 2;
     EXPECT_EQ(rational{*c_t::try_make(a / b)}, 2);
 }
@@ -1124,10 +1129,10 @@ TEST(ExpectedArithmeticTest, zero_divisor_into_a_clamp_type_is_reported) {
 template <class A, class B>
 concept adds_to = requires(A a, B b) { a + b; };
 TEST(ExpectedArithmeticTest, expected_inside_plus_point_propagates_error) {
-    using b_t    = inside<{{0, 1}, per<16>}, round_nearest>;
-    auto some    = []() -> std::expected<b_t, errc> { return b_t{0.5_r}; };
-    auto failing = []() -> std::expected<b_t, errc> { return std::unexpected{errc::division_by_zero}; };
-    static_assert(!adds_to<std::expected<b_t, errc>, rational> && !adds_to<b_t, rational> && !adds_to<rational, b_t>);
+    using b_t    = inside<{{0, 1}, per<16>}, round_half_away>;
+    auto some    = []() -> std::expected<b_t, error> { return b_t{0.5_r}; };
+    auto failing = []() -> std::expected<b_t, error> { return std::unexpected{error::division_by_zero}; };
+    static_assert(!adds_to<std::expected<b_t, error>, rational> && !adds_to<b_t, rational> && !adds_to<rational, b_t>);
 
     auto r = some() + 0.25_ins;
     ASSERT_TRUE(r.has_value());
@@ -1138,7 +1143,7 @@ TEST(ExpectedArithmeticTest, expected_inside_plus_point_propagates_error) {
     ASSERT_FALSE((failing() - 0.25_ins).has_value());
     ASSERT_FALSE((failing() * 0.25_ins).has_value());
     ASSERT_FALSE((failing() / 0.25_ins).has_value());
-    ASSERT_EQ((failing() * 0.25_ins).error(), errc::division_by_zero);
+    ASSERT_EQ((failing() * 0.25_ins).error(), error::division_by_zero);
 }
 
 // expected<rational> value_or
@@ -1151,21 +1156,22 @@ TEST(ExpectedArithmeticTest, expected_rational_value_or) {
 // lift
 namespace lift_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 using beman::inside::detail::lift;
 
 namespace {
 // Fallible-argument stand-ins: std::expected is passed as an argument, never
 // stored, so the tests produce it from these functions.
-constexpr std::expected<int, errc> good(int v) { return v; }
-constexpr std::expected<int, errc> bad(errc e = errc::overflow) { return std::unexpected{e}; }
+constexpr std::expected<int, error> good(int v) { return v; }
+constexpr std::expected<int, error> bad(error e = error::overflow) { return std::unexpected{e}; }
 } // namespace
 
 // lift basics: pure values
 TEST(LiftTest, lift_basics_pure_values) {
     auto plus = [](int a, int b) { return a + b; };
     static_assert(*lift(plus, 2, 3) == 5);
-    static_assert(std::is_same_v<decltype(lift(plus, 2, 3)), std::expected<int, errc>>);
+    static_assert(std::is_same_v<decltype(lift(plus, 2, 3)), std::expected<int, error>>);
 }
 
 // lift with expected arg(s) / (good, value)
@@ -1179,17 +1185,17 @@ TEST(LiftTest, lift_with_expected_arg_good_value) {
 // lift with expected arg(s) / (error, value) -> error
 TEST(LiftTest, lift_with_expected_arg_error_value_to_error) {
     auto plus = [](int a, int b) { return a + b; };
-    auto r    = lift(plus, bad(errc::domain_error), 3);
+    auto r    = lift(plus, bad(error::domain_error), 3);
     ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::domain_error);
+    ASSERT_EQ(r.error(), error::domain_error);
 }
 
 // lift with expected arg(s) / (value, error) -> error
 TEST(LiftTest, lift_with_expected_arg_value_error_to_error) {
     auto plus = [](int a, int b) { return a + b; };
-    auto r    = lift(plus, 2, bad(errc::division_by_zero));
+    auto r    = lift(plus, 2, bad(error::division_by_zero));
     ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::division_by_zero);
+    ASSERT_EQ(r.error(), error::division_by_zero);
 }
 
 // lift with expected arg(s) / (good, good)
@@ -1203,27 +1209,27 @@ TEST(LiftTest, lift_with_expected_arg_good_good) {
 // lift: the leftmost error wins
 TEST(LiftTest, lift_leftmost_error_wins) {
     auto plus = [](int a, int b) { return a + b; };
-    auto r    = lift(plus, bad(errc::domain_error), bad(errc::overflow));
+    auto r    = lift(plus, bad(error::domain_error), bad(error::overflow));
     ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::domain_error);
+    ASSERT_EQ(r.error(), error::domain_error);
 }
 
 // lift auto-flatten when op returns expected
 TEST(LiftTest, lift_auto_flatten_when_op_returns_expected) {
-    auto checked_div = [](int a, int b) -> std::expected<int, errc> {
+    auto checked_div = [](int a, int b) -> std::expected<int, error> {
         if (b == 0)
-            return std::unexpected{errc::division_by_zero};
+            return std::unexpected{error::division_by_zero};
         return a / b;
     };
 
     auto r = lift(checked_div, 6, 2);
-    static_assert(std::is_same_v<decltype(r), std::expected<int, errc>>);
+    static_assert(std::is_same_v<decltype(r), std::expected<int, error>>);
     ASSERT_TRUE(r.has_value());
     ASSERT_EQ(*r, 3);
 
     auto z = lift(checked_div, 6, 0);
     ASSERT_FALSE(z.has_value());
-    ASSERT_EQ(z.error(), errc::division_by_zero);
+    ASSERT_EQ(z.error(), error::division_by_zero);
 }
 
 // lift with three args
@@ -1253,6 +1259,7 @@ TEST(LiftTest, lift_propagates_exceptions_thrown_by_op) {
 // onto Out, without forming the product or quotient grid.
 namespace into_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 namespace {
 inline constexpr rational wei{1, 1'000'000'000'000'000'000};
@@ -1265,12 +1272,12 @@ TEST(NamedOutputTest, mul_rounds_the_exact_product_once) {
     // eth × price has a 10^-20 notch: rounded once onto usd's grid.
     const eth   balance = *parse<eth>("123456789.123456789123456789");
     const price p       = *parse<price>("3141.59");
-    using usd_nearest   = inside<grid_of<usd>, round_nearest>;
+    using usd_nearest   = inside<grid_of<usd>, round_half_away>;
     EXPECT_EQ(to_string(*mul<usd_nearest>(balance, p)), "387850614142.36");
     EXPECT_EQ(to_string(*mul<usd>(balance, p, round_floor)), "387850614142.36");
     EXPECT_EQ(to_string(*mul<usd>(balance, p, round_ceil)), "387850614142.37");
     // Off the cents grid under a checked Out: reported, not rounded.
-    EXPECT_EQ(mul<usd>(balance, p).error(), errc::rounding_error);
+    EXPECT_EQ(mul<usd>(balance, p).error(), error::rounding_error);
     // On the grid: exact.
     EXPECT_EQ(mul<usd>(eth{2}, p), (usd{rational{628318, 100}}));
 }
@@ -1279,13 +1286,13 @@ TEST(NamedOutputTest, mul_range_follows_out_policy) {
     using small   = inside<{0, 100}>;
     using clamped = inside<{0, 100}, clamp>;
     const small a{20}, b{30};
-    EXPECT_EQ(mul<small>(a, b).error(), errc::overflow);
+    EXPECT_EQ(mul<small>(a, b).error(), error::overflow);
     EXPECT_EQ(mul<clamped>(a, b), 100);
     EXPECT_EQ(mul<small>(small{5}, a), 100);
 }
 
 TEST(NamedOutputTest, div_onto_a_named_output) {
-    using third = inside<{{0, 100}, per<3>}, round_nearest>;
+    using third = inside<{{0, 100}, per<3>}, round_half_away>;
     using pos   = inside<{1, 100}>;
     using any   = inside<{0, 100}>;
     // A zero-free divisor: a plain Out.
@@ -1293,21 +1300,21 @@ TEST(NamedOutputTest, div_onto_a_named_output) {
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(q)>, third>);
     EXPECT_EQ(q, (third{rational{7, 3}}));
     // Rounded once onto a coarser Out.
-    using tenth = inside<{{0, 100}, per<10>}, round_nearest>;
+    using tenth = inside<{{0, 100}, per<10>}, round_half_away>;
     EXPECT_EQ(div<tenth>(any{7}, pos{3}), (tenth{rational{23, 10}}));
     // A divisor that may be 0: every failure is the expected's error.
     const auto r = div<third>(any{7}, any{3});
-    static_assert(std::is_same_v<std::remove_cvref_t<decltype(r)>, std::expected<third, errc>>);
+    static_assert(std::is_same_v<std::remove_cvref_t<decltype(r)>, std::expected<third, error>>);
     EXPECT_EQ(*r, (third{rational{7, 3}}));
-    EXPECT_EQ(div<third>(any{7}, any{0}).error(), errc::division_by_zero);
-    using one = inside<{0, 1}, round_nearest>;
-    EXPECT_EQ(div<one>(any{7}, any{2}).error(), errc::overflow);
+    EXPECT_EQ(div<third>(any{7}, any{0}).error(), error::division_by_zero);
+    using one = inside<{0, 1}, round_half_away>;
+    EXPECT_EQ(div<one>(any{7}, any{2}).error(), error::overflow);
     using ten = inside<{0, 10}>;
-    EXPECT_EQ(div<ten>(any{7}, any{2}).error(), errc::rounding_error);
+    EXPECT_EQ(div<ten>(any{7}, any{2}).error(), error::rounding_error);
     // A quotient with no 64-bit fraction, straight onto a grid.
-    using fine  = inside<{{0, 2}, per<(std::uint64_t{1} << 62)>}, round_nearest>;
+    using fine  = inside<{{0, 2}, per<(std::uint64_t{1} << 62)>}, round_half_away>;
     const eth a = *parse<eth>("1.000000000000000001"), b = *parse<eth>("0.999999999999999999");
-    EXPECT_EQ(div<fine>(a, b).value(), fine::from_raw((std::uint64_t{1} << 62) + 9));
+    EXPECT_EQ(div<fine>(a, b).value(), fine::from_raw((std::uint64_t{1} << 62) + 9, unsafe));
 }
 
 // The native paths (the exact product inside, or a 64-bit rational) round as
@@ -1316,10 +1323,10 @@ TEST(NamedOutputTest, div_onto_a_named_output) {
 namespace {
 template <class Out, policy_flag F, class A, class B>
 void expect_mul_div_agree() {
-    constexpr policy_flag P = detail::override_flags(flags_of<Out>, F);
+    constexpr policy_flag P = detail::override_flags(policy_of<Out>, F);
     for (const A a : values<A>)
         for (const B b : values<B>) {
-            // (The wide paths report into an errc: try_store.)
+            // (The wide paths report into an error: try_store.)
             const auto m = test::reported([&] { return mul<Out>(a, b, detail::flag<F>{}); });
             const auto mw =
                 detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = detail::mul_wide<Out>(a, b, policy); });
@@ -1339,7 +1346,7 @@ using neg    = inside<{{-2, -1}, per<8>}>;
 } // namespace
 
 TEST(NamedOutputTest, native_paths_agree_with_the_wide_path) {
-    using round_out = inside<{{-50, 50}, per<3>}, round_nearest>;
+    using round_out = inside<{{-50, 50}, per<3>}, round_half_away>;
     using floor_out = inside<{-40, 40}, round_floor>;
     using clamp_out = inside<{{-5, 5}, per<2>}, clamp | round_ceil>;
     using check_out = inside<{{-20, 20}, per<2>}>;
@@ -1358,7 +1365,7 @@ TEST(NamedOutputTest, native_paths_agree_with_the_wide_path) {
     expect_mul_div_agree<clamp_out, checked, quart, thirds>();
     expect_mul_div_agree<check_out, checked, int_g, quart>();
     expect_mul_div_agree<check_out, checked, thirds, thirds>();
-    expect_mul_div_agree<check_out, round_nearest, quart, int_g>();
+    expect_mul_div_agree<check_out, round_half_away, quart, int_g>();
     expect_mul_div_agree<int_g, round_floor, quart, quart>();
     // div<Out>'s unreduced quotient (Q-format targets): wrap, and a floor
     // target fed by unanchored and negative operands.
@@ -1374,6 +1381,7 @@ TEST(NamedOutputTest, native_paths_agree_with_the_wide_path) {
 // ops return plain values instead of std::expected.
 namespace bounded_rational_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 namespace {
@@ -1445,19 +1453,19 @@ TEST(BoundedRationalTest, sweep_matches_checked_rational) {
 TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
     using thousandths = inside<{interval{0, 1}, max_denominator{1000}}>;
     EXPECT_TRUE(thousandths::try_make(rational{7, 1000}).has_value());
-    EXPECT_EQ(thousandths::try_make(rational{1, 1001}).error(), errc::rounding_error);
-    EXPECT_EQ(parse<thousandths>("0.0001").error(), errc::rounding_error);
-    EXPECT_EQ(test::store_error<thousandths>(test::at_run_time(rational{1, 1001})), errc::rounding_error);
+    EXPECT_EQ(thousandths::try_make(rational{1, 1001}).error(), error::rounding_error);
+    EXPECT_EQ(parse<thousandths>("0.0001").error(), error::rounding_error);
+    EXPECT_EQ(test::store_error<thousandths>(test::at_run_time(rational{1, 1001})), error::rounding_error);
     static_assert(!thousandths::try_make(rational{1, 1001}).has_value()); // also at compile time
 
     // Compound assignment stores back through the same check.
     thousandths x{rational{1, 10}};
-    errc        ec{};
+    error       ec{};
     x.policy(ec) *= thousandths{rational{1, 10}}; // 1/100: within the bound
     EXPECT_TRUE(x == rational(1, 100));
-    EXPECT_EQ(ec, errc{});
+    EXPECT_EQ(ec, error{});
     x.policy(ec) *= thousandths{rational{1, 100}}; // 1/10000
-    EXPECT_EQ(ec, errc::rounding_error);
+    EXPECT_EQ(ec, error::rounding_error);
 
     // A quotient type's bound is what the grids allow, so its own results fit.
     auto q = num{1} / den{7};
@@ -1477,7 +1485,7 @@ TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
     static_assert(fraction_storage<wide>);
     const auto ok = parse<wide>("0.000000000000000000000000000000000001"); // 10^-36
     ASSERT_TRUE(ok.has_value());
-    EXPECT_EQ(parse<wide>("0.0000000000000000000000000000000000001").error(), errc::rounding_error); // 10^-37
+    EXPECT_EQ(parse<wide>("0.0000000000000000000000000000000000001").error(), error::rounding_error); // 10^-37
     // A rounding policy rounds onto the bound instead: 10^-37 floors to 0, ceils to 10^-36.
     EXPECT_TRUE((parse<wide, round_floor>("0.0000000000000000000000000000000000001").value() == 0));
     EXPECT_TRUE((parse<wide, round_ceil>("0.0000000000000000000000000000000000001").value() == *ok));
@@ -1527,7 +1535,7 @@ TEST(BoundedRationalTest, results_past_the_fraction_cap_have_no_type) {
     using b16        = decltype(b8{} * b8{}); // denominators to 10^144
     static_assert(can_mul<b8, b8> && can_add<b16, billionths>);
     static_assert(!can_mul<b16, b16> && !can_add<b16, b16>); // 10^288: past 1024 bits
-    using cent      = inside<{{0, 1}, per<100>}, round_nearest>;
+    using cent      = inside<{{0, 1}, per<100>}, round_half_away>;
     const b16 tenth = rational{1, 10};
     EXPECT_EQ(mul<cent>(tenth, tenth), rational(1, 100));
 }
@@ -1536,6 +1544,7 @@ TEST(BoundedRationalTest, results_past_the_fraction_cap_have_no_type) {
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 template <class A, class B>
@@ -1609,8 +1618,8 @@ TEST(ArithmeticTest, operations_are_constraint_friendly) {
 // past the 64-bit rational: comparing them did not compile (the unit's
 // expected was read in a constant expression); they compare by value.
 TEST(ArithmeticTest, compare_without_a_common_unit) {
-    using thirds = inside<{{rational{1, 3}, rational{31, 3}}, rational{2, 3}}, round_nearest>;
-    using fine   = inside<{{0, 1}, per<(1ll << 62)>}, round_nearest>;
+    using thirds = inside<{{rational{1, 3}, rational{31, 3}}, rational{2, 3}}, round_half_away>;
+    using fine   = inside<{{0, 1}, per<(1ll << 62)>}, round_half_away>;
     static_assert(thirds{rational{1, 3}} < fine{rational{1, 2}});
     static_assert(thirds{1} > fine{rational{1, 2}});
     static_assert(thirds{1} == fine{1});
@@ -1625,7 +1634,7 @@ TEST(ArithmeticTest, sum_with_units_past_the_64_bit_gcd) {
     using R      = inside<{{rational{2, 3}, rational{5, 3}}, rational{1, 7ll << 58}}>;
     const auto s = L{rational{1, 3}} + R{rational{2, 3}};
     EXPECT_EQ(s, 1);
-    const auto t = L::from_raw(12345) + R::from_raw(999);
+    const auto t = L::from_raw(12345, unsafe) + R::from_raw(999, unsafe);
     EXPECT_EQ(to_string(t), "8070450532248019243/8070450532247928832");
 }
 
@@ -1711,6 +1720,7 @@ TEST(ArithmeticTest, product_stays_exact_past_2_53) {
 //---------------------------------------------------------------------------
 TEST(ArithmeticTest, scalar_comparison_does_not_truncate_the_scalar) {
     using namespace beman::inside;
+    using namespace beman::inside::formats;
     inside<{-10, 10}> one{1}, minus_one{-1};
     static_assert(detail::integer_value_storage<decltype(one)>);
     EXPECT_FALSE(one == 1.5_r);
@@ -1723,7 +1733,8 @@ TEST(ArithmeticTest, scalar_comparison_does_not_truncate_the_scalar) {
 // ++ moves one notch (1/256 here); += point adds the value.
 TEST(ArithmeticTest, increment_moves_one_notch) {
     using namespace beman::inside;
-    using rl = inside<{{-4, 4}, per<256>}, round_nearest | clamp>; // (++ names its range handling)
+    using namespace beman::inside::formats;
+    using rl = inside<{{-4, 4}, per<256>}, round_half_away | clamp>; // (++ names its range handling)
     rl x{rational{3, 2}};
     ++x;
     EXPECT_EQ(rational{x}, (rational{385, 256}));
@@ -1740,12 +1751,12 @@ TEST(ArithmeticTest, increment_moves_one_notch) {
 // expected-lift propagates a right-hand-side error
 TEST(ArithmeticTest, expected_lift_propagates_a_right_hand_side_error) {
     using num_t = inside<{0, 100}>;
-    std::expected<num_t, errc> left{num_t{5}}; // valid
-    std::expected<num_t, errc> right{std::unexpected{errc::overflow}};
+    std::expected<num_t, error> left{num_t{5}}; // valid
+    std::expected<num_t, error> right{std::unexpected{error::overflow}};
 
     auto both = left + right; // lhs OK, rhs error -> rhs.error() wins
     ASSERT_FALSE(both.has_value());
-    ASSERT_EQ(both.error(), errc::overflow);
+    ASSERT_EQ(both.error(), error::overflow);
 }
 
 //---------------------------------------------------------------------------
@@ -1786,7 +1797,7 @@ TEST(ArithmeticTest, continuous_sum_is_exact) {
                                 fine{rational{1, 1987}},
                                 fine{rational{1, 1979}},
                                 fine{rational{1, 1973}}};
-    using total  = inside<{{0, 6}, per<(1ll << 40)>}, round_nearest>;
+    using total  = inside<{{0, 6}, per<(1ll << 40)>}, round_half_away>;
     const auto s = beman::inside::sum<total>(r); // Σ 1/p, rounded once
     EXPECT_EQ(s->raw(), 3318520424);             // round(2^40 · Σ 1/p)
     using sixths = inside<{{-1, 1}, max_denominator{6}}>;
@@ -1805,6 +1816,7 @@ TEST(ArithmeticTest, continuous_sum_is_exact) {
 // `if constexpr` probe over the suite).
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::rational;
 
 // Disjoint operand ranges decide min and max at compile time, either order.
@@ -1820,7 +1832,7 @@ TEST(ArithmeticArmTest, min_and_max_of_disjoint_ranges) {
 // wide one is stored, as the exact quotient rounds.
 TEST(ArithmeticArmTest, div_onto_past_the_unreduced_quotient) {
     using C   = inside<{{1, 1125899906842624_g}, max_denominator{1024}}>; // [1, 2^50]
-    using Out = inside<{{0, 2}, per<1024>}, round_nearest>;
+    using Out = inside<{{0, 2}, per<1024>}, round_half_away>;
     static_assert(std::is_same_v<detail::raw_t<C>, rational>);
     const C x{rational{std::uint64_t{1} << 59, 1023}}, y{rational{std::uint64_t{1} << 59, 1021}};
     const C u{rational{(std::uint64_t{1} << 59) + 1, 1023}}, v{rational{(std::uint64_t{1} << 59) + 3, 1021}};
@@ -1835,7 +1847,7 @@ TEST(ArithmeticArmTest, sum_reduces_an_unreduced_raw) {
     rational quarter;
     quarter.Num = 2;
     quarter.Den = 8;
-    const std::vector<T> v{T::from_raw(quarter), T{rational{1, 4}}};
+    const std::vector<T> v{T::from_raw(quarter, unsafe), T{rational{1, 4}}};
     using total = inside<{{0, 2}, max_denominator{4}}>;
     EXPECT_EQ(rational{*beman::inside::sum<total>(v)}, (rational{1, 2}));
 }
