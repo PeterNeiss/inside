@@ -72,6 +72,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   - `to_string` of an integer or decimal grid prints with `std::to_chars`
     (52 ns to 6 ns; `per<100>`: 120 ns to 13 ns), and `parse` reads plain
     decimal text in one pass (about 2.5× faster).
+  - `dot`, `matrix_vector_product` and `matrix_product` sum the products of
+    integer-raw lattices in int64 and round each element once, inline
+    (Q2.14: an 8-element `matrix_vector_product` 63 ns to 25 ns, an 8×8
+    `matrix_product` 300 ns to 205 ns); short raws keep the vectorized sum.
   - A binary notch 1/2^k prints from the raw (a shift, and the fraction's
     decimals by one multiplication: Q8.8 27 ns to 15 ns, Q2.14 39 ns to
     23 ns), and `operator<<` and `std::format` write integer, decimal and

@@ -7,15 +7,18 @@
 // small grid or a sweep past its limits, under every policy.
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/mdspan.hpp>
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <expected>
 #include <limits>
+#include <mdspan>
 #include <random>
 #include <string>
 #include <vector>
@@ -304,6 +307,44 @@ TEST(FastPathTest, binary_notches_print_as_the_fraction_printer) {
         const bd::rational r = bd::as_rational(b);
         EXPECT_EQ(to_string(b), bd::fraction_to_string_u64(r.Den < 0, r.Num, bd::abs_den(r.Den), 0));
     }
+}
+
+// dot<Out> sums the products in int64 and rounds once: against the exact
+// total stored by the exact store, totals past Out's range included.
+template <class Out, policy_flag F>
+void dot_sweep(std::mt19937_64& g) {
+    using q = inside<{{-2, 2}, per<16384>}>;
+    for (int trial = 0; trial < 2000; ++trial) {
+        std::array<q, 8> a{}, b{};
+        for (std::size_t i = 0; i < 8; ++i) {
+            a[i] = q::from_raw(static_cast<std::uint32_t>(g() % 65537), unsafe);
+            b[i] = q::from_raw(static_cast<std::uint32_t>(g() % 65537), unsafe);
+        }
+        const auto d     = dot<Out>(std::mdspan{a.data(), std::extents<std::size_t, 8>{}},
+                                    std::mdspan{b.data(), std::extents<std::size_t, 8>{}});
+        auto       exact = a[0] * b[0];
+        using E          = inside<{{-32, 32}, per<(std::int64_t{1} << 28)>}, unsafe>; // the exact total: |Σ| ≤ 32
+        E total          = E{exact};
+        for (std::size_t i = 1; i < 8; ++i)
+            total = E{total + a[i] * b[i]};
+        const auto e = exact_store<Out, F>(total);
+        if constexpr (requires { d.has_value(); }) {
+            ASSERT_EQ(d.has_value(), e.has_value());
+            if (d) {
+                EXPECT_EQ(d->raw(), e->raw());
+            } else {
+                EXPECT_EQ(d.error(), e.error());
+            }
+        } else {
+            EXPECT_EQ(d.raw(), e->raw());
+        }
+    }
+}
+TEST(FastPathTest, dot_products_round_once_as_the_exact_total) {
+    std::mt19937_64 g{11};
+    dot_sweep<inside<{{-8, 8}, per<16384>}, clamp | round_half_away>, clamp | round_half_away>(g);
+    dot_sweep<inside<{{-32, 32}, per<1000>}, round_half_even>, round_half_even>(g);
+    dot_sweep<inside<{{-3, 3}, per<100>}, round_floor>, round_floor>(g); // past the range: overflow
 }
 
 TEST(FastPathTest, a_full_int64_source_clamps_and_wraps) {
