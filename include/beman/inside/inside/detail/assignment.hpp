@@ -259,6 +259,34 @@ struct assignment<L, R> {
     }
 };
 
+// The largest denominator a fraction stored onto the Q format L may have
+// for the integer shortcut (store_checked): (num − Lo·den)·K stays in
+// int64. 0 when no denominator fits.
+template <insidable L>
+inline constexpr std::uint64_t q_format_max_den = [] {
+    if constexpr (!q_format_fits<L> || !notched<L>)
+        return std::uint64_t{0};
+    else {
+        constexpr std::int64_t  K      = abs_den(notch64<L>.Den);
+        constexpr std::uint64_t two_km = [] {
+            // 2 · K · M with saturation (M bounds |value| and the offset span)
+            // ceil in uint64: a bound's magnitude may reach 2^63 (past int64)
+            constexpr std::uint64_t uint64_hi = std::numeric_limits<std::uint64_t>::max();
+            const rational          a         = abs(lower64<L>) > abs(upper64<L>) ? abs(lower64<L>) : abs(upper64<L>);
+            const std::uint64_t     c         = round_magnitude(a, round_mode::ceil).Magnitude;
+            if (c > (uint64_hi - 2) / 2)
+                return uint64_hi;
+            std::uint64_t k = static_cast<std::uint64_t>(K);
+            std::uint64_t m = c * 2 + 2;
+            if (k > uint64_hi / m)
+                return uint64_hi;
+            std::uint64_t prod = k * m;
+            return prod > uint64_hi / 2 ? uint64_hi : prod * 2;
+        }();
+        return static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) / two_km;
+    }
+}();
+
 //---------------------------------------------------------------------------
 // assign(insidable, floating_point | rational)
 //---------------------------------------------------------------------------
@@ -556,25 +584,9 @@ struct assignment<L, R> {
             // bit-identical to the rational path. Oversized denominators
             // fall through (the max_den guard keeps every product inside int64).
             if constexpr (q_format_fits<L> && notched<L>) {
-                constexpr std::int64_t  K      = abs_den(notch64<L>.Den);
-                constexpr std::int64_t  Lo     = lower_int64<L>;
-                constexpr std::uint64_t two_km = [] {
-                    // 2 · K · M with saturation (M bounds |value| and the offset span)
-                    // ceil in uint64: a bound's magnitude may reach 2^63 (past int64)
-                    constexpr std::uint64_t uint64_hi = std::numeric_limits<std::uint64_t>::max();
-                    const rational          a = abs(lower64<L>) > abs(upper64<L>) ? abs(lower64<L>) : abs(upper64<L>);
-                    const std::uint64_t     c = round_magnitude(a, round_mode::ceil).Magnitude;
-                    if (c > (uint64_hi - 2) / 2)
-                        return uint64_hi;
-                    std::uint64_t k = static_cast<std::uint64_t>(K);
-                    std::uint64_t m = c * 2 + 2;
-                    if (k > uint64_hi / m)
-                        return uint64_hi;
-                    std::uint64_t prod = k * m;
-                    return prod > uint64_hi / 2 ? uint64_hi : prod * 2;
-                }();
-                constexpr std::uint64_t max_den =
-                    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) / two_km;
+                constexpr std::int64_t  K       = abs_den(notch64<L>.Den);
+                constexpr std::int64_t  Lo      = lower_int64<L>;
+                constexpr std::uint64_t max_den = q_format_max_den<L>;
 
                 const std::uint64_t aden = abs_den(rv.Den);
                 if (max_den != 0 && aden <= max_den) {

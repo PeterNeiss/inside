@@ -1314,6 +1314,19 @@ template <insidable B, policy_flag F>
         return std::unexpected{w.error()};
     return try_store<B, policy_of<B> | F>([&](B& b, auto&& pol) { assign_exact<rational>(b, *w, pol, no_action{}); });
 }
+// The full grammar (separators, exponents, bases, N/D): out of line, so the
+// plain decimals' path keeps no frame for it.
+template <insidable B, policy_flag F>
+[[gnu::noinline]] constexpr std::expected<B, error> parse_grammar(const char* first, const char* last) {
+    if (fraction_text(first, last))
+        return parse_wide<B, F>(first, last);
+    const auto v = parse_text(first, last);
+    if (!v && v.error() == error::overflow) [[unlikely]]
+        return parse_wide<B, F>(first, last);
+    if (!v)
+        return std::unexpected{v.error()};
+    return B::template try_make<F>(*v);
+}
 } // namespace detail
 
 template <insidable B, policy_flag F = detail::none>
@@ -1327,16 +1340,18 @@ template <insidable B, policy_flag F = detail::none>
         if (const auto d = detail::plain_decimal(first, last); d.Ok) [[likely]] {
             if (d.Decimals == 0)
                 return B::template try_make<F>(d.Value);
-            return B::template try_make<F>(detail::rational{d.Value, detail::power_of_ten(d.Decimals)});
+            if constexpr (detail::q_format_max_den<B> != 0)
+                if (static_cast<std::uint64_t>(detail::power_of_ten(d.Decimals)) <= detail::q_format_max_den<B>) {
+                    // n/10^d unreduced: a Q format's store rounds it as the
+                    // reduced fraction would (one division of the offset).
+                    const std::uint64_t mag = d.Value < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(d.Value)
+                                                          : static_cast<std::uint64_t>(d.Value);
+                    const std::int64_t  den = detail::power_of_ten(d.Decimals);
+                    return B::template try_make<F>(detail::rational_from_parts(mag, d.Value < 0 ? -den : den));
+                }
+            return B::template try_make<F>(detail::decimal_rational(d.Value, d.Decimals));
         }
-    if (detail::fraction_text(first, last))
-        return detail::parse_wide<B, F>(first, last);
-    const auto v = detail::parse_text(first, last);
-    if (!v && v.error() == error::overflow) [[unlikely]]
-        return detail::parse_wide<B, F>(first, last);
-    if (!v)
-        return std::unexpected{v.error()};
-    return B::template try_make<F>(*v);
+    return detail::parse_grammar<B, F>(first, last);
 }
 
 template <insidable B>

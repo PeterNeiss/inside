@@ -276,6 +276,36 @@ TEST(FastPathTest, the_float_tie_test_matches_the_round_trip) {
         check(d);
 }
 
+// to_string of a binary notch prints from the raw: against the general
+// fraction printer over every value.
+template <class B>
+void binary_text() {
+    for (const B b : values<B>) {
+        const bd::rational r = bd::as_rational(b);
+        EXPECT_EQ(to_string(b), bd::fraction_to_string_u64(r.Den < 0, r.Num, bd::abs_den(r.Den), 0));
+    }
+}
+TEST(FastPathTest, binary_notches_print_as_the_fraction_printer) {
+    binary_text<inside<{{0, 255}, per<256>}>>();
+    binary_text<inside<{{-2, 2}, per<16384>}>>();
+    binary_text<inside<{{-1, 1}, per<(1 << 19)>}>>();
+    binary_text<inside<{{-3, 5}, per<2>}>>();
+    using q1616 = inside<{{-100000, 100000}, per<(1 << 16)>}>; // a sample
+    for (const std::int64_t raw : {std::int64_t{0},
+                                   std::int64_t{1},
+                                   std::int64_t{65535},
+                                   std::int64_t{65536},
+                                   std::int64_t{6553600000} - 1,
+                                   std::int64_t{6553600000},
+                                   std::int64_t{6553600001},
+                                   std::int64_t{13107200000} - 3,
+                                   std::int64_t{13107200000}}) {
+        const q1616        b = q1616::from_raw(raw, unsafe);
+        const bd::rational r = bd::as_rational(b);
+        EXPECT_EQ(to_string(b), bd::fraction_to_string_u64(r.Den < 0, r.Num, bd::abs_den(r.Den), 0));
+    }
+}
+
 TEST(FastPathTest, a_full_int64_source_clamps_and_wraps) {
     using full  = inside<{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()}>;
     using small = inside<{-10, 10}, clamp>;

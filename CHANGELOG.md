@@ -72,6 +72,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   - `to_string` of an integer or decimal grid prints with `std::to_chars`
     (52 ns to 6 ns; `per<100>`: 120 ns to 13 ns), and `parse` reads plain
     decimal text in one pass (about 2.5× faster).
+  - A binary notch 1/2^k prints from the raw (a shift, and the fraction's
+    decimals by one multiplication: Q8.8 27 ns to 15 ns, Q2.14 39 ns to
+    23 ns), and `operator<<` and `std::format` write integer, decimal and
+    binary notches from a stack buffer instead of a `std::string`. `parse`
+    of plain decimals stores n/10^d without a gcd and keeps the full grammar
+    out of line (decimal grids 27 ns to 12 ns).
   - `sum` and the matrix products add 64-bit unit counts in int64 blocks and
     store the total onto a lattice with one rounded division.
   - A rounded or wrapped store onto an unanchored lattice (Lower off the

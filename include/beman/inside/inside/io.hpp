@@ -23,6 +23,7 @@
 #include <beman/inside/inside.hpp>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <format>
@@ -220,6 +221,27 @@ inline constexpr std::uint64_t fixed_point_scale = [] {
 }();
 template <insidable B>
 inline constexpr bool fixed_point_text = fixed_point_scale<B> != 0;
+// A Q-format grid with a binary notch 1/2^k, k ≤ 19: printed from the raw by
+// a shift and one multiplication (its fraction f/2^k has k − ctz(f)
+// decimals, (f >> ctz(f))·5^(k − ctz(f)), below 10^19).
+template <insidable B>
+inline constexpr int binary_point_bits = [] {
+    if constexpr (!q_format_fits<B> || !notched<B>)
+        return 0;
+    else {
+        const std::uint64_t k = abs_den(notch64<B>.Den);
+        return notch64<B>.Num == 1 && k > 1 && std::has_single_bit(k) && std::countr_zero(k) <= 19
+                   ? std::countr_zero(k)
+                   : 0;
+    }
+}();
+inline constexpr auto powers_of_5 = [] {
+    std::array<std::uint64_t, 20> p{};
+    p[0] = 1;
+    for (std::size_t i = 1; i < p.size(); ++i)
+        p[i] = p[i - 1] * 5;
+    return p;
+}();
 } // namespace detail
 
 // A grid number of any size, in the forms of to_string(rational).
@@ -346,6 +368,62 @@ std::string big_fraction_to_string(const big_rational& r) {
     return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
 }
 
+namespace detail {
+// The insides whose exact text fits a 48-character buffer and prints from
+// the raw: integer grids, decimal notches (fixed_point_text) and binary
+// notches (binary_point_bits).
+template <insidable B>
+inline constexpr bool buffered_text = [] {
+    if constexpr (wide_valued<B>)
+        return false;
+    else
+        return (integer_lattice<B> && values_fit_int64<B>) || fixed_point_text<B> ||
+               (binary_point_bits<B> != 0 && fixed_decimals<B> == 0);
+}();
+inline constexpr std::size_t text_buffer = 48;
+// Writes b's text from p (text_buffer characters): its end.
+template <insidable B>
+    requires buffered_text<B>
+char* write_text(char* p, B b) {
+    char* const last = p + text_buffer;
+    if constexpr (integer_lattice<B> && values_fit_int64<B>)
+        return std::to_chars(p, last, to_value(b)).ptr;
+    else {
+        // A notch 1/K: the integer part, then the fraction's decimals.
+        constexpr std::int64_t K   = abs_den(notch64<B>.Den);
+        const std::int64_t     num = raw_int64(b) + lower_int64<B> * K;
+        const std::uint64_t    a =
+            num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num) : static_cast<std::uint64_t>(num);
+        if (num < 0)
+            *p++ = '-';
+        std::uint64_t frac;
+        int           digits;
+        if constexpr (fixed_point_text<B>) {
+            // a decimal notch: n decimals of the remainder (K divides 10^n)
+            p      = std::to_chars(p, last, a / K).ptr;
+            frac   = (a % K) * fixed_point_scale<B>;
+            digits = fixed_decimals<B>;
+        } else {
+            // a binary notch 1/2^k: f/2^k has k − ctz(f) decimals
+            constexpr int k       = binary_point_bits<B>;
+            p                     = std::to_chars(p, last, a >> k).ptr;
+            const std::uint64_t f = a & static_cast<std::uint64_t>(K - 1);
+            if (f == 0)
+                return p;
+            const int z = std::countr_zero(f);
+            digits      = k - z;
+            frac        = (f >> z) * powers_of_5[digits];
+        }
+        *p++ = '.';
+        char        tmp[24];
+        char* const end = std::to_chars(tmp, tmp + sizeof tmp, frac).ptr;
+        for (auto i = end - tmp; i < digits; ++i)
+            *p++ = '0';
+        return std::copy(tmp, end, p);
+    }
+}
+} // namespace detail
+
 // An inside's exact value: with a decimal notch, every value prints that
 // notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
 // decimal when it has one, else N/D.
@@ -354,34 +432,12 @@ template <insidable B>
     constexpr int n = detail::fixed_decimals<B>;
     if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
-    else {
-        if constexpr (detail::integer_lattice<B> && detail::values_fit_int64<B>) {
-            char        buf[24];
-            char* const end = std::to_chars(buf, buf + sizeof buf, detail::to_value(b)).ptr;
-            return std::string(buf, end);
-        } else if constexpr (detail::fixed_point_text<B>) {
-            // A decimal notch 1/K: the integer part, then n decimals of the
-            // remainder (K divides 10^n), no reduction.
-            constexpr std::int64_t K   = detail::abs_den(detail::notch64<B>.Den);
-            const std::int64_t     num = detail::raw_int64(b) + detail::lower_int64<B> * K;
-            const std::uint64_t    a =
-                num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num) : static_cast<std::uint64_t>(num);
-            char  buf[48];
-            char* p = buf;
-            if (num < 0)
-                *p++ = '-';
-            p    = std::to_chars(p, buf + sizeof buf, a / K).ptr;
-            *p++ = '.';
-            char        tmp[24];
-            char* const end = std::to_chars(tmp, tmp + sizeof tmp, (a % K) * detail::fixed_point_scale<B>).ptr;
-            for (auto i = end - tmp; i < n; ++i)
-                *p++ = '0';
-            p = std::copy(tmp, end, p);
-            return std::string(buf, p);
-        } else {
-            const detail::rational r = detail::as_rational(b);
-            return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
-        }
+    else if constexpr (detail::buffered_text<B>) {
+        char buf[detail::text_buffer];
+        return std::string(buf, detail::write_text(buf, b));
+    } else {
+        const detail::rational r = detail::as_rational(b);
+        return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
     }
 }
 
@@ -414,7 +470,11 @@ inline std::ostream& operator<<(std::ostream& stream, error e) { return stream <
 
 template <insidable B>
 inline std::ostream& operator<<(std::ostream& stream, B b) {
-    stream << beman::inside::to_string(b);
+    if constexpr (detail::buffered_text<B>) { // no string: the stream's width and fill still apply
+        char buf[detail::text_buffer];
+        stream << std::string_view(buf, detail::write_text(buf, b));
+    } else
+        stream << beman::inside::to_string(b);
     return stream;
 }
 
@@ -730,9 +790,13 @@ struct std::formatter<beman::inside::inside<G, P>>
         namespace d = beman::inside::detail;
         if constexpr (integer_path)
             return this->Numeric.format(d::to_value(b), ctx);
-        else if (!this->HasSpec)
-            return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
-        else
+        else if (!this->HasSpec) {
+            if constexpr (d::buffered_text<B>) {
+                char buf[d::text_buffer];
+                return std::ranges::copy(std::string_view(buf, d::write_text(buf, b)), ctx.out()).out;
+            } else
+                return std::ranges::copy(beman::inside::to_string(b), ctx.out()).out;
+        } else
             return this->Numeric.write_exact(d::exact_of(b), this->Numeric.plain_text(b), d::display_rounding<B>, ctx);
     }
 };

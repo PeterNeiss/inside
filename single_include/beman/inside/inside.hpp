@@ -2764,6 +2764,25 @@ constexpr std::int64_t power_of_ten(int n) noexcept {
         p *= 10;
     return p;
 }
+// v/10^d (|v| < 10^18, d ≤ 18) in lowest terms without a gcd: 10^d's only
+// primes are 2 and 5, so the trailing zero bits and the factors 5 of v are
+// what cancel.
+constexpr rational decimal_rational(std::int64_t v, int d) noexcept {
+    std::uint64_t m = v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v) : static_cast<std::uint64_t>(v);
+    if (m == 0)
+        return rational_from_parts(0, 1);
+    const int twos = std::countr_zero(m) < d ? std::countr_zero(m) : d;
+    m >>= twos;
+    int fives = 0;
+    while (fives < d && m % 5 == 0) {
+        m /= 5;
+        ++fives;
+    }
+    std::int64_t den = std::int64_t{1} << (d - twos);
+    for (int i = fives; i < d; ++i)
+        den *= 5;
+    return rational_from_parts(m, v < 0 ? -den : den);
+}
 
 // Runtime text → exact value, the 64-bit fast path for a number (not a
 // fraction): an optional sign, then the literal grammar. Malformed text is
@@ -7632,6 +7651,34 @@ struct assignment<L, R> {
     }
 };
 
+// The largest denominator a fraction stored onto the Q format L may have
+// for the integer shortcut (store_checked): (num − Lo·den)·K stays in
+// int64. 0 when no denominator fits.
+template <insidable L>
+inline constexpr std::uint64_t q_format_max_den = [] {
+    if constexpr (!q_format_fits<L> || !notched<L>)
+        return std::uint64_t{0};
+    else {
+        constexpr std::int64_t  K      = abs_den(notch64<L>.Den);
+        constexpr std::uint64_t two_km = [] {
+            // 2 · K · M with saturation (M bounds |value| and the offset span)
+            // ceil in uint64: a bound's magnitude may reach 2^63 (past int64)
+            constexpr std::uint64_t uint64_hi = std::numeric_limits<std::uint64_t>::max();
+            const rational          a         = abs(lower64<L>) > abs(upper64<L>) ? abs(lower64<L>) : abs(upper64<L>);
+            const std::uint64_t     c         = round_magnitude(a, round_mode::ceil).Magnitude;
+            if (c > (uint64_hi - 2) / 2)
+                return uint64_hi;
+            std::uint64_t k = static_cast<std::uint64_t>(K);
+            std::uint64_t m = c * 2 + 2;
+            if (k > uint64_hi / m)
+                return uint64_hi;
+            std::uint64_t prod = k * m;
+            return prod > uint64_hi / 2 ? uint64_hi : prod * 2;
+        }();
+        return static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) / two_km;
+    }
+}();
+
 //---------------------------------------------------------------------------
 // assign(insidable, floating_point | rational)
 //---------------------------------------------------------------------------
@@ -7929,25 +7976,9 @@ struct assignment<L, R> {
             // bit-identical to the rational path. Oversized denominators
             // fall through (the max_den guard keeps every product inside int64).
             if constexpr (q_format_fits<L> && notched<L>) {
-                constexpr std::int64_t  K      = abs_den(notch64<L>.Den);
-                constexpr std::int64_t  Lo     = lower_int64<L>;
-                constexpr std::uint64_t two_km = [] {
-                    // 2 · K · M with saturation (M bounds |value| and the offset span)
-                    // ceil in uint64: a bound's magnitude may reach 2^63 (past int64)
-                    constexpr std::uint64_t uint64_hi = std::numeric_limits<std::uint64_t>::max();
-                    const rational          a = abs(lower64<L>) > abs(upper64<L>) ? abs(lower64<L>) : abs(upper64<L>);
-                    const std::uint64_t     c = round_magnitude(a, round_mode::ceil).Magnitude;
-                    if (c > (uint64_hi - 2) / 2)
-                        return uint64_hi;
-                    std::uint64_t k = static_cast<std::uint64_t>(K);
-                    std::uint64_t m = c * 2 + 2;
-                    if (k > uint64_hi / m)
-                        return uint64_hi;
-                    std::uint64_t prod = k * m;
-                    return prod > uint64_hi / 2 ? uint64_hi : prod * 2;
-                }();
-                constexpr std::uint64_t max_den =
-                    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) / two_km;
+                constexpr std::int64_t  K       = abs_den(notch64<L>.Den);
+                constexpr std::int64_t  Lo      = lower_int64<L>;
+                constexpr std::uint64_t max_den = q_format_max_den<L>;
 
                 const std::uint64_t aden = abs_den(rv.Den);
                 if (max_den != 0 && aden <= max_den) {
@@ -11292,6 +11323,19 @@ template <insidable B, policy_flag F>
         return std::unexpected{w.error()};
     return try_store<B, policy_of<B> | F>([&](B& b, auto&& pol) { assign_exact<rational>(b, *w, pol, no_action{}); });
 }
+// The full grammar (separators, exponents, bases, N/D): out of line, so the
+// plain decimals' path keeps no frame for it.
+template <insidable B, policy_flag F>
+[[gnu::noinline]] constexpr std::expected<B, error> parse_grammar(const char* first, const char* last) {
+    if (fraction_text(first, last))
+        return parse_wide<B, F>(first, last);
+    const auto v = parse_text(first, last);
+    if (!v && v.error() == error::overflow) [[unlikely]]
+        return parse_wide<B, F>(first, last);
+    if (!v)
+        return std::unexpected{v.error()};
+    return B::template try_make<F>(*v);
+}
 } // namespace detail
 
 template <insidable B, policy_flag F = detail::none>
@@ -11305,16 +11349,18 @@ template <insidable B, policy_flag F = detail::none>
         if (const auto d = detail::plain_decimal(first, last); d.Ok) [[likely]] {
             if (d.Decimals == 0)
                 return B::template try_make<F>(d.Value);
-            return B::template try_make<F>(detail::rational{d.Value, detail::power_of_ten(d.Decimals)});
+            if constexpr (detail::q_format_max_den<B> != 0)
+                if (static_cast<std::uint64_t>(detail::power_of_ten(d.Decimals)) <= detail::q_format_max_den<B>) {
+                    // n/10^d unreduced: a Q format's store rounds it as the
+                    // reduced fraction would (one division of the offset).
+                    const std::uint64_t mag = d.Value < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(d.Value)
+                                                          : static_cast<std::uint64_t>(d.Value);
+                    const std::int64_t  den = detail::power_of_ten(d.Decimals);
+                    return B::template try_make<F>(detail::rational_from_parts(mag, d.Value < 0 ? -den : den));
+                }
+            return B::template try_make<F>(detail::decimal_rational(d.Value, d.Decimals));
         }
-    if (detail::fraction_text(first, last))
-        return detail::parse_wide<B, F>(first, last);
-    const auto v = detail::parse_text(first, last);
-    if (!v && v.error() == error::overflow) [[unlikely]]
-        return detail::parse_wide<B, F>(first, last);
-    if (!v)
-        return std::unexpected{v.error()};
-    return B::template try_make<F>(*v);
+    return detail::parse_grammar<B, F>(first, last);
 }
 
 template <insidable B>
@@ -13265,6 +13311,7 @@ using wrap_counter = inside<{0, Max}, wrap>;
 
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <format>
@@ -13462,6 +13509,27 @@ inline constexpr std::uint64_t fixed_point_scale = [] {
 }();
 template <insidable B>
 inline constexpr bool fixed_point_text = fixed_point_scale<B> != 0;
+// A Q-format grid with a binary notch 1/2^k, k ≤ 19: printed from the raw by
+// a shift and one multiplication (its fraction f/2^k has k − ctz(f)
+// decimals, (f >> ctz(f))·5^(k − ctz(f)), below 10^19).
+template <insidable B>
+inline constexpr int binary_point_bits = [] {
+    if constexpr (!q_format_fits<B> || !notched<B>)
+        return 0;
+    else {
+        const std::uint64_t k = abs_den(notch64<B>.Den);
+        return notch64<B>.Num == 1 && k > 1 && std::has_single_bit(k) && std::countr_zero(k) <= 19
+                   ? std::countr_zero(k)
+                   : 0;
+    }
+}();
+inline constexpr auto powers_of_5 = [] {
+    std::array<std::uint64_t, 20> p{};
+    p[0] = 1;
+    for (std::size_t i = 1; i < p.size(); ++i)
+        p[i] = p[i - 1] * 5;
+    return p;
+}();
 } // namespace detail
 
 // A grid number of any size, in the forms of to_string(rational).
@@ -13588,6 +13656,62 @@ std::string big_fraction_to_string(const big_rational& r) {
     return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
 }
 
+namespace detail {
+// The insides whose exact text fits a 48-character buffer and prints from
+// the raw: integer grids, decimal notches (fixed_point_text) and binary
+// notches (binary_point_bits).
+template <insidable B>
+inline constexpr bool buffered_text = [] {
+    if constexpr (wide_valued<B>)
+        return false;
+    else
+        return (integer_lattice<B> && values_fit_int64<B>) || fixed_point_text<B> ||
+               (binary_point_bits<B> != 0 && fixed_decimals<B> == 0);
+}();
+inline constexpr std::size_t text_buffer = 48;
+// Writes b's text from p (text_buffer characters): its end.
+template <insidable B>
+    requires buffered_text<B>
+char* write_text(char* p, B b) {
+    char* const last = p + text_buffer;
+    if constexpr (integer_lattice<B> && values_fit_int64<B>)
+        return std::to_chars(p, last, to_value(b)).ptr;
+    else {
+        // A notch 1/K: the integer part, then the fraction's decimals.
+        constexpr std::int64_t K   = abs_den(notch64<B>.Den);
+        const std::int64_t     num = raw_int64(b) + lower_int64<B> * K;
+        const std::uint64_t    a =
+            num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num) : static_cast<std::uint64_t>(num);
+        if (num < 0)
+            *p++ = '-';
+        std::uint64_t frac;
+        int           digits;
+        if constexpr (fixed_point_text<B>) {
+            // a decimal notch: n decimals of the remainder (K divides 10^n)
+            p      = std::to_chars(p, last, a / K).ptr;
+            frac   = (a % K) * fixed_point_scale<B>;
+            digits = fixed_decimals<B>;
+        } else {
+            // a binary notch 1/2^k: f/2^k has k − ctz(f) decimals
+            constexpr int k       = binary_point_bits<B>;
+            p                     = std::to_chars(p, last, a >> k).ptr;
+            const std::uint64_t f = a & static_cast<std::uint64_t>(K - 1);
+            if (f == 0)
+                return p;
+            const int z = std::countr_zero(f);
+            digits      = k - z;
+            frac        = (f >> z) * powers_of_5[digits];
+        }
+        *p++ = '.';
+        char        tmp[24];
+        char* const end = std::to_chars(tmp, tmp + sizeof tmp, frac).ptr;
+        for (auto i = end - tmp; i < digits; ++i)
+            *p++ = '0';
+        return std::copy(tmp, end, p);
+    }
+}
+} // namespace detail
+
 // An inside's exact value: with a decimal notch, every value prints that
 // notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
 // decimal when it has one, else N/D.
@@ -13596,34 +13720,12 @@ template <insidable B>
     constexpr int n = detail::fixed_decimals<B>;
     if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
-    else {
-        if constexpr (detail::integer_lattice<B> && detail::values_fit_int64<B>) {
-            char        buf[24];
-            char* const end = std::to_chars(buf, buf + sizeof buf, detail::to_value(b)).ptr;
-            return std::string(buf, end);
-        } else if constexpr (detail::fixed_point_text<B>) {
-            // A decimal notch 1/K: the integer part, then n decimals of the
-            // remainder (K divides 10^n), no reduction.
-            constexpr std::int64_t K   = detail::abs_den(detail::notch64<B>.Den);
-            const std::int64_t     num = detail::raw_int64(b) + detail::lower_int64<B> * K;
-            const std::uint64_t    a =
-                num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num) : static_cast<std::uint64_t>(num);
-            char  buf[48];
-            char* p = buf;
-            if (num < 0)
-                *p++ = '-';
-            p    = std::to_chars(p, buf + sizeof buf, a / K).ptr;
-            *p++ = '.';
-            char        tmp[24];
-            char* const end = std::to_chars(tmp, tmp + sizeof tmp, (a % K) * detail::fixed_point_scale<B>).ptr;
-            for (auto i = end - tmp; i < n; ++i)
-                *p++ = '0';
-            p = std::copy(tmp, end, p);
-            return std::string(buf, p);
-        } else {
-            const detail::rational r = detail::as_rational(b);
-            return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
-        }
+    else if constexpr (detail::buffered_text<B>) {
+        char buf[detail::text_buffer];
+        return std::string(buf, detail::write_text(buf, b));
+    } else {
+        const detail::rational r = detail::as_rational(b);
+        return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
     }
 }
 
@@ -13656,7 +13758,11 @@ inline std::ostream& operator<<(std::ostream& stream, error e) { return stream <
 
 template <insidable B>
 inline std::ostream& operator<<(std::ostream& stream, B b) {
-    stream << beman::inside::to_string(b);
+    if constexpr (detail::buffered_text<B>) { // no string: the stream's width and fill still apply
+        char buf[detail::text_buffer];
+        stream << std::string_view(buf, detail::write_text(buf, b));
+    } else
+        stream << beman::inside::to_string(b);
     return stream;
 }
 
@@ -13972,9 +14078,13 @@ struct std::formatter<beman::inside::inside<G, P>>
         namespace d = beman::inside::detail;
         if constexpr (integer_path)
             return this->Numeric.format(d::to_value(b), ctx);
-        else if (!this->HasSpec)
-            return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
-        else
+        else if (!this->HasSpec) {
+            if constexpr (d::buffered_text<B>) {
+                char buf[d::text_buffer];
+                return std::ranges::copy(std::string_view(buf, d::write_text(buf, b)), ctx.out()).out;
+            } else
+                return std::ranges::copy(beman::inside::to_string(b), ctx.out()).out;
+        } else
             return this->Numeric.write_exact(d::exact_of(b), this->Numeric.plain_text(b), d::display_rounding<B>, ctx);
     }
 };
