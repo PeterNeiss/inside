@@ -1099,8 +1099,10 @@ struct inside : detail::raw_holder<G, P> {
     constexpr inside& operator/=(const R& rhs) {
         if (rhs == 0)
             return *this;
-        // (A store into this type: its rounding mode divides, on the grid.)
-        if constexpr (has_flag(P, detail::snap))
+        // (A store into this type: its rounding mode divides on the native
+        // grids; any other quotient is exact, and the store rounds it once
+        // onto this type's own lattice.)
+        if constexpr (has_flag(P, detail::snap) && detail::division<inside, R, P>::native_div)
             return assign_op_result(div(*this, rhs, make_policy<P>()));
         else
             return assign_op_result(*this / rhs);

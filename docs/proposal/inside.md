@@ -298,7 +298,8 @@ with the type through `+`, `-` and `*`, so exact arithmetic on quotients stays
 plain and its precision is known at compile time. The operators take no rounding
 from their operands' policies: a rounded division names its mode at the call
 (`div(a, b, round_floor)`), where an integer division rounds onto the integers
-and a division of two values on the same notch `1/K` rounds onto that notch.
+and any other dividend on a lattice rounds onto the multiples of its notch (a
+division of two values on the same notch `1/K` onto that notch).
 `a % b` takes two lattices; its remainder belongs to the quotient truncated
 (`mod(a, b, mode)`: rounded by the mode), and lies on the lattice of the gcd of the two steps. Either operator returns `std::expected<inside, error>` when the
 divisor's grid holds zero, and a plain `inside` when it does not.

@@ -16,6 +16,7 @@
 #include <expected>
 #include <limits>
 #include <string>
+#include <vector>
 
 namespace fast_path_tests {
 using namespace beman::inside;
@@ -350,6 +351,76 @@ void divmod_and_onto() {
                 EXPECT_EQ(d->raw(), de->raw());
             }
         }
+}
+
+// div(a, b, mode) off the native paths: the exact quotient rounded once
+// onto the multiples of a's notch, as the exact store rounds a / b.
+template <class X>
+const auto& value_of(const X& x) {
+    if constexpr (requires { x.has_value(); })
+        return *x;
+    else
+        return x;
+}
+template <class A, class B, policy_flag F>
+void div_onto_dividend_notch(const char* what) {
+    std::vector<B> divisors;
+    if constexpr (notch_of<B> != 0)
+        divisors.assign(values<B>.begin(), values<B>.end());
+    else // a continuous divisor: a few values
+        divisors = {B{just<1>}, B{just<13, 12>}, B{just<7, 3>}, B{just<11, 4>}, B{just<4>}};
+    for (const A a : values<A>)
+        for (const B b : divisors) {
+            if (b == 0)
+                continue;
+            const auto d = div(a, b, make_policy<F>());
+            using Q      = std::remove_cvref_t<decltype(value_of(d))>;
+            static_assert(notch_of<Q> == notch_of<A>, "the dividend's notch");
+            const auto e = exact_store<Q, F>(value_of(a / b));
+            ASSERT_TRUE(e.has_value()) << what;
+            EXPECT_EQ(value_of(d).raw(), e->raw()) << what << " " << text_of(a) << " / " << text_of(b);
+        }
+}
+template <policy_flag F>
+void div_modes() {
+    using dec2 = inside<{{-3, 3}, per<100>}>;
+    using q114 = inside<{{-1, 1}, per<16384>}>;
+    using n60  = inside<{{-600, 600}, 60}>;
+    using udec = inside<{{just<1, 200>, just<401, 200>}, per<100>}>; // unanchored
+    using s8   = inside<{-9, 9}>;
+    using nz   = inside<{1, 13}>;
+    using d3   = inside<{{-2, 2}, per<1000>}>;
+    using cont = inside<{{1, 4}, max_denominator{12}}>;
+    div_onto_dividend_notch<dec2, s8, F>("dec2/s8");
+    div_onto_dividend_notch<dec2, nz, F>("dec2/nz");
+    div_onto_dividend_notch<q114, s8, F>("q114/s8");
+    div_onto_dividend_notch<n60, d3, F>("n60/d3");
+    div_onto_dividend_notch<udec, nz, F>("udec/nz");
+    div_onto_dividend_notch<udec, s8, F>("udec/s8");
+    div_onto_dividend_notch<dec2, cont, F>("dec2/cont");
+}
+
+// x /= b on a type that rounds, off the native paths: the exact quotient
+// stored once onto x's own lattice (an unanchored one too), not rounded
+// onto multiples of its notch first.
+TEST(FastPathTest, a_rounding_type_divides_once_onto_its_lattice) {
+    using udec = inside<{{just<1, 200>, just<401, 200>}, per<100>}, clamp | round_half_even>;
+    using nz   = inside<{1, 13}>;
+    for (const udec a : values<udec>)
+        for (const nz b : values<nz>) {
+            udec x = a;
+            x /= b;
+            EXPECT_EQ(x.raw(), (exact_store<udec, clamp | round_half_even>(a / b)->raw()))
+                << text_of(a) << " / " << text_of(b);
+        }
+}
+
+TEST(FastPathTest, div_with_a_mode_rounds_onto_the_dividend_notch) {
+    div_modes<round_floor>();
+    div_modes<round_ceil>();
+    div_modes<round_toward_zero>();
+    div_modes<round_half_away>();
+    div_modes<round_half_even>();
 }
 
 TEST(FastPathTest, divmod_and_rounded_quotients_on_lattices) {

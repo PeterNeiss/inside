@@ -54,8 +54,9 @@ mode). The operator `a / b` names none, so it always takes path C:
 |---|---|---|---|
 | A: Q-format | a rounding mode, and both operands on one notch 1/N, N ≥ 2 | `(a.raw × N) / b.raw`, rounded by the mode: the textbook fixed-point divide | the same notch; the interval widens to hold `upper(a) / notch(b)` |
 | B: integer | a rounding mode, and both grids on whole numbers | a native integer divide, rounded by the mode | `grid(a) / grid(b)`, each limit rounded the same way |
-| C: exact | otherwise | the exact fraction | a continuous grid with a denominator bound |
-| D: point | the divisor is a nonzero point, the dividend has a notch | nothing: the dividend's lattice scaled by 1/\|c\| | notch N/\|c\|, integer storage |
+| C: exact | no rounding mode, or a continuous dividend | the exact fraction | a continuous grid with a denominator bound |
+| D: point | no rounding mode, the divisor a nonzero point, the dividend with a notch | nothing: the dividend's lattice scaled by 1/\|c\| | notch N/\|c\|, integer storage |
+| E: onto a's notch | a rounding mode, and any other dividend with a notch | the exact quotient rounded once onto the multiples of a's notch: one integer divide where the values fit 64 bits | a's notch; `grid(a) / grid(b)`'s limits rounded the same way |
 
 Both native paths divide in 32 bits when the operands fit, so `/` and `%` on
 small grids run at native speed.
@@ -139,6 +140,11 @@ On the native paths, `round_toward_zero` truncates like C++ `/`. Another
 rounding mode rounds the quotient instead, and `%` stays consistent with it,
 so `(a / b) * b + a % b == a` for every mode: under `round_floor`,
 `-8 / 3 == -3` and `-8 % 3 == 1`; under `round_toward_zero`, `-2` and `-2`.
+Off the native paths a rounding mode rounds the exact quotient once onto the
+multiples of the dividend's notch:
+`div(inside<{{0, 10}, per<100>}>{just<123, 100>}, inside<{1, 9}>{7}, round_floor)`
+is 0.17. A store into a type that rounds (`x /= b`) divides exactly there
+and rounds once onto `x`'s own lattice.
 Without a rounding mode, `/` is exact and `%` truncates. `%` and `divmod` need
 a lattice on both sides, whole numbers or fractions (then the remainder lies
 on the lattice of the gcd of the two steps); on a continuous grid they are

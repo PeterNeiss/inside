@@ -24,6 +24,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Changed
 
+- `div(a, b, mode)` rounds by its mode on every dividend with a notch: off
+  the integer and shared-notch paths it rounds the exact quotient once onto
+  the multiples of `a`'s notch (it returned the exact quotient there and
+  ignored the mode). `div(dec2, u8, round_floor)` is a `dec2`-notched value,
+  in one integer division (10 ns to 2 ns). `x /= b` on a type that rounds is
+  unchanged: off those paths it divides exactly and rounds once onto `x`.
 - Faster at the boundaries, with the same results:
   - An integer stored onto a notch that is not 1/K (seconds into whole
     minutes, `minutes::try_make(n, si::second)`, a notch of 60 or 7/2) takes
