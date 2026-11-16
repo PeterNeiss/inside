@@ -25,6 +25,18 @@ template <insidable B, detail::numeric A>
         return detail::stored<B, policy_of<B> | detail::snap>(value);
     else {
         using result = std::expected<B, error>;
+        // The exact store succeeds exactly when exact_cast does: try it first
+        // and name the failure afterwards, off the common path.
+        using strict = inside<grid_of<B>>;
+        if constexpr (requires { strict::try_make(value); }) {
+            if (const auto r = strict::try_make(value)) [[likely]]
+                return result{B::from_raw(r->raw(), unsafe)};
+            if constexpr (std::floating_point<A>)
+                if (!detail::is_finite(value))
+                    return result{std::unexpect, error::not_finite};
+            // The exact store failed: off the interval, else off the notch.
+            return result{std::unexpect, conversion_overflows<B>(value) ? error::overflow : error::rounding_error};
+        }
         if constexpr (std::floating_point<A>)
             if (!detail::is_finite(value))
                 return result{std::unexpect, error::not_finite};

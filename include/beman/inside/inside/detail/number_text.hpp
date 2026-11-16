@@ -293,6 +293,44 @@ constexpr bool fraction_text(const char* first, const char* last) noexcept {
     return std::find(first, last, '/') != last;
 }
 
+// [-+]digits[.digits]: at most 18 digits in all, nothing else (no
+// separators, exponent or base prefix: the full grammar reads those).
+struct plain_decimal_t {
+    std::int64_t Value;
+    int          Decimals;
+    bool         Ok;
+};
+constexpr plain_decimal_t plain_decimal(const char* first, const char* last) noexcept {
+    constexpr plain_decimal_t no{0, 0, false};
+    bool                      neg = false;
+    if (first != last && (*first == '-' || *first == '+'))
+        neg = *first++ == '-';
+    std::int64_t v      = 0;
+    int          digits = 0, decimals = -1;
+    for (; first != last; ++first) {
+        const char c = *first;
+        if (c >= '0' && c <= '9') {
+            if (++digits > 18)
+                return no;
+            v = v * 10 + (c - '0');
+            if (decimals >= 0)
+                ++decimals;
+        } else if (c == '.' && decimals < 0)
+            decimals = 0;
+        else
+            return no;
+    }
+    if (digits == 0 || decimals == 0) // "", "-", "1." and "." take the full grammar
+        return no;
+    return {neg ? -v : v, decimals < 0 ? 0 : decimals, true};
+}
+constexpr std::int64_t power_of_ten(int n) noexcept {
+    std::int64_t p = 1;
+    for (int i = 0; i < n; ++i)
+        p *= 10;
+    return p;
+}
+
 // Runtime text → exact value, the 64-bit fast path for a number (not a
 // fraction): an optional sign, then the literal grammar. Malformed text is
 // error::invalid_format; a value past the 64-bit fields is error::overflow,

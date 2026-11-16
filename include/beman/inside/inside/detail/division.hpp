@@ -610,7 +610,19 @@ struct quotient_remainder {
                 policy.report(code);
             return std::unexpected{code};
         };
-        if constexpr (lattice_mod_ops<L, R>) {
+        if constexpr (modulo<L, R, FS>::lattice_native && integer_lattice<quotient> && values_fit_int64<quotient>) {
+            // A lattice whose unit counts fit int64: one builtin division, as `%`.
+            using M                   = typename modulo<L, R, FS>::result;
+            constexpr grid_rational u = mod_unit<L, R>;
+            const std::int64_t      b = value_in_units<std::int64_t, u>(rhs);
+            if constexpr (!divisor_unchecked<L, R, F, G>)
+                if (b == 0)
+                    return fail(error::division_by_zero);
+            const auto qr = div_rem_rounded(value_in_units<std::int64_t, u>(lhs), b, rmode);
+            result     res{quotient{}, from_value_in_units<M, u>(qr.Remainder)};
+            from_value(res.Quotient, qr.Quotient);
+            return res;
+        } else if constexpr (lattice_mod_ops<L, R>) {
             // A lattice: q and r = a − q·b on the unit counts, exactly.
             using M                   = typename modulo<L, R, FS>::result;
             constexpr grid_rational u = mod_unit<L, R>;

@@ -253,6 +253,99 @@ template <insidable Out, insidable A, insidable B, typename P>
 } // namespace detail
 
 namespace detail {
+// mul<Out> / div<Out> between anchored integer-raw lattices within int64:
+// Out's value index J = round(Ja·Jb·Cp / Cq) for a product, round(Ja·Cp /
+// (Jb·Cq)) for a quotient, with C = Notch_A·Notch_B / Notch_Out or
+// Notch_A / (Notch_B·Notch_Out) reduced at compile time: one rounded
+// division, where every product is shown to fit int64.
+template <insidable X>
+inline constexpr bool int_lattice = [] {
+    if constexpr (!notched<X> || point_storage<X> || !integer_storage<X> || !values_fit_int64<X>)
+        return false;
+    else
+        return anchored<X> && value_indices_fit_int64<X> && lower_index_fits_int64<X>;
+}();
+template <insidable X>
+inline constexpr bool binary_notch =
+    notched<X> &&
+    std::has_single_bit(static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_denominator(notch_of<X>))));
+template <insidable Out, insidable A, insidable B, bool Div>
+struct lattice_op {
+    static constexpr bool          grids = int_lattice<Out> && int_lattice<A> && int_lattice<B>;
+    static constexpr grid_rational C     = [] {
+        if constexpr (!grids)
+            return grid_rational{1};
+        else if constexpr (Div)
+            return notch_of<A> / (notch_of<B> * notch_of<Out>);
+        else
+            return notch_of<A> * notch_of<B> / notch_of<Out>;
+    }();
+    static consteval grid_int max_abs_index(const grid_rational& lo, const grid_rational& hi) {
+        const grid_rational a = abs(lo), b = abs(hi);
+        return grid_numerator(a < b ? b : a);
+    }
+    static constexpr bool ok = [] {
+        if constexpr (!grids)
+            return false;
+        else {
+            constexpr grid_int lim{std::int64_t{1} << 62};
+            const grid_int     ja = max_abs_index(lower_index_of<A>, upper_index_of<A>);
+            const grid_int     jb = max_abs_index(lower_index_of<B>, upper_index_of<B>);
+            const grid_int     cp = grid_numerator(C), cq = grid_denominator(C);
+            if (!(max_index_of<Out> < (std::uint64_t{1} << 62)))
+                return false;
+            return Div ? ja * cp < lim && jb * cq < lim : ja * jb * cp < lim && cq < lim;
+        }
+    }();
+    static constexpr std::int64_t Cp  = ok ? static_cast<std::int64_t>(grid_numerator(C)) : 1;
+    static constexpr std::int64_t Cq  = ok ? static_cast<std::int64_t>(grid_denominator(C)) : 1;
+    static constexpr std::int64_t Jlo = ok ? static_cast<std::int64_t>(grid_numerator(lower_index_of<Out>)) : 0;
+};
+struct lattice_slot {
+    std::uint64_t Slot;
+    bool          Ok; // false: off the grid, unhandled (the general store reports it)
+};
+// Out's value index n/d (d ≠ 0) rounded by P onto Out's slots, with P's
+// clamp or wrap past the limits.
+template <insidable Out, policy_flag P>
+[[gnu::always_inline]] constexpr lattice_slot lattice_round_slot(std::int64_t n, std::int64_t d) noexcept {
+    constexpr std::int64_t jlo = static_cast<std::int64_t>(grid_numerator(lower_index_of<Out>));
+    constexpr bool         snp = has_flag(P, snap);
+    const auto             qr  = div_rem_rounded(n, d, snp ? rounding_of(P) : round_mode::trunc);
+    if (!snp && qr.Remainder != 0)
+        return {0, false};
+    const std::int64_t slot = qr.Quotient - jlo;
+    if (slot >= 0 && std::cmp_less_equal(slot, max_index_of<Out>)) [[likely]]
+        return {static_cast<std::uint64_t>(slot), true};
+    if constexpr (has_flag(P, clamp))
+        return {slot < 0 ? std::uint64_t{0} : max_index_of<Out>, true};
+    else if constexpr (has_flag(P, wrap))
+        return {fold_slot<Out>(slot), true};
+    else
+        return {0, false};
+}
+template <insidable Out, policy_flag P, bool Div, insidable A, insidable B>
+[[gnu::always_inline]] constexpr lattice_slot lattice_op_slot(const A& a, const B& b) noexcept {
+    using L               = lattice_op<Out, A, B, Div>;
+    const std::int64_t ja = value_index<std::int64_t>(a);
+    const std::int64_t jb = value_index<std::int64_t>(b);
+    return lattice_round_slot<Out, P>(Div ? ja * L::Cp : ja * jb * L::Cp, Div ? jb * L::Cq : L::Cq);
+}
+// A count of units U onto Out (sum's total): Out's value index is
+// count·Cp/Cq, C = U/Notch_Out, while the product fits int64.
+template <insidable Out>
+inline constexpr grid_rational units_to_out = notch_of<Out>;
+template <insidable Out, grid_rational U>
+inline constexpr bool units_onto = [] {
+    if constexpr (!int_lattice<Out>)
+        return false;
+    else {
+        const grid_rational c = U / notch_of<Out>;
+        constexpr grid_int  lim{std::int64_t{1} << 62};
+        return grid_numerator(c) < lim && grid_denominator(c) < lim && max_index_of<Out> < (std::uint64_t{1} << 62);
+    }
+}();
+
 // The exact result of a op b stores into Out under P with no run-time
 // failure (false where a op b has no result type of its own).
 template <insidable Out, policy_flag P, class A, class B>
@@ -288,6 +381,10 @@ template <insidable Out, insidable A, insidable B, class... Fl>
         if constexpr (detail::native_product<Out, F, A, B>)
             return detail::store_into<Out>(a * b, policy);
         else {
+            if constexpr (detail::lattice_op<Out, A, B, false>::ok)
+                if (const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, false>(a, b); s.Ok)
+                    [[likely]]
+                    return Out::from_raw(detail::raw_from_offset<Out>(s.Slot), unsafe);
             if constexpr (detail::rational_operands<A, B>)
                 if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
                     return detail::store_into<Out>(*p, policy);
@@ -309,6 +406,13 @@ template <insidable Out, insidable A, insidable B, class... Fl>
     std::expected<Out, error>> {
     constexpr policy_flag F        = detail::call_flags<Fl...>;
     const auto            quotient = [&](auto&& policy) {
+        // (Binary notches decode without a gcd: the unreduced quotient below
+        // is as cheap there.)
+        if constexpr (detail::lattice_op<Out, A, B, true>::ok &&
+                      !(detail::rational_operands<A, B> && detail::unreduced_store<Out> && detail::binary_notch<A> &&
+                        detail::binary_notch<B>))
+            if (const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, true>(a, b); s.Ok) [[likely]]
+                return Out::from_raw(detail::raw_from_offset<Out>(s.Slot), unsafe);
         if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
             if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
                 [[likely]]
@@ -542,9 +646,41 @@ constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
                 else
                     total += I{acc} * scale + I{cnt} * base;
             }
+        } else if constexpr (!detail::wide_index_storage<B> && detail::values_fit_int64<B> &&
+                             detail::signed_value_bits({detail::units_lo<B, U>, detail::units_hi<B, U>}) < 60) {
+            // Each value's units fit int64 with room: sum blocks of them in
+            // int64 (as many as cannot overflow), the blocks in the total.
+            constexpr int          bits  = detail::signed_value_bits({detail::units_lo<B, U>, detail::units_hi<B, U>});
+            constexpr std::int64_t block = std::int64_t{1} << (62 - bits);
+            std::int64_t           acc = 0, cnt = 0;
+            for (const auto& b : r) {
+                acc += detail::value_in_units<std::int64_t, U>(b);
+                if (++cnt == block) [[unlikely]] {
+                    total += I{acc};
+                    acc = 0;
+                    cnt = 0;
+                }
+            }
+            total += I{acc};
         } else
             for (const auto& b : r)
                 total += detail::value_in_units<I, U>(b);
+        if constexpr (!detail::wide_valued<B> && detail::units_onto<Target, U>) {
+            // A total within int64 onto a lattice: one rounded division.
+            constexpr std::int64_t          lo = std::numeric_limits<std::int64_t>::min(),
+                                            hi = std::numeric_limits<std::int64_t>::max();
+            constexpr detail::grid_rational c  = U / notch_of<Target>;
+            constexpr std::int64_t          cp = static_cast<std::int64_t>(detail::grid_numerator(c));
+            constexpr std::int64_t          cq = static_cast<std::int64_t>(detail::grid_denominator(c));
+            std::int64_t                    n;
+            if (!(total < I{lo}) && !(I{hi} < total) &&
+                !detail::mul_overflow(static_cast<std::int64_t>(total), cp, &n))
+                if (const auto s = detail::lattice_round_slot<Target, policy_of<Pol> | policy_of<Target>>(n, cq);
+                    s.Ok) {
+                    out = Target::from_raw(detail::raw_from_offset<Target>(s.Slot), unsafe);
+                    return;
+                }
+        }
         if constexpr (!detail::wide_valued<B>) {
             // A total within int64: the cheaper 64-bit rational store.
             constexpr std::int64_t lo = std::numeric_limits<std::int64_t>::min(),

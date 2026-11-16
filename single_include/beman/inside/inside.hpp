@@ -2714,6 +2714,44 @@ constexpr bool fraction_text(const char* first, const char* last) noexcept {
     return std::find(first, last, '/') != last;
 }
 
+// [-+]digits[.digits]: at most 18 digits in all, nothing else (no
+// separators, exponent or base prefix: the full grammar reads those).
+struct plain_decimal_t {
+    std::int64_t Value;
+    int          Decimals;
+    bool         Ok;
+};
+constexpr plain_decimal_t plain_decimal(const char* first, const char* last) noexcept {
+    constexpr plain_decimal_t no{0, 0, false};
+    bool                      neg = false;
+    if (first != last && (*first == '-' || *first == '+'))
+        neg = *first++ == '-';
+    std::int64_t v      = 0;
+    int          digits = 0, decimals = -1;
+    for (; first != last; ++first) {
+        const char c = *first;
+        if (c >= '0' && c <= '9') {
+            if (++digits > 18)
+                return no;
+            v = v * 10 + (c - '0');
+            if (decimals >= 0)
+                ++decimals;
+        } else if (c == '.' && decimals < 0)
+            decimals = 0;
+        else
+            return no;
+    }
+    if (digits == 0 || decimals == 0) // "", "-", "1." and "." take the full grammar
+        return no;
+    return {neg ? -v : v, decimals < 0 ? 0 : decimals, true};
+}
+constexpr std::int64_t power_of_ten(int n) noexcept {
+    std::int64_t p = 1;
+    for (int i = 0; i < n; ++i)
+        p *= 10;
+    return p;
+}
+
 // Runtime text → exact value, the 64-bit fast path for a number (not a
 // fraction): an optional sign, then the literal grammar. Malformed text is
 // error::invalid_format; a value past the 64-bit fields is error::overflow,
@@ -4819,25 +4857,11 @@ struct error_ref {
     constexpr error_ref(error& ec) : Code{ec} {}
     error& Code;
 };
-// The error of a function that returns it (try_store): recorded inline, so
-// the function's local never has its address taken by a call and stays in a
-// register (no stack slot, no stack protector on the hot path).
-struct local_error_ref : error_ref {
-    using error_ref::error_ref;
-};
-
-// The error channel's record, out of line: a failure is the rare path, and
-// inline it would sit in every checked loop. The first error is kept.
-[[gnu::cold]] [[gnu::noinline]] constexpr void record_error(error& slot, error code) noexcept {
-    if (slot == error{})
-        slot = code;
-}
-
 template <policy_flag F = none, typename E = empty_ref>
 struct call_policy : E {
     constexpr call_policy() = default;
     constexpr call_policy(error& ec)
-        requires std::derived_from<E, error_ref>
+        requires std::same_as<E, error_ref>
         : E(ec) {}
 
     static constexpr policy_flag Flags = F;
@@ -4867,12 +4891,13 @@ struct call_policy : E {
     // fix. At run time it is a precondition (a cursor past its end) or a
     // library bug, reported to the installed handler.
     constexpr void report(error code) const {
-        if constexpr (std::is_same_v<E, local_error_ref>) {
+        if constexpr (std::is_same_v<E, error_ref>) {
+            // Inline, so a caller's local `error` stays in a register: an
+            // out-of-line record would take its address (a stack frame and
+            // protector in the caller). The first error is kept.
             if (E::Code == error{})
                 E::Code = code;
-        } else if constexpr (std::is_same_v<E, error_ref>)
-            record_error(E::Code, code);
-        else {
+        } else {
             if consteval {
 #if BEMAN_INSIDE_HAS_EXCEPTIONS
                 raise(code, store_failure_message(code));
@@ -4915,8 +4940,8 @@ inline constexpr policy_flag policy_of_impl<call_policy<F, E>> = F;
 // failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
 template <typename T>
 inline constexpr bool uses_error_ref = false;
-template <policy_flag F, std::derived_from<error_ref> E>
-inline constexpr bool uses_error_ref<call_policy<F, E>> = true;
+template <policy_flag F>
+inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -4953,9 +4978,7 @@ constexpr std::expected<Result, error> report_or_unexpected(P&& policy, error co
 namespace detail {
 template <policy_flag O, class Pol>
 constexpr auto with_flags(Pol&& pol) {
-    if constexpr (std::derived_from<std::remove_cvref_t<Pol>, local_error_ref>)
-        return call_policy<O, local_error_ref>{pol.Code};
-    else if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
+    if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
         return call_policy<O, error_ref>{pol.Code};
     else
         return call_policy<O, empty_ref>{};
@@ -5142,23 +5165,6 @@ inline constexpr index_double_codec index_double = [] {
     }
 }();
 
-// Ungated double view of any inside (the public operator double() is gated
-// on a rounding flag; this is always available). Everything but index
-// storage holds the value verbatim; an index decodes through the grid.
-template <insidable B>
-[[nodiscard]] constexpr double as_double(const B& b) noexcept {
-    if constexpr (wide_valued<B>)
-        return static_cast<double>(exact_of(b));
-    else if constexpr (point_storage<B>)
-        return static_cast<double>(lower64<B>);
-    else if constexpr (value_storage<B>)
-        return static_cast<double>(b.raw());
-    else if constexpr (constexpr auto c = index_double<B>; c.Ok)
-        return static_cast<double>((static_cast<std::int64_t>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
-    else
-        return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
-}
-
 // True when R's interval cannot contain zero — so `a / b` can return a plain
 // `inside` instead of `expected<inside, error>` (see inside/detail/division.hpp). A point
 // grid at 0 is *not* excluded.
@@ -5230,6 +5236,13 @@ constexpr std::int64_t raw_int64(B b) noexcept {
     return static_cast<std::int64_t>(b.raw());
 }
 
+// ⌊a / b⌋ for grid numbers (b > 0).
+consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b) {
+    const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
+    const grid_int q = n / d;
+    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
+}
+
 //-------------------------------------------------------------------------
 // Q-format integer fast path: for grids with integer Lower, unit-numerator
 // Notch 1/nd, and every value·nd within int64, value↔raw is pure integer
@@ -5238,7 +5251,9 @@ constexpr std::int64_t raw_int64(B b) noexcept {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool q_format_fits = [] {
-    if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_int64<B>)
+    if constexpr (!values_fit_int64<B>) // (first: the 64-bit views below need it)
+        return false;
+    else if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in int64
         constexpr grid_rational nd{grid_denominator(notch_of<B>)};
@@ -5246,6 +5261,69 @@ inline constexpr bool q_format_fits = [] {
                !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_of<B> * nd);
     }
 }();
+
+//---------------------------------------------------------------------------
+// The integer store of a lattice the Q-format shortcut does not cover (an
+// unanchored one, or a notch that is not 1/K: 60, 5/100): Notch = S/K and
+// Lower = M/K over their common denominator K. MaxDen bounds a source denominator so
+// that num·K, M·aden and aden·S stay in int64 (|num| ≤ |value|·aden, and
+// every in-range |value| is at most Mag); Ok when the grid allows any.
+//---------------------------------------------------------------------------
+struct lattice_codec_t {
+    std::int64_t  K, S, M;
+    std::uint64_t MaxDen;
+    bool          Ok;
+};
+template <insidable L>
+inline constexpr lattice_codec_t lattice_codec = [] {
+    constexpr lattice_codec_t no{0, 0, 0, 0, false};
+    if constexpr (!values_fit_int64<L> || !notched<L> || point_storage<L>)
+        return no;
+    else if constexpr (q_format_fits<L>)
+        return no;
+    else {
+        constexpr std::uint64_t cap = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+        const rational          n = notch64<L>, lo = lower64<L>, hi = upper64<L>;
+        const std::uint64_t     dn = abs_den(n.Den), dl = abs_den(lo.Den);
+        std::uint64_t           k;
+        if (mul_overflow(dn / std::gcd(dn, dl), dl, &k) || k > cap)
+            return no;
+        std::uint64_t s, mm;
+        if (mul_overflow(n.Num, k / dn, &s) || s > cap || mul_overflow(lo.Num, k / dl, &mm) || mm > cap)
+            return no;
+        // Mag: a bound on every in-range |value|, plus one.
+        // Mag: ⌈max(|Lower|, |Upper|)⌉ + 1, from the grid numbers (|Lower|
+        // may be 2^63, past an int64 ceiling).
+        constexpr grid_int mag_g = [] {
+            const grid_rational a = abs(lower_of<L>), b = abs(upper_of<L>);
+            const grid_rational m = a < b ? b : a;
+            return floor_quotient(m, grid_rational{1}) + grid_int{2}; // ≥ the ceiling + 1
+        }();
+        if constexpr (!(mag_g < grid_int{std::int64_t{1} << 62}))
+            return no;
+        const std::uint64_t mag = static_cast<std::uint64_t>(mag_g);
+        std::uint64_t       km, kms;
+        if (mul_overflow(k, mag, &km) || mul_overflow(km, std::uint64_t{4}, &kms))
+            return no;
+        const std::uint64_t by_num = cap / kms; // num·K and M·aden each below cap/2
+        const std::uint64_t by_den = cap / s;   // aden·S
+        return lattice_codec_t{static_cast<std::int64_t>(k),
+                               static_cast<std::int64_t>(s),
+                               lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
+                               by_num < by_den ? by_num : by_den,
+                               true};
+    }
+}();
+
+// A signed slot offset folded onto L's slots 0 … max_index (a wrap: the
+// period is Upper − Lower + Notch).
+template <insidable L>
+inline constexpr std::int64_t slot_period = static_cast<std::int64_t>(max_index_of<L>) + 1;
+template <insidable L>
+constexpr std::uint64_t fold_slot(std::int64_t offset) noexcept {
+    const std::int64_t w = offset % slot_period<L>;
+    return static_cast<std::uint64_t>(w < 0 ? w + slot_period<L> : w);
+}
 
 // value → raw, integer math only.
 template <insidable B>
@@ -5389,6 +5467,48 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
         return raw_from_offset<L>(low ? std::uint64_t{0} : max_index_of<L>);
 }
 
+// A value of a lattice the codec covers, as n/K: n = slot·S + M, in int64
+// (the codec's bound on every in-range |value|·K keeps it there).
+template <insidable B>
+constexpr std::int64_t lattice_numerator(const B& b) noexcept {
+    constexpr auto c = lattice_codec<B>;
+    return static_cast<std::int64_t>(raw_offset<B>(b.raw())) * c.S + c.M;
+}
+// …and exact in double: every |n| below 2^53.
+template <insidable B>
+inline constexpr bool lattice_double = [] {
+    if constexpr (!lattice_codec<B>.Ok)
+        return false;
+    else {
+        constexpr auto c = lattice_codec<B>;
+        std::int64_t   t;
+        return max_index_of<B> < (std::uint64_t{1} << 62) &&
+               !mul_overflow(static_cast<std::int64_t>(max_index_of<B>), c.S, &t) &&
+               t + (c.M < 0 ? -c.M : c.M) < (std::int64_t{1} << 53);
+    }
+}();
+
+// Ungated double view of any inside (the public operator double() is gated
+// on a rounding flag; this is always available). Everything but index
+// storage holds the value verbatim; an index decodes through the grid.
+template <insidable B>
+[[nodiscard]] constexpr double as_double(const B& b) noexcept {
+    if constexpr (wide_valued<B>)
+        return static_cast<double>(exact_of(b));
+    else if constexpr (point_storage<B>)
+        return static_cast<double>(lower64<B>);
+    else if constexpr (value_storage<B>)
+        return static_cast<double>(b.raw());
+    else if constexpr (constexpr auto c = index_double<B>; c.Ok)
+        return static_cast<double>((static_cast<std::int64_t>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
+    else if constexpr (lattice_double<B>)
+        // Any other lattice: (slot·S + M)/K with an exact numerator, one
+        // correctly rounded division.
+        return static_cast<double>(lattice_numerator(b)) / static_cast<double>(lattice_codec<B>.K);
+    else
+        return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
+}
+
 //-------------------------------------------------------------------------
 // integer_limits vs integer_lattice — easy to confuse, both needed.
 //   integer_limits<B>: Lower and Upper integer (Notch may be fractional,
@@ -5415,19 +5535,154 @@ inline constexpr round_mode rounding_for = uses_flag<L, P, round_floor>       ? 
                                            : uses_flag<L, P, round_half_away> ? round_mode::nearest
                                                                               : round_mode::trunc;
 
-// ⌊a / b⌋ for grid numbers (b > 0).
-consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b) {
-    const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
-    const grid_int q = n / d;
-    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
-}
-
 // The lattice index of Lower, ⌊Lower/Notch⌋ — slot_base on an anchored grid.
 // Its parity plus an offset's says which lattice points are even.
 template <insidable B>
 inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
 template <insidable B>
 inline constexpr bool lower_index_odd = (static_cast<std::uint64_t>(lower_index_wide<B>) & 1) != 0;
+
+// A double onto a lattice whose values times K stay below 2^51
+// (2^62 for a power-of-two K)
+// (K, S, M: the Q-format's K, 1, Lower·K, or the lattice codec's): the value
+// index J = round(v·K / S), from v·K = p + e exactly (e by an fma, or
+// Dekker's product where the target has none), so every rounding mode and
+// every tie is decided on the exact value.
+struct double_lattice_t {
+    std::int64_t K, S, M;
+    bool         Ok;
+};
+template <insidable L>
+inline constexpr double_lattice_t double_lattice = [] {
+    constexpr double_lattice_t no{1, 1, 0, false};
+    if constexpr (!values_fit_int64<L> || !notched<L> || point_storage<L> || !integer_storage<L>)
+        return no;
+    else {
+        std::int64_t k, sv, m;
+        if constexpr (q_format_fits<L>) {
+            k  = static_cast<std::int64_t>(abs_den(notch64<L>.Den));
+            sv = 1;
+            m  = lower_int64<L> * k;
+        } else if constexpr (lattice_codec<L>.Ok) {
+            k  = lattice_codec<L>.K;
+            sv = lattice_codec<L>.S;
+            m  = lattice_codec<L>.M;
+        } else
+            return no;
+        // every in-range |v|·K below 2^51
+        constexpr grid_int mag_g = [] {
+            const grid_rational a = abs(lower_of<L>), b = abs(upper_of<L>);
+            const grid_rational mm = a < b ? b : a;
+            return floor_quotient(mm, grid_rational{1}) + grid_int{2};
+        }();
+        if constexpr (!(mag_g < grid_int{std::int64_t{1} << 62}))
+            return no;
+        const std::uint64_t mag = static_cast<std::uint64_t>(mag_g);
+        std::uint64_t       t;
+        // (A power-of-two K multiplies exactly, and a double past 2^52 is an
+        // integer: then int64 is the only bound.)
+        const bool pow2 = std::has_single_bit(static_cast<std::uint64_t>(k));
+        if (mul_overflow(mag, static_cast<std::uint64_t>(k), &t) || t >= (std::uint64_t{1} << (pow2 ? 62 : 51)))
+            return no;
+        return double_lattice_t{k, sv, m, true};
+    }
+}();
+
+// v·k = p + error exactly.
+constexpr double product_error(double v, double k, double p) noexcept {
+#if BEMAN_INSIDE_HAS_FMA
+    return __builtin_fma(v, k, -p);
+#else
+    constexpr double split = 134217729.0; // 2^27 + 1
+    const double     cv = split * v, vh = cv - (cv - v), vl = v - vh;
+    const double     ck = split * k, kh = ck - (ck - k), kl = k - kh;
+    return ((vh * kh - p) + vh * kl + vl * kh) + vl * kl;
+#endif
+}
+
+struct double_slot_t {
+    std::int64_t Slot;
+    bool         Exact;
+};
+// The slot of an in-range v rounded by M (an exact v gives Exact). The
+// directed modes need only the floor of v·K and whether anything is left; the
+// nearest ones place the fraction against 1/2 on the magnitude.
+template <insidable L, round_mode M>
+[[gnu::always_inline]] constexpr double_slot_t double_slot(double v) noexcept {
+    constexpr auto c = double_lattice<L>;
+    const double   k = static_cast<double>(c.K);
+    const double   p = v * k;
+    const double   e = std::has_single_bit(static_cast<std::uint64_t>(c.K)) ? 0.0 : product_error(v, k, p);
+    if constexpr (M == round_mode::floor || M == round_mode::ceil || M == round_mode::trunc) {
+        std::int64_t pf = static_cast<std::int64_t>(p);
+        pf -= static_cast<double>(pf) > p;               // ⌊p⌋
+        const bool whole = static_cast<double>(pf) == p; // p an integer
+        pf -= whole && e < 0;                            // ⌊v·K⌋
+        const bool         frac = !whole || e != 0;      // v·K not an integer
+        const std::int64_t a    = pf - c.M;
+        std::int64_t       q = a / c.S, mm = a % c.S;
+        if (mm < 0)
+            mm += c.S, --q;
+        const bool rest = frac || mm != 0;
+        const bool up   = M == round_mode::ceil ? rest : M == round_mode::trunc ? rest && v < 0 : false;
+        return {q + up, !rest};
+    } else {
+        // On the magnitude |v·K| = mag + ea: mag − ⌊mag⌋ is exact (it keeps
+        // mag's own bits), which 1 + p for a negative p would not be.
+        const bool      neg = p < 0;
+        const double    mag = neg ? -p : p;
+        const double    ea  = neg ? -e : e;
+        std::int64_t    ia  = static_cast<std::int64_t>(mag); // ⌊mag⌋
+        const double    fa  = mag - static_cast<double>(ia);
+        remainder_class t; // the fraction of |v·K| against 0 and 1/2
+        if (fa == 0) {
+            if (ea < 0) {
+                --ia;
+                t = remainder_class::above_half; // 1 + ea, |ea| < 1/2
+            } else
+                t = ea > 0 ? remainder_class::below_half : remainder_class::zero;
+        } else if (fa == 0.5)
+            t = ea > 0 ? remainder_class::above_half : ea < 0 ? remainder_class::below_half : remainder_class::half;
+        else
+            t = fa < 0.5 ? remainder_class::below_half : remainder_class::above_half;
+        // v·K = pf + t with 0 ≤ t < 1: for a negative value the floor is one
+        // further down and the fraction its complement.
+        std::int64_t pf = neg ? -ia : ia;
+        if (neg && t != remainder_class::zero) {
+            --pf;
+            t = t == remainder_class::below_half   ? remainder_class::above_half
+                : t == remainder_class::above_half ? remainder_class::below_half
+                                                   : t;
+        }
+        // The offset (v·K − M)/S: q = ⌊(pf − M)/S⌋, rounded up or not by the
+        // remainder r = (pf − M) mod S + t against S/2, in value space (the
+        // value's sign, the value index's parity), as round_split.
+        const std::int64_t a = pf - c.M;
+        std::int64_t       q = a / c.S, mm = a % c.S;
+        if (mm < 0)
+            mm += c.S, --q;
+        const bool      exact = mm == 0 && t == remainder_class::zero;
+        remainder_class r;
+        if (exact)
+            r = remainder_class::zero;
+        else if constexpr (c.S == 1)
+            r = t;
+        else if constexpr (c.S % 2 == 0) {
+            constexpr std::int64_t h = c.S / 2;
+            r = mm < h ? remainder_class::below_half
+                       : (mm == h && t == remainder_class::zero ? remainder_class::half : remainder_class::above_half);
+        } else {
+            constexpr std::int64_t h = (c.S - 1) / 2;
+            r                        = mm < h   ? remainder_class::below_half
+                                       : mm > h ? remainder_class::above_half
+                                                : (t == remainder_class::half         ? remainder_class::half
+                                                   : t == remainder_class::above_half ? remainder_class::above_half
+                                                                                      : remainder_class::below_half);
+        }
+        const bool up = rounds_up(M, v < 0, r, ((q & 1) != 0) != lower_index_odd<L>);
+        return {q + (up ? 1 : 0), exact};
+    }
+}
 
 // The rounding step onto L's lattice by rounding_for<L, P>: the exact
 // lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as
@@ -7069,6 +7324,31 @@ namespace beman::inside::detail {
 // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
 //---------------------------------------------------------------------------
 
+// The integer folds of a wrap without 128-bit steps: a Q format's slot
+// (rhs − Lower)·K after a reduction by the period, and the lattice codec's
+// (n·K − M)/S after reducing n by S·period. Each product checked to fit.
+template <insidable L, typename R>
+inline constexpr bool q_format_fold = [] {
+    if constexpr (!q_format_fits<L> || wide_builtin<R> || (std::is_unsigned_v<R> && sizeof(R) >= 8))
+        return false;
+    else {
+        std::int64_t p;
+        return max_index_of<L> < (std::uint64_t{1} << 62) &&
+               !mul_overflow(slot_period<L>, static_cast<std::int64_t>(abs_den(notch64<L>.Den)), &p);
+    }
+}();
+template <insidable L>
+inline constexpr bool codec_fold = [] {
+    if constexpr (!lattice_codec<L>.Ok)
+        return false;
+    else {
+        constexpr auto c = lattice_codec<L>;
+        std::int64_t   np, x;
+        return max_index_of<L> < (std::uint64_t{1} << 62) && !mul_overflow(c.S, slot_period<L>, &np) &&
+               !mul_overflow(np, c.K, &x) && x < (std::int64_t{1} << 61) - c.M;
+    }
+}();
+
 //---------------------------------------------------------------------------
 // assign(insidable, integral)
 //---------------------------------------------------------------------------
@@ -7163,7 +7443,46 @@ struct assignment<L, R> {
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         else if constexpr (wide_builtin<R> && !integers_on_grid)
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
-        else if constexpr (!integers_on_grid)
+        else if constexpr (!integers_on_grid && lattice_codec<L>.Ok && !std::is_unsigned_v<R>) {
+            // A lattice an integer may miss (a notch of 60 or 7/2, an
+            // unanchored one): the slot offset (rhs·K − M)/S, one division by
+            // the constant S. Only an rhs past the limits (which a rounding
+            // policy may still bring onto the grid) takes the general path.
+            constexpr auto         c   = lattice_codec<L>;
+            constexpr std::int64_t nlo = static_cast<std::int64_t>(ceil(lower64<L>));
+            constexpr std::int64_t nhi = static_cast<std::int64_t>(floor(upper64<L>));
+            const std::int64_t     n   = static_cast<std::int64_t>(rhs);
+            if (n < nlo || n > nhi) [[unlikely]] {
+                // Past a limit: a clamp stores the endpoint (rounding first
+                // would land there too); a wrap folds an exact slot.
+                if constexpr (uses_flag<L, P, clamp> && !clamp_action<plain_t<A>> && !wrap_action<plain_t<A>>) {
+                    lhs = L::from_raw(endpoint_raw<L>(n < nlo), unsafe);
+                    return lhs;
+                } else if constexpr (uses_flag<L, P, wrap> && !clamp_action<plain_t<A>> && !wrap_action<plain_t<A>> &&
+                                     codec_fold<L>) {
+                    // n and n + S·period land on the same slot: reduce n first.
+                    constexpr std::int64_t np   = c.S * slot_period<L>;
+                    const std::int64_t     nr   = n % np;
+                    const std::int64_t     onum = (nr < 0 ? nr + np : nr) * c.K - c.M;
+                    const std::int64_t     q    = onum / c.S;
+                    if (q * c.S == onum) {
+                        lhs = L::from_raw(raw_from_offset<L>(fold_slot<L>(q)), unsafe);
+                        return lhs;
+                    }
+                }
+                return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
+            }
+            const std::uint64_t onum = static_cast<std::uint64_t>(n * c.K - c.M); // ≥ 0: n ≥ Lower
+            const std::uint64_t q = onum / static_cast<std::uint64_t>(c.S), r = onum % static_cast<std::uint64_t>(c.S);
+            if (r == 0) [[likely]]
+                lhs = L::from_raw(raw_from_offset<L>(q), unsafe);
+            else if (!uses_flag<L, P, snap> && policy.checks_rounding())
+                report_failure(lhs, policy, action, error::rounding_error);
+            else // rounded by the policy (unsafe without a mode: toward zero)
+                lhs =
+                    L::from_raw(raw_from_offset<L>(round_split<L, P>(q, r, static_cast<std::uint64_t>(c.S))), unsafe);
+            return lhs;
+        } else if constexpr (!integers_on_grid)
             return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
         else {
             // The out-of-range check runs unconditionally — clamp/wrap
@@ -7182,6 +7501,22 @@ struct assignment<L, R> {
                             if constexpr (notch64<L> == 1) {
                                 if (handle_out_of_range(lhs, rhs, policy, action))
                                     return lhs;
+                            } else if constexpr (q_format_fold<L, R> && !clamp_action<plain_t<A>> &&
+                                                 !wrap_action<plain_t<A>> &&
+                                                 (uses_flag<L, P, clamp> || uses_flag<L, P, wrap>)) {
+                                // A 1/K notch over integer limits: the clamp is an
+                                // endpoint, and the fold is on the slot (rhs − Lower)·K,
+                                // reduced by the period first so it stays in int64.
+                                if constexpr (uses_flag<L, P, clamp>)
+                                    lhs = L::from_raw(endpoint_raw<L>(std::cmp_less(rhs, lower_int64<L>)), unsafe);
+                                else {
+                                    constexpr std::int64_t k = abs_den(notch64<L>.Den);
+                                    const std::int64_t     t = static_cast<std::int64_t>(fold_slot<L>(
+                                        static_cast<std::int64_t>(static_cast<std::uint64_t>(rhs) -
+                                                                  static_cast<std::uint64_t>(lower_int64<L>))));
+                                    lhs = L::from_raw(raw_from_offset<L>(fold_slot<L>(t * k)), unsafe);
+                                }
+                                return lhs;
                             } else if constexpr (wide_builtin<R>)
                                 return assign_exact<R>(lhs, exact_of(rhs), policy, action);
                             else
@@ -7202,48 +7537,6 @@ struct assignment<L, R> {
         }
     }
 };
-
-//---------------------------------------------------------------------------
-// The integer store of a lattice the Q-format shortcut does not cover (an
-// unanchored one, or a notch that is not 1/K: 60, 5/100): Notch = S/K and
-// Lower = M/K over their common denominator K. MaxDen bounds a source denominator so
-// that num·K, M·aden and aden·S stay in int64 (|num| ≤ |value|·aden, and
-// every in-range |value| is at most Mag); Ok when the grid allows any.
-//---------------------------------------------------------------------------
-struct lattice_codec_t {
-    std::int64_t  K, S, M;
-    std::uint64_t MaxDen;
-    bool          Ok;
-};
-template <insidable L>
-inline constexpr lattice_codec_t lattice_codec = [] {
-    constexpr lattice_codec_t no{0, 0, 0, 0, false};
-    if constexpr (!notched<L> || q_format_fits<L> || point_storage<L> || !values_fit_int64<L>)
-        return no;
-    else {
-        constexpr std::uint64_t cap = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
-        const rational          n = notch64<L>, lo = lower64<L>, hi = upper64<L>;
-        const std::uint64_t     dn = abs_den(n.Den), dl = abs_den(lo.Den);
-        std::uint64_t           k;
-        if (mul_overflow(dn / std::gcd(dn, dl), dl, &k) || k > cap)
-            return no;
-        std::uint64_t s, mm;
-        if (mul_overflow(n.Num, k / dn, &s) || s > cap || mul_overflow(lo.Num, k / dl, &mm) || mm > cap)
-            return no;
-        // Mag: a bound on every in-range |value|, plus one.
-        const std::uint64_t mag = static_cast<std::uint64_t>(ceil(abs(lo) > abs(hi) ? abs(lo) : abs(hi))) + 1;
-        std::uint64_t       km, kms;
-        if (mul_overflow(k, mag, &km) || mul_overflow(km, std::uint64_t{4}, &kms))
-            return no;
-        const std::uint64_t by_num = cap / kms; // num·K and M·aden each below cap/2
-        const std::uint64_t by_den = cap / s;   // aden·S
-        return lattice_codec_t{static_cast<std::int64_t>(k),
-                               static_cast<std::int64_t>(s),
-                               lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
-                               by_num < by_den ? by_num : by_den,
-                               true};
-    }
-}();
 
 //---------------------------------------------------------------------------
 // assign(insidable, floating_point | rational)
@@ -7509,6 +7802,18 @@ struct assignment<L, R> {
                 return false;
             };
 
+            // A floating source on another anchored lattice within 2^51
+            // (a decimal or coarse notch): the slot from the exact v·K, one
+            // rounding (double_slot).
+            if constexpr (std::floating_point<R> && !wide_float<R> && double_lattice<L>.Ok &&
+                          !(anchored<L> && double_exact<grid_of<L>> && std::has_single_bit(notch64<L>.Num))) {
+                const auto s = double_slot<L, rounding_for<L, P>>(static_cast<double>(rhs));
+                if constexpr (!has_round_flag)
+                    if (!s.Exact && policy.checks_rounding()) [[unlikely]]
+                        return report_failure(lhs, policy, action, error::rounding_error);
+                store_slot(static_cast<std::uint64_t>(s.Slot));
+                return;
+            }
             // A floating source on an anchored grid with a power-of-two notch
             // whose values double holds: v/Notch is exact, so round it in
             // double (the integer storage's rule) and read the slot off the
@@ -7907,10 +8212,32 @@ struct assignment<L, R> {
   private:
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
-        lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < lower64<L>), unsafe);
-        // The overshoot rhs − clamped, exact on its grid (assign_exact.hpp).
-        if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of(rhs) + -exact_of(lhs)));
+        const bool low = below_lower(rhs);
+        lhs            = L::from_raw(endpoint_raw<L>(low), unsafe);
+        // The overshoot rhs − clamped, exact on its grid (assign_exact.hpp):
+        // R's grid minus the two-point grid of L's limits, which is what
+        // rhs minus that limit as an inside computes in integers.
+        if constexpr (clamp_action<plain_t<A>>) {
+            using limits = inside<lower_of<L> == upper_of<L>
+                                      ? grid{lower_of<L>}
+                                      : grid{interval{lower_of<L>, upper_of<L>}, upper_of<L> - lower_of<L>}>;
+            if constexpr (!wide_valued<R> && !wide_valued<L> && requires(const R& r, const limits& l) {
+                              { r - l } -> std::same_as<clamp_overshoot_t<L, R>>;
+                          }) {
+                const limits limit = limits::from_raw(raw_of_slot<limits>(low || point_grid<L> ? 0 : 1), unsafe);
+                action.Fn(lhs, rhs - limit);
+            } else
+                action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of(rhs) + -exact_of(lhs)));
+        }
+    }
+    // R's value below L's Lower: the integer compare of out_of_interval.
+    static constexpr bool below_lower(const R& rhs) {
+        if constexpr (units_cmp_fits<L, R>) {
+            constexpr grid_rational U  = gcd(unit_of<L>, unit_of<R>);
+            constexpr std::int64_t  lo = static_cast<std::int64_t>(units_lo<L, U>);
+            return value_in_units<std::int64_t, U>(rhs) < lo;
+        } else
+            return as_rational(rhs) < lower64<L>;
     }
 
     template <typename P, typename A>
@@ -8033,6 +8360,17 @@ struct assignment<L, R> {
                     lhs = L::from_raw(static_cast<raw_t<L>>(raw), unsafe);
                     return lhs;
                 }
+                // Past a limit (a product of two 64-bit values, say): unsafe
+                // keeps the low bits, as the integer stores do; a clamp
+                // without a hook stores the endpoint.
+                if constexpr (!needs_runtime_range_check<L, plain_t<P>, plain_t<A>> && !wide_valued<L>) {
+                    lhs = L::from_raw(static_cast<raw_t<L>>(raw), unsafe);
+                    return lhs;
+                } else if constexpr (uses_flag<L, P, clamp> && !clamp_action<plain_t<A>> && !wrap_action<plain_t<A>> &&
+                                     !wide_valued<L>) {
+                    lhs = L::from_raw(endpoint_raw<L>(raw < static_cast<W>(raw_lo_exact<L>)), unsafe);
+                    return lhs;
+                }
             }
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         } else
@@ -8040,6 +8378,66 @@ struct assignment<L, R> {
     }
 
   private:
+    // Every mapped raw minus L's raw_lo fits int64 (a wrap folds that slot).
+    static constexpr bool mapped_slots_fit = [] {
+        if constexpr (!is_integer_mapping)
+            return false;
+        else {
+            const rational lo = Offset + (index_storage<L> ? rational{0} : lower64<L>);
+            const rational hi = lo + Factor * rational{max_index_of<R>};
+            const rational b{raw_lo<L>};
+            const auto     slo = try_sub(lo, b), shi = try_sub(hi, b);
+            return slo && shi && *slo >= rational{std::numeric_limits<std::int64_t>::min()} &&
+                   *shi <= rational{std::numeric_limits<std::int64_t>::max()};
+        }
+    }();
+    // The out-of-range store in integers: a clamp or wrap policy with no
+    // hook (a hook needs the exact overshoot or carry), on an anchored
+    // lattice within int64 whose slots fold in int64, from an integer or
+    // affine raw mapping.
+    template <typename P, typename A>
+    static constexpr bool integer_out_of_range = [] {
+        if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || point_storage<L> || !notched<L> ||
+                      !values_fit_int64<L> || !values_fit_int64<R>)
+            return false;
+        else if constexpr (!anchored<L> || !lower_index_fits_int64<L> || !(max_index_of<L> < (std::uint64_t{1} << 62)))
+            return false;
+        else if constexpr (is_integer_mapping)
+            return mapped_slots_fit;
+        else if constexpr (!affine_map.Ok)
+            return false;
+        else { // N = num + Jlo·Den (the value index over Den) stays in int64
+            std::int64_t       t, n;
+            const std::int64_t jlo  = signed_numerator(to_rational(lower_index_of<L>));
+            const std::int64_t rmax = static_cast<std::int64_t>(max_index_of<R>);
+            return !mul_overflow(jlo, affine_map.Den, &t) && !mul_overflow(rmax, affine_map.Mul, &n) &&
+                   !add_overflow(n, affine_map.Add < 0 ? -affine_map.Add : affine_map.Add, &n) &&
+                   !add_overflow(n, t < 0 ? -t : t, &n);
+        }
+    }();
+    // The slot of rhs on L, rounded by P's mode in value space, possibly
+    // outside 0 … max_index (affine mapping; integer_out_of_range).
+    template <typename P>
+    static constexpr std::int64_t rounded_slot(const R& rhs) {
+        if constexpr (is_integer_mapping)
+            return map_raw(rhs.raw()) - raw_lo<L>; // (integer_out_of_range: mapped_slots_fit)
+        else {
+            constexpr std::int64_t jlo = signed_numerator(to_rational(lower_index_of<L>));
+            constexpr std::int64_t den = affine_map.Den;
+            const std::int64_t n = affine_map.Add + (static_cast<std::int64_t>(rhs.raw()) - raw_lo<R>)*affine_map.Mul +
+                                   jlo * den; // the value index of rhs, over den
+            const std::int64_t q = n / den, r = n % den;
+            constexpr round_mode m = rounding_for<L, P>;
+            const bool away = r != 0 && rounds_away(m,
+                                                    n < 0,
+                                                    classify_remainder(m,
+                                                                       static_cast<std::uint64_t>(r < 0 ? -r : r),
+                                                                       static_cast<std::uint64_t>(den)),
+                                                    (q & 1) != 0);
+            return (away ? q + (n < 0 ? -1 : 1) : q) - jlo;
+        }
+    }
+
     // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
     // for them (matches the integral-rhs path); only strict policies reject it.
     template <typename P>
@@ -8059,10 +8457,36 @@ struct assignment<L, R> {
                 // (A point L maps every raw onto its one raw: only the value
                 // tells whether it is in range.)
                 if constexpr (is_integer_mapping && !point_storage<L>) {
-                    if (std::int64_t mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
+                    if (std::int64_t mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>) {
+                        if constexpr (integer_out_of_range<P, A> && uses_flag<L, P, clamp>) {
+                            lhs = L::from_raw(endpoint_raw<L>(mapped < raw_lo<L>), unsafe);
+                            return lhs;
+                        } else if constexpr (integer_out_of_range<P, A> && uses_flag<L, P, wrap> && mapped_slots_fit) {
+                            lhs = L::from_raw(raw_from_offset<L>(fold_slot<L>(mapped - raw_lo<L>)), unsafe);
+                            return lhs;
+                        }
                         if (clamp_or_fail(lhs, rhs, policy, action))
                             return lhs;
+                    }
                 } else if (out_of_interval(rhs)) {
+                    // A clamp or a wrap without a hook on an anchored lattice:
+                    // the slot rounded in integers, then the endpoint or the fold.
+                    if constexpr (integer_out_of_range<P, A>) {
+                        const std::int64_t slot = rounded_slot<P>(rhs);
+                        if (slot >= 0 && std::cmp_less_equal(slot, max_index_of<L>)) { // rounded onto the grid
+                            if constexpr (rounds_before_range_check<L, plain_t<P>>) {
+                                lhs = L::from_raw(raw_from_offset<L>(static_cast<std::uint64_t>(slot)), unsafe);
+                                return lhs;
+                            }
+                        }
+                        if constexpr (uses_flag<L, P, clamp>)
+                            lhs = L::from_raw(endpoint_raw<L>(slot < 0), unsafe);
+                        else if constexpr (uses_flag<L, P, wrap>)
+                            lhs = L::from_raw(raw_from_offset<L>(fold_slot<L>(slot)), unsafe);
+                        else if (clamp_or_fail(lhs, rhs, policy, action)) // a report, or on_error
+                            return lhs;
+                        return lhs;
+                    }
                     // Round first: a value just outside may round onto an endpoint.
                     // (The integer mapping above lands on the lattice: nothing to round.)
                     if constexpr (rounds_before_range_check<L, plain_t<P>>)
@@ -9187,7 +9611,19 @@ struct quotient_remainder {
                 policy.report(code);
             return std::unexpected{code};
         };
-        if constexpr (lattice_mod_ops<L, R>) {
+        if constexpr (modulo<L, R, FS>::lattice_native && integer_lattice<quotient> && values_fit_int64<quotient>) {
+            // A lattice whose unit counts fit int64: one builtin division, as `%`.
+            using M                   = typename modulo<L, R, FS>::result;
+            constexpr grid_rational u = mod_unit<L, R>;
+            const std::int64_t      b = value_in_units<std::int64_t, u>(rhs);
+            if constexpr (!divisor_unchecked<L, R, F, G>)
+                if (b == 0)
+                    return fail(error::division_by_zero);
+            const auto qr = div_rem_rounded(value_in_units<std::int64_t, u>(lhs), b, rmode);
+            result     res{quotient{}, from_value_in_units<M, u>(qr.Remainder)};
+            from_value(res.Quotient, qr.Quotient);
+            return res;
+        } else if constexpr (lattice_mod_ops<L, R>) {
             // A lattice: q and r = a − q·b on the unit counts, exactly.
             using M                   = typename modulo<L, R, FS>::result;
             constexpr grid_rational u = mod_unit<L, R>;
@@ -9327,13 +9763,34 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
 }
 } // namespace detail
 
+namespace detail {
+// An integer source on a grid within int64 whose policy cannot round an
+// integer past a limit back in: in range exactly when it lies between the
+// limits' integer ceiling and floor, two compares.
+template <insidable B, typename A>
+inline constexpr bool integer_range_test = [] {
+    if constexpr (!std::integral<A> || wide_builtin<A> || exact_grid_only<B> || !values_fit_int64<B>)
+        return false;
+    else
+        return !rounds_before_range_check<B, call_policy<>> ||
+               (abs_den(lower64<B>.Den) == 1 && abs_den(upper64<B>.Den) == 1);
+}();
+template <insidable B>
+inline constexpr std::int64_t integer_floor_of_upper = floor(upper64<B>);
+template <insidable B>
+inline constexpr std::int64_t integer_ceil_of_lower = ceil(lower64<B>);
+} // namespace detail
+
 template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
             return true; // NaN / ±inf fit no grid (and must not raise here)
+    if constexpr (detail::integer_range_test<B, A>)
+        return std::cmp_less(value, detail::integer_ceil_of_lower<B>) ||
+               std::cmp_greater(value, detail::integer_floor_of_upper<B>);
     // The 64-bit paths below do not compile for a grid (or value) past them.
-    if constexpr (detail::exact_path_only<B, A>)
+    else if constexpr (detail::exact_path_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Overflows;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
@@ -9352,8 +9809,20 @@ template <insidable B, detail::numeric A>
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
             return false; // non-finite — overflow, not rounding
+    if constexpr (detail::integer_range_test<B, A> && (detail::q_format_fits<B> || detail::lattice_codec<B>.Ok)) {
+        // An integer in range: on a 1/K notch over an integer Lower it is a
+        // grid point; elsewhere the slot offset (v·K − M)/S must be whole.
+        if (conversion_overflows<B>(value)) [[unlikely]]
+            return false;
+        if constexpr (detail::q_format_fits<B>)
+            return false;
+        else {
+            constexpr auto c = detail::lattice_codec<B>;
+            return (static_cast<std::int64_t>(value) * c.K - c.M) % c.S != 0;
+        }
+    }
     // The 64-bit paths below do not compile for a grid (or value) past them.
-    if constexpr (detail::exact_path_only<B, A>)
+    else if constexpr (detail::exact_path_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Rounds;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
@@ -9451,7 +9920,7 @@ template <class B, policy_flag F, class Store>
 constexpr std::expected<B, error> try_store(Store store) {
     error ec{};
     B     b{};
-    store(b, call_policy<F, local_error_ref>{ec});
+    store(b, make_policy<F>(ec));
     if (ec != error{})
         return std::unexpected{ec};
     return b;
@@ -9951,6 +10420,29 @@ struct inside : detail::raw_holder<G, P> {
                 if (t > static_cast<std::int64_t>(lim::max()))
                     return std::unexpected{error::overflow};
             return static_cast<T>(t);
+        } else if constexpr (detail::lattice_codec<inside>.Ok) {
+            // Any other lattice: the value is (slot·S + M)/K, one division by
+            // the constant K.
+            constexpr std::int64_t K = detail::lattice_codec<inside>.K;
+            const std::int64_t     n = detail::lattice_numerator(*this);
+            std::int64_t           t = n / K;
+            if (const std::int64_t r = n % K; r != 0) {
+                if constexpr (!rounds)
+                    return std::unexpected{error::rounding_error};
+                const std::uint64_t ar = static_cast<std::uint64_t>(r < 0 ? -r : r);
+                if (detail::rounds_away(mode,
+                                        r < 0,
+                                        detail::classify_remainder(mode, ar, static_cast<std::uint64_t>(K)),
+                                        (t & 1) != 0))
+                    t += r < 0 ? -1 : 1;
+            }
+            if constexpr (check_lo)
+                if (t < static_cast<std::int64_t>(lim::min()))
+                    return std::unexpected{error::overflow};
+            if constexpr (check_hi)
+                if (t > static_cast<std::int64_t>(lim::max()))
+                    return std::unexpected{error::overflow};
+            return static_cast<T>(t);
         } else {
             const auto v = detail::as_rational(*this);
             const auto t = detail::round_to_integral(v, mode);
@@ -9977,6 +10469,8 @@ struct inside : detail::raw_holder<G, P> {
     [[nodiscard]] constexpr T to() const {
         if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
+        else if constexpr (sizeof(T) < sizeof(double) && detail::double_exact<G>)
+            return static_cast<T>(detail::as_double(*this)); // the double is exact: one rounding
         else if constexpr (sizeof(T) < sizeof(double)) {
             const double d = detail::as_double(*this);
             if (detail::narrow_midpoint<T>(d)) [[unlikely]]
@@ -10098,7 +10592,16 @@ struct inside : detail::raw_holder<G, P> {
     template <std::integral T>
         requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
     [[nodiscard]] static constexpr auto from_step(T i) {
-        return from_step(as_step_inside(i));
+        // A builtin step: compare it with the step count, then it is the slot.
+        if constexpr (!detail::point_storage<inside> && !detail::wide_index_storage<inside> &&
+                      detail::values_fit_int64<inside> &&
+                      std::same_as<decltype(from_step(as_step_inside(i))), std::expected<inside, error>>) {
+            if (std::cmp_less(i, 0) || std::cmp_greater(i, detail::max_index_of<inside>)) [[unlikely]]
+                return std::expected<inside, error>{std::unexpect, error::overflow};
+            return std::expected<inside, error>{
+                from_raw(detail::raw_from_offset<inside>(static_cast<std::uint64_t>(i)), unsafe)};
+        } else
+            return from_step(as_step_inside(i));
     }
     template <std::integral T, typename Pol>
         requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper) &&
@@ -10123,6 +10626,21 @@ struct inside : detail::raw_holder<G, P> {
             const int              s =
                 std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(nd)); // 0 → 0/1
             return {num >> s, nd >> s};
+        } else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>) {
+            constexpr std::int64_t nd  = detail::abs_den(detail::notch64<inside>.Den);
+            const std::int64_t     num = detail::raw_int64(*this) + detail::lower_int64<inside> * nd;
+            const std::int64_t     g   = std::gcd(num, nd);
+            return {num / g, nd / g};
+        } else if constexpr (detail::lattice_codec<inside>.Ok) {
+            constexpr std::int64_t K   = detail::lattice_codec<inside>.K;
+            const std::int64_t     num = detail::lattice_numerator(*this);
+            if constexpr (std::has_single_bit(static_cast<std::uint64_t>(K))) {
+                const int s = std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(K));
+                return {num >> s, K >> s};
+            } else {
+                const std::int64_t g = std::gcd(num, K);
+                return {num / g, K / g};
+            }
         } else {
             auto r = detail::as_rational(*this);
             return {signed_numerator(r), static_cast<std::int64_t>(detail::abs_den(r.Den))};
@@ -10616,6 +11134,17 @@ template <insidable B, policy_flag F>
 
 template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, error> parse(const char* first, const char* last) {
+    // Plain decimal text, [-+]digits[.digits] with at most 18 digits: read
+    // in one pass; an integer stores as one, a decimal as n/10^d.
+    if constexpr (!detail::wide_valued<B> && requires(std::int64_t v, detail::rational r) {
+                      B::template try_make<F>(v);
+                      B::template try_make<F>(r);
+                  })
+        if (const auto d = detail::plain_decimal(first, last); d.Ok) [[likely]] {
+            if (d.Decimals == 0)
+                return B::template try_make<F>(d.Value);
+            return B::template try_make<F>(detail::rational{d.Value, detail::power_of_ten(d.Decimals)});
+        }
     if (detail::fraction_text(first, last))
         return detail::parse_wide<B, F>(first, last);
     const auto v = detail::parse_text(first, last);
@@ -10947,6 +11476,18 @@ template <insidable B, detail::numeric A>
         return detail::stored<B, policy_of<B> | detail::snap>(value);
     else {
         using result = std::expected<B, error>;
+        // The exact store succeeds exactly when exact_cast does: try it first
+        // and name the failure afterwards, off the common path.
+        using strict = inside<grid_of<B>>;
+        if constexpr (requires { strict::try_make(value); }) {
+            if (const auto r = strict::try_make(value)) [[likely]]
+                return result{B::from_raw(r->raw(), unsafe)};
+            if constexpr (std::floating_point<A>)
+                if (!detail::is_finite(value))
+                    return result{std::unexpect, error::not_finite};
+            // The exact store failed: off the interval, else off the notch.
+            return result{std::unexpect, conversion_overflows<B>(value) ? error::overflow : error::rounding_error};
+        }
         if constexpr (std::floating_point<A>)
             if (!detail::is_finite(value))
                 return result{std::unexpect, error::not_finite};
@@ -11209,6 +11750,99 @@ template <insidable Out, insidable A, insidable B, typename P>
 } // namespace detail
 
 namespace detail {
+// mul<Out> / div<Out> between anchored integer-raw lattices within int64:
+// Out's value index J = round(Ja·Jb·Cp / Cq) for a product, round(Ja·Cp /
+// (Jb·Cq)) for a quotient, with C = Notch_A·Notch_B / Notch_Out or
+// Notch_A / (Notch_B·Notch_Out) reduced at compile time: one rounded
+// division, where every product is shown to fit int64.
+template <insidable X>
+inline constexpr bool int_lattice = [] {
+    if constexpr (!notched<X> || point_storage<X> || !integer_storage<X> || !values_fit_int64<X>)
+        return false;
+    else
+        return anchored<X> && value_indices_fit_int64<X> && lower_index_fits_int64<X>;
+}();
+template <insidable X>
+inline constexpr bool binary_notch =
+    notched<X> &&
+    std::has_single_bit(static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_denominator(notch_of<X>))));
+template <insidable Out, insidable A, insidable B, bool Div>
+struct lattice_op {
+    static constexpr bool          grids = int_lattice<Out> && int_lattice<A> && int_lattice<B>;
+    static constexpr grid_rational C     = [] {
+        if constexpr (!grids)
+            return grid_rational{1};
+        else if constexpr (Div)
+            return notch_of<A> / (notch_of<B> * notch_of<Out>);
+        else
+            return notch_of<A> * notch_of<B> / notch_of<Out>;
+    }();
+    static consteval grid_int max_abs_index(const grid_rational& lo, const grid_rational& hi) {
+        const grid_rational a = abs(lo), b = abs(hi);
+        return grid_numerator(a < b ? b : a);
+    }
+    static constexpr bool ok = [] {
+        if constexpr (!grids)
+            return false;
+        else {
+            constexpr grid_int lim{std::int64_t{1} << 62};
+            const grid_int     ja = max_abs_index(lower_index_of<A>, upper_index_of<A>);
+            const grid_int     jb = max_abs_index(lower_index_of<B>, upper_index_of<B>);
+            const grid_int     cp = grid_numerator(C), cq = grid_denominator(C);
+            if (!(max_index_of<Out> < (std::uint64_t{1} << 62)))
+                return false;
+            return Div ? ja * cp < lim && jb * cq < lim : ja * jb * cp < lim && cq < lim;
+        }
+    }();
+    static constexpr std::int64_t Cp  = ok ? static_cast<std::int64_t>(grid_numerator(C)) : 1;
+    static constexpr std::int64_t Cq  = ok ? static_cast<std::int64_t>(grid_denominator(C)) : 1;
+    static constexpr std::int64_t Jlo = ok ? static_cast<std::int64_t>(grid_numerator(lower_index_of<Out>)) : 0;
+};
+struct lattice_slot {
+    std::uint64_t Slot;
+    bool          Ok; // false: off the grid, unhandled (the general store reports it)
+};
+// Out's value index n/d (d ≠ 0) rounded by P onto Out's slots, with P's
+// clamp or wrap past the limits.
+template <insidable Out, policy_flag P>
+[[gnu::always_inline]] constexpr lattice_slot lattice_round_slot(std::int64_t n, std::int64_t d) noexcept {
+    constexpr std::int64_t jlo = static_cast<std::int64_t>(grid_numerator(lower_index_of<Out>));
+    constexpr bool         snp = has_flag(P, snap);
+    const auto             qr  = div_rem_rounded(n, d, snp ? rounding_of(P) : round_mode::trunc);
+    if (!snp && qr.Remainder != 0)
+        return {0, false};
+    const std::int64_t slot = qr.Quotient - jlo;
+    if (slot >= 0 && std::cmp_less_equal(slot, max_index_of<Out>)) [[likely]]
+        return {static_cast<std::uint64_t>(slot), true};
+    if constexpr (has_flag(P, clamp))
+        return {slot < 0 ? std::uint64_t{0} : max_index_of<Out>, true};
+    else if constexpr (has_flag(P, wrap))
+        return {fold_slot<Out>(slot), true};
+    else
+        return {0, false};
+}
+template <insidable Out, policy_flag P, bool Div, insidable A, insidable B>
+[[gnu::always_inline]] constexpr lattice_slot lattice_op_slot(const A& a, const B& b) noexcept {
+    using L               = lattice_op<Out, A, B, Div>;
+    const std::int64_t ja = value_index<std::int64_t>(a);
+    const std::int64_t jb = value_index<std::int64_t>(b);
+    return lattice_round_slot<Out, P>(Div ? ja * L::Cp : ja * jb * L::Cp, Div ? jb * L::Cq : L::Cq);
+}
+// A count of units U onto Out (sum's total): Out's value index is
+// count·Cp/Cq, C = U/Notch_Out, while the product fits int64.
+template <insidable Out>
+inline constexpr grid_rational units_to_out = notch_of<Out>;
+template <insidable Out, grid_rational U>
+inline constexpr bool units_onto = [] {
+    if constexpr (!int_lattice<Out>)
+        return false;
+    else {
+        const grid_rational c = U / notch_of<Out>;
+        constexpr grid_int  lim{std::int64_t{1} << 62};
+        return grid_numerator(c) < lim && grid_denominator(c) < lim && max_index_of<Out> < (std::uint64_t{1} << 62);
+    }
+}();
+
 // The exact result of a op b stores into Out under P with no run-time
 // failure (false where a op b has no result type of its own).
 template <insidable Out, policy_flag P, class A, class B>
@@ -11244,6 +11878,10 @@ template <insidable Out, insidable A, insidable B, class... Fl>
         if constexpr (detail::native_product<Out, F, A, B>)
             return detail::store_into<Out>(a * b, policy);
         else {
+            if constexpr (detail::lattice_op<Out, A, B, false>::ok)
+                if (const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, false>(a, b); s.Ok)
+                    [[likely]]
+                    return Out::from_raw(detail::raw_from_offset<Out>(s.Slot), unsafe);
             if constexpr (detail::rational_operands<A, B>)
                 if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
                     return detail::store_into<Out>(*p, policy);
@@ -11265,6 +11903,13 @@ template <insidable Out, insidable A, insidable B, class... Fl>
     std::expected<Out, error>> {
     constexpr policy_flag F        = detail::call_flags<Fl...>;
     const auto            quotient = [&](auto&& policy) {
+        // (Binary notches decode without a gcd: the unreduced quotient below
+        // is as cheap there.)
+        if constexpr (detail::lattice_op<Out, A, B, true>::ok &&
+                      !(detail::rational_operands<A, B> && detail::unreduced_store<Out> && detail::binary_notch<A> &&
+                        detail::binary_notch<B>))
+            if (const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, true>(a, b); s.Ok) [[likely]]
+                return Out::from_raw(detail::raw_from_offset<Out>(s.Slot), unsafe);
         if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
             if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
                 [[likely]]
@@ -11498,9 +12143,41 @@ constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
                 else
                     total += I{acc} * scale + I{cnt} * base;
             }
+        } else if constexpr (!detail::wide_index_storage<B> && detail::values_fit_int64<B> &&
+                             detail::signed_value_bits({detail::units_lo<B, U>, detail::units_hi<B, U>}) < 60) {
+            // Each value's units fit int64 with room: sum blocks of them in
+            // int64 (as many as cannot overflow), the blocks in the total.
+            constexpr int          bits  = detail::signed_value_bits({detail::units_lo<B, U>, detail::units_hi<B, U>});
+            constexpr std::int64_t block = std::int64_t{1} << (62 - bits);
+            std::int64_t           acc = 0, cnt = 0;
+            for (const auto& b : r) {
+                acc += detail::value_in_units<std::int64_t, U>(b);
+                if (++cnt == block) [[unlikely]] {
+                    total += I{acc};
+                    acc = 0;
+                    cnt = 0;
+                }
+            }
+            total += I{acc};
         } else
             for (const auto& b : r)
                 total += detail::value_in_units<I, U>(b);
+        if constexpr (!detail::wide_valued<B> && detail::units_onto<Target, U>) {
+            // A total within int64 onto a lattice: one rounded division.
+            constexpr std::int64_t          lo = std::numeric_limits<std::int64_t>::min(),
+                                            hi = std::numeric_limits<std::int64_t>::max();
+            constexpr detail::grid_rational c  = U / notch_of<Target>;
+            constexpr std::int64_t          cp = static_cast<std::int64_t>(detail::grid_numerator(c));
+            constexpr std::int64_t          cq = static_cast<std::int64_t>(detail::grid_denominator(c));
+            std::int64_t                    n;
+            if (!(total < I{lo}) && !(I{hi} < total) &&
+                !detail::mul_overflow(static_cast<std::int64_t>(total), cp, &n))
+                if (const auto s = detail::lattice_round_slot<Target, policy_of<Pol> | policy_of<Target>>(n, cq);
+                    s.Ok) {
+                    out = Target::from_raw(detail::raw_from_offset<Target>(s.Slot), unsafe);
+                    return;
+                }
+        }
         if constexpr (!detail::wide_valued<B>) {
             // A total within int64: the cheaper 64-bit rational store.
             constexpr std::int64_t lo = std::numeric_limits<std::int64_t>::min(),
@@ -12374,7 +13051,10 @@ using wrap_counter = inside<{0, Max}, wrap>;
 
 
 #include <algorithm>
+#include <bit>
+#include <charconv>
 #include <format>
+#include <numeric>
 #include <istream>
 #include <ostream>
 #include <string>
@@ -12448,11 +13128,63 @@ struct decimal_stream {
     bool tail() const { return !Rem.is_zero(); }
 };
 
+// The same for 64-bit parts, in builtin integers: the decimal digits by
+// std::to_chars, and the fraction's by one multiplication (den divides
+// 10^digits); past 19 decimals, the wide form.
+template <std::size_t K>
+std::string        fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits);
+inline std::string fraction_to_string_u64(bool neg, std::uint64_t num, std::uint64_t den, int min_digits) {
+    if (std::has_single_bit(den)) { // a binary fraction: reduce by shifting
+        const int z = std::countr_zero(num | den);
+        num >>= z;
+        den >>= z;
+    } else {
+        const std::uint64_t g = std::gcd(num, den);
+        num /= g;
+        den /= g;
+    }
+    const int     twos  = std::countr_zero(den);
+    std::uint64_t rest  = den >> twos;
+    int           fives = 0;
+    while (rest != 1 && rest % 5 == 0)
+        rest /= 5, ++fives;
+    char  buf[64];
+    char* p = buf;
+    if (neg && num != 0)
+        *p++ = '-';
+    if (rest != 1) { // num/den
+        p    = std::to_chars(p, buf + sizeof buf, num).ptr;
+        *p++ = '/';
+        p    = std::to_chars(p, buf + sizeof buf, den).ptr;
+        return std::string(buf, p);
+    }
+    int digits = twos > fives ? twos : fives;
+    if (digits < min_digits)
+        digits = min_digits;
+    if (digits > 19)
+        return fraction_to_string<1>(neg, wide_uint<1>{num}, wide_uint<1>{den}, min_digits);
+    p = std::to_chars(p, buf + sizeof buf, num / den).ptr;
+    if (digits != 0) {
+        std::uint64_t pow = 1;
+        for (int i = 0; i < digits; ++i)
+            pow *= 10;
+        const std::uint64_t frac = (num % den) * (pow / den); // < 10^digits
+        *p++                     = '.';
+        char        tmp[24];
+        char* const end = std::to_chars(tmp, tmp + sizeof tmp, frac).ptr;
+        const auto  len = static_cast<int>(end - tmp);
+        for (int i = len; i < digits; ++i)
+            *p++ = '0';
+        p = std::copy(tmp, end, p);
+    }
+    return std::string(buf, p);
+}
+
 // num/den (den > 0) in the forms parse reads: its exact decimal when the
 // reduced denominator is 2^a·5^b (however many digits, and at least
 // min_digits decimals), else "num/den".
 template <std::size_t K>
-std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits = 0) {
+std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits) {
     using U   = wide_uint<K>;
     const U g = wide_gcd(den, num);
     num /= g;
@@ -12481,7 +13213,7 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
 // prints as its exact decimal when it has one, else as num/den.
 //-------------------------------------------------------------------------
 [[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
-    return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den));
+    return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), 0);
 }
 
 namespace detail {
@@ -12500,6 +13232,22 @@ inline constexpr int fixed_decimals = [] {
         return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
     }
 }();
+// A Q-format grid whose notch 1/K is a decimal notch (K divides 10^n for
+// its n fixed decimals, n ≤ 18): printed from the raw by integer steps.
+template <insidable B>
+inline constexpr std::uint64_t fixed_point_scale = [] {
+    if constexpr (!q_format_fits<B> || fixed_decimals<B> == 0 || fixed_decimals<B> > 18)
+        return std::uint64_t{0};
+    else {
+        std::uint64_t p = 1;
+        for (int i = 0; i < fixed_decimals<B>; ++i)
+            p *= 10;
+        const std::uint64_t k = abs_den(notch64<B>.Den);
+        return p % k == 0 ? p / k : std::uint64_t{0};
+    }
+}();
+template <insidable B>
+inline constexpr bool fixed_point_text = fixed_point_scale<B> != 0;
 } // namespace detail
 
 // A grid number of any size, in the forms of to_string(rational).
@@ -12612,7 +13360,7 @@ namespace detail {
 template <std::size_t K>
 std::string big_fraction_to_string(const big_rational& r) {
     const auto n = static_cast<wide_uint<K>>(r.Num); // two's complement
-    return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den));
+    return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den), 0);
 }
 } // namespace detail
 
@@ -12635,8 +13383,33 @@ template <insidable B>
     if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
     else {
-        const detail::rational r = detail::as_rational(b);
-        return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
+        if constexpr (detail::integer_lattice<B> && detail::values_fit_int64<B>) {
+            char        buf[24];
+            char* const end = std::to_chars(buf, buf + sizeof buf, detail::to_value(b)).ptr;
+            return std::string(buf, end);
+        } else if constexpr (detail::fixed_point_text<B>) {
+            // A decimal notch 1/K: the integer part, then n decimals of the
+            // remainder (K divides 10^n), no reduction.
+            constexpr std::int64_t K   = detail::abs_den(detail::notch64<B>.Den);
+            const std::int64_t     num = detail::raw_int64(b) + detail::lower_int64<B> * K;
+            const std::uint64_t    a =
+                num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num) : static_cast<std::uint64_t>(num);
+            char  buf[48];
+            char* p = buf;
+            if (num < 0)
+                *p++ = '-';
+            p    = std::to_chars(p, buf + sizeof buf, a / K).ptr;
+            *p++ = '.';
+            char        tmp[24];
+            char* const end = std::to_chars(tmp, tmp + sizeof tmp, (a % K) * detail::fixed_point_scale<B>).ptr;
+            for (auto i = end - tmp; i < n; ++i)
+                *p++ = '0';
+            p = std::copy(tmp, end, p);
+            return std::string(buf, p);
+        } else {
+            const detail::rational r = detail::as_rational(b);
+            return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
+        }
     }
 }
 

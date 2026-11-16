@@ -182,23 +182,6 @@ inline constexpr index_double_codec index_double = [] {
     }
 }();
 
-// Ungated double view of any inside (the public operator double() is gated
-// on a rounding flag; this is always available). Everything but index
-// storage holds the value verbatim; an index decodes through the grid.
-template <insidable B>
-[[nodiscard]] constexpr double as_double(const B& b) noexcept {
-    if constexpr (wide_valued<B>)
-        return static_cast<double>(exact_of(b));
-    else if constexpr (point_storage<B>)
-        return static_cast<double>(lower64<B>);
-    else if constexpr (value_storage<B>)
-        return static_cast<double>(b.raw());
-    else if constexpr (constexpr auto c = index_double<B>; c.Ok)
-        return static_cast<double>((static_cast<std::int64_t>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
-    else
-        return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
-}
-
 // True when R's interval cannot contain zero — so `a / b` can return a plain
 // `inside` instead of `expected<inside, error>` (see inside/detail/division.hpp). A point
 // grid at 0 is *not* excluded.
@@ -270,6 +253,13 @@ constexpr std::int64_t raw_int64(B b) noexcept {
     return static_cast<std::int64_t>(b.raw());
 }
 
+// ⌊a / b⌋ for grid numbers (b > 0).
+consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b) {
+    const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
+    const grid_int q = n / d;
+    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
+}
+
 //-------------------------------------------------------------------------
 // Q-format integer fast path: for grids with integer Lower, unit-numerator
 // Notch 1/nd, and every value·nd within int64, value↔raw is pure integer
@@ -278,7 +268,9 @@ constexpr std::int64_t raw_int64(B b) noexcept {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool q_format_fits = [] {
-    if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_int64<B>)
+    if constexpr (!values_fit_int64<B>) // (first: the 64-bit views below need it)
+        return false;
+    else if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in int64
         constexpr grid_rational nd{grid_denominator(notch_of<B>)};
@@ -286,6 +278,69 @@ inline constexpr bool q_format_fits = [] {
                !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_of<B> * nd);
     }
 }();
+
+//---------------------------------------------------------------------------
+// The integer store of a lattice the Q-format shortcut does not cover (an
+// unanchored one, or a notch that is not 1/K: 60, 5/100): Notch = S/K and
+// Lower = M/K over their common denominator K. MaxDen bounds a source denominator so
+// that num·K, M·aden and aden·S stay in int64 (|num| ≤ |value|·aden, and
+// every in-range |value| is at most Mag); Ok when the grid allows any.
+//---------------------------------------------------------------------------
+struct lattice_codec_t {
+    std::int64_t  K, S, M;
+    std::uint64_t MaxDen;
+    bool          Ok;
+};
+template <insidable L>
+inline constexpr lattice_codec_t lattice_codec = [] {
+    constexpr lattice_codec_t no{0, 0, 0, 0, false};
+    if constexpr (!values_fit_int64<L> || !notched<L> || point_storage<L>)
+        return no;
+    else if constexpr (q_format_fits<L>)
+        return no;
+    else {
+        constexpr std::uint64_t cap = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+        const rational          n = notch64<L>, lo = lower64<L>, hi = upper64<L>;
+        const std::uint64_t     dn = abs_den(n.Den), dl = abs_den(lo.Den);
+        std::uint64_t           k;
+        if (mul_overflow(dn / std::gcd(dn, dl), dl, &k) || k > cap)
+            return no;
+        std::uint64_t s, mm;
+        if (mul_overflow(n.Num, k / dn, &s) || s > cap || mul_overflow(lo.Num, k / dl, &mm) || mm > cap)
+            return no;
+        // Mag: a bound on every in-range |value|, plus one.
+        // Mag: ⌈max(|Lower|, |Upper|)⌉ + 1, from the grid numbers (|Lower|
+        // may be 2^63, past an int64 ceiling).
+        constexpr grid_int mag_g = [] {
+            const grid_rational a = abs(lower_of<L>), b = abs(upper_of<L>);
+            const grid_rational m = a < b ? b : a;
+            return floor_quotient(m, grid_rational{1}) + grid_int{2}; // ≥ the ceiling + 1
+        }();
+        if constexpr (!(mag_g < grid_int{std::int64_t{1} << 62}))
+            return no;
+        const std::uint64_t mag = static_cast<std::uint64_t>(mag_g);
+        std::uint64_t       km, kms;
+        if (mul_overflow(k, mag, &km) || mul_overflow(km, std::uint64_t{4}, &kms))
+            return no;
+        const std::uint64_t by_num = cap / kms; // num·K and M·aden each below cap/2
+        const std::uint64_t by_den = cap / s;   // aden·S
+        return lattice_codec_t{static_cast<std::int64_t>(k),
+                               static_cast<std::int64_t>(s),
+                               lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
+                               by_num < by_den ? by_num : by_den,
+                               true};
+    }
+}();
+
+// A signed slot offset folded onto L's slots 0 … max_index (a wrap: the
+// period is Upper − Lower + Notch).
+template <insidable L>
+inline constexpr std::int64_t slot_period = static_cast<std::int64_t>(max_index_of<L>) + 1;
+template <insidable L>
+constexpr std::uint64_t fold_slot(std::int64_t offset) noexcept {
+    const std::int64_t w = offset % slot_period<L>;
+    return static_cast<std::uint64_t>(w < 0 ? w + slot_period<L> : w);
+}
 
 // value → raw, integer math only.
 template <insidable B>
@@ -429,6 +484,48 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
         return raw_from_offset<L>(low ? std::uint64_t{0} : max_index_of<L>);
 }
 
+// A value of a lattice the codec covers, as n/K: n = slot·S + M, in int64
+// (the codec's bound on every in-range |value|·K keeps it there).
+template <insidable B>
+constexpr std::int64_t lattice_numerator(const B& b) noexcept {
+    constexpr auto c = lattice_codec<B>;
+    return static_cast<std::int64_t>(raw_offset<B>(b.raw())) * c.S + c.M;
+}
+// …and exact in double: every |n| below 2^53.
+template <insidable B>
+inline constexpr bool lattice_double = [] {
+    if constexpr (!lattice_codec<B>.Ok)
+        return false;
+    else {
+        constexpr auto c = lattice_codec<B>;
+        std::int64_t   t;
+        return max_index_of<B> < (std::uint64_t{1} << 62) &&
+               !mul_overflow(static_cast<std::int64_t>(max_index_of<B>), c.S, &t) &&
+               t + (c.M < 0 ? -c.M : c.M) < (std::int64_t{1} << 53);
+    }
+}();
+
+// Ungated double view of any inside (the public operator double() is gated
+// on a rounding flag; this is always available). Everything but index
+// storage holds the value verbatim; an index decodes through the grid.
+template <insidable B>
+[[nodiscard]] constexpr double as_double(const B& b) noexcept {
+    if constexpr (wide_valued<B>)
+        return static_cast<double>(exact_of(b));
+    else if constexpr (point_storage<B>)
+        return static_cast<double>(lower64<B>);
+    else if constexpr (value_storage<B>)
+        return static_cast<double>(b.raw());
+    else if constexpr (constexpr auto c = index_double<B>; c.Ok)
+        return static_cast<double>((static_cast<std::int64_t>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
+    else if constexpr (lattice_double<B>)
+        // Any other lattice: (slot·S + M)/K with an exact numerator, one
+        // correctly rounded division.
+        return static_cast<double>(lattice_numerator(b)) / static_cast<double>(lattice_codec<B>.K);
+    else
+        return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
+}
+
 //-------------------------------------------------------------------------
 // integer_limits vs integer_lattice — easy to confuse, both needed.
 //   integer_limits<B>: Lower and Upper integer (Notch may be fractional,
@@ -455,19 +552,154 @@ inline constexpr round_mode rounding_for = uses_flag<L, P, round_floor>       ? 
                                            : uses_flag<L, P, round_half_away> ? round_mode::nearest
                                                                               : round_mode::trunc;
 
-// ⌊a / b⌋ for grid numbers (b > 0).
-consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b) {
-    const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
-    const grid_int q = n / d;
-    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
-}
-
 // The lattice index of Lower, ⌊Lower/Notch⌋ — slot_base on an anchored grid.
 // Its parity plus an offset's says which lattice points are even.
 template <insidable B>
 inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
 template <insidable B>
 inline constexpr bool lower_index_odd = (static_cast<std::uint64_t>(lower_index_wide<B>) & 1) != 0;
+
+// A double onto a lattice whose values times K stay below 2^51
+// (2^62 for a power-of-two K)
+// (K, S, M: the Q-format's K, 1, Lower·K, or the lattice codec's): the value
+// index J = round(v·K / S), from v·K = p + e exactly (e by an fma, or
+// Dekker's product where the target has none), so every rounding mode and
+// every tie is decided on the exact value.
+struct double_lattice_t {
+    std::int64_t K, S, M;
+    bool         Ok;
+};
+template <insidable L>
+inline constexpr double_lattice_t double_lattice = [] {
+    constexpr double_lattice_t no{1, 1, 0, false};
+    if constexpr (!values_fit_int64<L> || !notched<L> || point_storage<L> || !integer_storage<L>)
+        return no;
+    else {
+        std::int64_t k, sv, m;
+        if constexpr (q_format_fits<L>) {
+            k  = static_cast<std::int64_t>(abs_den(notch64<L>.Den));
+            sv = 1;
+            m  = lower_int64<L> * k;
+        } else if constexpr (lattice_codec<L>.Ok) {
+            k  = lattice_codec<L>.K;
+            sv = lattice_codec<L>.S;
+            m  = lattice_codec<L>.M;
+        } else
+            return no;
+        // every in-range |v|·K below 2^51
+        constexpr grid_int mag_g = [] {
+            const grid_rational a = abs(lower_of<L>), b = abs(upper_of<L>);
+            const grid_rational mm = a < b ? b : a;
+            return floor_quotient(mm, grid_rational{1}) + grid_int{2};
+        }();
+        if constexpr (!(mag_g < grid_int{std::int64_t{1} << 62}))
+            return no;
+        const std::uint64_t mag = static_cast<std::uint64_t>(mag_g);
+        std::uint64_t       t;
+        // (A power-of-two K multiplies exactly, and a double past 2^52 is an
+        // integer: then int64 is the only bound.)
+        const bool pow2 = std::has_single_bit(static_cast<std::uint64_t>(k));
+        if (mul_overflow(mag, static_cast<std::uint64_t>(k), &t) || t >= (std::uint64_t{1} << (pow2 ? 62 : 51)))
+            return no;
+        return double_lattice_t{k, sv, m, true};
+    }
+}();
+
+// v·k = p + error exactly.
+constexpr double product_error(double v, double k, double p) noexcept {
+#if BEMAN_INSIDE_HAS_FMA
+    return __builtin_fma(v, k, -p);
+#else
+    constexpr double split = 134217729.0; // 2^27 + 1
+    const double     cv = split * v, vh = cv - (cv - v), vl = v - vh;
+    const double     ck = split * k, kh = ck - (ck - k), kl = k - kh;
+    return ((vh * kh - p) + vh * kl + vl * kh) + vl * kl;
+#endif
+}
+
+struct double_slot_t {
+    std::int64_t Slot;
+    bool         Exact;
+};
+// The slot of an in-range v rounded by M (an exact v gives Exact). The
+// directed modes need only the floor of v·K and whether anything is left; the
+// nearest ones place the fraction against 1/2 on the magnitude.
+template <insidable L, round_mode M>
+[[gnu::always_inline]] constexpr double_slot_t double_slot(double v) noexcept {
+    constexpr auto c = double_lattice<L>;
+    const double   k = static_cast<double>(c.K);
+    const double   p = v * k;
+    const double   e = std::has_single_bit(static_cast<std::uint64_t>(c.K)) ? 0.0 : product_error(v, k, p);
+    if constexpr (M == round_mode::floor || M == round_mode::ceil || M == round_mode::trunc) {
+        std::int64_t pf = static_cast<std::int64_t>(p);
+        pf -= static_cast<double>(pf) > p;               // ⌊p⌋
+        const bool whole = static_cast<double>(pf) == p; // p an integer
+        pf -= whole && e < 0;                            // ⌊v·K⌋
+        const bool         frac = !whole || e != 0;      // v·K not an integer
+        const std::int64_t a    = pf - c.M;
+        std::int64_t       q = a / c.S, mm = a % c.S;
+        if (mm < 0)
+            mm += c.S, --q;
+        const bool rest = frac || mm != 0;
+        const bool up   = M == round_mode::ceil ? rest : M == round_mode::trunc ? rest && v < 0 : false;
+        return {q + up, !rest};
+    } else {
+        // On the magnitude |v·K| = mag + ea: mag − ⌊mag⌋ is exact (it keeps
+        // mag's own bits), which 1 + p for a negative p would not be.
+        const bool      neg = p < 0;
+        const double    mag = neg ? -p : p;
+        const double    ea  = neg ? -e : e;
+        std::int64_t    ia  = static_cast<std::int64_t>(mag); // ⌊mag⌋
+        const double    fa  = mag - static_cast<double>(ia);
+        remainder_class t; // the fraction of |v·K| against 0 and 1/2
+        if (fa == 0) {
+            if (ea < 0) {
+                --ia;
+                t = remainder_class::above_half; // 1 + ea, |ea| < 1/2
+            } else
+                t = ea > 0 ? remainder_class::below_half : remainder_class::zero;
+        } else if (fa == 0.5)
+            t = ea > 0 ? remainder_class::above_half : ea < 0 ? remainder_class::below_half : remainder_class::half;
+        else
+            t = fa < 0.5 ? remainder_class::below_half : remainder_class::above_half;
+        // v·K = pf + t with 0 ≤ t < 1: for a negative value the floor is one
+        // further down and the fraction its complement.
+        std::int64_t pf = neg ? -ia : ia;
+        if (neg && t != remainder_class::zero) {
+            --pf;
+            t = t == remainder_class::below_half   ? remainder_class::above_half
+                : t == remainder_class::above_half ? remainder_class::below_half
+                                                   : t;
+        }
+        // The offset (v·K − M)/S: q = ⌊(pf − M)/S⌋, rounded up or not by the
+        // remainder r = (pf − M) mod S + t against S/2, in value space (the
+        // value's sign, the value index's parity), as round_split.
+        const std::int64_t a = pf - c.M;
+        std::int64_t       q = a / c.S, mm = a % c.S;
+        if (mm < 0)
+            mm += c.S, --q;
+        const bool      exact = mm == 0 && t == remainder_class::zero;
+        remainder_class r;
+        if (exact)
+            r = remainder_class::zero;
+        else if constexpr (c.S == 1)
+            r = t;
+        else if constexpr (c.S % 2 == 0) {
+            constexpr std::int64_t h = c.S / 2;
+            r = mm < h ? remainder_class::below_half
+                       : (mm == h && t == remainder_class::zero ? remainder_class::half : remainder_class::above_half);
+        } else {
+            constexpr std::int64_t h = (c.S - 1) / 2;
+            r                        = mm < h   ? remainder_class::below_half
+                                       : mm > h ? remainder_class::above_half
+                                                : (t == remainder_class::half         ? remainder_class::half
+                                                   : t == remainder_class::above_half ? remainder_class::above_half
+                                                                                      : remainder_class::below_half);
+        }
+        const bool up = rounds_up(M, v < 0, r, ((q & 1) != 0) != lower_index_odd<L>);
+        return {q + (up ? 1 : 0), exact};
+    }
+}
 
 // The rounding step onto L's lattice by rounding_for<L, P>: the exact
 // lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as
