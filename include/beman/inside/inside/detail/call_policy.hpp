@@ -17,7 +17,7 @@
 //                   beman::inside::error& (EBO so the no-error-code form is zero-sized).
 //   make_policy<F>(), and with_flags<O>(pol), a call's policy (a flag or a
 //                   call_policy) under the flags O, keeping its error&.
-// The proxies that b.policy<F>(), b.policy(ec) and on_*() return are in
+// The proxies that b.with<F>(), b.on_error(ec) and on_*() return are in
 // inside/detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {

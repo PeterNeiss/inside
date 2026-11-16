@@ -658,7 +658,7 @@ TEST(GridTest, max_denominator_past_int64) {
     x = 0x1p-70;
     EXPECT_EQ(x, 0);
     error ec{};
-    x.policy(ec) = 1.0 + 0x1p-52;
+    x.on_error(ec) = 1.0 + 0x1p-52;
     EXPECT_EQ(ec, error::overflow);
 }
 

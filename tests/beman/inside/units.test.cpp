@@ -184,9 +184,9 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
 TEST(UnitsTest, compound_assignment_and_casts) {
     quantity<si::metre, inside<{0, 10000}>> d{100, si::metre};
     error                                   ec{}; // (a sum the grids cannot prove: reported)
-    d.policy(ec) += just<1> * km;
+    d.on_error(ec) += just<1> * km;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1100);
-    d.policy(ec) -= just<100> * si::metre;
+    d.on_error(ec) -= just<100> * si::metre;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1000);
     EXPECT_EQ(ec, error{});
     const auto narrow = value_cast<inside<{0, 2000}>>(d); // may not fit: an expected
@@ -195,7 +195,7 @@ TEST(UnitsTest, compound_assignment_and_casts) {
     // In another unit: 1000 m is 1 km; 1001 m rounds onto whole km by F, and
     // is past a {0, 1} km grid.
     EXPECT_EQ((value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value_in(km)), 1);
-    d.policy(ec) += just<1> * si::metre;
+    d.on_error(ec) += just<1> * si::metre;
     EXPECT_EQ((value_cast<km, inside<{0, 5}, round_half_away>>(d)->numerical_value_in(km)), 1);
     EXPECT_EQ((value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), error::overflow);
 }
@@ -710,9 +710,9 @@ TEST(UnitsAlgorithmsTest, a_builtin_integer_scales_a_quantity) {
     EXPECT_TRUE(q == just<100> * si::metre);
     quantity<si::metre, inside<{0, 100}>> c{5, si::metre};
     error                                 ec{};
-    c.policy(ec) *= 3;
+    c.on_error(ec) *= 3;
     EXPECT_TRUE(c == just<15> * si::metre && ec == error{});
-    c.policy(ec) *= 100;
+    c.on_error(ec) *= 100;
     EXPECT_TRUE(c == just<15> * si::metre && ec == error::overflow);
 }
 

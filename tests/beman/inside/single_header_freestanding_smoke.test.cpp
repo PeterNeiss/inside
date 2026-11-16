@@ -29,7 +29,7 @@ int main() {
     // error-code channel reports without throwing
     beman::inside::error            ec{};
     beman::inside::inside<{0, 100}> x{0};
-    x.policy(ec) = 150;
+    x.on_error(ec) = 150;
 
     // a checked arithmetic op that stays in range: its result's own grid
     const beman::inside::inside<{0, 100}, beman::inside::checked> s0{40};

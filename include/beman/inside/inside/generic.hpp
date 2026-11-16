@@ -80,7 +80,7 @@ concept store_proven =
     !is_checked(policy_of<L> | P) ||
     (values_in_range<L, R, policy_of<L> | P>() && (has_flag(policy_of<L> | P, snap) || values_on_lattice<L, R>()));
 
-// A policy that reports into an error& (policy(ec), make_policy<F>(ec)).
+// A policy that reports into an error& (on_error(ec), make_policy<F>(ec)).
 template <typename Pol>
 inline constexpr bool reports_into_errc = std::is_base_of_v<error_ref, std::remove_cvref_t<Pol>>;
 
@@ -128,7 +128,7 @@ struct inside_assignable_why {
                             << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
     static_assert(
         notch_ok,
-        detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<round_toward_zero>()` or a "
+        detail::diag_text{} << "inside_assignable: incompatible notches — use `x.with<round_toward_zero>()` or a "
                                "rounding policy to allow rounding (lhs notch "
                             << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;

@@ -151,11 +151,11 @@ TEST(MdspanTest, compound_assignment_takes_builtin_integers) {
     EXPECT_TRUE(f == 10);
     T     t = 5;
     error ec{};
-    t.policy(ec) += 3;
+    t.on_error(ec) += 3;
     EXPECT_TRUE(t == 8 && ec == error{});
-    t.policy(ec) += n * 100;
+    t.on_error(ec) += n * 100;
     EXPECT_TRUE(t == 8 && ec == error::overflow);
-    t.policy<clamp>() *= 1000;
+    t.with<clamp>() *= 1000;
     EXPECT_TRUE(t == 100);
     T u = 1;
     u.on_error([&](auto&, error, auto) { n = -1; }) -= 5;

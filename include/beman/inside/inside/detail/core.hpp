@@ -3,7 +3,7 @@
 // The core type beman::inside::inside<G, P>: construction and try_make,
 // compound assignment, ++/--, the conversions (rational, double,
 // to<T>), numerator()/denominator(), raw()/from_raw, the per-store
-// overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
+// overrides (with<F>(), on_error(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
 // need this complete type.
@@ -37,7 +37,7 @@
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), generic.hpp
 // (inside_assignable, over inside/detail/introspection.hpp and inside/detail/storage.hpp),
-// inside/detail/call_policy.hpp and inside/detail/policy_ref.hpp (the proxies of b.policy() and on_*).
+// inside/detail/call_policy.hpp and inside/detail/policy_ref.hpp (the proxies of b.with() and on_*).
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -336,7 +336,7 @@ struct inside : detail::raw_holder<G, P> {
     // the Pol&& constructor above).
     template <detail::numeric A>
     inside(A, error&) = delete ("inside(value, error&) was removed: use `auto r = B::try_make(value);` "
-                                "(expected<B, error>), or `b.policy(ec) = value` to assign with an error code");
+                                "(expected<B, error>), or `b.on_error(ec) = value` to assign with an error code");
 
     // A std::expected is never stored implicitly: check it and store *e, or
     // use try_make(e), which passes its error on. Construction, assignment and
@@ -401,7 +401,7 @@ struct inside : detail::raw_holder<G, P> {
 
 #define BEMAN_INSIDE_WHY_unproven                                                                                 \
     "inside: the source's values may fall outside this grid, or off its notch, at run time - store with clamp, "  \
-    "wrap or a rounding mode (x.policy<clamp>() = v, T{v, clamp}), report with T::try_make(v), x.policy(ec) = v " \
+    "wrap or a rounding mode (x.with<clamp>() = v, T{v, clamp}), report with T::try_make(v), x.on_error(ec) = v " \
     "or x.on_error(f) = v, or opt out with unsafe"
     template <insidable A>
         requires inside_assignable<inside, A, P> && (!detail::store_proven<inside, A, P>)
@@ -417,7 +417,7 @@ struct inside : detail::raw_holder<G, P> {
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
 #define BEMAN_INSIDE_WHY_notch                                                                                    \
-    "inside: incompatible notches - the source's values miss this grid's notch; use policy<round_toward_zero>() " \
+    "inside: incompatible notches - the source's values miss this grid's notch; use x.with<round_toward_zero>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <detail::numeric A>
         requires(!detail::assign_intervals_ok<inside, A, P>)
@@ -848,13 +848,13 @@ struct inside : detail::raw_holder<G, P> {
         return neg;
     }
 
-    // policy<F>() — per-operation policy override. On an lvalue it returns a
-    // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
+    // with<F>() — the flags F for one operation. On an lvalue it returns a
+    // policy_ref holding `*this` by reference (needed so `b.with<…>() = x` writes
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
-    // survives being returned/stored (`return (a*b).policy<round_toward_zero>();`) — no dangling.
+    // survives being returned/stored (`return (a*b).with<round_toward_zero>();`) — no dangling.
     template <policy_flag F = detail::none, typename Self>
-    [[nodiscard]] constexpr auto policy(this Self&& self) {
+    [[nodiscard]] constexpr auto with(this Self&& self) {
         auto pol = make_policy<P | F>();
         if constexpr (std::is_lvalue_reference_v<Self>)
             return detail::policy_ref<inside, decltype(pol)>{self, pol, {}};
@@ -862,8 +862,10 @@ struct inside : detail::raw_holder<G, P> {
             return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol, {}};
     }
 
+    // on_error(ec) — a failure of this operation sets ec (the first one is
+    // kept) and leaves the value; on_error<F>(ec) adds the flags F.
     template <policy_flag F = detail::none>
-    [[nodiscard]] constexpr auto policy(error& ec) {
+    [[nodiscard]] constexpr auto on_error(error& ec) {
         auto pol = make_policy<P | F>(ec);
         return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
     }
@@ -888,7 +890,10 @@ struct inside : detail::raw_holder<G, P> {
     [[nodiscard]] constexpr auto on_clamp(A&& a) {
         return make_action_ref<detail::on_clamp_t>(std::forward<A>(a));
     }
+    // on_error(f) — f(x, error, message) hears of a failure (the error& form
+    // above records it instead).
     template <typename A>
+        requires(!std::same_as<std::remove_cvref_t<A>, error>)
     [[nodiscard]] constexpr auto on_error(A&& a) {
         return make_action_ref<detail::on_error_t>(std::forward<A>(a));
     }
@@ -959,7 +964,7 @@ struct inside : detail::raw_holder<G, P> {
     template <typename Result>
     static constexpr bool compound_proven = detail::store_proven<inside, detail::unwrap_t<Result>, P>;
     // A divisor whose grid holds 0 under a checked policy: /= and %= need a
-    // channel for it (policy(ec), on_error), or unsafe on either operand.
+    // channel for it (on_error(ec) or an on_error hook), or unsafe on either operand.
     template <insidable R>
     static constexpr bool zero_divisor_possible =
         detail::is_checked(P | policy_of<R>) && grid_of<R>.representable(detail::grid_rational{0});
@@ -1125,9 +1130,9 @@ struct inside : detail::raw_holder<G, P> {
     template <insidable R>
         requires compound_assignable<remainder_t<R>> && (!compound_proven<remainder_t<R>>)
     inside& operator%=(const R&) = delete (BEMAN_INSIDE_WHY_unproven);
-#define BEMAN_INSIDE_WHY_zero                                                                                   \
-    "inside: the divisor's grid holds 0 - report it with x.policy(ec) /= d or x.on_error(f) /= d, divide with " \
-    "div(x, d) (a std::expected), or give the divisor a grid without 0"
+#define BEMAN_INSIDE_WHY_zero                                                                                     \
+    "inside: the divisor's grid holds 0 - report it with x.on_error(ec) /= d (or a hook, x.on_error(f)), divide " \
+    "with div(x, d) (a std::expected), or give the divisor a grid without 0"
     template <insidable R>
         requires compound_assignable<quotient_t<R>> && compound_proven<quotient_t<R>> && zero_divisor_possible<R>
     inside& operator/=(const R&) = delete (BEMAN_INSIDE_WHY_zero);
@@ -1144,7 +1149,7 @@ struct inside : detail::raw_holder<G, P> {
     //
     // ++ and -- store like +=: on a checked grid without clamp or wrap the
     // step may leave the interval, so they are deleted there (step with
-    // x.policy(ec) += 1_ins, or iterate with a cursor). A cursor steps one
+    // x.on_error(ec) += 1_ins, or iterate with a cursor). A cursor steps one
     // past its last value to its end; stepping past the end is a
     // precondition, reported to the error handler.
   private:
@@ -1198,8 +1203,8 @@ struct inside : detail::raw_holder<G, P> {
         --*this;
         return t;
     }
-#define BEMAN_INSIDE_WHY_step_out                                                                                   \
-    "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.policy(ec) += 1_ins, x.on_error(f) " \
+#define BEMAN_INSIDE_WHY_step_out                                                                                     \
+    "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_ins, x.on_error(f) " \
     "+= 1_ins, or iterate with a cursor"
     inside& operator++()
         requires(G.Notch != 0 && !step_proven<up_step_t>)

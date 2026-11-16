@@ -37,7 +37,7 @@ using km = units::quantity<units::si::kilo(units::si::metre), inside<{{0, 100}, 
 }
 
 // A loop, to check that vectorization still happens. In-place += can leave
-// [0, 1000], so on a checked element it names a channel (policy(ec) checks
+// [0, 1000], so on a checked element it names a channel (on_error(ec) checks
 // every pass, and the loop stays scalar); unsafe states that the caller keeps
 // it in range.
 using fast = inside<{0, 1000}, unsafe>;

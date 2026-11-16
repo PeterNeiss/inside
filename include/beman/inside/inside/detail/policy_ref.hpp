@@ -13,7 +13,7 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// policy_ref and policy_buffer — the proxies that b.policy<F>(), b.policy(ec)
+// policy_ref and policy_buffer — the proxies that b.with<F>(), b.on_error(ec)
 // and on_*() return (inside/detail/core.hpp): an inside (by
 // reference, or owned for a temporary) with a call_policy<...> and a tuple of on_*
 // actions. Stores and compound ops flow through them, routing each action to
@@ -59,10 +59,10 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
     return r;
 }
 
-// policy_buffer — the rvalue-receiver sibling of policy_ref. `policy<F>()`
+// policy_buffer — the rvalue-receiver sibling of policy_ref. `with<F>()`
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
-// `auto square(small n){ return (n*n).policy<round_toward_zero>(); }` is safe. Value read-out only
+// `auto square(small n){ return (n*n).with<round_toward_zero>(); }` is safe. Value read-out only
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
 // A proxy store of a C into B is proven by the grids under the proxy's flags,
@@ -93,14 +93,14 @@ template <step_integer A>
 
 #define BEMAN_INSIDE_WHY_proxy_unproven                                                                         \
     "inside: the value may fall outside the target grid, or off its notch, at run time - add clamp, wrap or a " \
-    "rounding mode to the policy, report with policy(ec) or on_error(f), or opt out with unsafe"
+    "rounding mode to the policy, report with on_error(ec) or on_error(f), or opt out with unsafe"
 
 // A plain number that a proxy's grids cannot prove (a double, a rational, an
 // int off the lattice): a constant, stored once while compiling under the
 // proxy's flags F into B's grid, so a store that would fail is a compile
 // error; at run time it is stored again with the proxy's hooks, which fire
 // (an on_clamp hears its overshoot). A run-time value does not compile: it
-// needs a report channel (policy(ec), on_error).
+// needs a report channel (on_error(ec) or an on_error hook).
 template <insidable B, policy_flag F>
 struct constant_value {
     bool        Floating = false;
@@ -157,7 +157,7 @@ struct policy_ref {
 
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
-    // so a one-shot snap can be read out as a value (`(a * b).policy<round_toward_zero>()`).
+    // so a one-shot snap can be read out as a value (`(a * b).with<round_toward_zero>()`).
     template <numeric C>
         requires proxy_store_ok<B, C, P, As...>
     constexpr B& operator=(const C& other) {
@@ -174,7 +174,7 @@ struct policy_ref {
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
     // carried flags (notch/rounding) via uses_flag's merge. Makes
-    // `Target t = (a * b).policy<round_toward_zero>();` / `return (a * b).policy<round_toward_zero>();` compile.
+    // `Target t = (a * b).with<round_toward_zero>();` / `return (a * b).with<round_toward_zero>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
         requires inside_assignable<Target, B, policy_of<Target> | policy_of<P>> && proxy_store_ok<Target, B, P, As...>

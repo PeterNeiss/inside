@@ -380,7 +380,7 @@ void prop_compound_add_inside(fuzz_state& s, long iters) {
             std::int64_t                                delta = delta_dist(s.rng);
             B                                           b     = test::store<B>(start);
             error ec{}; // (the sum stays in range by construction; its type cannot show it)
-            b.policy(ec) += test::store<Delta>(delta);
+            b.on_error(ec) += test::store<Delta>(delta);
             FUZZ_REQUIRE(s, b == start + delta && ec == error{});
         }
     }
@@ -550,7 +550,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
                              B                    b = test::store<B>(start);
                              const inside<{0, 1}> zero{0};
                              error                ec{};
-                             b.policy(ec) /= zero;
+                             b.on_error(ec) /= zero;
                              return ec;
                          }));
         }
@@ -584,7 +584,7 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
                              B     b     = test::store<B>(start);
                              B     delta = test::store<B>(hi);
                              error ec{};
-                             b.policy(ec) += delta;
+                             b.on_error(ec) += delta;
                              return ec;
                          }));
         }
@@ -638,7 +638,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
             FUZZ_REQUIRE(s, reports_with(error::rounding_error, [&] {
                              B     b;
                              error ec{};
-                             b.policy(ec) = mid;
+                             b.on_error(ec) = mid;
                              return ec;
                          }));
 
@@ -647,8 +647,8 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
                 FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
                                  BIR   b;
                                  error ec{};
-                                 b.policy(ec) = mid;
-                                 rational got = b;
+                                 b.on_error(ec) = mid;
+                                 rational got   = b;
                                  FUZZ_REQUIRE(s, got == toward_zero);
                                  return ec;
                              }));
@@ -658,8 +658,8 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
                 FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
                                  BRN   b;
                                  error ec{};
-                                 b.policy(ec) = mid;
-                                 rational got = b;
+                                 b.on_error(ec) = mid;
+                                 rational got   = b;
                                  FUZZ_REQUIRE(s, got == away_zero);
                                  return ec;
                              }));
@@ -670,8 +670,8 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
                 FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
                                  BNONE b;
                                  error ec{};
-                                 b.policy(ec) = mid;
-                                 rational got = b;
+                                 b.on_error(ec) = mid;
+                                 rational got   = b;
                                  FUZZ_REQUIRE(s, got == toward_zero);
                                  return ec;
                              }));
@@ -705,8 +705,8 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
             FUZZ_REQUIRE(s, !reports_with(error::rounding_error, [&] {
                              BIR   b;
                              error ec{};
-                             b.policy(ec) = v;
-                             rational got = b;
+                             b.on_error(ec) = v;
+                             rational got   = b;
                              // Floored toward lo, but for tiny v near zero the floor is 0 (or lo).
                              FUZZ_REQUIRE(s, got == 0 || got == lo || (!anchored<B> && got == below));
                              return ec;
@@ -778,7 +778,7 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
             if (expect < exact{detail::lower64<B>} || expect > exact{detail::upper64<B>})
                 continue;
             error ec{}; // (in range by the check above; the type cannot show it)
-            a.policy(ec) += delta;
+            a.on_error(ec) += delta;
             FUZZ_REQUIRE(s, exact{to_rational(a)} == expect);
         }
     }

@@ -125,15 +125,15 @@ TEST(StorageTest, atan_atan2_accept_magnitudes_beyond_1) {
     ASSERT_EQ((val(math::atan2(wide_t{-7}, wide_t{2}))), -0x1.4aep+0); // ~-1.2924805
 }
 
-// Per-operation policy overrides (`with_*`, `on_*`, `policy(ec)`) route
+// Per-operation policy overrides (`with_*`, `on_*`, `on_error(ec)`) route
 // through the assignment engine and store the endpoint, not a notch count.
 TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     using R = inside<{{1, 4}, per<256>}, round_half_away>; // Lower != 0
 
     R a{2.0};
-    a.policy<clamp>() = 9.5;
+    a.with<clamp>() = 9.5;
     ASSERT_TRUE(static_cast<double>(rational{a}) == 4.0);
-    a.policy<clamp>() = 0.25;
+    a.with<clamp>() = 0.25;
     ASSERT_TRUE(static_cast<double>(rational{a}) == 1.0);
 
     R   b{2.0};
@@ -144,26 +144,26 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
 
     // In-range per-operation store snaps onto the grid.
     R c{1.0};
-    c.policy<round_toward_zero>() = 2.5;
+    c.with<round_toward_zero>() = 2.5;
     ASSERT_TRUE(static_cast<double>(rational{c}) == 2.5);
 
     // error mode: out-of-range reports, value unchanged.
     beman::inside::error ec{};
     R                    d{2.0};
-    d.policy<checked>(ec) = 9.5;
+    d.on_error<checked>(ec) = 9.5;
     ASSERT_TRUE(ec != error{});
     ASSERT_TRUE(static_cast<double>(rational{d}) == 2.0);
 
     // inside rhs through the per-operation clamp.
     using S = inside<{0, 100}>;
     R e{2.0};
-    e.policy<clamp>() = S{50};
+    e.with<clamp>() = S{50};
     ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
 
     // wrap override.
     using W = inside<{{0, 359}, 1}, round_half_away>;
     W w{0.0};
-    w.policy<wrap>() = 370.0;
+    w.with<wrap>() = 370.0;
     ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
 }
 
@@ -645,7 +645,7 @@ TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
     constexpr auto narrowed = [] {
         error ec{};
         Small s{1};
-        s.policy(ec) = U64{u64_max};
+        s.on_error(ec) = U64{u64_max};
         return std::pair{s == 1, ec};
     }();
     static_assert(narrowed.first && narrowed.second == error::overflow);
@@ -663,7 +663,7 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     constexpr auto inc              = [] {
         U64   w{u64_max - 1};
         error ec{}; // (++ may step past the top: a channel)
-        w.policy(ec) += 1_ins;
+        w.on_error(ec) += 1_ins;
         return w == u64_max && ec == error{};
     }();
     static_assert(inc);
@@ -699,7 +699,7 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
 
     U64   x{u64_max};
     error ec{};
-    x.policy(ec) += 1_ins;
+    x.on_error(ec) += 1_ins;
     EXPECT_EQ(ec, error::overflow);
     EXPECT_EQ(x, u64_max);
 }

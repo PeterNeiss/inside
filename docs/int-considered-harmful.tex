@@ -781,7 +781,7 @@ checked  200 ->    value does not fit its range
 clamp    150 ->    100
 wrap     370 ->    10
 try_make  10 ->    value does not fit its range
-policy<clamp>() 150 -> 100
+with<clamp>() 150 -> 100
 \end{lstlisting}
 
 \noindent
@@ -1078,7 +1078,7 @@ Shape & Spelling & When \\
 \midrule
 Plain value & \code{a + b}, a store the grids prove & The type proves the operation cannot fail. \\
 \code{expected<T,error>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{mul<Out>}, \code{math::tan} & It can fail at runtime. A math argument outside the domain for the whole input grid is a compile error instead. \\
-Error code & \code{x.policy(ec) = v} & Hot paths and loops; the first error sticks. \\
+Error code & \code{x.on\_error(ec) = v} & Hot paths and loops; the first error sticks. \\
 Callback & \code{on\_clamp}, \code{on\_wrap}, \code{on\_error} & The event is expected and carries data, or a value replaces a failed store. \\
 Compile error & a store the grids cannot prove, with no channel & The default (\code{checked}): nothing throws, so a store names its outcome. \\
 \bottomrule
@@ -1216,7 +1216,7 @@ $ g++-16 -std=c++26 -freflection -O2 -I ../../include -c p01_codegen.cpp && objd
 default \code{checked} policy: the sum widens to $[0, 2000]$, so there is
 nothing to check. The km-to-mm conversion is a single \code{mov}: it rescales
 the grid and keeps the raw. An in-place \code{+=} can leave its range, so on
-a \code{checked} element it names a channel: \code{x.policy(ec) += 1\_ins}
+a \code{checked} element it names a channel: \code{x.on\_error(ec) += 1\_ins}
 checks every pass and the loop stays scalar, as in the accumulate table below. With \code{unsafe} it vectorises, on 16-bit lanes
 (its storage for $[0,1000]$) where native uses 32-bit lanes.
 \file{tests/beman/inside/check\_codegen.sh} runs in CI. It disassembles named
@@ -1285,7 +1285,7 @@ Operation & Emitted & Check? \\
 \midrule
 \code{bchecked\{v, make\_policy<checked>(ec)\}} & \code{cmp \$0xc8,\%edi; ja ...} & yes \\
 \code{auto c = a + b} (kept wide) & \code{movzbl; movzbl; lea; ret} & \textbf{none} \\
-\code{c.policy(ec) = a + b}       & \code{add; cmp \$0xc8,\%rax; jg ...} & yes \\
+\code{c.on\_error(ec) = a + b}    & \code{add; cmp \$0xc8,\%rax; jg ...} & yes \\
 \code{checked\_u8 c = a + b} (native) & \code{add; cmp \$0xc8,\%eax; jg ...} & yes \\
 \code{bchecked b = a} (same grid)  & \code{mov; ret} & \textbf{none} \\
 \code{wide w = a} (widening)       & \code{movzbl; ret} & \textbf{none} \\
@@ -1359,7 +1359,7 @@ run.
 
 \noindent
 A checked element-wise loop reports each element's store into an \code{error}
-(\code{acc.policy(ec) += v}) and so cannot vectorise.
+(\code{acc.on\_error(ec) += v}) and so cannot vectorise.
 \code{beman::inside::sum} checks the total instead and is 3.6$\times$ faster.
 Without the check, both loops vectorise like native code.
 

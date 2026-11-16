@@ -14,7 +14,7 @@ int main() {
     auto [quo, rem] = divmod(whole{17}, step{5});            // 3 and 2
 
     whole x = 50;
-    x.policy<clamp>() = 150;                                    // 100: this store saturates
+    x.with<clamp>() = 150;                                      // 100: this store saturates
 
     using seconds = inside<{0, 59}, wrap>;
     using minutes = inside<{0, 59}, clamp>; // m += carry names what happens past 59

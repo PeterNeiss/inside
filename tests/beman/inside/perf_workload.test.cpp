@@ -141,7 +141,7 @@ std::int64_t run_checked_add() {
         C          cb = C::from_raw(static_cast<C::raw_type>(b), unsafe);
         C          c;
         error      ec{};
-        c.policy(ec) = ca + cb; // checked narrowing store, reported into an error
+        c.on_error(ec) = ca + cb; // checked narrowing store, reported into an error
         acc += static_cast<long>(c.raw()) + static_cast<long>(ec);
     }
     return acc;
@@ -159,7 +159,7 @@ std::int64_t run_rational_store() {
         // the store rounds through the general fraction path
         const R v{static_cast<std::uint64_t>((ux >> 33) % 76500), static_cast<std::int64_t>(300 + (ux >> 60))};
         error   ec{};
-        q.policy(ec) = v; // (a rational has no interval: a reported store)
+        q.on_error(ec) = v; // (a rational has no interval: a reported store)
         acc += static_cast<long>(q.raw()) + static_cast<long>(ec);
     }
     return acc;

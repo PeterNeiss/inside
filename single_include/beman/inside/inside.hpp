@@ -142,7 +142,7 @@
 // The core type beman::inside::inside<G, P>: construction and try_make,
 // compound assignment, ++/--, the conversions (rational, double,
 // to<T>), numerator()/denominator(), raw()/from_raw, the per-store
-// overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
+// overrides (with<F>(), on_error(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
 // need this complete type.
@@ -3929,7 +3929,7 @@ namespace detail {
 }
 
 // Runtime checks run unless the flag set carries `unsafe`, which wins over
-// `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
+// `checked` (the default policy's own bit, so `x.with<unsafe>()` opts a
 // default inside out). `inside<G, round_half_away>` and `inside<G, clamp>` are
 // checked, exactly like the default `inside<G>`.
 [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, unsafe_marker); }
@@ -4839,7 +4839,7 @@ using raw_t = raw_for_t<grid_of<B>>;
 //                   beman::inside::error& (EBO so the no-error-code form is zero-sized).
 //   make_policy<F>(), and with_flags<O>(pol), a call's policy (a flag or a
 //                   call_policy) under the flags O, keeping its error&.
-// The proxies that b.policy<F>(), b.policy(ec) and on_*() return are in
+// The proxies that b.with<F>(), b.on_error(ec) and on_*() return are in
 // inside/detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
@@ -5953,7 +5953,7 @@ concept store_proven =
     !is_checked(policy_of<L> | P) ||
     (values_in_range<L, R, policy_of<L> | P>() && (has_flag(policy_of<L> | P, snap) || values_on_lattice<L, R>()));
 
-// A policy that reports into an error& (policy(ec), make_policy<F>(ec)).
+// A policy that reports into an error& (on_error(ec), make_policy<F>(ec)).
 template <typename Pol>
 inline constexpr bool reports_into_errc = std::is_base_of_v<error_ref, std::remove_cvref_t<Pol>>;
 
@@ -6001,7 +6001,7 @@ struct inside_assignable_why {
                             << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
     static_assert(
         notch_ok,
-        detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<round_toward_zero>()` or a "
+        detail::diag_text{} << "inside_assignable: incompatible notches — use `x.with<round_toward_zero>()` or a "
                                "rounding policy to allow rounding (lhs notch "
                             << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
@@ -8445,7 +8445,7 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(notches_compatible<L, R> || uses_flag<L, P, snap>,
-                      "incompatible notches: use policy<round_toward_zero>() or a rounding policy to allow rounding");
+                      "incompatible notches: use x.with<round_toward_zero>() or a rounding policy to allow rounding");
     }
 
     template <typename P, typename A>
@@ -8534,7 +8534,7 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 
 
 //---------------------------------------------------------------------------
-// policy_ref and policy_buffer — the proxies that b.policy<F>(), b.policy(ec)
+// policy_ref and policy_buffer — the proxies that b.with<F>(), b.on_error(ec)
 // and on_*() return (inside/detail/core.hpp): an inside (by
 // reference, or owned for a temporary) with a call_policy<...> and a tuple of on_*
 // actions. Stores and compound ops flow through them, routing each action to
@@ -8580,10 +8580,10 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
     return r;
 }
 
-// policy_buffer — the rvalue-receiver sibling of policy_ref. `policy<F>()`
+// policy_buffer — the rvalue-receiver sibling of policy_ref. `with<F>()`
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
-// `auto square(small n){ return (n*n).policy<round_toward_zero>(); }` is safe. Value read-out only
+// `auto square(small n){ return (n*n).with<round_toward_zero>(); }` is safe. Value read-out only
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
 // A proxy store of a C into B is proven by the grids under the proxy's flags,
@@ -8614,14 +8614,14 @@ template <step_integer A>
 
 #define BEMAN_INSIDE_WHY_proxy_unproven                                                                         \
     "inside: the value may fall outside the target grid, or off its notch, at run time - add clamp, wrap or a " \
-    "rounding mode to the policy, report with policy(ec) or on_error(f), or opt out with unsafe"
+    "rounding mode to the policy, report with on_error(ec) or on_error(f), or opt out with unsafe"
 
 // A plain number that a proxy's grids cannot prove (a double, a rational, an
 // int off the lattice): a constant, stored once while compiling under the
 // proxy's flags F into B's grid, so a store that would fail is a compile
 // error; at run time it is stored again with the proxy's hooks, which fire
 // (an on_clamp hears its overshoot). A run-time value does not compile: it
-// needs a report channel (policy(ec), on_error).
+// needs a report channel (on_error(ec) or an on_error hook).
 template <insidable B, policy_flag F>
 struct constant_value {
     bool        Floating = false;
@@ -8678,7 +8678,7 @@ struct policy_ref {
 
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
-    // so a one-shot snap can be read out as a value (`(a * b).policy<round_toward_zero>()`).
+    // so a one-shot snap can be read out as a value (`(a * b).with<round_toward_zero>()`).
     template <numeric C>
         requires proxy_store_ok<B, C, P, As...>
     constexpr B& operator=(const C& other) {
@@ -8695,7 +8695,7 @@ struct policy_ref {
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
     // carried flags (notch/rounding) via uses_flag's merge. Makes
-    // `Target t = (a * b).policy<round_toward_zero>();` / `return (a * b).policy<round_toward_zero>();` compile.
+    // `Target t = (a * b).with<round_toward_zero>();` / `return (a * b).with<round_toward_zero>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
         requires inside_assignable<Target, B, policy_of<Target> | policy_of<P>> && proxy_store_ok<Target, B, P, As...>
@@ -9866,7 +9866,7 @@ template <insidable B, detail::numeric A>
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), generic.hpp
 // (inside_assignable, over inside/detail/introspection.hpp and inside/detail/storage.hpp),
-// inside/detail/call_policy.hpp and inside/detail/policy_ref.hpp (the proxies of b.policy() and on_*).
+// inside/detail/call_policy.hpp and inside/detail/policy_ref.hpp (the proxies of b.with() and on_*).
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -10165,7 +10165,7 @@ struct inside : detail::raw_holder<G, P> {
     // the Pol&& constructor above).
     template <detail::numeric A>
     inside(A, error&) = delete ("inside(value, error&) was removed: use `auto r = B::try_make(value);` "
-                                "(expected<B, error>), or `b.policy(ec) = value` to assign with an error code");
+                                "(expected<B, error>), or `b.on_error(ec) = value` to assign with an error code");
 
     // A std::expected is never stored implicitly: check it and store *e, or
     // use try_make(e), which passes its error on. Construction, assignment and
@@ -10230,7 +10230,7 @@ struct inside : detail::raw_holder<G, P> {
 
 #define BEMAN_INSIDE_WHY_unproven                                                                                 \
     "inside: the source's values may fall outside this grid, or off its notch, at run time - store with clamp, "  \
-    "wrap or a rounding mode (x.policy<clamp>() = v, T{v, clamp}), report with T::try_make(v), x.policy(ec) = v " \
+    "wrap or a rounding mode (x.with<clamp>() = v, T{v, clamp}), report with T::try_make(v), x.on_error(ec) = v " \
     "or x.on_error(f) = v, or opt out with unsafe"
     template <insidable A>
         requires inside_assignable<inside, A, P> && (!detail::store_proven<inside, A, P>)
@@ -10246,7 +10246,7 @@ struct inside : detail::raw_holder<G, P> {
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
 #define BEMAN_INSIDE_WHY_notch                                                                                    \
-    "inside: incompatible notches - the source's values miss this grid's notch; use policy<round_toward_zero>() " \
+    "inside: incompatible notches - the source's values miss this grid's notch; use x.with<round_toward_zero>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <detail::numeric A>
         requires(!detail::assign_intervals_ok<inside, A, P>)
@@ -10677,13 +10677,13 @@ struct inside : detail::raw_holder<G, P> {
         return neg;
     }
 
-    // policy<F>() — per-operation policy override. On an lvalue it returns a
-    // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
+    // with<F>() — the flags F for one operation. On an lvalue it returns a
+    // policy_ref holding `*this` by reference (needed so `b.with<…>() = x` writes
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
-    // survives being returned/stored (`return (a*b).policy<round_toward_zero>();`) — no dangling.
+    // survives being returned/stored (`return (a*b).with<round_toward_zero>();`) — no dangling.
     template <policy_flag F = detail::none, typename Self>
-    [[nodiscard]] constexpr auto policy(this Self&& self) {
+    [[nodiscard]] constexpr auto with(this Self&& self) {
         auto pol = make_policy<P | F>();
         if constexpr (std::is_lvalue_reference_v<Self>)
             return detail::policy_ref<inside, decltype(pol)>{self, pol, {}};
@@ -10691,8 +10691,10 @@ struct inside : detail::raw_holder<G, P> {
             return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol, {}};
     }
 
+    // on_error(ec) — a failure of this operation sets ec (the first one is
+    // kept) and leaves the value; on_error<F>(ec) adds the flags F.
     template <policy_flag F = detail::none>
-    [[nodiscard]] constexpr auto policy(error& ec) {
+    [[nodiscard]] constexpr auto on_error(error& ec) {
         auto pol = make_policy<P | F>(ec);
         return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
     }
@@ -10717,7 +10719,10 @@ struct inside : detail::raw_holder<G, P> {
     [[nodiscard]] constexpr auto on_clamp(A&& a) {
         return make_action_ref<detail::on_clamp_t>(std::forward<A>(a));
     }
+    // on_error(f) — f(x, error, message) hears of a failure (the error& form
+    // above records it instead).
     template <typename A>
+        requires(!std::same_as<std::remove_cvref_t<A>, error>)
     [[nodiscard]] constexpr auto on_error(A&& a) {
         return make_action_ref<detail::on_error_t>(std::forward<A>(a));
     }
@@ -10788,7 +10793,7 @@ struct inside : detail::raw_holder<G, P> {
     template <typename Result>
     static constexpr bool compound_proven = detail::store_proven<inside, detail::unwrap_t<Result>, P>;
     // A divisor whose grid holds 0 under a checked policy: /= and %= need a
-    // channel for it (policy(ec), on_error), or unsafe on either operand.
+    // channel for it (on_error(ec) or an on_error hook), or unsafe on either operand.
     template <insidable R>
     static constexpr bool zero_divisor_possible =
         detail::is_checked(P | policy_of<R>) && grid_of<R>.representable(detail::grid_rational{0});
@@ -10954,9 +10959,9 @@ struct inside : detail::raw_holder<G, P> {
     template <insidable R>
         requires compound_assignable<remainder_t<R>> && (!compound_proven<remainder_t<R>>)
     inside& operator%=(const R&) = delete (BEMAN_INSIDE_WHY_unproven);
-#define BEMAN_INSIDE_WHY_zero                                                                                   \
-    "inside: the divisor's grid holds 0 - report it with x.policy(ec) /= d or x.on_error(f) /= d, divide with " \
-    "div(x, d) (a std::expected), or give the divisor a grid without 0"
+#define BEMAN_INSIDE_WHY_zero                                                                                     \
+    "inside: the divisor's grid holds 0 - report it with x.on_error(ec) /= d (or a hook, x.on_error(f)), divide " \
+    "with div(x, d) (a std::expected), or give the divisor a grid without 0"
     template <insidable R>
         requires compound_assignable<quotient_t<R>> && compound_proven<quotient_t<R>> && zero_divisor_possible<R>
     inside& operator/=(const R&) = delete (BEMAN_INSIDE_WHY_zero);
@@ -10973,7 +10978,7 @@ struct inside : detail::raw_holder<G, P> {
     //
     // ++ and -- store like +=: on a checked grid without clamp or wrap the
     // step may leave the interval, so they are deleted there (step with
-    // x.policy(ec) += 1_ins, or iterate with a cursor). A cursor steps one
+    // x.on_error(ec) += 1_ins, or iterate with a cursor). A cursor steps one
     // past its last value to its end; stepping past the end is a
     // precondition, reported to the error handler.
   private:
@@ -11027,8 +11032,8 @@ struct inside : detail::raw_holder<G, P> {
         --*this;
         return t;
     }
-#define BEMAN_INSIDE_WHY_step_out                                                                                   \
-    "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.policy(ec) += 1_ins, x.on_error(f) " \
+#define BEMAN_INSIDE_WHY_step_out                                                                                     \
+    "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_ins, x.on_error(f) " \
     "+= 1_ins, or iterate with a cursor"
     inside& operator++()
         requires(G.Notch != 0 && !step_proven<up_step_t>)
@@ -12460,11 +12465,11 @@ BEMAN_INSIDE_NO_SCALAR(%)
 // result has a type, x's, so n needs none of its own: it steps as the inside
 // on its type's range (policy_ref.hpp lifted_t), and the result is stored
 // back by the rules of every compound assignment - a clamp or wrap type
-// takes it, a checked one names a channel (x.policy(ec) += n). A division
+// takes it, a checked one names a channel (x.on_error(ec) += n). A division
 // stays with insides: a builtin integer's range holds 0.
 #define BEMAN_INSIDE_STEP_MSG                                                                              \
     "inside: x op= n stores the result back into x, which the grids cannot prove for a builtin integer - " \
-    "use a clamp or wrap type, report with x.policy(ec) op= n or x.on_error(f) op= n, or opt out with unsafe"
+    "use a clamp or wrap type, report with x.on_error(ec) op= n (or a hook, x.on_error(f)), or opt out with unsafe"
 #define BEMAN_INSIDE_INTEGER_STEP(op)                                                                \
     template <insidable B, detail::builtin_arithmetic A>                                             \
         requires detail::step_integer<A>                                                             \
@@ -23808,7 +23813,7 @@ constexpr auto on_quantity_clamp(Q& q, F&& f) {
 }
 
 // The op of a store back into Rep that Rep deletes because the grids cannot
-// prove it (its policy(ec) form, which reports, compiles).
+// prove it (its on_error(ec) form, which reports, compiles).
 struct plus_assign {
     template <class N, class V>
     constexpr void operator()(N&& n, const V& v) const
@@ -23842,8 +23847,9 @@ struct divide_assign {
     }
 };
 template <class Rep, class V, class Op>
-concept needs_channel = !std::invocable<Op, Rep&, const V&> &&
-                        requires(Rep& n, error& ec) { requires std::invocable<Op, decltype(n.policy(ec)), const V&>; };
+concept needs_channel = !std::invocable<Op, Rep&, const V&> && requires(Rep& n, error& ec) {
+    requires std::invocable<Op, decltype(n.on_error(ec)), const V&>;
+};
 template <class Rep>
 concept step_needs_channel = insidable<Rep> && notch_of<Rep> != 0 && !requires(Rep& n) { ++n; };
 
@@ -23876,7 +23882,7 @@ struct quantity_action_ref {
         NumRef *= v;
         return Self;
     }
-    // (A builtin integer scales as on an inside: q.policy(ec) *= 2.)
+    // (A builtin integer scales as on an inside: q.on_error(ec) *= 2.)
     template <beman::inside::detail::step_integer N>
         requires requires(Ref& r, N n) { r *= n; }
     constexpr Q& operator*=(N n) {
@@ -24100,11 +24106,11 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     }
 
     // A compound assignment whose result the grids cannot prove to fit Rep
-    // (Rep's own op is deleted, its policy(ec) form is not) is deleted with
+    // (Rep's own op is deleted, its on_error(ec) form is not) is deleted with
     // the fix, as on an inside.
 #define BEMAN_INSIDE_UNITS_WHY_unproven                                                                 \
     "units: the result may fall outside this quantity's number at run time - store with clamp or wrap " \
-    "(q.policy<clamp>() += d), report with q.policy(ec) += d or q.on_error(f) += d, or opt out with unsafe"
+    "(q.with<clamp>() += d), report with q.on_error(ec) += d or q.on_error(f) += d, or opt out with unsafe"
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> &&
                      detail::needs_channel<Rep, detail::rescaled_t<R2, R, V2>, detail::plus_assign>
@@ -24148,8 +24154,8 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         --Value;
         return old;
     }
-#define BEMAN_INSIDE_UNITS_WHY_step                                                                                \
-    "units: ++ and -- may step out of this quantity's number - use a clamp or wrap number, q.policy(ec) += step, " \
+#define BEMAN_INSIDE_UNITS_WHY_step                                                                                  \
+    "units: ++ and -- may step out of this quantity's number - use a clamp or wrap number, q.on_error(ec) += step, " \
     "or iterate with a cursor"
     quantity& operator++()
         requires detail::step_needs_channel<Rep>
@@ -24186,20 +24192,21 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
                                           Value.on_clamp(detail::on_quantity_clamp<R>(*this, std::forward<F>(f))));
     }
     template <class F>
+        requires(!std::same_as<std::remove_cvref_t<F>, error>)
     [[nodiscard]] constexpr auto on_error(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
     }
 
-    // A store under Rep's policy plus F, as inside's policy<F>(): its =, +=
-    // and -= take quantities, *= and /= numbers. policy(ec) sets ec on a
+    // A store under Rep's policy plus F, as inside's with<F>(): its =, +=
+    // and -= take quantities, *= and /= numbers. on_error(ec) sets ec on a
     // failure instead of raising.
     template <policy_flag F = beman::inside::detail::none>
-    [[nodiscard]] constexpr auto policy() & {
-        return detail::make_action_ref<R>(*this, Value.template policy<F>());
+    [[nodiscard]] constexpr auto with() & {
+        return detail::make_action_ref<R>(*this, Value.template with<F>());
     }
     template <policy_flag F = beman::inside::detail::none>
-    [[nodiscard]] constexpr auto policy(error& ec) {
-        return detail::make_action_ref<R>(*this, Value.template policy<F>(ec));
+    [[nodiscard]] constexpr auto on_error(error& ec) {
+        return detail::make_action_ref<R>(*this, Value.template on_error<F>(ec));
     }
 
     // Rep's try_make of a number and its unit: quantity<si::metre,

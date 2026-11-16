@@ -250,8 +250,8 @@ four-level cascade:
 │ 1. a hook on this store          x.on_clamp(f), x.on_wrap(f), …  │
 │                                       │ no hook                  │
 │                                       ▼                          │
-│ 2. a policy for this store       x.policy<clamp>() = …              │
-│                                  x.policy<F>() = …               │
+│ 2. a policy for this store       x.with<clamp>() = …             │
+│                                  x.with<F>() = …                 │
 │                                       │ none                     │
 │                                       ▼                          │
 │ 3. the type's policy             inside<G, clamp>, inside<G, P>  │
@@ -425,7 +425,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/error.hpp` | `error`, `error_message`, `inside_error` (compile time only), the error handler, `raise`, `constexpr_error` |
 | `inside/detail/introspection.hpp` | `grid_of`, `policy_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` concept (and `detail::numeric`), `raw_t`, `as_rational` |
 | `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_int64`, the Q-format codec, `max_index_of`, `round_quotient` |
-| `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |
+| `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.with<F>()`, `b.on_error(ec)` and `on_*()` return |
 | `inside/detail/lift.hpp` | `lift`, the combinator behind the lift operators; `is_expected_v`, `unwrap_t` |
 | `inside/detail/op_result.hpp` | what the result of `+`, `×` or `÷` needs: `exact_fits`, `exact_path_fits` (an exact wide path where the 64-bit kernels' intermediates could overflow), `point_scale` |
 | `inside/detail/rounding.hpp` | `classify_remainder`, `rounds_up`, `rounds_away`: the one rounding decision every integer path shares |

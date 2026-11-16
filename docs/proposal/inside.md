@@ -192,7 +192,7 @@ auto up         = div(whole{7}, step{2}, round_ceil);  // 4
 auto [quo, rem] = divmod(whole{17}, step{5});            // 3 and 2
 
 whole x = 50;
-x.policy<clamp>() = 150;                                    // 100: this store saturates
+x.with<clamp>() = 150;                                      // 100: this store saturates
 
 using seconds = inside<{0, 59}, wrap>;
 using minutes = inside<{0, 59}, clamp>; // m += carry names what happens past 59
@@ -334,7 +334,7 @@ Every policy checks a narrowing store unless it says `unsafe`, and nothing
 throws. A store has five outcomes: it clamps, wraps, takes an alternative
 value, reports, or does not compile. A store the grids prove (every value of
 the source fits) is plain. Any other store names its channel before it runs:
-a flag (`clamp`, `wrap`, a rounding mode), an `error&` (`b.policy(ec) = v`), an
+a flag (`clamp`, `wrap`, a rounding mode), an `error&` (`b.on_error(ec) = v`), an
 `on_error` action, `try_make`, or `unsafe`; without one it is ill-formed. A
 constant is checked while compiling: the constructor from a value the grids
 cannot prove is `consteval`, so `count m = 14;` with `count` on `[0, 10]` is
@@ -410,9 +410,9 @@ another:
   a failure, or actions. `divmod` returns
   `divmod_result{Quotient, Remainder}` from one division, consistent with the
   rounding: `q·b + r == a`.
-- **One store.** `b.policy<F>()` returns a proxy whose `=`, `+=`, `-=`, `*=`,
-  `/=` and `%=` store into `b` under `P | F` (`b.policy<clamp>() = v`). `b.policy<F>(ec)` reports into `ec`. On a temporary,
-  the proxy owns the value, so `(a * b).policy<round_toward_zero>()` converts to any
+- **One store.** `b.with<F>()` returns a proxy whose `=`, `+=`, `-=`, `*=`,
+  `/=` and `%=` store into `b` under `P | F` (`b.with<clamp>() = v`). `b.on_error<F>(ec)` reports into `ec`. On a temporary,
+  the proxy owns the value, so `(a * b).with<round_toward_zero>()` converts to any
   `inside` that the rounded value fits.
 
 An *action* is a callback that runs when the policy acts, so a program can see
@@ -524,8 +524,8 @@ namespace std {
       static constexpr expected<inside, error> from_step(const I& i);
 
     // a policy or actions for one store (the proxy owns the value of an rvalue)
-    template<policy_flag F = checked> constexpr @*store-proxy*@ policy();
-    template<policy_flag F = checked> constexpr @*store-proxy*@ policy(error& ec);
+    template<policy_flag F = checked> constexpr @*store-proxy*@ with();
+    template<policy_flag F = checked> constexpr @*store-proxy*@ on_error(error& ec);
     template<class F> constexpr @*store-proxy*@ on_clamp(F f);  // also on_wrap, on_error
 
     constexpr inside<-G, P> operator-() const;
@@ -594,7 +594,7 @@ namespace std {
 | `a % b` | on the lattice of `u`, the gcd of the two value units (1 on integers), the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2u⌋·u, max|a|)`; `m = max|b| − u` | notched grids required; `r = a − q·b` for the integer `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); ill-formed where the step may leave the grid without `clamp`/`wrap`; absent on a continuous grid |
-| `a += b` etc. | `a = a + b` | a store by `a`'s policy: ill-formed where the grids cannot prove it and `P` has no `clamp`/`wrap`; `b.policy(ec) += x` reports |
+| `a += b` etc. | `a = a + b` | a store by `a`'s policy: ill-formed where the grids cannot prove it and `P` has no `clamp`/`wrap`; `b.on_error(ec) += x` reports |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer; no floating-point operand (0.1 is not 1/10) |
 | `b.to<T>()` | `T` where total, else `expected<T, error>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range. Floating-point `T`: rounded once |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
@@ -606,7 +606,7 @@ namespace std {
 | `conversion_overflows<B>(v)`, `conversion_rounds<B>(v)` | what `B{v}` would report or round | a rounding that brings `v` in is a rounding |
 | `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `error&`: a zero divisor sets it (and stays in the `expected`) |
 | `divmod(a, b, …)` | `{q, r}`, `q·b + r == a` | as `/` and `%` |
-| `b.policy<clamp>() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
+| `b.with<clamp>() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
 | `b.on_wrap(f) += v` etc. | `b += v`, `f` called when the policy acts | ill-formed: two of `on_clamp`, `on_wrap`, `on_error`, or two of one kind |
 | `common_type_t<A, B>` | `inside<hull(grid_of<A>, grid_of<B>), P>` | `P`: the shared policy, else `checked`; `A` when `A == B` |
 | `numeric_limits<B>::min()`, `max()` | `lower`, `upper` | `epsilon()`, `round_error()`: 0, only when 0 is on the grid; `digits` from the number of values |

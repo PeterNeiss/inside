@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Policies and their hooks: one-shot policies and the policy handles
-// (x.policy<F>()), the actions on_clamp/on_wrap/on_error, the error
+// (x.with<F>()), the actions on_clamp/on_wrap/on_error, the error
 // handler and the error vocabulary.
 
 #include <beman/inside/inside.hpp>
@@ -94,7 +94,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
         static_assert(!test::can_step<fp>);
         fp    top = fp::try_make(255.0).value();
         error ec{};
-        top.policy(ec) += inside<grid{notch_of<fp>}>::from_raw({}, unsafe);
+        top.on_error(ec) += inside<grid{notch_of<fp>}>::from_raw({}, unsafe);
         ASSERT_EQ(ec, error::overflow);
     }
 
@@ -339,12 +339,12 @@ TEST(PolicyActionsTest, on_error_catches_rounding_error_on_float_assignment) {
     ASSERT_EQ(c, 4);
 }
 
-// policy(ec) catches rounding_error on float assignment
+// on_error(ec) catches rounding_error on float assignment
 TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse               c{0};
     beman::inside::error ec{};
-    c.policy(ec) = 3.0;
+    c.on_error(ec) = 3.0;
     ASSERT_EQ(ec, error::rounding_error);
 }
 
@@ -485,261 +485,261 @@ using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 //---------------------------------------------------------------------------
-// policy<clamp>
+// with<clamp>
 //---------------------------------------------------------------------------
-// policy<clamp>: integer rhs, both directions
+// with<clamp>: integer rhs, both directions
 TEST(PolicyHandleTest, clamp_integer_rhs_both_directions) {
     using u100 = inside<{0, 100}>;
     u100 x{50};
 
-    x.policy<clamp>() = 150;
+    x.with<clamp>() = 150;
     ASSERT_EQ(x, 100);
-    x.policy<clamp>() = -50;
+    x.with<clamp>() = -50;
     ASSERT_EQ(x, 0);
-    x.policy<clamp>() = 75;
+    x.with<clamp>() = 75;
     ASSERT_EQ(x, 75); // in-range passes through
 }
 
-// policy<clamp>: float rhs
+// with<clamp>: float rhs
 TEST(PolicyHandleTest, clamp_float_rhs) {
     using u10 = inside<{{0, 10}, 0.5}>;
     u10 x{5};
 
-    x.policy<clamp>() = 100.0;
+    x.with<clamp>() = 100.0;
     ASSERT_EQ(x, 10);
-    x.policy<clamp>() = -5.0;
+    x.with<clamp>() = -5.0;
     ASSERT_EQ(x, 0);
-    x.policy<clamp>() = 3.5;
+    x.with<clamp>() = 3.5;
     ASSERT_EQ(x, 3.5_r);
 }
 
-// policy<clamp>: inside rhs
+// with<clamp>: inside rhs
 TEST(PolicyHandleTest, clamp_inside_rhs) {
     using wide   = inside<{0, 200}>;
     using narrow = inside<{0, 100}>;
     narrow n{0};
     wide   over{150};
 
-    n.policy<clamp>() = over;
+    n.with<clamp>() = over;
     ASSERT_EQ(n, 100);
 
     wide under_zero{0};
-    n.policy<clamp>() = under_zero;
+    n.with<clamp>() = under_zero;
     ASSERT_EQ(n, 0);
 }
 
-// policy<clamp>: signed inside
+// with<clamp>: signed inside
 TEST(PolicyHandleTest, clamp_signed_inside) {
     using s = inside<{-100, 100}>;
     s x{0};
 
-    x.policy<clamp>() = 200;
+    x.with<clamp>() = 200;
     ASSERT_EQ(x, 100);
-    x.policy<clamp>() = -200;
+    x.with<clamp>() = -200;
     ASSERT_EQ(x, -100);
 }
 
 //---------------------------------------------------------------------------
-// policy<wrap>
+// with<wrap>
 //---------------------------------------------------------------------------
-// policy<wrap>: integer rhs, both directions
+// with<wrap>: integer rhs, both directions
 TEST(PolicyHandleTest, wrap_integer_rhs_both_directions) {
     using u10 = inside<{0, 9}>;
     u10 x{5};
 
-    x.policy<wrap>() = 13;
+    x.with<wrap>() = 13;
     ASSERT_EQ(x, 3); // 13 % 10
-    x.policy<wrap>() = 23;
+    x.with<wrap>() = 23;
     ASSERT_EQ(x, 3); // 23 % 10
-    x.policy<wrap>() = -1;
+    x.with<wrap>() = -1;
     ASSERT_EQ(x, 9); // -1 wraps to top
-    x.policy<wrap>() = -11;
+    x.with<wrap>() = -11;
     ASSERT_EQ(x, 9);
-    x.policy<wrap>() = 5;
+    x.with<wrap>() = 5;
     ASSERT_EQ(x, 5); // in-range
 }
 
-// policy<wrap>: signed inside
+// with<wrap>: signed inside
 TEST(PolicyHandleTest, wrap_signed_inside) {
     using s = inside<{-5, 5}>; // 11 values
     s x{0};
 
     // 6 ≡ -5 (mod 11) within [-5, 5]
-    x.policy<wrap>() = 6;
+    x.with<wrap>() = 6;
     ASSERT_EQ(x, -5);
     // 17 = 6 + 11 ≡ -5 (mod 11)
-    x.policy<wrap>() = 17;
+    x.with<wrap>() = 17;
     ASSERT_EQ(x, -5);
     // -6 ≡ 5 (mod 11)
-    x.policy<wrap>() = -6;
+    x.with<wrap>() = -6;
     ASSERT_EQ(x, 5);
 }
 
-// policy<wrap>: inside rhs
+// with<wrap>: inside rhs
 TEST(PolicyHandleTest, wrap_inside_rhs) {
     using src = inside<{0, 100}>;
     using dst = inside<{0, 9}>;
     dst d{0};
 
     src high{45};
-    d.policy<wrap>() = high;
+    d.with<wrap>() = high;
     ASSERT_EQ(d, 5); // 45 % 10
 }
 
 //---------------------------------------------------------------------------
-// policy<round_toward_zero> (truncates toward zero)
+// with<round_toward_zero> (truncates toward zero)
 //---------------------------------------------------------------------------
-// policy<round_toward_zero>: inside rhs with finer notch
+// with<round_toward_zero>: inside rhs with finer notch
 TEST(PolicyHandleTest, round_toward_zero_inside_rhs_with_finer_notch) {
     using coarse = inside<{{0, 10}, 2}>;
     using fine   = inside<{{0, 10}, 1}>;
 
     coarse c{0};
-    c.policy<round_toward_zero>() = fine{3};
+    c.with<round_toward_zero>() = fine{3};
     ASSERT_EQ(c, 2); // 3 truncates toward zero -> 2
-    c.policy<round_toward_zero>() = fine{4};
+    c.with<round_toward_zero>() = fine{4};
     ASSERT_EQ(c, 4); // exact
-    c.policy<round_toward_zero>() = fine{5};
+    c.with<round_toward_zero>() = fine{5};
     ASSERT_EQ(c, 4); // 5 -> 4
-    c.policy<round_toward_zero>() = fine{7};
+    c.with<round_toward_zero>() = fine{7};
     ASSERT_EQ(c, 6); // 7 -> 6
 }
 
-// policy<round_toward_zero>: float rhs not on notch
+// with<round_toward_zero>: float rhs not on notch
 TEST(PolicyHandleTest, round_toward_zero_float_rhs_not_on_notch) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.policy<round_toward_zero>() = 3.0;
+    c.with<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // 3 truncates to 2
-    c.policy<round_toward_zero>() = 3.99;
+    c.with<round_toward_zero>() = 3.99;
     ASSERT_EQ(c, 2);
-    c.policy<round_toward_zero>() = 4.0;
+    c.with<round_toward_zero>() = 4.0;
     ASSERT_EQ(c, 4); // exact
 }
 
 //---------------------------------------------------------------------------
-// policy<round_half_away> (round half away)
+// with<round_half_away> (round half away)
 //---------------------------------------------------------------------------
-// policy<round_half_away>: float rhs
+// with<round_half_away>: float rhs
 TEST(PolicyHandleTest, round_half_away_float_rhs) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.policy<round_half_away>() = 3.0;
+    c.with<round_half_away>() = 3.0;
     ASSERT_EQ(c, 4); // halfway-up: 3 -> 4
-    c.policy<round_half_away>() = 2.99;
+    c.with<round_half_away>() = 2.99;
     ASSERT_EQ(c, 2);
-    c.policy<round_half_away>() = 3.01;
+    c.with<round_half_away>() = 3.01;
     ASSERT_EQ(c, 4);
-    c.policy<round_half_away>() = 4.0;
+    c.with<round_half_away>() = 4.0;
     ASSERT_EQ(c, 4); // exact
 
     using half = inside<{{0, 10}, 0.5}>;
     half h;
-    h.policy<round_half_away>() = 3.3;
+    h.with<round_half_away>() = 3.3;
     ASSERT_EQ(h, 3.5_r); // 3.5
-    h.policy<round_half_away>() = 3.2;
+    h.with<round_half_away>() = 3.2;
     ASSERT_EQ(h, 3); // 3.0
 }
 
-// policy<round_half_away>: inside rhs incompatible notches
+// with<round_half_away>: inside rhs incompatible notches
 TEST(PolicyHandleTest, round_half_away_inside_rhs_incompatible_notches) {
     using coarse = inside<{{0, 10}, 2}>;
     using fine   = inside<{{0, 10}, 1}>;
 
     coarse c{0};
-    c.policy<round_half_away>() = fine{3};
+    c.with<round_half_away>() = fine{3};
     ASSERT_EQ(c, 4); // 3 -> 4 (round half up)
-    c.policy<round_half_away>() = fine{5};
+    c.with<round_half_away>() = fine{5};
     ASSERT_EQ(c, 6); // 5 -> 6
-    c.policy<round_half_away>() = fine{4};
+    c.with<round_half_away>() = fine{4};
     ASSERT_EQ(c, 4); // exact
 }
 
 //---------------------------------------------------------------------------
-// policy<round_toward_zero> vs policy<round_half_away> divergence
+// with<round_toward_zero> vs with<round_half_away> divergence
 //---------------------------------------------------------------------------
-// policy<round_toward_zero> vs policy<round_half_away> disagree on halfway
+// with<round_toward_zero> vs with<round_half_away> disagree on halfway
 TEST(PolicyHandleTest, round_toward_zero_and_round_half_away_differ_on_a_tie) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.policy<round_toward_zero>() = 3.0;
+    c.with<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // toward zero
-    c.policy<round_half_away>() = 3.0;
+    c.with<round_half_away>() = 3.0;
     ASSERT_EQ(c, 4); // half away from zero
 }
 
 //---------------------------------------------------------------------------
-// policy<Mode> — the Mode template parameter selects the rounding mode.
+// with<Mode> — the Mode template parameter selects the rounding mode.
 // One value driven through every mode; +3 / -3 sit halfway between notches so
 // floor / ceil / truncate diverge by sign.
 //---------------------------------------------------------------------------
-// policy<Mode> selects the rounding mode
+// with<Mode> selects the rounding mode
 TEST(PolicyHandleTest, the_handle_selects_the_rounding_mode) {
     using coarse = inside<{{-10, 10}, 2}>; // grid: … -4 -2 0 2 4 …
     coarse c{0};
 
     // +3 is halfway between 2 and 4.
-    c.policy<round_toward_zero>() = 3.0;
+    c.with<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // default == truncate toward zero
-    c.policy<round_toward_zero>() = 3.0;
+    c.with<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // explicit round_toward_zero == the default
-    c.policy<round_floor>() = 3.0;
+    c.with<round_floor>() = 3.0;
     ASSERT_EQ(c, 2); // toward −∞
-    c.policy<round_ceil>() = 3.0;
+    c.with<round_ceil>() = 3.0;
     ASSERT_EQ(c, 4); // toward +∞
-    c.policy<round_half_away>() = 3.0;
+    c.with<round_half_away>() = 3.0;
     ASSERT_EQ(c, 4); // half away from zero
-    c.policy<round_half_even>() = 3.0;
+    c.with<round_half_even>() = 3.0;
     ASSERT_EQ(c, 4); // tie → even quotient
 
     // −3 is halfway between −4 and −2: floor / ceil / truncate now disagree.
-    c.policy<round_toward_zero>() = -3.0;
+    c.with<round_toward_zero>() = -3.0;
     ASSERT_EQ(c, -2); // truncate toward zero
-    c.policy<round_floor>() = -3.0;
+    c.with<round_floor>() = -3.0;
     ASSERT_EQ(c, -4); // toward −∞
-    c.policy<round_ceil>() = -3.0;
+    c.with<round_ceil>() = -3.0;
     ASSERT_EQ(c, -2); // toward +∞
-    c.policy<round_half_away>() = -3.0;
+    c.with<round_half_away>() = -3.0;
     ASSERT_EQ(c, -4); // half away from zero
-    c.policy<round_half_even>() = -3.0;
+    c.with<round_half_even>() = -3.0;
     ASSERT_EQ(c, -4); // tie → even quotient
 }
 
-// A snapped temporary returned by value: policy<round_toward_zero>() on an rvalue yields a
+// A snapped temporary returned by value: with<round_toward_zero>() on an rvalue yields a
 // value-owning policy_buffer (moves the product in), so this is safe — the buffer
 // outlives the `num*num` temporary. Defined at namespace scope so the temporary is
 // truly gone by the time the caller reads the result.
 namespace {
 using small_t = beman::inside::inside<{{0, 10}, per<10>}, clamp>;
-auto square(small_t n) { return (n * n).policy<round_toward_zero>(); }
+auto square(small_t n) { return (n * n).with<round_toward_zero>(); }
 } // namespace
 
 //---------------------------------------------------------------------------
-// policy<round_toward_zero>() as a value. On an lvalue it converts through a (reference) policy_ref;
+// with<round_toward_zero>() as a value. On an lvalue it converts through a (reference) policy_ref;
 // on a *temporary* it returns a value-owning policy_buffer, so the snapped result can
 // be returned/stored without dangling. Either way the target's own policy (clamp) and
 // the handle's rounding merge via uses_flag.
 //---------------------------------------------------------------------------
-// policy<round_toward_zero>() proxy converts to a value (RHS / return position)
+// with<round_toward_zero>() proxy converts to a value (RHS / return position)
 TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
     using small = small_t;
     small a     = 2.5; // exact (dyadic) on the 1/10 grid
 
     // a*a is 6.25 on the finer 1/100 grid — off small's notch. These compile because
     // the proxy converts to `small`, applying clamp (range) + round_toward_zero (notch).
-    small trunc   = (a * a).policy<round_toward_zero>(); // 6.25 → 6.2 (truncate)
-    small nearest = (a * a).policy<round_half_away>();   // 6.25 → 6.3 (nearest)
+    small trunc   = (a * a).with<round_toward_zero>(); // 6.25 → 6.2 (truncate)
+    small nearest = (a * a).with<round_half_away>();   // 6.25 → 6.3 (nearest)
     ASSERT_EQ(trunc, 6.2_r);
     ASSERT_EQ(nearest, 6.3_r);
 
     // Out-of-range still clamps, via small's own policy merged in at conversion.
     small four = 4;
-    ASSERT_EQ(small((four * four).policy<round_toward_zero>()), 10); // 16 → clamp → 10
+    ASSERT_EQ(small((four * four).with<round_toward_zero>()), 10); // 16 → clamp → 10
 
-    // Safety: `auto square(){ return (n*n).policy<round_toward_zero>(); }` returns the value-owning
+    // Safety: `auto square(){ return (n*n).with<round_toward_zero>(); }` returns the value-owning
     // buffer; converting it to `small` after the temporary is gone is well-defined.
     small from_temp = square(small{2.5});
     small sq        = square(small{4});
@@ -750,18 +750,18 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
     // rvalue → policy_buffer (owns the value). Both convert to small; neither to a
     // target whose interval the value can never enter (conversion stays constrained).
     using big = decltype(small{} * small{});
-    static_assert(std::is_same_v<decltype(std::declval<big&>().policy<round_toward_zero>()),
+    static_assert(std::is_same_v<decltype(std::declval<big&>().with<round_toward_zero>()),
                                  policy_ref<big, call_policy<policy_of<big> | round_toward_zero>>>);
-    static_assert(std::is_same_v<decltype(std::declval<big>().policy<round_toward_zero>()),
+    static_assert(std::is_same_v<decltype(std::declval<big>().with<round_toward_zero>()),
                                  policy_buffer<big, call_policy<policy_of<big> | round_toward_zero>>>);
-    static_assert(std::is_convertible_v<decltype(std::declval<big&>().policy<round_toward_zero>()), small>);
-    static_assert(std::is_convertible_v<decltype(std::declval<big>().policy<round_toward_zero>()), small>);
+    static_assert(std::is_convertible_v<decltype(std::declval<big&>().with<round_toward_zero>()), small>);
+    static_assert(std::is_convertible_v<decltype(std::declval<big>().with<round_toward_zero>()), small>);
     // big keeps small's clamp (a result keeps its operands' shared policy), so it
     // clamps into any target; a checked product stays constrained.
     static_assert(
-        std::is_convertible_v<decltype(std::declval<big&>().policy<round_toward_zero>()), inside<{{1000, 2000}, 1}>>);
+        std::is_convertible_v<decltype(std::declval<big&>().with<round_toward_zero>()), inside<{{1000, 2000}, 1}>>);
     using checked_big = decltype(inside<{0, 10}>{} * inside<{0, 10}>{});
-    static_assert(!std::is_convertible_v<decltype(std::declval<checked_big&>().policy<round_toward_zero>()),
+    static_assert(!std::is_convertible_v<decltype(std::declval<checked_big&>().with<round_toward_zero>()),
                                          inside<{{1000, 2000}, 1}>>);
 }
 } // namespace with_methods_tests
@@ -855,7 +855,7 @@ TEST(ErrorHandlerTest, compound_zero_divisor_names_a_channel) {
     static_assert(!test::can_div<x_t, zero_t>);
     x_t   x{5};
     error ec{};
-    x.policy(ec) /= zero_t{0};
+    x.on_error(ec) /= zero_t{0};
     EXPECT_EQ(ec, error::division_by_zero);
     EXPECT_EQ(x, 5);
 }
@@ -983,7 +983,7 @@ using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 template <class T, class U = T>
-constexpr bool proxy_add_ok = requires(T a, U b, error& e) { a.policy(e) += b; };
+constexpr bool proxy_add_ok = requires(T a, U b, error& e) { a.on_error(e) += b; };
 template <class T, class U = T>
 constexpr bool plain_add_ok = requires(T a, U b) { a += b; };
 template <class Ref, class E>
@@ -1022,7 +1022,7 @@ TEST(PolicyTest, wrap_folds_past_the_64_bit_rational) {
     EXPECT_EQ(digit::try_make(1.5).error(), error::rounding_error);                   // no rounding flag
 }
 
-// A flag (`clamp`, `round_floor`) or a const policy(ec) as the constructor's
+// A flag (`clamp`, `round_floor`) or a const on_error(ec) as the constructor's
 // one-shot policy did not compile: report() was non-const.
 TEST(PolicyTest, named_policy_in_a_constructor) {
     using halves = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
@@ -1066,7 +1066,7 @@ TEST(PolicyTest, on_error_sees_rounding_from_a_continuous_source) {
 }
 
 TEST(PolicyTest, policy_handle_expected_sink_reports_into_error) {
-    using ref = decltype(std::declval<inside<{0, 100}>&>().policy(std::declval<error&>()));
+    using ref = decltype(std::declval<inside<{0, 100}>&>().on_error(std::declval<error&>()));
     static_assert(!stores_expected<ref, std::expected<rational, error>>);
     static_assert(stores_expected<ref, rational>);
 }
@@ -1077,7 +1077,7 @@ TEST(PolicyTest, policy_handle_failed_read_out_is_initialized) {
     static_assert([] {
         error                ec{};
         inside<{0, 100}>     x{50};
-        const inside<{0, 9}> s = x.policy(ec); // 50 is past 9: overflow into ec
+        const inside<{0, 9}> s = x.on_error(ec); // 50 is past 9: overflow into ec
         return ec == error::overflow && s == 0;
     }());
 }
@@ -1173,8 +1173,8 @@ TEST(PolicyTest, one_shot_policy_applies_to_dyadic_target) {
     EXPECT_EQ(rational{(RealSmall{big, clamp})}, rational{4.0});
     EXPECT_EQ(rational{(RealSmall{low, clamp})}, rational{0.0});
     EXPECT_EQ(rational{(RealSmall{big, wrap})}, rational{7.5 - 4.25});
-    RealSmall r       = RealSmall{1.0};
-    r.policy<clamp>() = big;
+    RealSmall r     = RealSmall{1.0};
+    r.with<clamp>() = big;
     EXPECT_EQ(rational{r}, rational{4.0});
 }
 
@@ -1193,18 +1193,18 @@ TEST(PolicyTest, policy_handle_zero_divisor_does_not_divide) {
     using X = inside<{0, 10}, checked | round_toward_zero>;
     using Z = inside<{0, 10}, unsafe>;
     X b{6};
-    b.policy<unsafe>() /= X{0};
-    b.policy<unsafe>() %= X{0};
-    b.policy() /= Z{0};
+    b.with<unsafe>() /= X{0};
+    b.with<unsafe>() %= X{0};
+    b.with() /= Z{0};
     EXPECT_EQ(b, 6);
     // A checked divisor that may be 0 needs a channel for it.
-    static_assert(!test::can_div<decltype(b.policy()), X> && !test::can_mod<decltype(b.policy()), X>);
+    static_assert(!test::can_div<decltype(b.with()), X> && !test::can_mod<decltype(b.with()), X>);
     error ec{};
-    b.policy(ec) %= X{0};
+    b.on_error(ec) %= X{0};
     EXPECT_EQ(ec, error::division_by_zero);
     EXPECT_EQ(b, 6);
     ec = error{};
-    b.policy(ec) /= X{3};
+    b.on_error(ec) /= X{3};
     EXPECT_EQ(ec, error{});
     EXPECT_EQ(b, 2);
 }
@@ -1220,7 +1220,7 @@ TEST(PolicyTest, checked_compound_overflow_reports) {
     c100  a{80};
     c100  b{50};
     error ec{};
-    a.policy(ec) += b; // 130 not in [0,100]
+    a.on_error(ec) += b; // 130 not in [0,100]
     ASSERT_EQ(ec, error::overflow);
     ASSERT_EQ(a, 80);
 }
@@ -1311,7 +1311,7 @@ TEST(PolicyTest, checked_range_check_fires) {
     L b{50};
     static_assert(!test::can_add<L, inside<{0, 200}>>);
     error ec{};
-    b.policy(ec) += inside<{0, 200}>{200};
+    b.on_error(ec) += inside<{0, 200}>{200};
     ASSERT_EQ(ec, error::overflow);
 }
 
@@ -1344,7 +1344,7 @@ TEST(PoliciesArmTest, policy_ref_remainder_by_an_unsafe_zero) {
     inside<{0, 10}>         b{7};
     volatile int            zero = 0;
     inside<{0, 10}, unsafe> z{static_cast<int>(zero)};
-    b.policy<wrap>() %= z;
+    b.with<wrap>() %= z;
     EXPECT_TRUE(b == 7);
 }
 } // namespace reached_arms_tests
@@ -1357,7 +1357,7 @@ using namespace beman::inside::formats;
 TEST(PoliciesArmTest, policy_ref_remainder) {
     inside<{0, 10}> b{7};
     volatile int    four = 4;
-    b.policy<wrap>() %= test::store<inside<{1, 10}>>(static_cast<int>(four));
+    b.with<wrap>() %= test::store<inside<{1, 10}>>(static_cast<int>(four));
     EXPECT_TRUE(b == 3);
 }
 } // namespace reached_arms_tests

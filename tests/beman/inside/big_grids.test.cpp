@@ -190,8 +190,8 @@ TEST(BigGridTest, just_big_and_small_grid_numbers) {
     EXPECT_TRUE(h == big);
     h = 0;
     error ec{}; // h + 2^99 may pass 2^100: the store reports
-    h.policy(ec) += just<g(pow2(99))>;
-    h.policy(ec) += just<g(pow2(99))>;
+    h.on_error(ec) += just<g(pow2(99))>;
+    h.on_error(ec) += just<g(pow2(99))>;
     EXPECT_TRUE(h == big && ec == error{});
     using planck = inside<{{0, 1}, 1e-41_g}>;
     planck p     = tiny;
@@ -422,7 +422,7 @@ TEST(WideGridTest, assignment_policies) {
     // checked: off-lattice and out-of-range report.
     fine  a = 1;
     error ae{};
-    a.policy(ae) = test::at_run_time(rational{1, std::int64_t{1} << 33}); // half a notch
+    a.on_error(ae) = test::at_run_time(rational{1, std::int64_t{1} << 33}); // half a notch
     EXPECT_EQ(ae, error::rounding_error);
     EXPECT_EQ(test::store_error<fine>(test::at_run_time(p34 + 1)), error::overflow);
     EXPECT_EQ(test::store_error<fine>(test::at_run_time(-1)), error::overflow);
@@ -445,8 +445,8 @@ TEST(WideGridTest, assignment_policies) {
 
     // error-reporting policy.
     error e{};
-    fine  x     = 3;
-    x.policy(e) = p34 * 2;
+    fine  x       = 3;
+    x.on_error(e) = p34 * 2;
     EXPECT_EQ(e, error::overflow);
     EXPECT_TRUE(x == 3);
 
@@ -824,10 +824,10 @@ TEST(WideGridTest, limb_edges) {
     // += across the 64-bit index boundary, by a point delta and by a raw.
     over64 c = rational{u64_max, 4}; // index 2^64 − 1
     error  ec{};                     // (a checked += names its channel)
-    c.policy(ec) += just<1, 4>;      // index 2^64
+    c.on_error(ec) += just<1, 4>;    // index 2^64
     EXPECT_EQ(ec, error{});
     EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
-    c.policy(ec) += just<1, 4>; // past the top
+    c.on_error(ec) += just<1, 4>; // past the top
     EXPECT_EQ(ec, error::overflow);
     inside<{{rational{0}, rational{std::uint64_t{1} << 62}}, per<4>}, wrap> w = rational{std::uint64_t{1} << 62};
     w += just<1, 4>; // wraps to 0
@@ -1037,8 +1037,8 @@ std::string sweep(const T a, const T b, std::mt19937_64& g) {
     const S     s{3};
     std::string r;
     T           c{a};
-    c                          = b;
-    c.template policy<clamp>() = s;
+    c                        = b;
+    c.template with<clamp>() = s;
     r += text_of(a + b) + text_of(a - b) + text_of(a * b) + text_of(a / b) + text_of(-a) + text_of(a + s) +
          text_of(s * a) + text_of(a / s) + text_of(s / a);
     if constexpr (requires { a % b; })
@@ -1065,14 +1065,14 @@ std::string sweep(const T a, const T b, std::mt19937_64& g) {
     r += text_of(math::sin<O>(a)) + text_of(math::atan<O>(a)) + text_of(math::cos<Ow>(a)) + text_of(math::pown<3>(a));
     r += text_of(a * math::pi) + (a < math::pi ? "<" : ">");
     T z                                                          = a;
-    z.template policy<clamp>()                                   = 1e300;
-    z.template policy<wrap>()                                    = -5;
+    z.template with<clamp>()                                     = 1e300;
+    z.template with<wrap>()                                      = -5;
     z.on_wrap([&](auto&, auto carry) { r += to_string(carry); }) = a * a * a;
     z.on_clamp([&](auto&, auto over) { r += to_string(over); })  = a * a * a;
-    z.template policy<wrap>() += b;
-    z.template policy<wrap>() -= b;
+    z.template with<wrap>() += b;
+    z.template with<wrap>() -= b;
     if constexpr (std::integral<__int128>) {
-        z.template policy<clamp>() = (static_cast<__int128>(1) << 100) + 7;
+        z.template with<clamp>() = (static_cast<__int128>(1) << 100) + 7;
         r += text_of(z.template to<__int128>());
     }
     return r + to_string(z);

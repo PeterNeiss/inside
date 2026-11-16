@@ -6,6 +6,22 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ## Unreleased
 
+### Upgrading
+
+- `policy` is gone from inside and quantity. The error channel is the
+  `on_error` overload that takes an `error&` (beside the hook `on_error(f)`),
+  and the flags for one operation are `with`:
+
+  | Before | Now |
+  |---|---|
+  | `x.policy(ec) += y` | `x.on_error(ec) += y` |
+  | `x.policy<round_floor>(ec) = v` | `x.on_error<round_floor>(ec) = v` |
+  | `x.policy<clamp>() = v` | `x.with<clamp>() = v` |
+  | `(a * b).policy<round_toward_zero>()` | `(a * b).with<round_toward_zero>()` |
+
+  `make_policy<F>(ec)` for a constructor (`T{v, make_policy<clamp>(ec)}`)
+  and `policy_of<T>` are unchanged.
+
 ### Changed
 
 - Faster at the boundaries, with the same results:

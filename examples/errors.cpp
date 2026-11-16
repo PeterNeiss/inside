@@ -42,7 +42,7 @@ int main() {
 
     beman::inside::error ec{};
     checked_100          z(50);
-    z.policy(ec) = n;
+    z.on_error(ec) = n;
     std::cout << "policy ec:" << (ec != error{} ? error_message(ec) : "no error") << " (z=" << z << ")" << "\n";
 
     checked_100 r(50);
@@ -53,7 +53,7 @@ int main() {
     std::cout << "          (r=" << r << ")" << "\n";
 
     inside<{0, 100}> w(50);
-    w.policy<clamp>() = 200;
+    w.with<clamp>() = 200;
     std::cout << "clamped:  value=" << w << " (this store saturates)" << "\n";
 
     // === Section 3: Every error value gets a demo ===

@@ -387,7 +387,7 @@ TEST(InsideArithmeticTest, scalars_need_a_grid_to_join_inside_arithmetic) {
     // (`b == 5`) against a raw scalar stay ergonomic.
     ASSERT_EQ(b, 5);
     error ec{}; // (b + 1 may leave b's grid: a reported store)
-    b.policy(ec) += 1_ins;
+    b.on_error(ec) += 1_ins;
     ASSERT_EQ(b, 6);
 }
 
@@ -502,7 +502,7 @@ TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
     static_assert(!std::same_as<decltype(w), pct>); // widened grid
     ASSERT_EQ(w, 6);
     error ec{}; // (b + 1 may leave b's grid: a reported store)
-    b.policy(ec) += 1_ins;
+    b.on_error(ec) += 1_ins;
     ASSERT_EQ(b, 6);
     ASSERT_TRUE(b < 10);
 }
@@ -812,11 +812,11 @@ TEST(SignedTest, signed_construction_and_arithmetic) {
 
     s32   acc{100}, delta{-30};
     error ec{}; // (a sum the grids cannot prove: reported)
-    acc.policy(ec) += delta;
+    acc.on_error(ec) += delta;
     ASSERT_EQ(acc, 70);
 
     s32 acc2{50};
-    acc2.policy(ec) += -75_ins;
+    acc2.on_error(ec) += -75_ins;
     ASSERT_EQ(acc2, -25);
     ASSERT_EQ(ec, error{});
 }
@@ -1462,10 +1462,10 @@ TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
     // Compound assignment stores back through the same check.
     thousandths x{rational{1, 10}};
     error       ec{};
-    x.policy(ec) *= thousandths{rational{1, 10}}; // 1/100: within the bound
+    x.on_error(ec) *= thousandths{rational{1, 10}}; // 1/100: within the bound
     EXPECT_TRUE(x == rational(1, 100));
     EXPECT_EQ(ec, error{});
-    x.policy(ec) *= thousandths{rational{1, 100}}; // 1/10000
+    x.on_error(ec) *= thousandths{rational{1, 100}}; // 1/10000
     EXPECT_EQ(ec, error::rounding_error);
 
     // A quotient type's bound is what the grids allow, so its own results fit.

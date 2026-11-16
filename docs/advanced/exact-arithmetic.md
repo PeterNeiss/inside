@@ -107,14 +107,14 @@ using finer  = inside<{{0, 10}, 1}>;   // 0, 1, 2, …, 10
 coarse c{0};
 finer  f{3};
 // c = f;                              // does not compile: 3 is between notches
-c.policy<round_toward_zero>() = f;                  // 2: this store rounds toward zero
-c.policy<round_half_away>() = f;         // 4: this store rounds to nearest
-auto half = [](finer x) -> coarse { return x.policy<round_toward_zero>(); };   // round at the return
+c.with<round_toward_zero>() = f;                    // 2: this store rounds toward zero
+c.with<round_half_away>() = f;           // 4: this store rounds to nearest
+auto half = [](finer x) -> coarse { return x.with<round_toward_zero>(); };     // round at the return
 ```
 
-`.policy<round_toward_zero>()` on a temporary, `(a * a).policy<round_toward_zero>()`, holds the value,
+`.with<round_toward_zero>()` on a temporary, `(a * a).with<round_toward_zero>()`, holds the value,
 so it is safe to return. The target's own policy still applies: into a
-`clamp` type the range clamps while `policy<round_toward_zero>()` handles the notch.
+`clamp` type the range clamps while `with<round_toward_zero>()` handles the notch.
 
 ### How each mode rounds
 

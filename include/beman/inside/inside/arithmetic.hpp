@@ -963,11 +963,11 @@ BEMAN_INSIDE_NO_SCALAR(%)
 // result has a type, x's, so n needs none of its own: it steps as the inside
 // on its type's range (policy_ref.hpp lifted_t), and the result is stored
 // back by the rules of every compound assignment - a clamp or wrap type
-// takes it, a checked one names a channel (x.policy(ec) += n). A division
+// takes it, a checked one names a channel (x.on_error(ec) += n). A division
 // stays with insides: a builtin integer's range holds 0.
 #define BEMAN_INSIDE_STEP_MSG                                                                              \
     "inside: x op= n stores the result back into x, which the grids cannot prove for a builtin integer - " \
-    "use a clamp or wrap type, report with x.policy(ec) op= n or x.on_error(f) op= n, or opt out with unsafe"
+    "use a clamp or wrap type, report with x.on_error(ec) op= n (or a hook, x.on_error(f)), or opt out with unsafe"
 #define BEMAN_INSIDE_INTEGER_STEP(op)                                                                \
     template <insidable B, detail::builtin_arithmetic A>                                             \
         requires detail::step_integer<A>                                                             \
