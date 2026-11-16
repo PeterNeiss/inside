@@ -1297,7 +1297,10 @@ struct wide_int {
     }
     // (A loop, not lexicographical_compare_three_way on reverse iterators,
     // which moves the ins/op bench both ways.)
-    friend constexpr std::strong_ordering operator<=>(const wide_int& a, const wide_int& b) noexcept {
+    // Always inline: a 128-bit range check would otherwise stay a call by
+    // reference in a large unit (a frame and a stack protector).
+    [[gnu::always_inline]] friend constexpr std::strong_ordering operator<=>(const wide_int& a,
+                                                                             const wide_int& b) noexcept {
         if (a.negative() != b.negative())
             return a.negative() ? std::strong_ordering::less : std::strong_ordering::greater;
         for (std::size_t i = N; i-- > 0;)
@@ -5325,6 +5328,23 @@ constexpr std::uint64_t fold_slot(std::int64_t offset) noexcept {
     return static_cast<std::uint64_t>(w < 0 ? w + slot_period<L> : w);
 }
 
+// A slot offset past int64 (a 128-bit product, say) folded the same way:
+// cold, and by value, so the caller's hot path keeps no frame for it.
+template <insidable L, typename W>
+[[gnu::cold]] [[gnu::noinline]] constexpr std::uint64_t fold_wide_slot(W offset) noexcept {
+    if constexpr (wide_integer<W>) {
+        // |offset| by the one-limb period, limb by limb; a negative offset's
+        // remainder r folds to period − r.
+        constexpr std::size_t   N   = sizeof(W) / sizeof(std::uint64_t);
+        constexpr std::uint64_t p   = static_cast<std::uint64_t>(slot_period<L>);
+        const bool              neg = offset.negative();
+        const wide_uint<N>      u   = static_cast<wide_uint<N>>(offset);
+        const std::uint64_t     r   = divmod_small<N>(neg ? wide_uint<N>{0} - u : u, p).Remainder;
+        return neg && r != 0 ? p - r : r;
+    } else
+        return static_cast<std::uint64_t>(floor_divmod(offset, static_cast<W>(slot_period<L>)).Rem);
+}
+
 // value → raw, integer math only.
 template <insidable B>
     requires q_format_fits<B>
@@ -5838,6 +5858,46 @@ template <insidable L, typename P>
 template <insidable L, typename P>
 [[nodiscard]] constexpr std::uint64_t round_quotient(std::uint64_t num, std::uint64_t den) noexcept {
     return round_split<L, P>(num / den, num % den, den);
+}
+
+// ⌊c⌋, c = −Lower/Notch: the slot offset where L's values stop being
+// negative (round_signed_slot), when it fits int64.
+template <insidable L>
+inline constexpr grid_int zero_slot_floor = notched<L> ? floor_quotient(-lower_of<L>, notch_of<L>) : grid_int{0};
+template <insidable L>
+inline constexpr bool signed_slots_fit =
+    notched<L> && !(zero_slot_floor<L> < grid_int{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_int{std::numeric_limits<std::int64_t>::max()} < zero_slot_floor<L>);
+
+// The slot rounding of round_split for any slot offset num/den (den > 0),
+// past either limit too (a clamp or a wrap takes the slot next), anchored
+// or not: the floor q moves up as P's mode decides, with the sign of the
+// value Lower + (num/den)·Notch. That value is below zero exactly when
+// num/den < c: q below ⌊c⌋, or q at ⌊c⌋ and the remainder below c's
+// fraction (0 when anchored).
+template <insidable L, typename P>
+    requires signed_slots_fit<L>
+[[nodiscard]] constexpr std::int64_t round_signed_slot(std::int64_t num, std::int64_t den) noexcept {
+    std::int64_t q = num / den, r = num % den;
+    if (r < 0) {
+        --q;
+        r += den;
+    }
+    if (r == 0)
+        return q;
+    constexpr round_mode   m        = rounding_for<L, P>;
+    constexpr std::int64_t fc       = static_cast<std::int64_t>(zero_slot_floor<L>);
+    bool                   negative = q < fc;
+    if constexpr (!anchored<L>)
+        if (q == fc) {
+            constexpr grid_rational frac = -lower_index_of<L> - grid_rational{zero_slot_floor<L>};
+            constexpr grid_int      fn = grid_numerator(frac), fd = grid_denominator(frac);
+            using W  = wide_uint<limbs_for_bits(64 + fd.bit_width())>;
+            negative = W{static_cast<std::uint64_t>(r)} * static_cast<W>(fd) <
+                       static_cast<W>(fn) * W{static_cast<std::uint64_t>(den)};
+        }
+    const auto ur = static_cast<std::uint64_t>(r), ud = static_cast<std::uint64_t>(den);
+    return q + rounds_up(m, negative, classify_remainder(m, ur, ud), ((q & 1) != 0) != lower_index_odd<L>);
 }
 
 // Forward decl — defined in assignment.hpp
@@ -7460,12 +7520,36 @@ struct assignment<L, R> {
                     return lhs;
                 } else if constexpr (uses_flag<L, P, wrap> && !clamp_action<plain_t<A>> && !wrap_action<plain_t<A>> &&
                                      codec_fold<L>) {
-                    // n and n + S·period land on the same slot: reduce n first.
-                    constexpr std::int64_t np   = c.S * slot_period<L>;
-                    const std::int64_t     nr   = n % np;
-                    const std::int64_t     onum = (nr < 0 ? nr + np : nr) * c.K - c.M;
-                    const std::int64_t     q    = onum / c.S;
-                    if (q * c.S == onum) {
+                    // n and n + S·period land on the same slot: reduce n by j
+                    // whole S·periods first. The slot (n·K − M)/S moves by
+                    // j·period·K, a whole number of periods, so the fold is
+                    // the same; a rounding takes n's sign and the parity of
+                    // the unreduced floor.
+                    constexpr std::int64_t np = c.S * slot_period<L>;
+                    std::int64_t           j = n / np, nr = n % np;
+                    if (nr < 0) {
+                        nr += np;
+                        --j;
+                    }
+                    const std::int64_t onum = nr * c.K - c.M;
+                    std::int64_t       q = onum / c.S, r = onum % c.S;
+                    if (r < 0) {
+                        r += c.S;
+                        --q;
+                    }
+                    if (r == 0) {
+                        lhs = L::from_raw(raw_from_offset<L>(fold_slot<L>(q)), unsafe);
+                        return lhs;
+                    }
+                    if constexpr (uses_flag<L, P, snap>) {
+                        constexpr round_mode m        = rounding_for<L, P>;
+                        constexpr bool       step_odd = ((slot_period<L> * c.K) & 1) != 0;
+                        const bool odd = (((q ^ (step_odd ? j : std::int64_t{0})) & 1) != 0) != lower_index_odd<L>;
+                        q += rounds_up(
+                            m,
+                            n < 0,
+                            classify_remainder(m, static_cast<std::uint64_t>(r), static_cast<std::uint64_t>(c.S)),
+                            odd);
                         lhs = L::from_raw(raw_from_offset<L>(fold_slot<L>(q)), unsafe);
                         return lhs;
                     }
@@ -8171,13 +8255,17 @@ struct assignment<L, R> {
             affine_map_t       m{0, 0, 0, true};
             if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add) || mul_overflow(o_d, f_d, &m.Den))
                 return no;
-            // worst-case |numerator| over R's offset range [0, max_index]
-            if (!std::in_range<std::int64_t>(max_index_of<R>))
+            // The numerator Add + r·Mul over R's offsets r in [0, max_index]
+            // runs from Add to Add + max_index·Mul (Mul > 0): both ends in
+            // int64, and Add not −2^63 (its magnitude is taken). num: the
+            // worst |numerator|.
+            if (!std::in_range<std::int64_t>(max_index_of<R>) || m.Add == std::numeric_limits<std::int64_t>::min())
                 return no;
             const std::int64_t rmax = static_cast<std::int64_t>(max_index_of<R>);
-            std::int64_t       term, num;
-            if (mul_overflow(rmax, m.Mul, &term) || add_overflow(term, m.Add < 0 ? -m.Add : m.Add, &num))
+            std::int64_t       term, hi;
+            if (mul_overflow(rmax, m.Mul, &term) || add_overflow(term, m.Add, &hi))
                 return no;
+            const std::int64_t num = std::max(m.Add < 0 ? -m.Add : m.Add, hi < 0 ? -hi : hi);
             // round_quotient equivalence: rounding is reduction-invariant, but
             // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
             // int64 — mirror those checks for the unreduced den so both forms
@@ -8370,6 +8458,19 @@ struct assignment<L, R> {
                                      !wide_valued<L>) {
                     lhs = L::from_raw(endpoint_raw<L>(raw < static_cast<W>(raw_lo_exact<L>)), unsafe);
                     return lhs;
+                } else if constexpr (uses_flag<L, P, wrap> && !clamp_action<plain_t<A>> && !wrap_action<plain_t<A>> &&
+                                     !wide_valued<L> &&
+                                     max_index_of<L> < std::uint64_t{std::numeric_limits<std::int64_t>::max()}) {
+                    // A wrap folds the slot raw − raw_lo (the period fits
+                    // int64): in int64 when the slot fits (a step a little
+                    // past a limit), else in W.
+                    const W o = raw - static_cast<W>(raw_lo_exact<L>);
+                    lhs       = L::from_raw(raw_from_offset<L>(o >= W{std::numeric_limits<std::int64_t>::min()} &&
+                                                                       o <= W{std::numeric_limits<std::int64_t>::max()}
+                                                                   ? fold_slot<L>(static_cast<std::int64_t>(o))
+                                                                   : fold_wide_slot<L>(o)),
+                                            unsafe);
+                    return lhs;
                 }
             }
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
@@ -8392,28 +8493,20 @@ struct assignment<L, R> {
         }
     }();
     // The out-of-range store in integers: a clamp or wrap policy with no
-    // hook (a hook needs the exact overshoot or carry), on an anchored
-    // lattice within int64 whose slots fold in int64, from an integer or
+    // hook (a hook needs the exact overshoot or carry), on a lattice within
+    // int64 (anchored or not) whose slots fold in int64, from an integer or
     // affine raw mapping.
     template <typename P, typename A>
     static constexpr bool integer_out_of_range = [] {
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || point_storage<L> || !notched<L> ||
                       !values_fit_int64<L> || !values_fit_int64<R>)
             return false;
-        else if constexpr (!anchored<L> || !lower_index_fits_int64<L> || !(max_index_of<L> < (std::uint64_t{1} << 62)))
+        else if constexpr (!(max_index_of<L> < (std::uint64_t{1} << 62)))
             return false;
         else if constexpr (is_integer_mapping)
             return mapped_slots_fit;
-        else if constexpr (!affine_map.Ok)
-            return false;
-        else { // N = num + Jlo·Den (the value index over Den) stays in int64
-            std::int64_t       t, n;
-            const std::int64_t jlo  = signed_numerator(to_rational(lower_index_of<L>));
-            const std::int64_t rmax = static_cast<std::int64_t>(max_index_of<R>);
-            return !mul_overflow(jlo, affine_map.Den, &t) && !mul_overflow(rmax, affine_map.Mul, &n) &&
-                   !add_overflow(n, affine_map.Add < 0 ? -affine_map.Add : affine_map.Add, &n) &&
-                   !add_overflow(n, t < 0 ? -t : t, &n);
-        }
+        else
+            return affine_map.Ok && signed_slots_fit<L>;
     }();
     // The slot of rhs on L, rounded by P's mode in value space, possibly
     // outside 0 … max_index (affine mapping; integer_out_of_range).
@@ -8421,21 +8514,9 @@ struct assignment<L, R> {
     static constexpr std::int64_t rounded_slot(const R& rhs) {
         if constexpr (is_integer_mapping)
             return map_raw(rhs.raw()) - raw_lo<L>; // (integer_out_of_range: mapped_slots_fit)
-        else {
-            constexpr std::int64_t jlo = signed_numerator(to_rational(lower_index_of<L>));
-            constexpr std::int64_t den = affine_map.Den;
-            const std::int64_t n = affine_map.Add + (static_cast<std::int64_t>(rhs.raw()) - raw_lo<R>)*affine_map.Mul +
-                                   jlo * den; // the value index of rhs, over den
-            const std::int64_t q = n / den, r = n % den;
-            constexpr round_mode m = rounding_for<L, P>;
-            const bool away = r != 0 && rounds_away(m,
-                                                    n < 0,
-                                                    classify_remainder(m,
-                                                                       static_cast<std::uint64_t>(r < 0 ? -r : r),
-                                                                       static_cast<std::uint64_t>(den)),
-                                                    (q & 1) != 0);
-            return (away ? q + (n < 0 ? -1 : 1) : q) - jlo;
-        }
+        else
+            return round_signed_slot<L, P>(
+                affine_map.Add + (static_cast<std::int64_t>(rhs.raw()) - raw_lo<R>)*affine_map.Mul, affine_map.Den);
     }
 
     // wrap/clamp bring any value into range, so a disjoint rhs interval is fine

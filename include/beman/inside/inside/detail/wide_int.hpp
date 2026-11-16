@@ -212,7 +212,10 @@ struct wide_int {
     }
     // (A loop, not lexicographical_compare_three_way on reverse iterators,
     // which moves the ins/op bench both ways.)
-    friend constexpr std::strong_ordering operator<=>(const wide_int& a, const wide_int& b) noexcept {
+    // Always inline: a 128-bit range check would otherwise stay a call by
+    // reference in a large unit (a frame and a stack protector).
+    [[gnu::always_inline]] friend constexpr std::strong_ordering operator<=>(const wide_int& a,
+                                                                             const wide_int& b) noexcept {
         if (a.negative() != b.negative())
             return a.negative() ? std::strong_ordering::less : std::strong_ordering::greater;
         for (std::size_t i = N; i-- > 0;)

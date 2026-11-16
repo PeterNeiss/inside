@@ -62,17 +62,21 @@ void expect_same(const V& v, const char* what) {
 
 template <policy_flag F>
 void integer_sweep() {
-    using n60  = inside<{{-600, 600}, 60}>;
-    using n72  = inside<{{-7, 14}, just<7, 2>}>;
-    using un   = inside<{{1, 601}, 60}>;
-    using half = inside<{{just<1, 2>, just<201, 2>}, 1}>;
-    using q88  = inside<{{0, 255}, per<256>}>;
+    using n60   = inside<{{-600, 600}, 60}>;
+    using n72   = inside<{{-7, 14}, just<7, 2>}>;
+    using un    = inside<{{1, 601}, 60}>;
+    using half  = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    using q88   = inside<{{0, 255}, per<256>}>;
+    using n53   = inside<{{-5, 5}, just<5, 3>}>;          // period·K odd: the parity carries
+    using nhalf = inside<{{just<-7, 2>, just<9, 2>}, 1}>; // unanchored below 0
     for (std::int64_t n = -1000; n <= 1000; ++n) {
         expect_same<n60, F>(n, "n60");
         expect_same<n72, F>(n, "n72");
         expect_same<un, F>(n, "un");
         expect_same<half, F>(n, "half");
         expect_same<q88, F>(n, "q88");
+        expect_same<n53, F>(n, "n53");
+        expect_same<nhalf, F>(n, "nhalf");
     }
 }
 
@@ -87,6 +91,10 @@ TEST(FastPathTest, integer_stores_match_the_exact_store) {
     integer_sweep<clamp | round_floor>();
     integer_sweep<wrap>();
     integer_sweep<wrap | round_half_even>();
+    integer_sweep<wrap | round_half_away>();
+    integer_sweep<wrap | round_toward_zero>();
+    integer_sweep<wrap | round_floor>();
+    integer_sweep<wrap | round_ceil>();
 }
 
 template <class L, class R, policy_flag F>
@@ -110,6 +118,19 @@ void cross_grid() {
     inside_sweep<dec3, dec2, F>("dec2->dec3");
     inside_sweep<small, s32, F>("s32->small");
     inside_sweep<q114, q88, F>("q88->q114");
+    // unanchored targets: Lower off the notch's multiples, above and below 0
+    using un    = inside<{{1, 601}, 60}>;
+    using uneg  = inside<{{-599, 601}, 60}>;
+    using half  = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    using nhalf = inside<{{just<-7, 2>, just<9, 2>}, 1}>;
+    inside_sweep<un, n60, F>("n60->un");
+    inside_sweep<un, s32, F>("s32->un");
+    inside_sweep<uneg, s32, F>("s32->uneg");
+    inside_sweep<half, s32, F>("s32->half");
+    inside_sweep<half, dec2, F>("dec2->half");
+    inside_sweep<nhalf, dec2, F>("dec2->nhalf");
+    inside_sweep<nhalf, small, F>("small->nhalf");
+    inside_sweep<nhalf, half, F>("half->nhalf");
 }
 
 TEST(FastPathTest, cross_grid_stores_match_the_exact_store) {
@@ -121,6 +142,47 @@ TEST(FastPathTest, cross_grid_stores_match_the_exact_store) {
     cross_grid<clamp | round_half_even>();
     cross_grid<wrap | round_half_even>();
     cross_grid<wrap | round_toward_zero>();
+    cross_grid<round_toward_zero>();
+    cross_grid<clamp | round_half_away>();
+    cross_grid<wrap | round_half_away>();
+    cross_grid<wrap | round_floor>();
+}
+
+// Products stored back onto their factors' grid: a Q16.16 product's
+// numerator spans most of int64.
+template <policy_flag F>
+void products_stored_back() {
+    using q1616                   = inside<{{-30000, 30000}, per<65536>}>; // raw: the index from Lower, 0 … 3932160000
+    using half                    = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    constexpr std::int64_t raws[] = {0,
+                                     1,
+                                     65535,
+                                     65537,
+                                     123456789,
+                                     1966014464,
+                                     1966080000,
+                                     1966080001,
+                                     1966145536,
+                                     2000000000,
+                                     3932159999,
+                                     3932160000};
+    for (const std::int64_t a : raws)
+        for (const std::int64_t b : raws)
+            expect_same<q1616, F>(q1616::from_raw(a, unsafe) * q1616::from_raw(b, unsafe), "q1616*q1616");
+    for (const auto a : values<half>)
+        for (const auto b : {half{just<1, 2>}, half{just<3, 2>}, half{just<101, 2>}, half{just<201, 2>}})
+            expect_same<half, F>(a * b, "half*half");
+}
+
+TEST(FastPathTest, products_stored_back_match_the_exact_store) {
+    products_stored_back<round_half_even>();
+    products_stored_back<round_floor>();
+    products_stored_back<round_toward_zero>();
+    products_stored_back<clamp | round_floor>();
+    products_stored_back<clamp | round_half_away>();
+    products_stored_back<wrap | round_half_even>();
+    products_stored_back<wrap | round_toward_zero>();
+    products_stored_back<unsafe | round_half_even>();
 }
 
 template <policy_flag F>
@@ -206,9 +268,10 @@ TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
         }
 }
 
-TEST(FastPathTest, a_wide_product_clamps_to_the_limit) {
+TEST(FastPathTest, a_wide_product_clamps_and_wraps) {
     using s64 = inside<{-4000000000000000000, 4000000000000000000}>;
     using c64 = inside<{-4000000000000000000, 4000000000000000000}, clamp>;
+    using w64 = inside<{-4000000000000000000, 4000000000000000000}, wrap>;
     for (const std::int64_t a : {std::int64_t{-3000000000},
                                  std::int64_t{-7},
                                  std::int64_t{0},
@@ -221,6 +284,10 @@ TEST(FastPathTest, a_wide_product_clamps_to_the_limit) {
             x *= c64::from_raw(b, unsafe);
             const auto exact = exact_store<c64, clamp>(s64::from_raw(a, unsafe) * s64::from_raw(b, unsafe));
             EXPECT_EQ(x.raw(), exact->raw()) << a << " * " << b;
+            w64 y = w64::from_raw(a, unsafe);
+            y *= w64::from_raw(b, unsafe);
+            const auto folded = exact_store<w64, wrap>(s64::from_raw(a, unsafe) * s64::from_raw(b, unsafe));
+            EXPECT_EQ(y.raw(), folded->raw()) << a << " * " << b << " (wrap)";
         }
 }
 

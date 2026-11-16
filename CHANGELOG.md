@@ -64,6 +64,15 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
     decimal text in one pass (about 2.5× faster).
   - `sum` and the matrix products add 64-bit unit counts in int64 blocks and
     store the total onto a lattice with one rounded division.
+  - A rounded or wrapped store onto an unanchored lattice (Lower off the
+    notch's multiples) rounds its slot in integers, past the limits too, and
+    so does a rounding wrap of an integer onto a coarse notch: `x *= y` on
+    `{{1/2, 201/2}, 1}` under `wrap | round_half_even` 147 ns to 3.6 ns, an
+    integer onto a notch of 7/2 under the same policy 38 ns to 1.8 ns. A
+    Q16.16 product stored back takes the integer path too (190 ns to 2.5 ns).
+  - A product of two 64-bit values stored back under `wrap` folds its
+    128-bit slot by one-limb divisions (105 ns to 5 ns), and the 128-bit
+    range checks inline (`clamp`: 5.3 ns to 1.4 ns).
 
 ## 0.9.0 — 2026-11-15
 
