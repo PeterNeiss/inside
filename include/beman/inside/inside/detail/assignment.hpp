@@ -428,13 +428,13 @@ struct assignment<L, R> {
     template <typename P>
     using recording_policy = call_policy<P::Flags, error_ref>;
 
-    // Out of line, and by value (an empty action too): a reference to a
-    // caller's local would make it escape the hot path's frame. The store runs
-    // on a copy of the lower limit, and a failure is returned, not stored: a failed store
-    // leaves lhs intact. The policy hears of it here; an on_error action,
-    // which gets lhs, from store_fine_double.
+    // Out of line, and by value (an empty action too), with P's flags only:
+    // a reference to a caller's local (an error&) would make it escape the
+    // hot path's frame. The store runs on a copy of the lower limit, and a
+    // failure is returned, not stored: a failed store leaves lhs intact, and
+    // the caller's policy (or its on_error action) hears of it.
     template <typename P, typename A>
-    [[gnu::cold]] [[gnu::noinline]] static constexpr fine_result_t fine_double_value(double rhs, P policy, A action) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr fine_result_t fine_double_value(double rhs, A action) {
         L r = [] {
             if constexpr (rational_storage<L>)
                 return L::from_raw(lower64<L>, unsafe);
@@ -450,11 +450,8 @@ struct assignment<L, R> {
             assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, error c, auto&&) {
                                 code = c;
                             }));
-        else {
+        else
             assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, std::forward<A>(action));
-            if (code != error{})
-                policy.report(code);
-        }
         if constexpr (rational_storage<L>) {
             if (code == error{})
                 return {r.raw()};
@@ -465,20 +462,16 @@ struct assignment<L, R> {
         } else
             return {r.raw(), code};
     }
-    // Whether a failure returns (error&, on_error): else it raised, and lhs
-    // takes the result unconditionally — no branch on the hot path's tail.
-    template <typename P, typename A>
-    static constexpr bool fine_failure_returns = std::is_same_v<P, recording_policy<P>> || error_action<A>;
     template <typename P, typename A>
     static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
         using Act    = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
-        const auto r = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
-        if constexpr (!fine_failure_returns<plain_t<P>, plain_t<A>>)
-            lhs = L::from_raw(r.Raw, unsafe);
-        else if (r.code() == error{}) [[likely]]
+        const auto r = fine_double_value<call_policy<plain_t<P>::Flags>, Act>(rhs, std::forward<A>(action));
+        if (r.code() == error{}) [[likely]]
             lhs = L::from_raw(r.Raw, unsafe);
         else if constexpr (error_action<plain_t<A>>)
             action.Fn(lhs, r.code(), error_message(r.code()));
+        else
+            policy.report(r.code()); // records into an error&, or raises
     }
 
     template <typename P, typename A = no_action>
@@ -781,6 +774,16 @@ struct assignment<L, R> {
   private:
     template <typename P, typename A>
     static constexpr L& assign_builtin(L& lhs, const R& rhs, P&& policy, A&& action) {
+        // Limits that are doubles: one test passes a value in range, and
+        // fails NaN, ±inf and every |v| ≥ 2^64 too (the limits are below), so
+        // only the rest takes the checks below.
+        if constexpr (double_bounds_exact) {
+            constexpr double lo = static_cast<double>(lower64<L>), hi = static_cast<double>(upper64<L>);
+            if (static_cast<double>(rhs) >= lo && static_cast<double>(rhs) <= hi) [[likely]] {
+                store_checked(lhs, rhs, policy, action);
+                return lhs;
+            }
+        }
         // NaN / ±inf: no rational value to round or range-check. clamp saturates
         // an infinity; everything else reports not_finite through the policy.
         if constexpr (std::floating_point<R>)

@@ -10,11 +10,13 @@
 
 #include <gtest/gtest.h>
 
+#include <bit>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <expected>
 #include <limits>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -234,6 +236,44 @@ TEST(FastPathTest, double_stores_match_the_exact_store) {
     double_sweep<round_half_even>();
     double_sweep<checked>();
     double_sweep<clamp | round_half_even>();
+}
+
+// to<float>'s tie test reads float's dropped bits off the double: against
+// the float round trip (which decides ties at every scale) on random doubles
+// and on constructed ties and their neighbours. It may send a tiny value or
+// one past float's range to the exact path, but never misses a tie.
+TEST(FastPathTest, the_float_tie_test_matches_the_round_trip) {
+    auto round_trip = [](double d) {
+        const float f = static_cast<float>(d);
+        if (!std::isfinite(f))
+            return true;
+        const double g = static_cast<double>(f) + 2 * (d - static_cast<double>(f));
+        return g != static_cast<double>(f) && static_cast<double>(static_cast<float>(g)) == g;
+    };
+    auto check = [&](double d) {
+        if (!std::isfinite(d))
+            return;
+        const bool bits = bd::narrow_midpoint<float>(d), tie = round_trip(d);
+        if (tie) {
+            EXPECT_TRUE(bits) << d;
+        } else if (std::fabs(d) >= 0x1p-126 && std::fabs(d) <= std::numeric_limits<float>::max()) {
+            EXPECT_FALSE(bits) << d;
+        }
+    };
+    std::mt19937_64 g{7};
+    for (int i = 0; i < 200000; ++i) {
+        check(std::bit_cast<double>(g()));
+        const float f = std::bit_cast<float>(static_cast<std::uint32_t>(g()));
+        if (std::isfinite(f) && f != 0) {
+            const double h = (static_cast<double>(std::nextafter(f, std::numeric_limits<float>::infinity())) +
+                              static_cast<double>(f)) /
+                             2;
+            for (const double d : {h, -h, std::nextafter(h, 0.0), std::nextafter(h, 1e300)})
+                check(d);
+        }
+    }
+    for (const double d : {0.0, -0.0, 0x1p-126, 0x1p-127, 0x1.000001p-126, 0x1.fffffep127, 0x1.ffffffp127, 5e-324})
+        check(d);
 }
 
 TEST(FastPathTest, a_full_int64_source_clamps_and_wraps) {

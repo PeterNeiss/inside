@@ -41,6 +41,12 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
+// The T nearest x's exact value: cold, and by value, so the exact value's
+// wide local keeps no frame in the caller's hot path (to<float>).
+template <std::floating_point T, typename B>
+[[gnu::cold]] [[gnu::noinline]] constexpr T exact_float(B x) {
+    return nearest_float<T>(exact_of(x));
+}
 // Selects inside's raw constructor (from_raw).
 struct raw_tag {};
 
@@ -645,7 +651,7 @@ struct inside : detail::raw_holder<G, P> {
         else if constexpr (sizeof(T) < sizeof(double)) {
             const double d = detail::as_double(*this);
             if (detail::narrow_midpoint<T>(d)) [[unlikely]]
-                return detail::nearest_float<T>(detail::exact_of(*this));
+                return detail::exact_float<T>(*this);
             return static_cast<T>(d);
         } else
             return static_cast<T>(detail::as_double(*this));
