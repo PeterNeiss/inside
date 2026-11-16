@@ -897,24 +897,32 @@ TEST(RangeTest, uniform_covers_every_slot_and_stays_on_the_grid) {
 
 // The draw is the library's own, so these sequences are the same on every
 // standard library: a 64-bit generator (one output per word) and a 31-bit one
-// (bits gathered from several outputs).
+// (bits gathered from several outputs). Each index is the high word of
+// word·(N + 1) (Lemire's multiply): the first below is ⌊w·11 / 2^64⌋ − 5.
 TEST(RangeTest, uniform_draws_are_pinned_across_standard_libraries) {
     using idx = inside<{-5, 5}>;
     std::mt19937_64 mt{42};
-    for (int v : {1, 3, 5, 0, -5, -5, 1, -4})
+#if BEMAN_INSIDE_HAS_INT128
+    {
+        std::mt19937_64     copy{42};
+        const std::uint64_t w = copy();
+        EXPECT_EQ(static_cast<long long>(static_cast<unsigned __int128>(w) * 11 >> 64) - 5, 3);
+    }
+#endif
+    for (int v : {3, 2, 3, -4, 4, -4, 1, -1})
         EXPECT_EQ(uniform<idx>(mt), v);
     std::minstd_rand ms{42};
-    for (int v : {1, 0, -2, 3, 0, 5, -3, -2})
+    for (int v : {-2, 0, -3, -5, -3, 0, -1, -5})
         EXPECT_EQ(uniform<idx>(ms), v);
 
     using quarter = inside<{{-1, 1}, per<4>}>;
     std::mt19937_64 mq{42};
-    for (int q : {2, 4, 1, -4, -4, 2, -3, 2}) // in quarters
+    for (int q : {2, 1, 2, -3, 4, -4, 1, -1}) // in quarters
         EXPECT_EQ((rational{uniform<quarter>(mq)}), (rational{q, 4}));
 
     using big = inside<{0, 1'000'000}>;
     std::minstd_rand mb{42};
-    for (int v : {876198, 72741, 579955, 669995, 974328, 246765, 169285, 905162})
+    for (int v : {344601, 528440, 248991, 48048, 231137, 521369, 435869, 7259})
         EXPECT_EQ(uniform<big>(mb), v);
 }
 
