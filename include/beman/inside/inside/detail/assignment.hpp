@@ -156,20 +156,21 @@ struct assignment<L, R> {
 };
 
 //---------------------------------------------------------------------------
-// The integer store of an unanchored lattice: Notch = S/K and Lower = M/K
-// over their common denominator K. MaxDen bounds a source denominator so
+// The integer store of a lattice the Q-format shortcut does not cover (an
+// unanchored one, or a notch that is not 1/K: 60, 5/100): Notch = S/K and
+// Lower = M/K over their common denominator K. MaxDen bounds a source denominator so
 // that num·K, M·aden and aden·S stay in int64 (|num| ≤ |value|·aden, and
 // every in-range |value| is at most Mag); Ok when the grid allows any.
 //---------------------------------------------------------------------------
-struct unanchored_codec_t {
+struct lattice_codec_t {
     std::int64_t  K, S, M;
     std::uint64_t MaxDen;
     bool          Ok;
 };
 template <insidable L>
-inline constexpr unanchored_codec_t unanchored_codec = [] {
-    constexpr unanchored_codec_t no{0, 0, 0, 0, false};
-    if constexpr (anchored<L> || point_storage<L> || !values_fit_int64<L>) // unanchored ⇒ index raw
+inline constexpr lattice_codec_t lattice_codec = [] {
+    constexpr lattice_codec_t no{0, 0, 0, 0, false};
+    if constexpr (!notched<L> || q_format_fits<L> || point_storage<L> || !values_fit_int64<L>)
         return no;
     else {
         constexpr std::uint64_t cap = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
@@ -188,11 +189,11 @@ inline constexpr unanchored_codec_t unanchored_codec = [] {
             return no;
         const std::uint64_t by_num = cap / kms; // num·K and M·aden each below cap/2
         const std::uint64_t by_den = cap / s;   // aden·S
-        return unanchored_codec_t{static_cast<std::int64_t>(k),
-                                  static_cast<std::int64_t>(s),
-                                  lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
-                                  by_num < by_den ? by_num : by_den,
-                                  true};
+        return lattice_codec_t{static_cast<std::int64_t>(k),
+                               static_cast<std::int64_t>(s),
+                               lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
+                               by_num < by_den ? by_num : by_den,
+                               true};
     }
 }();
 
@@ -521,11 +522,11 @@ struct assignment<L, R> {
                 }
             }
 
-            // The same shortcut for an unanchored lattice: with K the common
+            // The same shortcut for every other lattice: with K the common
             // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
             // offset is (num·K − m·aden)/(aden·sN).
-            if constexpr (unanchored_codec<L>.Ok) {
-                constexpr auto      c    = unanchored_codec<L>;
+            if constexpr (lattice_codec<L>.Ok) {
+                constexpr auto      c    = lattice_codec<L>;
                 const std::uint64_t aden = abs_den(rv.Den);
                 if (aden <= c.MaxDen) {
                     // Unreduced: MaxDen bounds these products already, and the
@@ -542,7 +543,7 @@ struct assignment<L, R> {
 
             // The general slot: out of line and cold behind a shortcut above
             // (it is then rare), inline where it is the store's only path.
-            constexpr bool         shortcut = (q_format_fits<L> && notched<L>) || unanchored_codec<L>.Ok;
+            constexpr bool         shortcut = (q_format_fits<L> && notched<L>) || lattice_codec<L>.Ok;
             const wide_slot_result slot     = shortcut ? rational_slot_cold<P>(rv) : rational_slot<P>(rv);
             if constexpr (!has_round_flag)
                 if (!slot.Exact && policy.checks_rounding()) [[unlikely]]

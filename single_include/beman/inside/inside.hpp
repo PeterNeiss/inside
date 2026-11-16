@@ -4819,6 +4819,12 @@ struct error_ref {
     constexpr error_ref(error& ec) : Code{ec} {}
     error& Code;
 };
+// The error of a function that returns it (try_store): recorded inline, so
+// the function's local never has its address taken by a call and stays in a
+// register (no stack slot, no stack protector on the hot path).
+struct local_error_ref : error_ref {
+    using error_ref::error_ref;
+};
 
 // The error channel's record, out of line: a failure is the rare path, and
 // inline it would sit in every checked loop. The first error is kept.
@@ -4831,7 +4837,7 @@ template <policy_flag F = none, typename E = empty_ref>
 struct call_policy : E {
     constexpr call_policy() = default;
     constexpr call_policy(error& ec)
-        requires std::same_as<E, error_ref>
+        requires std::derived_from<E, error_ref>
         : E(ec) {}
 
     static constexpr policy_flag Flags = F;
@@ -4861,7 +4867,10 @@ struct call_policy : E {
     // fix. At run time it is a precondition (a cursor past its end) or a
     // library bug, reported to the installed handler.
     constexpr void report(error code) const {
-        if constexpr (std::is_same_v<E, error_ref>)
+        if constexpr (std::is_same_v<E, local_error_ref>) {
+            if (E::Code == error{})
+                E::Code = code;
+        } else if constexpr (std::is_same_v<E, error_ref>)
             record_error(E::Code, code);
         else {
             if consteval {
@@ -4906,8 +4915,8 @@ inline constexpr policy_flag policy_of_impl<call_policy<F, E>> = F;
 // failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
 template <typename T>
 inline constexpr bool uses_error_ref = false;
-template <policy_flag F>
-inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
+template <policy_flag F, std::derived_from<error_ref> E>
+inline constexpr bool uses_error_ref<call_policy<F, E>> = true;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -4944,7 +4953,9 @@ constexpr std::expected<Result, error> report_or_unexpected(P&& policy, error co
 namespace detail {
 template <policy_flag O, class Pol>
 constexpr auto with_flags(Pol&& pol) {
-    if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
+    if constexpr (std::derived_from<std::remove_cvref_t<Pol>, local_error_ref>)
+        return call_policy<O, local_error_ref>{pol.Code};
+    else if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
         return call_policy<O, error_ref>{pol.Code};
     else
         return call_policy<O, empty_ref>{};
@@ -6810,9 +6821,23 @@ struct unit_fold {
         W Carry;
         W Offset;
     };
+    // The source reaches at most one period past either limit (a sum or a
+    // difference of two values of L does): one add or subtract folds it.
+    static constexpr bool one_period =
+        !(SrcLo < lo - (hi - lo + grid_int{1})) && !(hi + (hi - lo + grid_int{1}) < SrcHi);
+
     static constexpr folded fold(const W& v) noexcept {
-        const auto [q, w] = floor_divmod(v - lower, span + W{1});
-        return {q, w};
+        const W o = v - lower, period = span + W{1};
+        if constexpr (one_period) {
+            if (o < W{0})
+                return {W{0} - W{1}, o + period};
+            if (span < o)
+                return {W{1}, o - period};
+            return {W{0}, o};
+        } else {
+            const auto [q, w] = floor_divmod(o, period);
+            return {q, w};
+        }
     }
 };
 
@@ -7179,20 +7204,21 @@ struct assignment<L, R> {
 };
 
 //---------------------------------------------------------------------------
-// The integer store of an unanchored lattice: Notch = S/K and Lower = M/K
-// over their common denominator K. MaxDen bounds a source denominator so
+// The integer store of a lattice the Q-format shortcut does not cover (an
+// unanchored one, or a notch that is not 1/K: 60, 5/100): Notch = S/K and
+// Lower = M/K over their common denominator K. MaxDen bounds a source denominator so
 // that num·K, M·aden and aden·S stay in int64 (|num| ≤ |value|·aden, and
 // every in-range |value| is at most Mag); Ok when the grid allows any.
 //---------------------------------------------------------------------------
-struct unanchored_codec_t {
+struct lattice_codec_t {
     std::int64_t  K, S, M;
     std::uint64_t MaxDen;
     bool          Ok;
 };
 template <insidable L>
-inline constexpr unanchored_codec_t unanchored_codec = [] {
-    constexpr unanchored_codec_t no{0, 0, 0, 0, false};
-    if constexpr (anchored<L> || point_storage<L> || !values_fit_int64<L>) // unanchored ⇒ index raw
+inline constexpr lattice_codec_t lattice_codec = [] {
+    constexpr lattice_codec_t no{0, 0, 0, 0, false};
+    if constexpr (!notched<L> || q_format_fits<L> || point_storage<L> || !values_fit_int64<L>)
         return no;
     else {
         constexpr std::uint64_t cap = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
@@ -7211,11 +7237,11 @@ inline constexpr unanchored_codec_t unanchored_codec = [] {
             return no;
         const std::uint64_t by_num = cap / kms; // num·K and M·aden each below cap/2
         const std::uint64_t by_den = cap / s;   // aden·S
-        return unanchored_codec_t{static_cast<std::int64_t>(k),
-                                  static_cast<std::int64_t>(s),
-                                  lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
-                                  by_num < by_den ? by_num : by_den,
-                                  true};
+        return lattice_codec_t{static_cast<std::int64_t>(k),
+                               static_cast<std::int64_t>(s),
+                               lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
+                               by_num < by_den ? by_num : by_den,
+                               true};
     }
 }();
 
@@ -7544,11 +7570,11 @@ struct assignment<L, R> {
                 }
             }
 
-            // The same shortcut for an unanchored lattice: with K the common
+            // The same shortcut for every other lattice: with K the common
             // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
             // offset is (num·K − m·aden)/(aden·sN).
-            if constexpr (unanchored_codec<L>.Ok) {
-                constexpr auto      c    = unanchored_codec<L>;
+            if constexpr (lattice_codec<L>.Ok) {
+                constexpr auto      c    = lattice_codec<L>;
                 const std::uint64_t aden = abs_den(rv.Den);
                 if (aden <= c.MaxDen) {
                     // Unreduced: MaxDen bounds these products already, and the
@@ -7565,7 +7591,7 @@ struct assignment<L, R> {
 
             // The general slot: out of line and cold behind a shortcut above
             // (it is then rare), inline where it is the store's only path.
-            constexpr bool         shortcut = (q_format_fits<L> && notched<L>) || unanchored_codec<L>.Ok;
+            constexpr bool         shortcut = (q_format_fits<L> && notched<L>) || lattice_codec<L>.Ok;
             const wide_slot_result slot     = shortcut ? rational_slot_cold<P>(rv) : rational_slot<P>(rv);
             if constexpr (!has_round_flag)
                 if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
@@ -9425,7 +9451,7 @@ template <class B, policy_flag F, class Store>
 constexpr std::expected<B, error> try_store(Store store) {
     error ec{};
     B     b{};
-    store(b, make_policy<F>(ec));
+    store(b, call_policy<F, local_error_ref>{ec});
     if (ec != error{})
         return std::unexpected{ec};
     return b;
@@ -9876,7 +9902,18 @@ struct inside : detail::raw_holder<G, P> {
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_int64<inside>)
             return static_cast<T>(detail::to_value(*this));
-        else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
+        else if constexpr (detail::integer_lattice<inside> && detail::values_fit_int64<inside>) {
+            // An integer in int64: two compares at most. (A limit that is
+            // checked lies inside the grid's interval, so it fits int64.)
+            const std::int64_t v = detail::to_value(*this);
+            if constexpr (check_lo)
+                if (v < static_cast<std::int64_t>(lim::min()))
+                    return std::unexpected{error::overflow};
+            if constexpr (check_hi)
+                if (v > static_cast<std::int64_t>(lim::max()))
+                    return std::unexpected{error::overflow};
+            return static_cast<T>(v);
+        } else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
             const auto f = detail::exact_of(*this);
             const auto q = detail::rounded_div_exact<mode>(f.Num, f.Den);
             if constexpr (!rounds && !detail::integer_lattice<inside>)
@@ -9888,6 +9925,30 @@ struct inside : detail::raw_holder<G, P> {
                     return std::unexpected{error::overflow};
             if constexpr (check_hi)
                 if (t > decltype(t){lim::max()})
+                    return std::unexpected{error::overflow};
+            return static_cast<T>(t);
+        } else if constexpr (detail::q_format_fits<inside>) {
+            // Notch 1/K over an integer Lower: the value is n/K with n in
+            // int64 and K a constant, so one division by a constant rounds
+            // it (no fraction to reduce).
+            constexpr std::int64_t K = detail::abs_den(detail::notch64<inside>.Den);
+            const std::int64_t     n = detail::raw_int64(*this) + detail::lower_int64<inside> * K;
+            std::int64_t           t = n / K;
+            if (const std::int64_t r = n % K; r != 0) {
+                if constexpr (!rounds)
+                    return std::unexpected{error::rounding_error};
+                const std::uint64_t ar = static_cast<std::uint64_t>(r < 0 ? -r : r);
+                if (detail::rounds_away(mode,
+                                        r < 0,
+                                        detail::classify_remainder(mode, ar, static_cast<std::uint64_t>(K)),
+                                        (t & 1) != 0))
+                    t += r < 0 ? -1 : 1;
+            }
+            if constexpr (check_lo)
+                if (t < static_cast<std::int64_t>(lim::min()))
+                    return std::unexpected{error::overflow};
+            if constexpr (check_hi)
+                if (t > static_cast<std::int64_t>(lim::max()))
                     return std::unexpected{error::overflow};
             return static_cast<T>(t);
         } else {
@@ -10236,21 +10297,31 @@ struct inside : detail::raw_holder<G, P> {
         if constexpr (point_delta_ok<R>) {
             using W           = raw_work_t<point_delta<R>, point_delta<R>>;
             constexpr W delta = static_cast<W>(point_delta<R>);
-            return store_raw<W>(static_cast<W>(Raw) + delta);
+            return store_raw<W, one_period(point_delta<R>, point_delta<R>)>(static_cast<W>(Raw) + delta);
         } else if constexpr (raw_add_ok<R>) {
             using W = raw_work_t<detail::raw_lo_exact<R> + add_bias<R>, detail::raw_hi_exact<R> + add_bias<R>>;
             using D = delta_work_t<R>;
             constexpr D bias = static_cast<D>(add_bias<R>);
-            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(static_cast<D>(rhs.raw()) + bias));
+            return store_raw<W,
+                             one_period(detail::raw_lo_exact<R> + add_bias<R>, detail::raw_hi_exact<R> + add_bias<R>)>(
+                static_cast<W>(Raw) + static_cast<W>(static_cast<D>(rhs.raw()) + bias));
         } else
             return assign_op_result(*this + rhs);
     }
 
   private:
+    // Whether a raw delta in [lo, hi] moves a raw at most one period past
+    // either limit: a wrap is then one add or subtract, not a modulo.
+    static consteval bool one_period(const detail::grid_int& lo, const detail::grid_int& hi) {
+        const detail::grid_int period =
+            detail::raw_hi_exact<inside> - detail::raw_lo_exact<inside> + detail::grid_int{1};
+        return !(lo < -period) && !(period < hi);
+    }
+
     // Store a raw computed by the raw-space fast paths of += and -=, in their
     // work type W. Under clamp/wrap/checked an out-of-range raw is clamped,
-    // wrapped or reported.
-    template <detail::raw_integer W>
+    // wrapped or reported. Near: the delta is within one period (one_period).
+    template <detail::raw_integer W, bool Near = false>
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
@@ -10258,6 +10329,8 @@ struct inside : detail::raw_holder<G, P> {
             if (new_raw < lo || new_raw > hi) {
                 if constexpr (P & clamp)
                     new_raw = new_raw < lo ? lo : hi;
+                else if constexpr ((P & wrap) && Near)
+                    new_raw = new_raw < lo ? new_raw + (hi - lo + W{1}) : new_raw - (hi - lo + W{1});
                 else if constexpr (P & wrap)
                     new_raw = lo + detail::floor_divmod(new_raw - lo, hi - lo + W{1}).Rem;
                 else {
@@ -10308,7 +10381,10 @@ struct inside : detail::raw_holder<G, P> {
             using W = raw_work_t<-detail::raw_hi_exact<R> - add_bias<R>, -detail::raw_lo_exact<R> - add_bias<R>>;
             using D = delta_work_t<R>;
             constexpr D bias = static_cast<D>(add_bias<R>);
-            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(-static_cast<D>(rhs.raw()) - bias));
+            return store_raw<W,
+                             one_period(-detail::raw_hi_exact<R> - add_bias<R>,
+                                        -detail::raw_lo_exact<R> - add_bias<R>)>(
+                static_cast<W>(Raw) + static_cast<W>(-static_cast<D>(rhs.raw()) - bias));
         } else
             return *this += (-rhs);
     }
@@ -10394,7 +10470,7 @@ struct inside : detail::raw_holder<G, P> {
     constexpr inside& step_by() {
         using W           = raw_work_t<point_delta<S>, point_delta<S>>;
         constexpr W delta = static_cast<W>(point_delta<S>);
-        return store_raw<W>(static_cast<W>(Raw) + delta);
+        return store_raw<W, one_period(point_delta<S>, point_delta<S>)>(static_cast<W>(Raw) + delta);
     }
 
   public:

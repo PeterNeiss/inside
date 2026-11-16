@@ -4,6 +4,22 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Changed
+
+- Faster at the boundaries, with the same results:
+  - An integer stored onto a notch that is not 1/K (seconds into whole
+    minutes, `minutes::try_make(n, si::second)`, a notch of 60 or 7/2) takes
+    one division by a constant: about 1 ns where it took 22.
+  - `x.to<int, round_half_away>()` and its other modes on a 1/K notch divide
+    by the constant K (1.0 ns from 2.1), and `x.to<T>()` of an integer grid
+    past `T` is two compares.
+  - `T::try_make(v)` keeps its error in a register: no stack protector and no
+    call on the path that succeeds, and a loop of `try_make` vectorizes.
+  - A wrapping `+=`, `-=`, `++` or `--` whose operand is at most one period
+    long folds with one add or subtract.
+
 ## 0.9.0 — 2026-11-15
 
 The API review: one word and one function per idea, and no old spelling

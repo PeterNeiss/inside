@@ -208,9 +208,23 @@ struct unit_fold {
         W Carry;
         W Offset;
     };
+    // The source reaches at most one period past either limit (a sum or a
+    // difference of two values of L does): one add or subtract folds it.
+    static constexpr bool one_period =
+        !(SrcLo < lo - (hi - lo + grid_int{1})) && !(hi + (hi - lo + grid_int{1}) < SrcHi);
+
     static constexpr folded fold(const W& v) noexcept {
-        const auto [q, w] = floor_divmod(v - lower, span + W{1});
-        return {q, w};
+        const W o = v - lower, period = span + W{1};
+        if constexpr (one_period) {
+            if (o < W{0})
+                return {W{0} - W{1}, o + period};
+            if (span < o)
+                return {W{1}, o - period};
+            return {W{0}, o};
+        } else {
+            const auto [q, w] = floor_divmod(o, period);
+            return {q, w};
+        }
     }
 };
 

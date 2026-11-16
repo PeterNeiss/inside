@@ -35,6 +35,12 @@ struct error_ref {
     constexpr error_ref(error& ec) : Code{ec} {}
     error& Code;
 };
+// The error of a function that returns it (try_store): recorded inline, so
+// the function's local never has its address taken by a call and stays in a
+// register (no stack slot, no stack protector on the hot path).
+struct local_error_ref : error_ref {
+    using error_ref::error_ref;
+};
 
 // The error channel's record, out of line: a failure is the rare path, and
 // inline it would sit in every checked loop. The first error is kept.
@@ -47,7 +53,7 @@ template <policy_flag F = none, typename E = empty_ref>
 struct call_policy : E {
     constexpr call_policy() = default;
     constexpr call_policy(error& ec)
-        requires std::same_as<E, error_ref>
+        requires std::derived_from<E, error_ref>
         : E(ec) {}
 
     static constexpr policy_flag Flags = F;
@@ -77,7 +83,10 @@ struct call_policy : E {
     // fix. At run time it is a precondition (a cursor past its end) or a
     // library bug, reported to the installed handler.
     constexpr void report(error code) const {
-        if constexpr (std::is_same_v<E, error_ref>)
+        if constexpr (std::is_same_v<E, local_error_ref>) {
+            if (E::Code == error{})
+                E::Code = code;
+        } else if constexpr (std::is_same_v<E, error_ref>)
             record_error(E::Code, code);
         else {
             if consteval {
@@ -122,8 +131,8 @@ inline constexpr policy_flag policy_of_impl<call_policy<F, E>> = F;
 // failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
 template <typename T>
 inline constexpr bool uses_error_ref = false;
-template <policy_flag F>
-inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
+template <policy_flag F, std::derived_from<error_ref> E>
+inline constexpr bool uses_error_ref<call_policy<F, E>> = true;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -160,7 +169,9 @@ constexpr std::expected<Result, error> report_or_unexpected(P&& policy, error co
 namespace detail {
 template <policy_flag O, class Pol>
 constexpr auto with_flags(Pol&& pol) {
-    if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
+    if constexpr (std::derived_from<std::remove_cvref_t<Pol>, local_error_ref>)
+        return call_policy<O, local_error_ref>{pol.Code};
+    else if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
         return call_policy<O, error_ref>{pol.Code};
     else
         return call_policy<O, empty_ref>{};

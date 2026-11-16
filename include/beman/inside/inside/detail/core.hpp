@@ -91,7 +91,7 @@ template <class B, policy_flag F, class Store>
 constexpr std::expected<B, error> try_store(Store store) {
     error ec{};
     B     b{};
-    store(b, make_policy<F>(ec));
+    store(b, call_policy<F, local_error_ref>{ec});
     if (ec != error{})
         return std::unexpected{ec};
     return b;
@@ -542,7 +542,18 @@ struct inside : detail::raw_holder<G, P> {
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_int64<inside>)
             return static_cast<T>(detail::to_value(*this));
-        else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
+        else if constexpr (detail::integer_lattice<inside> && detail::values_fit_int64<inside>) {
+            // An integer in int64: two compares at most. (A limit that is
+            // checked lies inside the grid's interval, so it fits int64.)
+            const std::int64_t v = detail::to_value(*this);
+            if constexpr (check_lo)
+                if (v < static_cast<std::int64_t>(lim::min()))
+                    return std::unexpected{error::overflow};
+            if constexpr (check_hi)
+                if (v > static_cast<std::int64_t>(lim::max()))
+                    return std::unexpected{error::overflow};
+            return static_cast<T>(v);
+        } else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
             const auto f = detail::exact_of(*this);
             const auto q = detail::rounded_div_exact<mode>(f.Num, f.Den);
             if constexpr (!rounds && !detail::integer_lattice<inside>)
@@ -554,6 +565,30 @@ struct inside : detail::raw_holder<G, P> {
                     return std::unexpected{error::overflow};
             if constexpr (check_hi)
                 if (t > decltype(t){lim::max()})
+                    return std::unexpected{error::overflow};
+            return static_cast<T>(t);
+        } else if constexpr (detail::q_format_fits<inside>) {
+            // Notch 1/K over an integer Lower: the value is n/K with n in
+            // int64 and K a constant, so one division by a constant rounds
+            // it (no fraction to reduce).
+            constexpr std::int64_t K = detail::abs_den(detail::notch64<inside>.Den);
+            const std::int64_t     n = detail::raw_int64(*this) + detail::lower_int64<inside> * K;
+            std::int64_t           t = n / K;
+            if (const std::int64_t r = n % K; r != 0) {
+                if constexpr (!rounds)
+                    return std::unexpected{error::rounding_error};
+                const std::uint64_t ar = static_cast<std::uint64_t>(r < 0 ? -r : r);
+                if (detail::rounds_away(mode,
+                                        r < 0,
+                                        detail::classify_remainder(mode, ar, static_cast<std::uint64_t>(K)),
+                                        (t & 1) != 0))
+                    t += r < 0 ? -1 : 1;
+            }
+            if constexpr (check_lo)
+                if (t < static_cast<std::int64_t>(lim::min()))
+                    return std::unexpected{error::overflow};
+            if constexpr (check_hi)
+                if (t > static_cast<std::int64_t>(lim::max()))
                     return std::unexpected{error::overflow};
             return static_cast<T>(t);
         } else {
@@ -902,21 +937,31 @@ struct inside : detail::raw_holder<G, P> {
         if constexpr (point_delta_ok<R>) {
             using W           = raw_work_t<point_delta<R>, point_delta<R>>;
             constexpr W delta = static_cast<W>(point_delta<R>);
-            return store_raw<W>(static_cast<W>(Raw) + delta);
+            return store_raw<W, one_period(point_delta<R>, point_delta<R>)>(static_cast<W>(Raw) + delta);
         } else if constexpr (raw_add_ok<R>) {
             using W = raw_work_t<detail::raw_lo_exact<R> + add_bias<R>, detail::raw_hi_exact<R> + add_bias<R>>;
             using D = delta_work_t<R>;
             constexpr D bias = static_cast<D>(add_bias<R>);
-            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(static_cast<D>(rhs.raw()) + bias));
+            return store_raw<W,
+                             one_period(detail::raw_lo_exact<R> + add_bias<R>, detail::raw_hi_exact<R> + add_bias<R>)>(
+                static_cast<W>(Raw) + static_cast<W>(static_cast<D>(rhs.raw()) + bias));
         } else
             return assign_op_result(*this + rhs);
     }
 
   private:
+    // Whether a raw delta in [lo, hi] moves a raw at most one period past
+    // either limit: a wrap is then one add or subtract, not a modulo.
+    static consteval bool one_period(const detail::grid_int& lo, const detail::grid_int& hi) {
+        const detail::grid_int period =
+            detail::raw_hi_exact<inside> - detail::raw_lo_exact<inside> + detail::grid_int{1};
+        return !(lo < -period) && !(period < hi);
+    }
+
     // Store a raw computed by the raw-space fast paths of += and -=, in their
     // work type W. Under clamp/wrap/checked an out-of-range raw is clamped,
-    // wrapped or reported.
-    template <detail::raw_integer W>
+    // wrapped or reported. Near: the delta is within one period (one_period).
+    template <detail::raw_integer W, bool Near = false>
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
@@ -924,6 +969,8 @@ struct inside : detail::raw_holder<G, P> {
             if (new_raw < lo || new_raw > hi) {
                 if constexpr (P & clamp)
                     new_raw = new_raw < lo ? lo : hi;
+                else if constexpr ((P & wrap) && Near)
+                    new_raw = new_raw < lo ? new_raw + (hi - lo + W{1}) : new_raw - (hi - lo + W{1});
                 else if constexpr (P & wrap)
                     new_raw = lo + detail::floor_divmod(new_raw - lo, hi - lo + W{1}).Rem;
                 else {
@@ -974,7 +1021,10 @@ struct inside : detail::raw_holder<G, P> {
             using W = raw_work_t<-detail::raw_hi_exact<R> - add_bias<R>, -detail::raw_lo_exact<R> - add_bias<R>>;
             using D = delta_work_t<R>;
             constexpr D bias = static_cast<D>(add_bias<R>);
-            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(-static_cast<D>(rhs.raw()) - bias));
+            return store_raw<W,
+                             one_period(-detail::raw_hi_exact<R> - add_bias<R>,
+                                        -detail::raw_lo_exact<R> - add_bias<R>)>(
+                static_cast<W>(Raw) + static_cast<W>(-static_cast<D>(rhs.raw()) - bias));
         } else
             return *this += (-rhs);
     }
@@ -1060,7 +1110,7 @@ struct inside : detail::raw_holder<G, P> {
     constexpr inside& step_by() {
         using W           = raw_work_t<point_delta<S>, point_delta<S>>;
         constexpr W delta = static_cast<W>(point_delta<S>);
-        return store_raw<W>(static_cast<W>(Raw) + delta);
+        return store_raw<W, one_period(point_delta<S>, point_delta<S>)>(static_cast<W>(Raw) + delta);
     }
 
   public:
