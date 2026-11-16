@@ -125,14 +125,14 @@ TEST(FastPathTest, cross_grid_stores_match_the_exact_store) {
 
 template <policy_flag F>
 void double_sweep() {
-    using dec2 = inside<{{-1000, 1000}, per<100>}>;
-    using dec3 = inside<{{-50, 50}, per<1000>}>;
-    using n60  = inside<{{-600, 600}, 60}>;
-    using n72  = inside<{{-7, 14}, just<7, 2>}>;
-    using un   = inside<{{1, 601}, 60}>;
-    using half = inside<{{just<1, 2>, just<201, 2>}, 1}>;
-    using s64  = inside<{-4000000000000000000, 4000000000000000000}>;
-    std::uint64_t x = 0x9e3779b97f4a7c15u;
+    using dec2         = inside<{{-1000, 1000}, per<100>}>;
+    using dec3         = inside<{{-50, 50}, per<1000>}>;
+    using n60          = inside<{{-600, 600}, 60}>;
+    using n72          = inside<{{-7, 14}, just<7, 2>}>;
+    using un           = inside<{{1, 601}, 60}>;
+    using half         = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    using s64          = inside<{-4000000000000000000, 4000000000000000000}>;
+    std::uint64_t x    = 0x9e3779b97f4a7c15u;
     auto          next = [&] { return x = x * 6364136223846793005u + 1442695040888963407u; };
     auto          each = [&](double v) {
         expect_same<dec2, F>(v, "dec2");
@@ -145,8 +145,14 @@ void double_sweep() {
     };
     for (int k = -2000; k <= 2000; k += 7) {
         // grid points, ties and their neighbours in double
-        for (const double base : {k / 100.0, (k + 0.5) / 100.0, k / 1000.0, (k + 0.5) / 1000.0, k * 0.5, k * 7.0 / 4.0,
-                                  k * 30.0, k * 60.0})
+        for (const double base : {k / 100.0,
+                                  (k + 0.5) / 100.0,
+                                  k / 1000.0,
+                                  (k + 0.5) / 1000.0,
+                                  k * 0.5,
+                                  k * 7.0 / 4.0,
+                                  k * 30.0,
+                                  k * 60.0})
             for (const double v : {base, std::nextafter(base, -1e300), std::nextafter(base, 1e300), -base})
                 each(v);
     }
@@ -171,8 +177,13 @@ TEST(FastPathTest, a_full_int64_source_clamps_and_wraps) {
     using full  = inside<{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()}>;
     using small = inside<{-10, 10}, clamp>;
     using ring  = inside<{-10, 10}, wrap>;
-    for (const std::int64_t v : {std::numeric_limits<std::int64_t>::min(), std::int64_t{-11}, std::int64_t{-10},
-                                 std::int64_t{0}, std::int64_t{10}, std::int64_t{11}, std::int64_t{12345},
+    for (const std::int64_t v : {std::numeric_limits<std::int64_t>::min(),
+                                 std::int64_t{-11},
+                                 std::int64_t{-10},
+                                 std::int64_t{0},
+                                 std::int64_t{10},
+                                 std::int64_t{11},
+                                 std::int64_t{12345},
                                  std::numeric_limits<std::int64_t>::max()}) {
         const full f = full::from_raw(v, unsafe);
         EXPECT_EQ((small{f}.raw()), (exact_store<small, clamp>(f)->raw())) << v;
@@ -184,7 +195,7 @@ TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
     using T = inside<{{0, 100}, per<100>}, clamp>;
     for (const auto a : values<inside<{{0, 100}, per<4>}>>)
         for (const auto b : values<inside<{{0, 100}, per<4>}>>) {
-            T    x{a, clamp};
+            T                  x{a, clamp};
             const bd::rational sum   = *bd::try_add(bd::as_rational(a), bd::as_rational(b));
             bool               fired = false;
             x.on_clamp([&](auto&, const auto& over) {
@@ -198,9 +209,14 @@ TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
 TEST(FastPathTest, a_wide_product_clamps_to_the_limit) {
     using s64 = inside<{-4000000000000000000, 4000000000000000000}>;
     using c64 = inside<{-4000000000000000000, 4000000000000000000}, clamp>;
-    for (const std::int64_t a : {std::int64_t{-3000000000}, std::int64_t{-7}, std::int64_t{0}, std::int64_t{9},
-                                 std::int64_t{2000000000}, std::int64_t{3999999999}})
-        for (const std::int64_t b : {std::int64_t{-4000000000}, std::int64_t{-1}, std::int64_t{3}, std::int64_t{2000000001}}) {
+    for (const std::int64_t a : {std::int64_t{-3000000000},
+                                 std::int64_t{-7},
+                                 std::int64_t{0},
+                                 std::int64_t{9},
+                                 std::int64_t{2000000000},
+                                 std::int64_t{3999999999}})
+        for (const std::int64_t b :
+             {std::int64_t{-4000000000}, std::int64_t{-1}, std::int64_t{3}, std::int64_t{2000000001}}) {
             c64 x = c64::from_raw(a, unsafe);
             x *= c64::from_raw(b, unsafe);
             const auto exact = exact_store<c64, clamp>(s64::from_raw(a, unsafe) * s64::from_raw(b, unsafe));
@@ -254,14 +270,14 @@ void divmod_and_onto() {
             const std::int64_t qe = bd::floor(*bd::try_div(ra, rb));
             EXPECT_EQ(bd::to_value(q), qe);
             EXPECT_EQ(bd::as_rational(r), *bd::try_sub(ra, *bd::try_mul(bd::rational{qe}, rb)));
-            const std::expected<Out, error> p = mul<Out>(a, b);
-            const auto pe = exact_store<Out, round_half_even>(a * b);
+            const std::expected<Out, error> p  = mul<Out>(a, b);
+            const auto                      pe = exact_store<Out, round_half_even>(a * b);
             ASSERT_EQ(bool(p), bool(pe));
             if (p) {
                 EXPECT_EQ(p->raw(), pe->raw());
             }
-            const std::expected<Out, error> d = div<Out>(a, b);
-            const auto de = exact_store<Out, round_half_even>(a / b);
+            const std::expected<Out, error> d  = div<Out>(a, b);
+            const auto                      de = exact_store<Out, round_half_even>(a / b);
             ASSERT_EQ(bool(d), bool(de));
             if (d) {
                 EXPECT_EQ(d->raw(), de->raw());

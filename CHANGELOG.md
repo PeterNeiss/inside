@@ -19,6 +19,35 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
     call on the path that succeeds, and a loop of `try_make` vectorizes.
   - A wrapping `+=`, `-=`, `++` or `--` whose operand is at most one period
     long folds with one add or subtract.
+- Faster wherever a store or a quotient took 64-bit fractions, with the same
+  results (measured against hand-written integer code for every operation,
+  grid shape and policy; `tests/beman/inside/perf_gate/perfmap.py`):
+  - A store past the target's limits under `clamp` or `wrap`, from an
+    integer or another inside, rounds the slot in integers and stores the
+    endpoint or folds it (`store_inside dec2 → dec3` under `wrap`: 170 ns to
+    1 ns; `x *= y` on decimal grids under `clamp | round_floor`: 105 ns to
+    1.5 ns). An `on_clamp` hook gets its overshoot from inside arithmetic
+    (60 ns to 1.4 ns).
+  - An integer onto any lattice (an unanchored one too) takes one division
+    by a constant; `exact_cast` tries the exact store first (30 ns to under
+    1.2 ns), and `conversion_overflows` / `conversion_rounds` of an integer
+    compare integers.
+  - A `double` onto a decimal, coarse or unanchored notch is rounded once
+    from the exact product v·K (an fma, or Dekker's product): 13–55 ns to
+    3–4 ns.
+  - `T::from_step(n)` of a builtin compares and stores the slot (77 ns to
+    1.4 ns); `to<T>`, `double(x)`, `to<float>`, `numerator()` and
+    `denominator()` read lattices off the notch's constants.
+  - `divmod` on lattices divides builtin integers (95–139 ns to about 2 ns);
+    `mul<Out>` and `div<Out>` between lattices round one integer quotient
+    (45 ns to 1–2 ns; decimal `div<Out>` 20–35 ns to about 5 ns).
+  - A product of two 64-bit values stored back under `clamp` takes the
+    endpoint (90 ns to 5 ns).
+  - `to_string` of an integer or decimal grid prints with `std::to_chars`
+    (52 ns to 6 ns; `per<100>`: 120 ns to 13 ns), and `parse` reads plain
+    decimal text in one pass (about 2.5× faster).
+  - `sum` and the matrix products add 64-bit unit counts in int64 blocks and
+    store the total onto a lattice with one rounded division.
 
 ## 0.9.0 — 2026-11-15
 

@@ -95,13 +95,34 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
 }
 } // namespace detail
 
+namespace detail {
+// An integer source on a grid within int64 whose policy cannot round an
+// integer past a limit back in: in range exactly when it lies between the
+// limits' integer ceiling and floor, two compares.
+template <insidable B, typename A>
+inline constexpr bool integer_range_test = [] {
+    if constexpr (!std::integral<A> || wide_builtin<A> || exact_grid_only<B> || !values_fit_int64<B>)
+        return false;
+    else
+        return !rounds_before_range_check<B, call_policy<>> ||
+               (abs_den(lower64<B>.Den) == 1 && abs_den(upper64<B>.Den) == 1);
+}();
+template <insidable B>
+inline constexpr std::int64_t integer_floor_of_upper = floor(upper64<B>);
+template <insidable B>
+inline constexpr std::int64_t integer_ceil_of_lower = ceil(lower64<B>);
+} // namespace detail
+
 template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
             return true; // NaN / ±inf fit no grid (and must not raise here)
+    if constexpr (detail::integer_range_test<B, A>)
+        return std::cmp_less(value, detail::integer_ceil_of_lower<B>) ||
+               std::cmp_greater(value, detail::integer_floor_of_upper<B>);
     // The 64-bit paths below do not compile for a grid (or value) past them.
-    if constexpr (detail::exact_path_only<B, A>)
+    else if constexpr (detail::exact_path_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Overflows;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
@@ -120,8 +141,20 @@ template <insidable B, detail::numeric A>
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
             return false; // non-finite — overflow, not rounding
+    if constexpr (detail::integer_range_test<B, A> && (detail::q_format_fits<B> || detail::lattice_codec<B>.Ok)) {
+        // An integer in range: on a 1/K notch over an integer Lower it is a
+        // grid point; elsewhere the slot offset (v·K − M)/S must be whole.
+        if (conversion_overflows<B>(value)) [[unlikely]]
+            return false;
+        if constexpr (detail::q_format_fits<B>)
+            return false;
+        else {
+            constexpr auto c = detail::lattice_codec<B>;
+            return (static_cast<std::int64_t>(value) * c.K - c.M) % c.S != 0;
+        }
+    }
     // The 64-bit paths below do not compile for a grid (or value) past them.
-    if constexpr (detail::exact_path_only<B, A>)
+    else if constexpr (detail::exact_path_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Rounds;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]

@@ -91,7 +91,7 @@ template <class B, policy_flag F, class Store>
 constexpr std::expected<B, error> try_store(Store store) {
     error ec{};
     B     b{};
-    store(b, call_policy<F, local_error_ref>{ec});
+    store(b, make_policy<F>(ec));
     if (ec != error{})
         return std::unexpected{ec};
     return b;
@@ -591,6 +591,29 @@ struct inside : detail::raw_holder<G, P> {
                 if (t > static_cast<std::int64_t>(lim::max()))
                     return std::unexpected{error::overflow};
             return static_cast<T>(t);
+        } else if constexpr (detail::lattice_codec<inside>.Ok) {
+            // Any other lattice: the value is (slot·S + M)/K, one division by
+            // the constant K.
+            constexpr std::int64_t K = detail::lattice_codec<inside>.K;
+            const std::int64_t     n = detail::lattice_numerator(*this);
+            std::int64_t           t = n / K;
+            if (const std::int64_t r = n % K; r != 0) {
+                if constexpr (!rounds)
+                    return std::unexpected{error::rounding_error};
+                const std::uint64_t ar = static_cast<std::uint64_t>(r < 0 ? -r : r);
+                if (detail::rounds_away(mode,
+                                        r < 0,
+                                        detail::classify_remainder(mode, ar, static_cast<std::uint64_t>(K)),
+                                        (t & 1) != 0))
+                    t += r < 0 ? -1 : 1;
+            }
+            if constexpr (check_lo)
+                if (t < static_cast<std::int64_t>(lim::min()))
+                    return std::unexpected{error::overflow};
+            if constexpr (check_hi)
+                if (t > static_cast<std::int64_t>(lim::max()))
+                    return std::unexpected{error::overflow};
+            return static_cast<T>(t);
         } else {
             const auto v = detail::as_rational(*this);
             const auto t = detail::round_to_integral(v, mode);
@@ -617,6 +640,8 @@ struct inside : detail::raw_holder<G, P> {
     [[nodiscard]] constexpr T to() const {
         if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
+        else if constexpr (sizeof(T) < sizeof(double) && detail::double_exact<G>)
+            return static_cast<T>(detail::as_double(*this)); // the double is exact: one rounding
         else if constexpr (sizeof(T) < sizeof(double)) {
             const double d = detail::as_double(*this);
             if (detail::narrow_midpoint<T>(d)) [[unlikely]]
@@ -738,7 +763,16 @@ struct inside : detail::raw_holder<G, P> {
     template <std::integral T>
         requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
     [[nodiscard]] static constexpr auto from_step(T i) {
-        return from_step(as_step_inside(i));
+        // A builtin step: compare it with the step count, then it is the slot.
+        if constexpr (!detail::point_storage<inside> && !detail::wide_index_storage<inside> &&
+                      detail::values_fit_int64<inside> &&
+                      std::same_as<decltype(from_step(as_step_inside(i))), std::expected<inside, error>>) {
+            if (std::cmp_less(i, 0) || std::cmp_greater(i, detail::max_index_of<inside>)) [[unlikely]]
+                return std::expected<inside, error>{std::unexpect, error::overflow};
+            return std::expected<inside, error>{
+                from_raw(detail::raw_from_offset<inside>(static_cast<std::uint64_t>(i)), unsafe)};
+        } else
+            return from_step(as_step_inside(i));
     }
     template <std::integral T, typename Pol>
         requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper) &&
@@ -763,6 +797,21 @@ struct inside : detail::raw_holder<G, P> {
             const int              s =
                 std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(nd)); // 0 → 0/1
             return {num >> s, nd >> s};
+        } else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>) {
+            constexpr std::int64_t nd  = detail::abs_den(detail::notch64<inside>.Den);
+            const std::int64_t     num = detail::raw_int64(*this) + detail::lower_int64<inside> * nd;
+            const std::int64_t     g   = std::gcd(num, nd);
+            return {num / g, nd / g};
+        } else if constexpr (detail::lattice_codec<inside>.Ok) {
+            constexpr std::int64_t K   = detail::lattice_codec<inside>.K;
+            const std::int64_t     num = detail::lattice_numerator(*this);
+            if constexpr (std::has_single_bit(static_cast<std::uint64_t>(K))) {
+                const int s = std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(K));
+                return {num >> s, K >> s};
+            } else {
+                const std::int64_t g = std::gcd(num, K);
+                return {num / g, K / g};
+            }
         } else {
             auto r = detail::as_rational(*this);
             return {signed_numerator(r), static_cast<std::int64_t>(detail::abs_den(r.Den))};
@@ -1256,6 +1305,17 @@ template <insidable B, policy_flag F>
 
 template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, error> parse(const char* first, const char* last) {
+    // Plain decimal text, [-+]digits[.digits] with at most 18 digits: read
+    // in one pass; an integer stores as one, a decimal as n/10^d.
+    if constexpr (!detail::wide_valued<B> && requires(std::int64_t v, detail::rational r) {
+                      B::template try_make<F>(v);
+                      B::template try_make<F>(r);
+                  })
+        if (const auto d = detail::plain_decimal(first, last); d.Ok) [[likely]] {
+            if (d.Decimals == 0)
+                return B::template try_make<F>(d.Value);
+            return B::template try_make<F>(detail::rational{d.Value, detail::power_of_ten(d.Decimals)});
+        }
     if (detail::fraction_text(first, last))
         return detail::parse_wide<B, F>(first, last);
     const auto v = detail::parse_text(first, last);

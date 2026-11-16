@@ -23,7 +23,10 @@
 #include <beman/inside/inside.hpp>
 
 #include <algorithm>
+#include <bit>
+#include <charconv>
 #include <format>
+#include <numeric>
 #include <istream>
 #include <ostream>
 #include <string>
@@ -97,11 +100,63 @@ struct decimal_stream {
     bool tail() const { return !Rem.is_zero(); }
 };
 
+// The same for 64-bit parts, in builtin integers: the decimal digits by
+// std::to_chars, and the fraction's by one multiplication (den divides
+// 10^digits); past 19 decimals, the wide form.
+template <std::size_t K>
+std::string        fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits);
+inline std::string fraction_to_string_u64(bool neg, std::uint64_t num, std::uint64_t den, int min_digits) {
+    if (std::has_single_bit(den)) { // a binary fraction: reduce by shifting
+        const int z = std::countr_zero(num | den);
+        num >>= z;
+        den >>= z;
+    } else {
+        const std::uint64_t g = std::gcd(num, den);
+        num /= g;
+        den /= g;
+    }
+    const int     twos  = std::countr_zero(den);
+    std::uint64_t rest  = den >> twos;
+    int           fives = 0;
+    while (rest != 1 && rest % 5 == 0)
+        rest /= 5, ++fives;
+    char  buf[64];
+    char* p = buf;
+    if (neg && num != 0)
+        *p++ = '-';
+    if (rest != 1) { // num/den
+        p    = std::to_chars(p, buf + sizeof buf, num).ptr;
+        *p++ = '/';
+        p    = std::to_chars(p, buf + sizeof buf, den).ptr;
+        return std::string(buf, p);
+    }
+    int digits = twos > fives ? twos : fives;
+    if (digits < min_digits)
+        digits = min_digits;
+    if (digits > 19)
+        return fraction_to_string<1>(neg, wide_uint<1>{num}, wide_uint<1>{den}, min_digits);
+    p = std::to_chars(p, buf + sizeof buf, num / den).ptr;
+    if (digits != 0) {
+        std::uint64_t pow = 1;
+        for (int i = 0; i < digits; ++i)
+            pow *= 10;
+        const std::uint64_t frac = (num % den) * (pow / den); // < 10^digits
+        *p++                     = '.';
+        char        tmp[24];
+        char* const end = std::to_chars(tmp, tmp + sizeof tmp, frac).ptr;
+        const auto  len = static_cast<int>(end - tmp);
+        for (int i = len; i < digits; ++i)
+            *p++ = '0';
+        p = std::copy(tmp, end, p);
+    }
+    return std::string(buf, p);
+}
+
 // num/den (den > 0) in the forms parse reads: its exact decimal when the
 // reduced denominator is 2^a·5^b (however many digits, and at least
 // min_digits decimals), else "num/den".
 template <std::size_t K>
-std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits = 0) {
+std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits) {
     using U   = wide_uint<K>;
     const U g = wide_gcd(den, num);
     num /= g;
@@ -130,7 +185,7 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
 // prints as its exact decimal when it has one, else as num/den.
 //-------------------------------------------------------------------------
 [[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
-    return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den));
+    return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), 0);
 }
 
 namespace detail {
@@ -149,6 +204,22 @@ inline constexpr int fixed_decimals = [] {
         return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
     }
 }();
+// A Q-format grid whose notch 1/K is a decimal notch (K divides 10^n for
+// its n fixed decimals, n ≤ 18): printed from the raw by integer steps.
+template <insidable B>
+inline constexpr std::uint64_t fixed_point_scale = [] {
+    if constexpr (!q_format_fits<B> || fixed_decimals<B> == 0 || fixed_decimals<B> > 18)
+        return std::uint64_t{0};
+    else {
+        std::uint64_t p = 1;
+        for (int i = 0; i < fixed_decimals<B>; ++i)
+            p *= 10;
+        const std::uint64_t k = abs_den(notch64<B>.Den);
+        return p % k == 0 ? p / k : std::uint64_t{0};
+    }
+}();
+template <insidable B>
+inline constexpr bool fixed_point_text = fixed_point_scale<B> != 0;
 } // namespace detail
 
 // A grid number of any size, in the forms of to_string(rational).
@@ -261,7 +332,7 @@ namespace detail {
 template <std::size_t K>
 std::string big_fraction_to_string(const big_rational& r) {
     const auto n = static_cast<wide_uint<K>>(r.Num); // two's complement
-    return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den));
+    return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den), 0);
 }
 } // namespace detail
 
@@ -284,8 +355,33 @@ template <insidable B>
     if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
     else {
-        const detail::rational r = detail::as_rational(b);
-        return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
+        if constexpr (detail::integer_lattice<B> && detail::values_fit_int64<B>) {
+            char        buf[24];
+            char* const end = std::to_chars(buf, buf + sizeof buf, detail::to_value(b)).ptr;
+            return std::string(buf, end);
+        } else if constexpr (detail::fixed_point_text<B>) {
+            // A decimal notch 1/K: the integer part, then n decimals of the
+            // remainder (K divides 10^n), no reduction.
+            constexpr std::int64_t K   = detail::abs_den(detail::notch64<B>.Den);
+            const std::int64_t     num = detail::raw_int64(b) + detail::lower_int64<B> * K;
+            const std::uint64_t    a =
+                num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num) : static_cast<std::uint64_t>(num);
+            char  buf[48];
+            char* p = buf;
+            if (num < 0)
+                *p++ = '-';
+            p    = std::to_chars(p, buf + sizeof buf, a / K).ptr;
+            *p++ = '.';
+            char        tmp[24];
+            char* const end = std::to_chars(tmp, tmp + sizeof tmp, (a % K) * detail::fixed_point_scale<B>).ptr;
+            for (auto i = end - tmp; i < n; ++i)
+                *p++ = '0';
+            p = std::copy(tmp, end, p);
+            return std::string(buf, p);
+        } else {
+            const detail::rational r = detail::as_rational(b);
+            return detail::fraction_to_string_u64(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
+        }
     }
 }
 
