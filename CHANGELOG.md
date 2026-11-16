@@ -80,6 +80,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
     `{{1/2, 201/2}, 1}` under `wrap | round_half_even` 147 ns to 3.6 ns, an
     integer onto a notch of 7/2 under the same policy 38 ns to 1.8 ns. A
     Q16.16 product stored back takes the integer path too (190 ns to 2.5 ns).
+  - `div<Out>` and `mul<Out>` between lattices report an overflow from the
+    integer quotient, keep their general store out of line, and take the
+    integer path for integer notches too: every `div<Out>` row of the
+    perfmap at its hand-written twin (decimal grids 5.4 ns to 2.1 ns).
   - A `double` stored onto limits that are doubles passes in range with one
     test (NaN, ±∞ and |v| ≥ 2^64 fail it too), and its cold paths no longer
     take the address of `try_make`'s error: no frame or stack protector on

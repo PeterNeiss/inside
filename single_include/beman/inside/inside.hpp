@@ -11903,11 +11903,37 @@ constexpr Out div_reduced(A a, B b, P policy) {
             return store_into<Out>(*q, policy);
     return div_wide<Out>(a, b, policy);
 }
-// The same out of line, behind the unreduced quotient (by value, so the fast
-// path's operands stay in registers).
-template <insidable Out, insidable A, insidable B, typename P>
-[[gnu::cold]] [[gnu::noinline]] constexpr Out div_reduced_cold(A a, B b, P policy) {
-    return div_reduced<Out>(a, b, policy);
+// The same out of line, behind the unreduced quotient: by value and under
+// the flags F only, so neither the operands nor a caller's error& leave
+// registers; it returns its failure, which the caller reports.
+template <insidable Out>
+struct stored_or_error {
+    Out   Value;
+    error Code;
+};
+template <insidable Out, policy_flag F, insidable A, insidable B>
+[[gnu::cold]] [[gnu::noinline]] constexpr stored_or_error<Out> div_reduced_cold(A a, B b) {
+    error     code{};
+    const Out v = div_reduced<Out>(a, b, make_policy<F>(code));
+    return {v, code};
+}
+// The product's general store, likewise (behind the lattice path).
+template <insidable Out, policy_flag F, insidable A, insidable B>
+[[gnu::cold]] [[gnu::noinline]] constexpr stored_or_error<Out> mul_general_cold(A a, B b) {
+    error      code{};
+    const auto policy = make_policy<F>(code);
+    if constexpr (rational_operands<A, B>)
+        if (const auto p = try_mul(as_rational(a), as_rational(b)))
+            return {store_into<Out>(*p, policy), code};
+    const Out v = mul_wide<Out>(a, b, policy);
+    return {v, code};
+}
+// A cold store's value, its failure reported by the caller's policy.
+template <insidable Out, typename P>
+constexpr Out reported(const stored_or_error<Out>& r, P& policy) {
+    if (r.Code != error{})
+        policy.report(r.Code);
+    return r.Value;
 }
 } // namespace detail
 
@@ -11924,9 +11950,11 @@ inline constexpr bool int_lattice = [] {
     else
         return anchored<X> && value_indices_fit_int64<X> && lower_index_fits_int64<X>;
 }();
+// A notch 1/2^k, k ≥ 1 (an integer notch is no binary fraction: the
+// lattice path divides it once).
 template <insidable X>
 inline constexpr bool binary_notch =
-    notched<X> &&
+    notched<X> && grid_int{1} < grid_denominator(notch_of<X>) &&
     std::has_single_bit(static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_denominator(notch_of<X>))));
 template <insidable Out, insidable A, insidable B, bool Div>
 struct lattice_op {
@@ -11960,9 +11988,16 @@ struct lattice_op {
     static constexpr std::int64_t Cq  = ok ? static_cast<std::int64_t>(grid_denominator(C)) : 1;
     static constexpr std::int64_t Jlo = ok ? static_cast<std::int64_t>(grid_numerator(lower_index_of<Out>)) : 0;
 };
+// (One status byte, not two flags: GCC builds a second flag through the
+// stack.)
+enum class lattice_status : std::uint8_t {
+    ok,
+    unhandled, // the general store decides (off the grid without a mode)
+    overflow   // rounded, and past the limits of a checked Out
+};
 struct lattice_slot {
-    std::uint64_t Slot;
-    bool          Ok; // false: off the grid, unhandled (the general store reports it)
+    std::uint64_t  Slot;
+    lattice_status Status;
 };
 // Out's value index n/d (d ≠ 0) rounded by P onto Out's slots, with P's
 // clamp or wrap past the limits.
@@ -11972,16 +12007,18 @@ template <insidable Out, policy_flag P>
     constexpr bool         snp = has_flag(P, snap);
     const auto             qr  = div_rem_rounded(n, d, snp ? rounding_of(P) : round_mode::trunc);
     if (!snp && qr.Remainder != 0)
-        return {0, false};
+        return {0, lattice_status::unhandled};
     const std::int64_t slot = qr.Quotient - jlo;
     if (slot >= 0 && std::cmp_less_equal(slot, max_index_of<Out>)) [[likely]]
-        return {static_cast<std::uint64_t>(slot), true};
+        return {static_cast<std::uint64_t>(slot), lattice_status::ok};
     if constexpr (has_flag(P, clamp))
-        return {slot < 0 ? std::uint64_t{0} : max_index_of<Out>, true};
+        return {slot < 0 ? std::uint64_t{0} : max_index_of<Out>, lattice_status::ok};
     else if constexpr (has_flag(P, wrap))
-        return {fold_slot<Out>(slot), true};
+        return {fold_slot<Out>(slot), lattice_status::ok};
+    else if constexpr (is_checked(P))
+        return {0, lattice_status::overflow};
     else
-        return {0, false};
+        return {0, lattice_status::unhandled};
 }
 template <insidable Out, policy_flag P, bool Div, insidable A, insidable B>
 [[gnu::always_inline]] constexpr lattice_slot lattice_op_slot(const A& a, const B& b) noexcept {
@@ -12040,14 +12077,22 @@ template <insidable Out, insidable A, insidable B, class... Fl>
         if constexpr (detail::native_product<Out, F, A, B>)
             return detail::store_into<Out>(a * b, policy);
         else {
-            if constexpr (detail::lattice_op<Out, A, B, false>::ok)
-                if (const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, false>(a, b); s.Ok)
-                    [[likely]]
+            if constexpr (detail::lattice_op<Out, A, B, false>::ok) {
+                const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, false>(a, b);
+                if (s.Status == detail::lattice_status::ok) [[likely]]
                     return Out::from_raw(detail::raw_from_offset<Out>(s.Slot), unsafe);
-            if constexpr (detail::rational_operands<A, B>)
-                if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
-                    return detail::store_into<Out>(*p, policy);
-            return detail::mul_wide<Out>(a, b, policy);
+                if (s.Status == detail::lattice_status::overflow) {
+                    policy.report(error::overflow);
+                    return Out{};
+                }
+                // off the grid without a mode: the general store decides
+                return detail::reported(detail::mul_general_cold<Out, policy_of<decltype(policy)>>(a, b), policy);
+            } else {
+                if constexpr (detail::rational_operands<A, B>)
+                    if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
+                        return detail::store_into<Out>(*p, policy);
+                return detail::mul_wide<Out>(a, b, policy);
+            }
         }
     };
     if constexpr (detail::product_proven<Out, P, A, B>())
@@ -12069,14 +12114,21 @@ template <insidable Out, insidable A, insidable B, class... Fl>
         // is as cheap there.)
         if constexpr (detail::lattice_op<Out, A, B, true>::ok &&
                       !(detail::rational_operands<A, B> && detail::unreduced_store<Out> && detail::binary_notch<A> &&
-                        detail::binary_notch<B>))
-            if (const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, true>(a, b); s.Ok) [[likely]]
+                        detail::binary_notch<B>)) {
+            const auto s = detail::lattice_op_slot<Out, policy_of<decltype(policy)>, true>(a, b);
+            if (s.Status == detail::lattice_status::ok) [[likely]]
                 return Out::from_raw(detail::raw_from_offset<Out>(s.Slot), unsafe);
-        if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
+            if (s.Status == detail::lattice_status::overflow) {
+                policy.report(error::overflow);
+                return Out{};
+            }
+            // off the grid without a mode: the general store decides
+            return detail::reported(detail::div_reduced_cold<Out, policy_of<decltype(policy)>>(a, b), policy);
+        } else if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
             if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
                 [[likely]]
                 return detail::store_into<Out>(q, policy);
-            return detail::div_reduced_cold<Out>(a, b, policy);
+            return detail::reported(detail::div_reduced_cold<Out, policy_of<decltype(policy)>>(a, b), policy);
         } else
             return detail::div_reduced<Out>(a, b, policy);
     };
@@ -12335,7 +12387,7 @@ constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
             if (!(total < I{lo}) && !(I{hi} < total) &&
                 !detail::mul_overflow(static_cast<std::int64_t>(total), cp, &n))
                 if (const auto s = detail::lattice_round_slot<Target, policy_of<Pol> | policy_of<Target>>(n, cq);
-                    s.Ok) {
+                    s.Status == detail::lattice_status::ok) {
                     out = Target::from_raw(detail::raw_from_offset<Target>(s.Slot), unsafe);
                     return;
                 }

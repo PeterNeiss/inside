@@ -368,9 +368,8 @@ TEST(FastPathTest, steps_and_conversions_out_of_lattices) {
     steps_and_values<inside<{{0, 3}, per<65536>}>>();
 }
 
-template <class A, class B>
+template <class A, class B, class Out = inside<{{-1000, 1000}, per<100>}, round_half_even>>
 void divmod_and_onto() {
-    using Out = inside<{{-1000, 1000}, per<100>}, round_half_even>;
     for (const A a : values<A>)
         for (const B b : values<B>) {
             const bd::rational ra = bd::as_rational(a), rb = bd::as_rational(b);
@@ -467,6 +466,10 @@ TEST(FastPathTest, divmod_and_rounded_quotients_on_lattices) {
     divmod_and_onto<inside<{{-3, 3}, per<16>}>, inside<{{just<1, 4>, 2}, per<4>}>>();
     divmod_and_onto<inside<{{-1, 1}, per<100>}>, inside<{1, 9}>>();
     divmod_and_onto<inside<{{-70, 70}, 7}>, inside<{{just<1, 2>, 3}, per<2>}>>();
+    // an Out most products and quotients overflow: the error, as the exact store's
+    using narrow = inside<{{-1, 1}, per<100>}, round_half_even>;
+    divmod_and_onto<inside<{{-3, 3}, per<16>}>, inside<{{just<1, 4>, 2}, per<4>}>, narrow>();
+    divmod_and_onto<inside<{{-70, 70}, 7}>, inside<{{just<1, 2>, 3}, per<2>}>, narrow>();
 }
 
 TEST(FastPathTest, exact_cast_and_the_predicates_match_the_exact_store) {
