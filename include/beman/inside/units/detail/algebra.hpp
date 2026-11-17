@@ -34,15 +34,15 @@ namespace beman::inside::units {
 using beman::inside::detail::grid_rational;
 
 //---------------------------------------------------------------------------
-// dimension — the exponents of the seven SI base dimensions
-// (L M T I Θ N J), and of any number of base dimensions you define
-// (base_dimension: currency, information). Angle is dimensionless, as in SI.
+// dimension — a product of base dimensions to integer powers. Every base
+// dimension is a base_dimension<"name">: the SI ones (length, mass, time…)
+// and yours (currency, information) alike. Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
 namespace detail {
 struct unit_def;
 } // namespace detail
 
-// A base dimension of your own: inline constexpr base_dimension currency{"currency"}.
+// A base dimension: base_dimension<"currency"> (units/detail/define.hpp).
 // A basis vector of a geometric algebra is one too (see basis_vector): its
 // exponent is 0 or 1, it squares to Square (+1, -1 or 0), two of them
 // anticommute, and Vector is its unit. Vector is read only when Basis is set.
@@ -58,32 +58,30 @@ struct base_dimension_def {
 struct dimension;
 
 namespace detail {
-inline constexpr std::size_t base_dimensions = 7;
-
-// The base dimensions of your own of a dimension being computed, in
-// transient vectors: sorted by name, no zero exponents.
-struct user_exponents {
+// The base dimensions of a dimension being computed, in transient vectors:
+// sorted by name, no zero exponents.
+struct exponents {
     std::vector<const base_dimension_def*> D;
     std::vector<std::int8_t>               E;
 
-    constexpr explicit user_exponents(const dimension& d);
+    constexpr exponents() = default;
+    constexpr explicit exponents(const dimension& d);
     // b^e merged in: an exponent reaching 0 drops out.
     constexpr void add(const base_dimension_def* b, int e);
-    // d with these as its base dimensions of your own, interned.
-    constexpr dimension into(dimension d) const;
+    // The dimension of these, interned.
+    constexpr dimension intern() const;
 };
 } // namespace detail
 
 struct dimension {
-    std::int8_t Exp[detail::base_dimensions]{};
-    // The base dimensions of your own, sorted by name, and their exponents
-    // (none zero): interned in static storage with std::define_static_array,
-    // as big grid numbers' limbs are, so a dimension holds any number of them.
-    // Two arrays of scalars, not one of pairs: GCC 16 cannot intern an array
-    // of a class type that equals one already interned.
-    const detail::base_dimension_def* const* UserDim{};
-    const std::int8_t*                       UserExp{};
-    std::size_t                              UserSize{0}; // tested instead of the pointers (see big_int::Size)
+    // The base dimensions, sorted by name, and their exponents (none zero):
+    // interned in static storage with std::define_static_array, as big grid
+    // numbers' limbs are, so a dimension holds any number of them. Two arrays
+    // of scalars, not one of pairs: GCC 16 cannot intern an array of a class
+    // type that equals one already interned.
+    const detail::base_dimension_def* const* Base{};
+    const std::int8_t*                       Exp{};
+    std::size_t                              Size{0}; // tested instead of the pointers (see big_int::Size)
 
     // An exponent past ±127 is an error, not a wrap.
     static constexpr std::int8_t exponent(int e) {
@@ -92,76 +90,58 @@ struct dimension {
         return static_cast<std::int8_t>(e);
     }
 
-    // By content: a base dimension of your own is its name (and, for a basis
-    // vector, its square).
+    // By content: a base dimension is its name (and, for a basis vector, its
+    // square).
     friend constexpr bool operator==(const dimension& a, const dimension& b) {
-        if (!std::ranges::equal(a.Exp, b.Exp) || a.UserSize != b.UserSize)
+        if (a.Size != b.Size)
             return false;
-        for (std::size_t i = 0; i < a.UserSize; ++i)
-            if (a.UserDim[i]->Name != b.UserDim[i]->Name || a.UserDim[i]->Square != b.UserDim[i]->Square ||
-                a.UserExp[i] != b.UserExp[i])
+        for (std::size_t i = 0; i < a.Size; ++i)
+            if (a.Base[i]->Name != b.Base[i]->Name || a.Base[i]->Square != b.Base[i]->Square || a.Exp[i] != b.Exp[i])
                 return false;
         return true;
     }
-    friend consteval dimension operator*(dimension a, const dimension& b) {
-        for (std::size_t i = 0; i < detail::base_dimensions; ++i)
-            a.Exp[i] = exponent(a.Exp[i] + b.Exp[i]);
-        if (b.UserSize == 0) // SI only: nothing to intern
+    friend consteval dimension operator*(const dimension& a, const dimension& b) {
+        if (b.Size == 0)
             return a;
-        detail::user_exponents u{a};
-        for (std::size_t i = 0; i < b.UserSize; ++i)
-            u.add(b.UserDim[i], b.UserExp[i]);
-        return u.into(a);
+        if (a.Size == 0)
+            return b;
+        detail::exponents u{a};
+        for (std::size_t i = 0; i < b.Size; ++i)
+            u.add(b.Base[i], b.Exp[i]);
+        return u.intern();
     }
     friend consteval dimension operator/(const dimension& a, const dimension& b) { return a * b.pow(-1); }
-    consteval dimension        pow(int n) const {
-        if (n == 0)
-            return dimension{};
-        dimension r = *this;
-        for (auto& e : r.Exp)
-            e = exponent(e * n);
-        if (UserSize == 0)
-            return r;
-        // Merged afresh: a basis vector's exponent is taken mod 2 and drops out at 0.
-        detail::user_exponents u{dimension{}};
-        for (std::size_t i = 0; i < UserSize; ++i)
-            u.add(UserDim[i], UserExp[i] * n);
-        return u.into(r);
+    // Merged afresh: a basis vector's exponent is taken mod 2 and drops out at 0.
+    consteval dimension pow(int n) const {
+        detail::exponents u;
+        for (std::size_t i = 0; i < Size; ++i)
+            u.add(Base[i], Exp[i] * n);
+        return u.intern();
     }
     // The n-th root; every exponent must divide.
     consteval dimension root(int n) const {
-        dimension  r    = *this;
-        const auto take = [n](std::int8_t& e) {
+        detail::exponents u{*this};
+        for (auto& e : u.E) {
             if (e % n != 0)
                 beman::inside::detail::constexpr_error<"units: the root of a dimension needs exponents it divides">();
             e = static_cast<std::int8_t>(e / n);
-        };
-        for (auto& e : r.Exp)
-            take(e);
-        if (UserSize == 0)
-            return r;
-        detail::user_exponents u{r};
-        for (auto& e : u.E)
-            take(e);
-        return u.into(r);
+        }
+        return u.intern();
     }
-
-    // b^e merged in: kept sorted by name, an exponent reaching 0 drops out.
-    constexpr void add_user(const detail::base_dimension_def* b, int e);
 };
 
 namespace detail {
-constexpr user_exponents::user_exponents(const dimension& d) {
-    for (std::size_t i = 0; i < d.UserSize; ++i) {
-        D.push_back(d.UserDim[i]);
-        E.push_back(d.UserExp[i]);
+constexpr exponents::exponents(const dimension& d) {
+    for (std::size_t i = 0; i < d.Size; ++i) {
+        D.push_back(d.Base[i]);
+        E.push_back(d.Exp[i]);
     }
 }
 
 // A basis vector's exponent is 0 or 1: v·v is a number (its square).
 constexpr int basis_exponent(int e) { return ((e % 2) + 2) % 2; }
 
-constexpr void user_exponents::add(const base_dimension_def* b, int e) {
+constexpr void exponents::add(const base_dimension_def* b, int e) {
     if (b->Basis)
         e = basis_exponent(e);
     if (e == 0)
@@ -183,20 +163,14 @@ constexpr void user_exponents::add(const base_dimension_def* b, int e) {
     E.insert(E.begin() + i, dimension::exponent(e));
 }
 
-constexpr dimension user_exponents::into(dimension d) const {
-    d.UserDim  = {};
-    d.UserExp  = {};
-    d.UserSize = 0;
+constexpr dimension exponents::intern() const {
     if (D.empty())
-        return d;
+        return {};
     if consteval {
         const auto names = std::define_static_array(D);
-        d.UserDim        = names.data();
-        d.UserExp        = std::define_static_array(E).data();
-        d.UserSize       = names.size();
-        return d;
+        return {names.data(), std::define_static_array(E).data(), names.size()};
     } else {
-        beman::inside::detail::constexpr_error<"units: a base dimension of your own is formed at compile time">();
+        beman::inside::detail::constexpr_error<"units: a dimension is formed at compile time">();
     }
 }
 
@@ -230,27 +204,15 @@ constexpr bool sorted_add(T (&items)[N], std::int8_t& size, T x, int e, Same sam
 }
 } // namespace detail
 
-constexpr void dimension::add_user(const detail::base_dimension_def* b, int e) {
-    detail::user_exponents u{*this};
-    u.add(b, e);
-    *this = u.into(*this);
-}
-
-// The dimension of a base dimension of your own (its exponent 1).
+// The dimension of one base dimension (its exponent 1).
 constexpr dimension dimension_of(const detail::base_dimension_def& b) {
-    dimension d{};
-    d.add_user(&b, 1);
-    return d;
+    detail::exponents u;
+    u.add(&b, 1);
+    return u.intern();
 }
 
+// The dimension of a number.
 inline constexpr dimension dim_one{};
-inline constexpr dimension dim_length{{1, 0, 0, 0, 0, 0, 0}};
-inline constexpr dimension dim_mass{{0, 1, 0, 0, 0, 0, 0}};
-inline constexpr dimension dim_time{{0, 0, 1, 0, 0, 0, 0}};
-inline constexpr dimension dim_electric_current{{0, 0, 0, 1, 0, 0, 0}};
-inline constexpr dimension dim_thermodynamic_temperature{{0, 0, 0, 0, 1, 0, 0}};
-inline constexpr dimension dim_amount_of_substance{{0, 0, 0, 0, 0, 1, 0}};
-inline constexpr dimension dim_luminous_intensity{{0, 0, 0, 0, 0, 0, 1}};
 
 //---------------------------------------------------------------------------
 // Blades — the basis vectors of a dimension. A blade's canonical value is the
@@ -263,30 +225,28 @@ using blade = std::vector<const base_dimension_def*>;
 
 constexpr blade blade_of(const dimension& d) {
     blade b;
-    for (std::size_t i = 0; i < d.UserSize; ++i)
-        if (d.UserDim[i]->Basis)
-            b.push_back(d.UserDim[i]);
+    for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Basis)
+            b.push_back(d.Base[i]);
     return b;
 }
 constexpr bool has_blade(const dimension& d) {
-    for (std::size_t i = 0; i < d.UserSize; ++i)
-        if (d.UserDim[i]->Basis)
+    for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Basis)
             return true;
     return false;
 }
 // Whether a and b are equal but for their basis vectors.
 constexpr bool same_outside_blade(const dimension& a, const dimension& b) {
-    if (!std::ranges::equal(a.Exp, b.Exp))
-        return false;
     std::size_t i = 0, j = 0;
     for (;;) {
-        while (i < a.UserSize && a.UserDim[i]->Basis)
+        while (i < a.Size && a.Base[i]->Basis)
             ++i;
-        while (j < b.UserSize && b.UserDim[j]->Basis)
+        while (j < b.Size && b.Base[j]->Basis)
             ++j;
-        if (i == a.UserSize || j == b.UserSize)
-            return i == a.UserSize && j == b.UserSize;
-        if (a.UserDim[i]->Name != b.UserDim[j]->Name || a.UserExp[i] != b.UserExp[j])
+        if (i == a.Size || j == b.Size)
+            return i == a.Size && j == b.Size;
+        if (a.Base[i]->Name != b.Base[j]->Name || a.Exp[i] != b.Exp[j])
             return false;
         ++i;
         ++j;
@@ -457,10 +417,8 @@ struct kind_def {
     detail::recipe   Recipe{};
     bool             Distinct{false};
 
-    // A base quantity: a dimension of its own.
+    // A base quantity: a dimension of its own (length, currency).
     constexpr kind_def(std::string_view name, dimension d) : Name{name}, Dim{d} {}
-    // A base quantity of a base dimension of your own (money: currency).
-    constexpr kind_def(std::string_view name, const base_dimension_def& b) : Name{name}, Dim{dimension_of(b)} {}
     // A child of a named kind.
     template <const kind_def* P>
     constexpr kind_def(std::string_view name, kind_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
@@ -648,7 +606,7 @@ struct unit_def;
 //---------------------------------------------------------------------------
 // origin_def — where a quantity_point's number counts from. An absolute
 // origin (absolute zero) or one at an exact offset from one, in the coherent
-// SI unit of the dimension (the ice point: absolute zero + 273.15 K).
+// unit of the dimension (the ice point: absolute zero + 273.15 K).
 //---------------------------------------------------------------------------
 namespace detail {
 struct origin_def {
@@ -752,7 +710,7 @@ struct unit_t {
 //---------------------------------------------------------------------------
 // unit_def — the definition of a unit with a symbol (m, s, N, Ω, °C), a
 // static object that unit<"sym", …> makes. Its
-// magnitude is relative to the coherent SI unit of its dimension; Kind (if
+// magnitude is relative to the coherent unit of its dimension; Kind (if
 // any) is the quantity kind it measures (Hz: frequency, Bq: activity).
 //---------------------------------------------------------------------------
 namespace detail {
@@ -843,7 +801,7 @@ consteval void unit_add(unit_value& u, unit_atom a) {
 }
 
 // An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
-constexpr bool is_blade_atom(const unit_atom& a) { return a.U->Dim.UserSize > 0 && has_blade(a.U->Dim); }
+constexpr bool is_blade_atom(const unit_atom& a) { return has_blade(a.U->Dim); }
 constexpr bool has_blade_atoms(const unit_value& u) {
     return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
 }
@@ -891,12 +849,18 @@ consteval magnitude ten_pow(int p) {
 }
 } // namespace detail
 
-// A unit's dimension, magnitude (relative to the coherent SI unit) and kind.
+// A unit's dimension, magnitude (relative to the coherent unit of its
+// dimension) and kind.
 consteval dimension dimension_of(const unit_value& u) {
-    dimension d{};
-    for (std::int8_t i = 0; i < u.Size; ++i)
-        d = d * u.Atoms[i].U->Dim.pow(u.Atoms[i].Exp);
-    return d;
+    if (u.Size == 1 && u.Atoms[0].Exp == 1) // a named unit: its dimension, interned already
+        return u.Atoms[0].U->Dim;
+    detail::exponents d;
+    for (std::int8_t i = 0; i < u.Size; ++i) {
+        const dimension& a = u.Atoms[i].U->Dim;
+        for (std::size_t j = 0; j < a.Size; ++j)
+            d.add(a.Base[j], a.Exp[j] * u.Atoms[i].Exp);
+    }
+    return d.intern();
 }
 namespace detail {
 // The sign of the product of u's blade atoms in stored order against the

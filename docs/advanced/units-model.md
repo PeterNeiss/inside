@@ -12,8 +12,8 @@ header costs to compile. [Units](../guide/units.md) has the everyday view.
 
 | Concept | What it is | Spelled |
 |---|---|---|
-| dimension | exponents of L M T I Θ N J, plus any number of your own | `dimension_of(si::newton.value)` |
-| magnitude | an exact rational × π^k, relative to the coherent SI unit | `just<1000> * si::metre`, `pi` |
+| dimension | base dimensions to integer powers: length, mass, time… or your own | `dimension_of(si::newton.value)` |
+| magnitude | an exact rational × π^k, relative to the coherent unit (m, kg, s, EUR…) | `just<1000> * si::metre`, `pi` |
 | unit | named units to integer powers, with prefixes and a magnitude | `si::kilo(si::metre) / si::hour` |
 | kind | a kind of quantity in the ISQ tree: `height` → `altitude` → `length` | `isq::height` |
 | reference | a unit and a kind | `isq::height[si::metre]`, or a bare unit |
@@ -207,9 +207,12 @@ quantity `q` in a unit scaled by π.
 
 ### Base dimensions of your own
 
-Next to the seven SI base dimensions, `base_dimension<"name">` adds one of yours,
-and a dimension holds any number of them. Its base quantity and units follow
-as usual.
+Every base dimension is a `base_dimension<"name">`, and a dimension holds
+any number of them. The catalog declares the seven SI ones that way
+(`isq::length` is `kind<"length", base_dimension<"length">>`), and one of
+yours is declared the same way. Its base quantity and units follow as usual.
+A base dimension is its name, so `base_dimension<"length">` is the SI one, and
+`base_unit<"m", "length">` is `si::metre`.
 Money then never adds to a length or a plain number, EUR/kg is a dimension of
 its own, and EUR + ct runs in ct. The same shape gives hit points, pixels,
 packets, gas, or ADC counts. Two currencies whose rate changes are two base
@@ -237,7 +240,7 @@ inline constexpr auto         e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
 
 ### Identity and limits
 
-An entry is identified by its content: a kind by its name,
+An entry is identified by its content: a base dimension by its name, a kind by its name,
 dimension, recipe, kind boundary and parent chain; a unit by its symbols,
 dimension, magnitude, kind and origin; a basis vector also by its square. A
 unit holds at most 6 named units, a
@@ -319,13 +322,14 @@ translation units (best of three). On the maintainer's machine:
 
 | Compiler | inside | units.hpp | 200 inside expressions | as quantities |
 |---|---:|---:|---:|---:|
-| GCC 16, C++26 | 0.57 s | 0.87 s | 4.56 s | 6.85 s |
+| GCC 16, C++26 | 0.58 s | 1.10 s | 4.61 s | 8.25 s |
 
-The header adds about 0.3 s; printing (`units/io.hpp`, through
+The header adds about 0.5 s; printing (`units/io.hpp`, through
 `inside/io.hpp`) adds another 0.4 s. Units of your own need only
-`units/core.hpp`, without the catalog, which saves about 0.16 s of it. Each of
-the 200 expressions uses its own grid, so most of the time is inside's
-arithmetic on those grids; units add about 11 ms per expression.
+`units/core.hpp`, without the catalog, which saves about 0.4 s of it: the
+catalog interns the dimension of each of its kinds and units. Each of the 200
+expressions uses its own grid, so most of the time is inside's arithmetic on
+those grids; units add about 18 ms per expression.
 
 ## Differences from mp-units
 

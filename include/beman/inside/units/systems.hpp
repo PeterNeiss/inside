@@ -18,17 +18,19 @@ namespace beman::inside::units {
 // quantity type costs about thirty times as much to compile, and the catalog
 // has thirty of them.
 //---------------------------------------------------------------------------
-// Base quantities (ISO 80000-1) and the dimensionless one.
+// Base quantities (ISO 80000-1) and the dimensionless one. The seven base
+// dimensions are declared as one of your own is.
 namespace isq {
-inline constexpr auto dimensionless             = kind<"dimensionless", dim_one>;
-inline constexpr auto length                    = kind<"length", dim_length>;
-inline constexpr auto mass                      = kind<"mass", dim_mass>;
-inline constexpr auto duration                  = kind<"duration", dim_time>;
-inline constexpr auto electric_current          = kind<"electric_current", dim_electric_current>;
-inline constexpr auto thermodynamic_temperature = kind<"thermodynamic_temperature", dim_thermodynamic_temperature>;
-inline constexpr auto amount_of_substance       = kind<"amount_of_substance", dim_amount_of_substance>;
-inline constexpr auto luminous_intensity        = kind<"luminous_intensity", dim_luminous_intensity>;
-inline constexpr auto time                      = duration;
+inline constexpr auto dimensionless    = kind<"dimensionless", dim_one>;
+inline constexpr auto length           = kind<"length", base_dimension<"length">>;
+inline constexpr auto mass             = kind<"mass", base_dimension<"mass">>;
+inline constexpr auto duration         = kind<"duration", base_dimension<"time">>;
+inline constexpr auto electric_current = kind<"electric_current", base_dimension<"electric_current">>;
+inline constexpr auto thermodynamic_temperature =
+    kind<"thermodynamic_temperature", base_dimension<"thermodynamic_temperature">>;
+inline constexpr auto amount_of_substance = kind<"amount_of_substance", base_dimension<"amount_of_substance">>;
+inline constexpr auto luminous_intensity  = kind<"luminous_intensity", base_dimension<"luminous_intensity">>;
+inline constexpr auto time                = duration;
 } // namespace isq
 
 // Space and time (ISO 80000-3).
@@ -171,7 +173,7 @@ inline constexpr auto kilogram = kilo(gram);
 } // namespace si
 namespace si {
 inline constexpr auto ampere        = unit<"A", isq::electric_current>;
-inline constexpr auto absolute_zero = origin<"absolute_zero", dim_thermodynamic_temperature>;
+inline constexpr auto absolute_zero = origin<"absolute_zero", isq::thermodynamic_temperature>;
 inline constexpr auto kelvin        = unit<"K", isq::thermodynamic_temperature, {.origin = si::absolute_zero}>;
 inline constexpr auto ice_point     = origin<"ice_point", si::absolute_zero + just<27315, 100> * si::kelvin>;
 inline constexpr auto mole          = unit<"mol", isq::amount_of_substance>;

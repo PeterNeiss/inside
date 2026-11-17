@@ -21,6 +21,19 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
   `make_policy<F>(ec)` for a constructor (`T{v, make_policy<clamp>(ec)}`)
   and `policy_of<T>` are unchanged.
+- The SI base dimensions are base dimensions like yours: the catalog declares
+  `isq::length` as `kind<"length", base_dimension<"length">>`, and the seven
+  `dim_*` constants are gone. A base dimension is its name, so a
+  `base_dimension<"length">` of yours is the SI one.
+
+  | Before | Now |
+  |---|---|
+  | `dim_length`, `dim_mass`, `dim_time` | `base_dimension<"length">`, `<"mass">`, `<"time">` |
+  | `dim_electric_current`, `dim_thermodynamic_temperature` | `base_dimension<"electric_current">`, `<"thermodynamic_temperature">` |
+  | `dim_amount_of_substance`, `dim_luminous_intensity` | `base_dimension<"amount_of_substance">`, `<"luminous_intensity">` |
+  | `d.Exp[i]` (SI), `d.UserDim`, `d.UserExp`, `d.UserSize` | `d.Base`, `d.Exp`, `d.Size`: every base dimension, sorted by name |
+
+  `dim_one` is unchanged.
 
 ### Changed
 
@@ -114,6 +127,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   - A product of two 64-bit values stored back under `wrap` folds its
     128-bit slot by one-limb divisions (105 ns to 5 ns), and the 128-bit
     range checks inline (`clamp`: 5.3 ns to 1.4 ns).
+- A dimension is one sorted list of base dimensions, the SI ones among them,
+  with no second path for SI. A unit's dimension is interned once, not once
+  per factor, and a named unit's is the one it holds. Compile time: the
+  catalog interns its dimensions, so including `units.hpp` costs about
+  0.1 s more (1.00 s to 1.10 s); a TU of quantity code costs −3 % to +8 %
+  (instructions), and `geoalg.test.cpp` compiles in 46 s (was 67 s).
 
 ## 0.9.0 — 2026-11-15
 

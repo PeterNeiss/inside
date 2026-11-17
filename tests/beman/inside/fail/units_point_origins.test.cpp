@@ -4,7 +4,7 @@
 #include <beman/inside/units.hpp>
 
 inline constexpr auto other_zero =
-    beman::inside::units::origin<"other_zero", beman::inside::units::dim_thermodynamic_temperature>;
+    beman::inside::units::origin<"other_zero", beman::inside::units::base_dimension<"thermodynamic_temperature">>;
 
 int main() {
     using namespace beman::inside;
