@@ -50,9 +50,9 @@ printf '#include <beman/inside/units.hpp>\nint main() {}\n' > "$DIR/include.cpp"
     case $((i % 5)) in
       0) echo "    s += sink(inside<{0, $i}>{1} * just<1000> + just<$i>);" ;;
       1) echo "    s += sink(just<$i> * inside<{0, $i}>{1});" ;;
-      2) echo "    s += sink(inside<{0, $i}>{1} * just<rational{18, 5}>);" ;;
+      2) echo "    s += sink(inside<{0, $i}>{1} * just<18, 5>);" ;;
       3) echo "    s += sink(inside<{0, $i}>{1} + inside<{0, $i}>{1});" ;;
-      4) echo "    s += sink(inside<{-$i, $i}>{0} + just<rational{27315, 100}>);" ;;
+      4) echo "    s += sink(inside<{-$i, $i}>{0} + just<27315, 100>);" ;;
     esac
   done
   echo '    return s == 0;'

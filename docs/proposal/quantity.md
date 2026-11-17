@@ -137,7 +137,8 @@ static_assert(!addable<decltype(cost), mass>);                                  
 `R`: a unit, optionally with a quantity kind (`isq::height[si::metre]`). As in
 mp-units [@P3045R9]:
 
-- a *dimension* is a product of powers of the seven ISQ base dimensions;
+- a *dimension* is a product of powers of base dimensions: the seven ISQ
+  ones and any a program declares, all declared alike;
 - a *unit* is a product of named units to integer powers, with prefixes and an
   exact *magnitude*;
 - a *kind* is a node in the tree of quantity kinds (height under length, area
@@ -264,8 +265,8 @@ the number paper's.
 ```cpp
 namespace std::units {
   // dimensions
-  struct dimension;                                           // exponents of L M T I Θ N J and of base dimensions
-  template<@*text*@ Name> constexpr dimension base_dimension;      // a dimension of your own
+  struct dimension;                                           // base dimensions to integer powers
+  template<@*text*@ Name> constexpr dimension base_dimension;      // a base dimension: "length", "currency"
 
   // units
   struct unit_options { @*text*@ ascii; @*kind*@ kind; @*origin*@ origin; bool space_before = true; };

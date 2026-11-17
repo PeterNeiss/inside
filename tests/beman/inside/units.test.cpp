@@ -36,7 +36,8 @@ consteval bool addable() {
 } // namespace
 
 TEST(UnitsTest, dimensions_and_magnitudes) {
-    static_assert(dimension_of(si::newton.value) == dim_mass * dim_length / dim_time.pow(2));
+    static_assert(dimension_of(si::newton.value) ==
+                  base_dimension<"mass"> * base_dimension<"length"> / base_dimension<"time">.pow(2));
     static_assert(magnitude_of(km.value) == magnitude{grid_rational{1000}});
     static_assert(magnitude_of(si::kilogram.value).is_one());
     static_assert(magnitude_of(si::gram.value) == magnitude{grid_rational{rational{1, 1000}}});
@@ -464,7 +465,7 @@ TEST(UnitsApiTest, mismatches_are_constraint_failures) {
 }
 
 TEST(UnitsApiTest, tags_for_your_own_entries) {
-    constexpr auto zero = origin<"zero", dim_thermodynamic_temperature>;
+    constexpr auto zero = origin<"zero", base_dimension<"thermodynamic_temperature">>;
     const auto     p    = zero + just<5> * si::kelvin;
     EXPECT_EQ(p.quantity_from_origin().numerical_value_in(si::kelvin), 5);
     static_assert(!can_subtract<decltype(p), decltype(point<si::kelvin>(just<1>))>); // two absolute origins
@@ -549,21 +550,36 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
     constexpr auto      loot  = unit<"loot", gold_u * health_u * mana_u * stamina::st>;
     constexpr auto      net   = unit<"net", xp_u * pixel_u * packet_u * token_u>;
     constexpr dimension eight = dimension_of((loot * net).value);
-    static_assert(eight.UserSize == 8);
+    static_assert(eight.Size == 8);
     // By content, in any order.
     static_assert(eight == dimension_of((net * loot).value));
     static_assert(eight ==
                   token_dim * packet_dim * pixel_dim * xp_dim * stamina::dim * mana_dim * health_dim * gold_dim);
     static_assert(eight.pow(3).root(3) == eight);
     static_assert(eight / eight == dim_one);
-    static_assert(dimension_of((loot * net / si::second).value) == eight / dim_time);
+    static_assert(dimension_of((loot * net / si::second).value) == eight / base_dimension<"time">);
 
     const auto both  = (just<2> * loot) * (just<3> * net);
     const auto seven = both / (just<1> * gold_u);
     EXPECT_EQ(to_string(both + both), "12 loot net");
     EXPECT_EQ(to_string(both / (just<2> * si::second)), "3 loot net/s");
-    static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.U).UserSize == 7); // gold⁰ drops out
+    static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.U).Size == 7); // gold⁰ drops out
     static_assert(!can_add<decltype(both), decltype(seven)>);
+}
+
+// The SI base dimensions are declared as one of your own is, and a base
+// dimension is its name: base_unit<"m", "length"> is si::metre.
+TEST(UnitsApiTest, si_base_dimensions_are_base_dimensions) {
+    static_assert(dimension_of(si::metre.value) == base_dimension<"length">);
+    static_assert(base_unit<"m", "length"> == si::metre);
+    static_assert(dimension_of(si::newton.value).Size == 3);
+    static_assert(dimension_of(si::kelvin.value) == isq::thermodynamic_temperature.value->Dim);
+    constexpr dimension price = dimension_of((unit<"EUR", money_kind> / si::kilogram).value);
+    static_assert(price == currency_dim / base_dimension<"mass">);
+    static_assert(price == base_dimension<"mass">.pow(-1) * currency_dim); // in any order
+    static_assert(price.Size == 2 && price.Base[0]->Name == "currency" && price.Base[1]->Name == "mass");
+    static_assert(price * base_dimension<"mass"> == currency_dim);
+    static_assert(dimension_of((si::metre / si::metre).value) == dim_one);
 }
 
 TEST(UnitsApiTest, adc_counts) {
