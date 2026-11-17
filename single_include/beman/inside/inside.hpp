@@ -856,6 +856,33 @@ constexpr pair<L> div(L hi, L lo, L d) noexcept // {quotient, remainder}
     }
 }
 
+// Division by a normalized 64-bit d (top bit set) through its reciprocal
+// v = ⌊(2^128 − 1)/d⌋ − 2^64 (Möller and Granlund, "Improved division by
+// invariant integers", 2011): {hi, lo} / d in two multiplications, no
+// divide, for hi < d. One reciprocal serves every limb of a long division.
+template <std::unsigned_integral L>
+    requires(bits<L> == 64)
+constexpr L reciprocal(L d) noexcept {
+    return div(static_cast<L>(~d), static_cast<L>(~L{0}), d).Hi; // ~d < d: d is normalized
+}
+template <std::unsigned_integral L>
+    requires(bits<L> == 64)
+constexpr pair<L> div_preinv(L u1, L u0, L d, L v) noexcept {
+    const pair<L> p  = mul(v, u1);
+    const L       q0 = static_cast<L>(p.Lo + u0);
+    L             q1 = static_cast<L>(p.Hi + u1 + (q0 < p.Lo) + 1);
+    L             r  = static_cast<L>(u0 - q1 * d);
+    if (r > q0) {
+        --q1;
+        r += d;
+    }
+    if (r >= d) [[unlikely]] {
+        ++q1;
+        r -= d;
+    }
+    return {q1, r};
+}
+
 //---------------------------------------------------------------------------
 // Array kernels over (pointer, length), least significant limb first, in
 // the style of GMP's mpn layer. An output may alias an input of the same
@@ -987,6 +1014,23 @@ constexpr std::size_t top_size(const L* a, std::size_t n) noexcept {
 template <std::unsigned_integral L>
 constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q, L* r, L* un, L* vn) noexcept {
     if (n == 1) { // (written out: through div_1, GCC loses that this returns for n == 1)
+        if constexpr (bits<L> == 64)
+            if (m >= 3) {
+                // u·2^s / (d·2^s), d normalized on the fly: one reciprocal,
+                // then two multiplications per limb; the remainder shifts back.
+                const int s   = std::countl_zero(v[0]);
+                const L   d   = static_cast<L>(v[0] << s);
+                const L   inv = reciprocal(d);
+                L         rem = s == 0 ? L{0} : static_cast<L>(u[m - 1] >> (64 - s));
+                for (std::size_t i = m; i-- > 0;) {
+                    const L lo = s == 0 ? u[i] : static_cast<L>((u[i] << s) | (i > 0 ? u[i - 1] >> (64 - s) : L{0}));
+                    const pair<L> qr = div_preinv(rem, lo, d, inv);
+                    q[i]             = qr.Hi;
+                    rem              = qr.Lo;
+                }
+                r[0] = static_cast<L>(rem >> s);
+                return;
+            }
         L rem = 0;
         for (std::size_t i = m; i-- > 0;) {
             const pair<L> d = div(rem, u[i], v[0]);
@@ -1000,6 +1044,11 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
     const int s = std::countl_zero(v[n - 1]);
     shift_left(vn, n, v, n, s);
     shift_left(un, m + 1, u, m, s);
+    // More than one quotient limb: the top divisor limb's reciprocal, once.
+    [[maybe_unused]] L inv = 0;
+    if constexpr (bits<L> == 64)
+        if (m - n >= 1)
+            inv = reciprocal(vn[n - 1]);
 
     for (std::size_t j = m - n + 1; j-- > 0;) {
         // Estimate q̂ from the top two dividend limbs, then correct it with the
@@ -1011,9 +1060,14 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
             rhat     = static_cast<L>(un[j + n - 1] + vn[n - 1]);
             rhat_big = rhat < vn[n - 1];
         } else {
-            const pair<L> d = div(un[j + n], un[j + n - 1], vn[n - 1]);
-            qhat            = d.Hi;
-            rhat            = d.Lo;
+            pair<L> d;
+            if constexpr (bits<L> == 64)
+                d = m - n >= 1 ? div_preinv(un[j + n], un[j + n - 1], vn[n - 1], inv)
+                               : div(un[j + n], un[j + n - 1], vn[n - 1]);
+            else
+                d = div(un[j + n], un[j + n - 1], vn[n - 1]);
+            qhat = d.Hi;
+            rhat = d.Lo;
         }
         while (!rhat_big) {
             const pair<L> p = mul(qhat, vn[n - 2]);
@@ -9534,7 +9588,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
             if (b.is_zero())
                 return zero();
         const I a = value_in_units<I, grid_rational{1}>(lhs);
-        return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
+        return from_value_index<result>(rounded_div<rmode>(a, b)); // notch 1: the value is the index
     } else if constexpr (notch_div_int) {
         constexpr grid_rational c  = unit_of<L> / (unit_of<R> * notch_of<L>);
         constexpr std::int64_t  cp = static_cast<std::int64_t>(grid_numerator(c)),
@@ -9831,8 +9885,11 @@ struct quotient_remainder {
                     return fail(error::division_by_zero);
             const I a = value_in_units<I, grid_rational{1}>(lhs);
             const I q = rounded_div<rmode>(a, b);
-            return result{exact_result<Q>(wide_rational<K>{q, I{1}}),
-                          exact_result<M>(wide_rational<K>{a - q * b, I{1}})};
+            if constexpr (notch_of<Q> == 1 && notch_of<M> == 1 && anchored<Q> && anchored<M>)
+                return result{from_value_index<Q>(q), from_value_index<M>(I{a - q * b})};
+            else
+                return result{exact_result<Q>(wide_rational<K>{q, I{1}}),
+                              exact_result<M>(wide_rational<K>{a - q * b, I{1}})};
         } else {
             using T         = native_div_t<L, R>;
             const T rhs_val = static_cast<T>(to_value(rhs));
@@ -13324,21 +13381,41 @@ using wrap_counter = inside<{0, Max}, wrap>;
 
 namespace beman::inside {
 namespace detail {
-// Decimal digits of a wide integer: 19 digits per division by 10^19.
+// Decimal digits of a wide integer: 19 digits per division by 10^19, a
+// normalized limb whose reciprocal is a constant (limb::div_preinv: two
+// multiplications per limb, no divide), written from the end of a buffer.
 template <std::size_t N, bool S>
 std::string wide_to_decimal(wide_int<N, S> v) {
-    const bool         neg = v.negative();
-    wide_int<N, false> u(neg ? -v : v);
-    std::string        out;
-    do {
-        const auto [q, r] = divmod_small(u, 10'000'000'000'000'000'000ull);
-        std::string part  = std::to_string(r);
-        if (!q.is_zero())
-            part.insert(0, 19 - part.size(), '0');
-        out.insert(0, part);
-        u = q;
-    } while (!u.is_zero());
-    return neg ? "-" + out : out;
+    constexpr std::uint64_t d   = 10'000'000'000'000'000'000ull; // ≥ 2^63
+    constexpr std::uint64_t inv = limb::reciprocal(d);
+    const bool              neg = v.negative();
+    wide_int<N, false>      u(neg ? -v : v);
+    std::size_t             n = limb::top_size(u.Word, N);
+    char                    buf[N * 20 + 24];
+    char* const             end = buf + sizeof buf;
+    char*                   p   = end;
+    while (n > 1 || (n == 1 && u.Word[0] >= d)) {
+        std::uint64_t r = 0;
+        for (std::size_t i = n; i-- > 0;) {
+            const auto qr = limb::div_preinv(r, u.Word[i], d, inv);
+            u.Word[i]     = qr.Hi;
+            r             = qr.Lo;
+        }
+        while (n > 0 && u.Word[n - 1] == 0)
+            --n;
+        char        tmp[24];
+        char* const e = std::to_chars(tmp, tmp + sizeof tmp, r).ptr;
+        p -= 19;
+        std::fill(p, p + 19, '0'); // r < 10^19: its digits, right-aligned
+        std::copy_backward(tmp, e, p + 19);
+    }
+    char        tmp[24];
+    char* const e = std::to_chars(tmp, tmp + sizeof tmp, n == 0 ? std::uint64_t{0} : u.Word[0]).ptr;
+    p -= e - tmp;
+    std::copy(tmp, e, p);
+    if (neg)
+        *--p = '-';
+    return std::string(p, end);
 }
 
 // The digits of a wide magnitude in base 2, 8 or 16 (upper or lower case),
@@ -13718,7 +13795,11 @@ char* write_text(char* p, B b) {
 template <insidable B>
 [[nodiscard]] inline std::string to_string(B b) {
     constexpr int n = detail::fixed_decimals<B>;
-    if constexpr (detail::wide_valued<B>)
+    if constexpr (detail::wide_valued<B> && detail::integer_lattice<B> && !detail::point_storage<B>)
+        // integers past 64 bits: the value's digits, no fraction to reduce
+        return detail::wide_to_decimal(
+            detail::value_in_units<detail::wide_sint<detail::exact_limbs<B>>, detail::grid_rational{1}>(b));
+    else if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
     else if constexpr (detail::buffered_text<B>) {
         char buf[detail::text_buffer];

@@ -36,21 +36,41 @@
 
 namespace beman::inside {
 namespace detail {
-// Decimal digits of a wide integer: 19 digits per division by 10^19.
+// Decimal digits of a wide integer: 19 digits per division by 10^19, a
+// normalized limb whose reciprocal is a constant (limb::div_preinv: two
+// multiplications per limb, no divide), written from the end of a buffer.
 template <std::size_t N, bool S>
 std::string wide_to_decimal(wide_int<N, S> v) {
-    const bool         neg = v.negative();
-    wide_int<N, false> u(neg ? -v : v);
-    std::string        out;
-    do {
-        const auto [q, r] = divmod_small(u, 10'000'000'000'000'000'000ull);
-        std::string part  = std::to_string(r);
-        if (!q.is_zero())
-            part.insert(0, 19 - part.size(), '0');
-        out.insert(0, part);
-        u = q;
-    } while (!u.is_zero());
-    return neg ? "-" + out : out;
+    constexpr std::uint64_t d   = 10'000'000'000'000'000'000ull; // ≥ 2^63
+    constexpr std::uint64_t inv = limb::reciprocal(d);
+    const bool              neg = v.negative();
+    wide_int<N, false>      u(neg ? -v : v);
+    std::size_t             n = limb::top_size(u.Word, N);
+    char                    buf[N * 20 + 24];
+    char* const             end = buf + sizeof buf;
+    char*                   p   = end;
+    while (n > 1 || (n == 1 && u.Word[0] >= d)) {
+        std::uint64_t r = 0;
+        for (std::size_t i = n; i-- > 0;) {
+            const auto qr = limb::div_preinv(r, u.Word[i], d, inv);
+            u.Word[i]     = qr.Hi;
+            r             = qr.Lo;
+        }
+        while (n > 0 && u.Word[n - 1] == 0)
+            --n;
+        char        tmp[24];
+        char* const e = std::to_chars(tmp, tmp + sizeof tmp, r).ptr;
+        p -= 19;
+        std::fill(p, p + 19, '0'); // r < 10^19: its digits, right-aligned
+        std::copy_backward(tmp, e, p + 19);
+    }
+    char        tmp[24];
+    char* const e = std::to_chars(tmp, tmp + sizeof tmp, n == 0 ? std::uint64_t{0} : u.Word[0]).ptr;
+    p -= e - tmp;
+    std::copy(tmp, e, p);
+    if (neg)
+        *--p = '-';
+    return std::string(p, end);
 }
 
 // The digits of a wide magnitude in base 2, 8 or 16 (upper or lower case),
@@ -430,7 +450,11 @@ char* write_text(char* p, B b) {
 template <insidable B>
 [[nodiscard]] inline std::string to_string(B b) {
     constexpr int n = detail::fixed_decimals<B>;
-    if constexpr (detail::wide_valued<B>)
+    if constexpr (detail::wide_valued<B> && detail::integer_lattice<B> && !detail::point_storage<B>)
+        // integers past 64 bits: the value's digits, no fraction to reduce
+        return detail::wide_to_decimal(
+            detail::value_in_units<detail::wide_sint<detail::exact_limbs<B>>, detail::grid_rational{1}>(b));
+    else if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
     else if constexpr (detail::buffered_text<B>) {
         char buf[detail::text_buffer];

@@ -408,7 +408,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
             if (b.is_zero())
                 return zero();
         const I a = value_in_units<I, grid_rational{1}>(lhs);
-        return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
+        return from_value_index<result>(rounded_div<rmode>(a, b)); // notch 1: the value is the index
     } else if constexpr (notch_div_int) {
         constexpr grid_rational c  = unit_of<L> / (unit_of<R> * notch_of<L>);
         constexpr std::int64_t  cp = static_cast<std::int64_t>(grid_numerator(c)),
@@ -705,8 +705,11 @@ struct quotient_remainder {
                     return fail(error::division_by_zero);
             const I a = value_in_units<I, grid_rational{1}>(lhs);
             const I q = rounded_div<rmode>(a, b);
-            return result{exact_result<Q>(wide_rational<K>{q, I{1}}),
-                          exact_result<M>(wide_rational<K>{a - q * b, I{1}})};
+            if constexpr (notch_of<Q> == 1 && notch_of<M> == 1 && anchored<Q> && anchored<M>)
+                return result{from_value_index<Q>(q), from_value_index<M>(I{a - q * b})};
+            else
+                return result{exact_result<Q>(wide_rational<K>{q, I{1}}),
+                              exact_result<M>(wide_rational<K>{a - q * b, I{1}})};
         } else {
             using T         = native_div_t<L, R>;
             const T rhs_val = static_cast<T>(to_value(rhs));

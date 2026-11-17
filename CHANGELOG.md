@@ -72,6 +72,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   - `to_string` of an integer or decimal grid prints with `std::to_chars`
     (52 ns to 6 ns; `per<100>`: 120 ns to 13 ns), and `parse` reads plain
     decimal text in one pass (about 2.5× faster).
+  - Grids past 64 bits: decimal text divides by 10^19 through its
+    reciprocal (two multiplications per limb) into a stack buffer, and an
+    integer grid prints its value without the fraction printer (100 bits:
+    169 ns to 49 ns, 1000 bits: 606 ns to 89 ns, at GMP's `mpz_get_str`);
+    long division takes the divisor's reciprocal once, and an integer
+    quotient is stored as its index without a second division (100 bits:
+    47 ns to 28 ns).
   - `dot`, `matrix_vector_product` and `matrix_product` sum the products of
     integer-raw lattices in int64 and round each element once, inline
     (Q2.14: an 8-element `matrix_vector_product` 63 ns to 25 ns, an 8×8
