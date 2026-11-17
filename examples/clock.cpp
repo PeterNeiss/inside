@@ -95,7 +95,7 @@ struct date {
         day.on_wrap([&](auto&, auto carry) { add_months(carry * month); }) += d;
     }
     void add_months(const auto& d) {
-        months.on_wrap([&](auto&, auto carry) { years.policy(Error) += carry * year; }) += d;
+        months.on_wrap([&](auto&, auto carry) { years.on_error(Error) += carry * year; }) += d;
     }
 
     friend std::ostream& operator<<(std::ostream& os, const date& d) {

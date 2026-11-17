@@ -7,5 +7,5 @@ using namespace beman::inside;
 
 int main(int argc, char**) {
     inside<{0, 100}> x{0};
-    x.policy<round_floor>() = argc * 0.5;
+    x.with<round_floor>() = argc * 0.5;
 }

@@ -342,6 +342,23 @@ constexpr std::uint64_t fold_slot(std::int64_t offset) noexcept {
     return static_cast<std::uint64_t>(w < 0 ? w + slot_period<L> : w);
 }
 
+// A slot offset past int64 (a 128-bit product, say) folded the same way:
+// cold, and by value, so the caller's hot path keeps no frame for it.
+template <insidable L, typename W>
+[[gnu::cold]] [[gnu::noinline]] constexpr std::uint64_t fold_wide_slot(W offset) noexcept {
+    if constexpr (wide_integer<W>) {
+        // |offset| by the one-limb period, limb by limb; a negative offset's
+        // remainder r folds to period − r.
+        constexpr std::size_t   N   = sizeof(W) / sizeof(std::uint64_t);
+        constexpr std::uint64_t p   = static_cast<std::uint64_t>(slot_period<L>);
+        const bool              neg = offset.negative();
+        const wide_uint<N>      u   = static_cast<wide_uint<N>>(offset);
+        const std::uint64_t     r   = divmod_small<N>(neg ? wide_uint<N>{0} - u : u, p).Remainder;
+        return neg && r != 0 ? p - r : r;
+    } else
+        return static_cast<std::uint64_t>(floor_divmod(offset, static_cast<W>(slot_period<L>)).Rem);
+}
+
 // value → raw, integer math only.
 template <insidable B>
     requires q_format_fits<B>
@@ -855,6 +872,46 @@ template <insidable L, typename P>
 template <insidable L, typename P>
 [[nodiscard]] constexpr std::uint64_t round_quotient(std::uint64_t num, std::uint64_t den) noexcept {
     return round_split<L, P>(num / den, num % den, den);
+}
+
+// ⌊c⌋, c = −Lower/Notch: the slot offset where L's values stop being
+// negative (round_signed_slot), when it fits int64.
+template <insidable L>
+inline constexpr grid_int zero_slot_floor = notched<L> ? floor_quotient(-lower_of<L>, notch_of<L>) : grid_int{0};
+template <insidable L>
+inline constexpr bool signed_slots_fit =
+    notched<L> && !(zero_slot_floor<L> < grid_int{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_int{std::numeric_limits<std::int64_t>::max()} < zero_slot_floor<L>);
+
+// The slot rounding of round_split for any slot offset num/den (den > 0),
+// past either limit too (a clamp or a wrap takes the slot next), anchored
+// or not: the floor q moves up as P's mode decides, with the sign of the
+// value Lower + (num/den)·Notch. That value is below zero exactly when
+// num/den < c: q below ⌊c⌋, or q at ⌊c⌋ and the remainder below c's
+// fraction (0 when anchored).
+template <insidable L, typename P>
+    requires signed_slots_fit<L>
+[[nodiscard]] constexpr std::int64_t round_signed_slot(std::int64_t num, std::int64_t den) noexcept {
+    std::int64_t q = num / den, r = num % den;
+    if (r < 0) {
+        --q;
+        r += den;
+    }
+    if (r == 0)
+        return q;
+    constexpr round_mode   m        = rounding_for<L, P>;
+    constexpr std::int64_t fc       = static_cast<std::int64_t>(zero_slot_floor<L>);
+    bool                   negative = q < fc;
+    if constexpr (!anchored<L>)
+        if (q == fc) {
+            constexpr grid_rational frac = -lower_index_of<L> - grid_rational{zero_slot_floor<L>};
+            constexpr grid_int      fn = grid_numerator(frac), fd = grid_denominator(frac);
+            using W  = wide_uint<limbs_for_bits(64 + fd.bit_width())>;
+            negative = W{static_cast<std::uint64_t>(r)} * static_cast<W>(fd) <
+                       static_cast<W>(fn) * W{static_cast<std::uint64_t>(den)};
+        }
+    const auto ur = static_cast<std::uint64_t>(r), ud = static_cast<std::uint64_t>(den);
+    return q + rounds_up(m, negative, classify_remainder(m, ur, ud), ((q & 1) != 0) != lower_index_odd<L>);
 }
 
 // Forward decl — defined in assignment.hpp

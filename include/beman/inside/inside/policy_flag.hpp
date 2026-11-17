@@ -140,7 +140,7 @@ namespace detail {
 }
 
 // Runtime checks run unless the flag set carries `unsafe`, which wins over
-// `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
+// `checked` (the default policy's own bit, so `x.with<unsafe>()` opts a
 // default inside out). `inside<G, round_half_away>` and `inside<G, clamp>` are
 // checked, exactly like the default `inside<G>`.
 [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, unsafe_marker); }

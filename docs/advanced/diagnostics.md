@@ -78,7 +78,7 @@ assignment checks print the numbers that failed:
 error: static assertion failed: grid: the notch must divide Upper − Lower evenly
        (notch 3, Upper − Lower 10)
 error: static assertion failed: inside_assignable: incompatible notches — use
-       `policy<round_toward_zero>()` or a rounding policy to allow rounding (lhs notch 1, rhs notch 1/2)
+       `with<round_toward_zero>()` or a rounding policy to allow rounding (lhs notch 1, rhs notch 1/2)
 error: static assertion failed: inside_assignable: rhs interval lies entirely outside
        lhs interval … (lhs [0, 3], rhs [5, 10])
 ```
@@ -111,7 +111,7 @@ error: use of deleted function '…': inside: the source's interval lies entirel
 
 The two clauses are *interval lies entirely outside* (the value cannot fit
 the range) and *incompatible notches* (the value is off the grid's step:
-allow rounding with `policy<round_toward_zero>()` or a rounding policy). Because the overload
+allow rounding with `with<round_toward_zero>()` or a rounding policy). Because the overload
 is deleted, `std::is_constructible`, `std::convertible_to` and `requires`
 probes answer `false`, so insides work in `std::variant`, `std::optional` and
 other code that probes convertibility. For the two grids' numbers, ask:
@@ -129,8 +129,8 @@ assignment, `++` or a flag proxy, the deleted overload says so:
 ```text
 error: use of deleted function '…': inside: the source's values may fall outside
        this grid, or off its notch, at run time - store with clamp, wrap or a
-       rounding mode (x.policy<clamp>() = v, T{v, clamp}), report with
-       T::try_make(v), x.policy(ec) = v or x.on_error(f) = v, or opt out with unsafe
+       rounding mode (x.with<clamp>() = v, T{v, clamp}), report with
+       T::try_make(v), x.on_error(ec) = v or x.on_error(f) = v, or opt out with unsafe
 ```
 
 A plain number (an `int`, a `double`) goes through a
@@ -143,7 +143,7 @@ error: 'n' is not a constant expression
 ```
 
 Read it as "this run-time number needs a channel": `T::try_make(n)`,
-`T{n, clamp}`, `x.policy(ec) = n`. Unlike a deleted overload, the
+`T{n, clamp}`, `x.on_error(ec) = n`. Unlike a deleted overload, the
 constructor exists, so `std::is_constructible_v<T, int>` is `true`; a generic
 `emplace_back(5)` constructs at run time and does not compile (write
 `emplace_back(5_ins)`). A constant that does not fit fails with the text:

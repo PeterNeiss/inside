@@ -112,7 +112,7 @@ int main() {
     // Common idiom inside std::transform over a sum bus.
     using mixbus_t = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>;
     mixbus_t hot;
-    hot.policy<clamp>() = 2.5;
+    hot.with<clamp>() = 2.5;
     std::cout << "\nsample_t{mixbus 2.5, clamp} = " << sample_t{hot, clamp} << "\n";
 
     // `add_all` folds N inputs exactly (the grid widens); the clamp flag clips the

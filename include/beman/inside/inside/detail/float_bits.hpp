@@ -230,6 +230,16 @@ concept wide_float = std::floating_point<T> && (sizeof(T) > sizeof(double));
 // exact value. f and the other neighbour f + 2(d − f) are exact in double.
 template <std::floating_point T>
 [[nodiscard]] constexpr bool narrow_midpoint(double d) noexcept {
+    if constexpr (std::same_as<T, float> && std::numeric_limits<float>::is_iec559) {
+        // On the bits: where float is normal (biased exponents 897 … 1150)
+        // a tie has the 29 significand bits float drops at exactly 2^28;
+        // anything smaller but 0, or past float's range, decides exactly.
+        const auto bits = std::bit_cast<std::uint64_t>(d);
+        const int  e    = biased_exponent(bits);
+        if (e >= 1023 - 126 && e <= 1023 + 127) [[likely]]
+            return (bits & 0x1FFF'FFFF) == 0x1000'0000;
+        return (bits & ~sign_mask) != 0;
+    }
     const T f = static_cast<T>(d);
     if (!is_finite(f))
         return true; // past T's largest finite: decide exactly

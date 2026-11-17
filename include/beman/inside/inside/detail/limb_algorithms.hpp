@@ -112,6 +112,33 @@ constexpr pair<L> div(L hi, L lo, L d) noexcept // {quotient, remainder}
     }
 }
 
+// Division by a normalized 64-bit d (top bit set) through its reciprocal
+// v = ⌊(2^128 − 1)/d⌋ − 2^64 (Möller and Granlund, "Improved division by
+// invariant integers", 2011): {hi, lo} / d in two multiplications, no
+// divide, for hi < d. One reciprocal serves every limb of a long division.
+template <std::unsigned_integral L>
+    requires(bits<L> == 64)
+constexpr L reciprocal(L d) noexcept {
+    return div(static_cast<L>(~d), static_cast<L>(~L{0}), d).Hi; // ~d < d: d is normalized
+}
+template <std::unsigned_integral L>
+    requires(bits<L> == 64)
+constexpr pair<L> div_preinv(L u1, L u0, L d, L v) noexcept {
+    const pair<L> p  = mul(v, u1);
+    const L       q0 = static_cast<L>(p.Lo + u0);
+    L             q1 = static_cast<L>(p.Hi + u1 + (q0 < p.Lo) + 1);
+    L             r  = static_cast<L>(u0 - q1 * d);
+    if (r > q0) {
+        --q1;
+        r += d;
+    }
+    if (r >= d) [[unlikely]] {
+        ++q1;
+        r -= d;
+    }
+    return {q1, r};
+}
+
 //---------------------------------------------------------------------------
 // Array kernels over (pointer, length), least significant limb first, in
 // the style of GMP's mpn layer. An output may alias an input of the same
@@ -243,6 +270,23 @@ constexpr std::size_t top_size(const L* a, std::size_t n) noexcept {
 template <std::unsigned_integral L>
 constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q, L* r, L* un, L* vn) noexcept {
     if (n == 1) { // (written out: through div_1, GCC loses that this returns for n == 1)
+        if constexpr (bits<L> == 64)
+            if (m >= 3) {
+                // u·2^s / (d·2^s), d normalized on the fly: one reciprocal,
+                // then two multiplications per limb; the remainder shifts back.
+                const int s   = std::countl_zero(v[0]);
+                const L   d   = static_cast<L>(v[0] << s);
+                const L   inv = reciprocal(d);
+                L         rem = s == 0 ? L{0} : static_cast<L>(u[m - 1] >> (64 - s));
+                for (std::size_t i = m; i-- > 0;) {
+                    const L lo = s == 0 ? u[i] : static_cast<L>((u[i] << s) | (i > 0 ? u[i - 1] >> (64 - s) : L{0}));
+                    const pair<L> qr = div_preinv(rem, lo, d, inv);
+                    q[i]             = qr.Hi;
+                    rem              = qr.Lo;
+                }
+                r[0] = static_cast<L>(rem >> s);
+                return;
+            }
         L rem = 0;
         for (std::size_t i = m; i-- > 0;) {
             const pair<L> d = div(rem, u[i], v[0]);
@@ -256,6 +300,11 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
     const int s = std::countl_zero(v[n - 1]);
     shift_left(vn, n, v, n, s);
     shift_left(un, m + 1, u, m, s);
+    // More than one quotient limb: the top divisor limb's reciprocal, once.
+    [[maybe_unused]] L inv = 0;
+    if constexpr (bits<L> == 64)
+        if (m - n >= 1)
+            inv = reciprocal(vn[n - 1]);
 
     for (std::size_t j = m - n + 1; j-- > 0;) {
         // Estimate q̂ from the top two dividend limbs, then correct it with the
@@ -267,9 +316,14 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
             rhat     = static_cast<L>(un[j + n - 1] + vn[n - 1]);
             rhat_big = rhat < vn[n - 1];
         } else {
-            const pair<L> d = div(un[j + n], un[j + n - 1], vn[n - 1]);
-            qhat            = d.Hi;
-            rhat            = d.Lo;
+            pair<L> d;
+            if constexpr (bits<L> == 64)
+                d = m - n >= 1 ? div_preinv(un[j + n], un[j + n - 1], vn[n - 1], inv)
+                               : div(un[j + n], un[j + n - 1], vn[n - 1]);
+            else
+                d = div(un[j + n], un[j + n - 1], vn[n - 1]);
+            qhat = d.Hi;
+            rhat = d.Lo;
         }
         while (!rhat_big) {
             const pair<L> p = mul(qhat, vn[n - 2]);

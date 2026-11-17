@@ -372,7 +372,7 @@ TEST(MathTurnsTest, an_unwrapped_radians_angle_stays_exact) {
     big   x{0};
     error ec{}; // (a sum the grids cannot prove: reported)
     for (int n = 0; n < 100000; ++n)
-        x.policy(ec) += inc_t{0.25};
+        x.on_error(ec) += inc_t{0.25};
     EXPECT_EQ(rational{x}, 25000); // exact after ~4000 turns
     EXPECT_EQ(ec, error{});
 }

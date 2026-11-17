@@ -399,7 +399,7 @@ static void bench_accumulate() {
     bench.run("inside<checked> loop", [&] {
         u200k_checked sum{0};
         for (auto v : bvc)
-            sum.policy(g_checked_ec) += v; // a checked += names its channel
+            sum.on_error(g_checked_ec) += v; // a checked += names its channel
         doNotOptimizeAway(sum.raw());
     });
     bench.run("beman::inside::sum<checked> (bulk check)",
@@ -729,7 +729,7 @@ static void bench_store_convert() {
         tv[j] = rational{static_cast<std::int64_t>((j * 7) % 1000), 10};
     cga.run("non-integer round_toward_zero (1/10 -> 1/4 grid)", [&] {
         ++i;
-        quarters b = tv[i & kMask].policy<round_toward_zero>();
+        quarters b = tv[i & kMask].with<round_toward_zero>();
         doNotOptimizeAway(b.raw());
     });
     finish(cga);
@@ -1719,7 +1719,7 @@ int main(int argc, char** argv) {
                   "integer fast paths, gated on int64-safe spans); a rational RHS in a\n"
                   "compound assign adds to the raw when it is a whole number of notches,\n"
                   "else takes the same exact branch; `inside<checked>`\n"
-                  "element-wise loops report each element's store into an error (`x.policy(ec) += v`) —\n"
+                  "element-wise loops report each element's store into an error (`x.on_error(ec) += v`) —\n"
                   "prefer `beman::inside::sum`'s bulk check, which validates the total instead.\n\n";
 
     bench_scalar_u8();

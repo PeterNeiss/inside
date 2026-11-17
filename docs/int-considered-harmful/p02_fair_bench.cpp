@@ -117,7 +117,7 @@ int main()
       {
         bchecked x{a[i], make_policy<checked>(ec)}, y{b[i], make_policy<checked>(ec)};
         bchecked c;
-        c.policy(ec) = x + y;    // widened sum narrowed back: the checked store
+        c.on_error(ec) = x + y;  // widened sum narrowed back: the checked store
         sink(c.raw());
       }
   });

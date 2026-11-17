@@ -14,7 +14,6 @@
 
 #include <beman/inside/inside.hpp>
 
-#include <bit>
 #include <limits>
 #include <random>
 
@@ -55,17 +54,23 @@ constexpr std::uint64_t random_word(G& g) {
     }
 }
 
-// An index in [0, N]: a word masked to N's bit width, drawn again past N
-// (accepts more than half of the draws). N = 0 draws nothing.
+// An index in [0, N] by Lemire's multiply: the high word of w·(N + 1) for a
+// random word w, drawn again while the low word is below 2^64 mod (N + 1),
+// which leaves every index the same number of words (a draw is repeated
+// with probability below (N + 1)/2^64). N = 0 draws nothing; N = 2^64 − 1
+// takes the word.
 template <std::uint64_t N, std::uniform_random_bit_generator G>
 constexpr std::uint64_t random_index(G& g) {
     if constexpr (N == 0)
         return 0;
+    else if constexpr (N == std::numeric_limits<std::uint64_t>::max())
+        return random_word(g);
     else {
-        constexpr std::uint64_t mask = std::numeric_limits<std::uint64_t>::max() >> std::countl_zero(N);
+        constexpr std::uint64_t s = N + 1;
+        constexpr std::uint64_t t = (std::uint64_t{0} - s) % s; // 2^64 mod s
         for (;;)
-            if (const std::uint64_t k = random_word(g) & mask; k <= N)
-                return k;
+            if (const auto m = limb::mul(random_word(g), s); m.Lo >= t)
+                return m.Hi;
     }
 }
 } // namespace detail

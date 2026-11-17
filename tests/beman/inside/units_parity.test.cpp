@@ -160,10 +160,10 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     // Members: the one-shot policy, the policy handles and the hooks.
     static_assert(requires { metres{150, si::metre, clamp}; });
     static_assert(requires { metres{k, clamp}; });
-    static_assert(requires { m.policy<clamp>() = k; });
-    static_assert(requires { m.policy<clamp>() += k; });
-    static_assert(requires { m.policy<clamp>() *= just<2>; });
-    static_assert(requires { m.policy(ec) = k; });
+    static_assert(requires { m.with<clamp>() = k; });
+    static_assert(requires { m.with<clamp>() += k; });
+    static_assert(requires { m.with<clamp>() *= just<2>; });
+    static_assert(requires { m.on_error(ec) = k; });
     static_assert(requires { m.on_clamp([](auto&, auto) {}) *= just<2>; });
     static_assert(requires { metres::try_make(5, si::metre); });
     static_assert(requires(ratio r) { r.to<int, round_floor>(); });
@@ -227,15 +227,15 @@ TEST(UnitsParityTest, the_new_forms_work) {
     EXPECT_TRUE(+m == m);
     EXPECT_TRUE(+num{7} == num{7});
 
-    m.policy<clamp>() = k; // 1 km is 1000 m: clamped to 100 m
+    m.with<clamp>() = k; // 1 km is 1000 m: clamped to 100 m
     EXPECT_TRUE(m == just<100> * si::metre);
-    m.policy<clamp>() *= just<0>;
+    m.with<clamp>() *= just<0>;
     EXPECT_TRUE(m == just<0> * si::metre);
-    m.policy<wrap>() += just<105> * si::metre; // the period is 101
+    m.with<wrap>() += just<105> * si::metre; // the period is 101
     EXPECT_TRUE(m == just<4> * si::metre);
 
     error ec{};
-    m.policy(ec) = k;
+    m.on_error(ec) = k;
     EXPECT_EQ(ec, error::overflow);
     EXPECT_TRUE(m == just<4> * si::metre);
 

@@ -184,9 +184,9 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
 TEST(UnitsTest, compound_assignment_and_casts) {
     quantity<si::metre, inside<{0, 10000}>> d{100, si::metre};
     error                                   ec{}; // (a sum the grids cannot prove: reported)
-    d.policy(ec) += just<1> * km;
+    d.on_error(ec) += just<1> * km;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1100);
-    d.policy(ec) -= just<100> * si::metre;
+    d.on_error(ec) -= just<100> * si::metre;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1000);
     EXPECT_EQ(ec, error{});
     const auto narrow = value_cast<inside<{0, 2000}>>(d); // may not fit: an expected
@@ -195,7 +195,7 @@ TEST(UnitsTest, compound_assignment_and_casts) {
     // In another unit: 1000 m is 1 km; 1001 m rounds onto whole km by F, and
     // is past a {0, 1} km grid.
     EXPECT_EQ((value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value_in(km)), 1);
-    d.policy(ec) += just<1> * si::metre;
+    d.on_error(ec) += just<1> * si::metre;
     EXPECT_EQ((value_cast<km, inside<{0, 5}, round_half_away>>(d)->numerical_value_in(km)), 1);
     EXPECT_EQ((value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), error::overflow);
 }
@@ -710,9 +710,9 @@ TEST(UnitsAlgorithmsTest, a_builtin_integer_scales_a_quantity) {
     EXPECT_TRUE(q == just<100> * si::metre);
     quantity<si::metre, inside<{0, 100}>> c{5, si::metre};
     error                                 ec{};
-    c.policy(ec) *= 3;
+    c.on_error(ec) *= 3;
     EXPECT_TRUE(c == just<15> * si::metre && ec == error{});
-    c.policy(ec) *= 100;
+    c.on_error(ec) *= 100;
     EXPECT_TRUE(c == just<15> * si::metre && ec == error::overflow);
 }
 
@@ -1083,3 +1083,56 @@ TEST(NumberInAnotherUnitTest, run_time_numbers_take_a_channel) {
     EXPECT_EQ(to_string(m), "0 min");
 }
 } // namespace number_in_another_unit_tests
+
+// The double tier of sin, cos and value_cast across π decides only what the
+// exact engine would: every value of the input grids, against
+// pi_trig_exact and pi_cast_exact, under directed and nearest modes.
+namespace pi_tier_tests {
+using namespace beman::inside;
+using namespace beman::inside::units;
+namespace ud = beman::inside::units::detail;
+
+template <class Q, class Out>
+void trig_sweep() {
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+    static_assert(ud::pi_trig_fp<Out, false, Q::reference, typename Q::rep>, "the double tier applies");
+#endif
+    for (const auto v : values<typename Q::rep>) {
+        const Q q = Q{v, si::degree};
+        EXPECT_EQ((ud::pi_trig<Out, false>(q).raw()), (ud::pi_trig_exact<Out, false>(q).raw())) << to_string(v);
+        EXPECT_EQ((ud::pi_trig<Out, true>(q).raw()), (ud::pi_trig_exact<Out, true>(q).raw())) << to_string(v);
+    }
+}
+TEST(PiTierTest, sin_and_cos_of_degrees_match_the_exact_engine) {
+    using deg   = quantity<si::degree, inside<{{0, 360}, per<64>}>>;
+    using wide  = quantity<si::degree, inside<{{-720, 720}, per<8>}>>;
+    using tenth = quantity<si::degree, inside<{{-90, 90}, per<10>}>>;
+    trig_sweep<deg, inside<{{-1, 1}, per<(1 << 20)>}, round_half_away>>();
+    trig_sweep<deg, inside<{{-1, 1}, per<(1 << 20)>}, round_floor>>();
+    trig_sweep<wide, inside<{{-1, 1}, per<(1 << 12)>}, round_half_even>>();
+    trig_sweep<wide, inside<{{-1, 1}, per<1000>}, round_ceil>>();
+    trig_sweep<tenth, inside<{{-1, 1}, per<(1 << 30)>}, round_toward_zero>>();
+    trig_sweep<tenth, inside<{{-1, 1}, per<2>}, round_half_away>>(); // ties: 30°, 150°
+}
+
+template <auto U, class Out, class Q>
+void cast_sweep(auto unit) {
+    static_assert(
+        ud::pi_scaled<ud::conversion_factor<Q::reference.U, decltype(U)::value>.Ratio, typename Q::rep>::ints,
+        "the double tier applies");
+    for (const auto v : values<typename Q::rep>) {
+        const Q q = Q{v, unit};
+        EXPECT_EQ((value_cast<U, Out>(q).numerical_value_in(U).raw()),
+                  (ud::pi_cast_exact<ud::conversion_factor<Q::reference.U, decltype(U)::value>, Out>(q).raw()))
+            << to_string(v);
+    }
+}
+TEST(PiTierTest, value_cast_across_pi_matches_the_exact_engine) {
+    using deg = quantity<si::degree, inside<{{-360, 360}, per<64>}>>;
+    using rad = quantity<si::radian, inside<{{-7, 7}, per<1024>}>>;
+    cast_sweep<si::radian, inside<{{-8, 8}, per<(1 << 20)>}, round_half_away>, deg>(si::degree);
+    cast_sweep<si::radian, inside<{{-8, 8}, per<(1 << 30)>}, round_floor>, deg>(si::degree);
+    cast_sweep<si::degree, inside<{{-402, 402}, per<100>}, round_half_even>, rad>(si::radian);
+    cast_sweep<si::degree, inside<{{-402, 402}, per<(1 << 16)>}, round_toward_zero>, rad>(si::radian);
+}
+} // namespace pi_tier_tests

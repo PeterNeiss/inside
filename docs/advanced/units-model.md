@@ -253,7 +253,7 @@ the numbers, so it still rounds once and checks once.
 | Spelling | Does |
 |---|---|
 | `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry (a count of periods), the overshoot (a quantity in Q's unit) or the error |
-| `q.policy<F>() = d`, `q.policy(ec) += d` | a store under the number's policy plus `F`, or setting `ec` instead of raising; `=`, `+=` and `-=` take quantities, `*=` and `/=` numbers (`*=` a builtin integer too: `q *= 2`) |
+| `q.with<F>() = d`, `q.on_error(ec) += d` | a store under the number's policy plus `F`, or setting `ec` instead of raising; `=`, `+=` and `-=` take quantities, `*=` and `/=` numbers (`*=` a builtin integer too: `q *= 2`) |
 | `Q{q, clamp \| Round}`, `Q{q, wrap}` | a quantity, converted to Q's unit exactly first |
 | `Q{v, u, clamp}` | a number `v` in unit `u`, as `Q{v, u}` takes it |
 | `exact_cast<Q>(q)` | a quantity, stored exactly or reported |

@@ -20,7 +20,7 @@ integer/notch-offset add and cross-grid non-integer stores have folded
 integer fast paths, gated on int64-safe spans); a rational RHS in a
 compound assign adds to the raw when it is a whole number of notches,
 else takes the same exact branch; `inside<checked>`
-element-wise loops report each element's store into an error (`x.policy(ec) += v`) —
+element-wise loops report each element's store into an error (`x.on_error(ec) += v`) —
 prefer `beman::inside::sum`'s bulk check, which validates the total instead.
 
 

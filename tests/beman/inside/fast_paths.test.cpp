@@ -7,15 +7,21 @@
 // small grid or a sweep past its limits, under every policy.
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/mdspan.hpp>
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <bit>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <expected>
 #include <limits>
+#include <mdspan>
+#include <random>
 #include <string>
+#include <vector>
 
 namespace fast_path_tests {
 using namespace beman::inside;
@@ -62,17 +68,21 @@ void expect_same(const V& v, const char* what) {
 
 template <policy_flag F>
 void integer_sweep() {
-    using n60  = inside<{{-600, 600}, 60}>;
-    using n72  = inside<{{-7, 14}, just<7, 2>}>;
-    using un   = inside<{{1, 601}, 60}>;
-    using half = inside<{{just<1, 2>, just<201, 2>}, 1}>;
-    using q88  = inside<{{0, 255}, per<256>}>;
+    using n60   = inside<{{-600, 600}, 60}>;
+    using n72   = inside<{{-7, 14}, just<7, 2>}>;
+    using un    = inside<{{1, 601}, 60}>;
+    using half  = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    using q88   = inside<{{0, 255}, per<256>}>;
+    using n53   = inside<{{-5, 5}, just<5, 3>}>;          // period·K odd: the parity carries
+    using nhalf = inside<{{just<-7, 2>, just<9, 2>}, 1}>; // unanchored below 0
     for (std::int64_t n = -1000; n <= 1000; ++n) {
         expect_same<n60, F>(n, "n60");
         expect_same<n72, F>(n, "n72");
         expect_same<un, F>(n, "un");
         expect_same<half, F>(n, "half");
         expect_same<q88, F>(n, "q88");
+        expect_same<n53, F>(n, "n53");
+        expect_same<nhalf, F>(n, "nhalf");
     }
 }
 
@@ -87,6 +97,10 @@ TEST(FastPathTest, integer_stores_match_the_exact_store) {
     integer_sweep<clamp | round_floor>();
     integer_sweep<wrap>();
     integer_sweep<wrap | round_half_even>();
+    integer_sweep<wrap | round_half_away>();
+    integer_sweep<wrap | round_toward_zero>();
+    integer_sweep<wrap | round_floor>();
+    integer_sweep<wrap | round_ceil>();
 }
 
 template <class L, class R, policy_flag F>
@@ -110,6 +124,19 @@ void cross_grid() {
     inside_sweep<dec3, dec2, F>("dec2->dec3");
     inside_sweep<small, s32, F>("s32->small");
     inside_sweep<q114, q88, F>("q88->q114");
+    // unanchored targets: Lower off the notch's multiples, above and below 0
+    using un    = inside<{{1, 601}, 60}>;
+    using uneg  = inside<{{-599, 601}, 60}>;
+    using half  = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    using nhalf = inside<{{just<-7, 2>, just<9, 2>}, 1}>;
+    inside_sweep<un, n60, F>("n60->un");
+    inside_sweep<un, s32, F>("s32->un");
+    inside_sweep<uneg, s32, F>("s32->uneg");
+    inside_sweep<half, s32, F>("s32->half");
+    inside_sweep<half, dec2, F>("dec2->half");
+    inside_sweep<nhalf, dec2, F>("dec2->nhalf");
+    inside_sweep<nhalf, small, F>("small->nhalf");
+    inside_sweep<nhalf, half, F>("half->nhalf");
 }
 
 TEST(FastPathTest, cross_grid_stores_match_the_exact_store) {
@@ -121,6 +148,47 @@ TEST(FastPathTest, cross_grid_stores_match_the_exact_store) {
     cross_grid<clamp | round_half_even>();
     cross_grid<wrap | round_half_even>();
     cross_grid<wrap | round_toward_zero>();
+    cross_grid<round_toward_zero>();
+    cross_grid<clamp | round_half_away>();
+    cross_grid<wrap | round_half_away>();
+    cross_grid<wrap | round_floor>();
+}
+
+// Products stored back onto their factors' grid: a Q16.16 product's
+// numerator spans most of int64.
+template <policy_flag F>
+void products_stored_back() {
+    using q1616                   = inside<{{-30000, 30000}, per<65536>}>; // raw: the index from Lower, 0 … 3932160000
+    using half                    = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    constexpr std::int64_t raws[] = {0,
+                                     1,
+                                     65535,
+                                     65537,
+                                     123456789,
+                                     1966014464,
+                                     1966080000,
+                                     1966080001,
+                                     1966145536,
+                                     2000000000,
+                                     3932159999,
+                                     3932160000};
+    for (const std::int64_t a : raws)
+        for (const std::int64_t b : raws)
+            expect_same<q1616, F>(q1616::from_raw(a, unsafe) * q1616::from_raw(b, unsafe), "q1616*q1616");
+    for (const auto a : values<half>)
+        for (const auto b : {half{just<1, 2>}, half{just<3, 2>}, half{just<101, 2>}, half{just<201, 2>}})
+            expect_same<half, F>(a * b, "half*half");
+}
+
+TEST(FastPathTest, products_stored_back_match_the_exact_store) {
+    products_stored_back<round_half_even>();
+    products_stored_back<round_floor>();
+    products_stored_back<round_toward_zero>();
+    products_stored_back<clamp | round_floor>();
+    products_stored_back<clamp | round_half_away>();
+    products_stored_back<wrap | round_half_even>();
+    products_stored_back<wrap | round_toward_zero>();
+    products_stored_back<unsafe | round_half_even>();
 }
 
 template <policy_flag F>
@@ -173,6 +241,112 @@ TEST(FastPathTest, double_stores_match_the_exact_store) {
     double_sweep<clamp | round_half_even>();
 }
 
+// to<float>'s tie test reads float's dropped bits off the double: against
+// the float round trip (which decides ties at every scale) on random doubles
+// and on constructed ties and their neighbours. It may send a tiny value or
+// one past float's range to the exact path, but never misses a tie.
+TEST(FastPathTest, the_float_tie_test_matches_the_round_trip) {
+    auto round_trip = [](double d) {
+        const float f = static_cast<float>(d);
+        if (!std::isfinite(f))
+            return true;
+        const double g = static_cast<double>(f) + 2 * (d - static_cast<double>(f));
+        return g != static_cast<double>(f) && static_cast<double>(static_cast<float>(g)) == g;
+    };
+    auto check = [&](double d) {
+        if (!std::isfinite(d))
+            return;
+        const bool bits = bd::narrow_midpoint<float>(d), tie = round_trip(d);
+        if (tie) {
+            EXPECT_TRUE(bits) << d;
+        } else if (std::fabs(d) >= 0x1p-126 && std::fabs(d) <= std::numeric_limits<float>::max()) {
+            EXPECT_FALSE(bits) << d;
+        }
+    };
+    std::mt19937_64 g{7};
+    for (int i = 0; i < 200000; ++i) {
+        check(std::bit_cast<double>(g()));
+        const float f = std::bit_cast<float>(static_cast<std::uint32_t>(g()));
+        if (std::isfinite(f) && f != 0) {
+            const double h = (static_cast<double>(std::nextafter(f, std::numeric_limits<float>::infinity())) +
+                              static_cast<double>(f)) /
+                             2;
+            for (const double d : {h, -h, std::nextafter(h, 0.0), std::nextafter(h, 1e300)})
+                check(d);
+        }
+    }
+    for (const double d : {0.0, -0.0, 0x1p-126, 0x1p-127, 0x1.000001p-126, 0x1.fffffep127, 0x1.ffffffp127, 5e-324})
+        check(d);
+}
+
+// to_string of a binary notch prints from the raw: against the general
+// fraction printer over every value.
+template <class B>
+void binary_text() {
+    for (const B b : values<B>) {
+        const bd::rational r = bd::as_rational(b);
+        EXPECT_EQ(to_string(b), bd::fraction_to_string_u64(r.Den < 0, r.Num, bd::abs_den(r.Den), 0));
+    }
+}
+TEST(FastPathTest, binary_notches_print_as_the_fraction_printer) {
+    binary_text<inside<{{0, 255}, per<256>}>>();
+    binary_text<inside<{{-2, 2}, per<16384>}>>();
+    binary_text<inside<{{-1, 1}, per<(1 << 19)>}>>();
+    binary_text<inside<{{-3, 5}, per<2>}>>();
+    using q1616 = inside<{{-100000, 100000}, per<(1 << 16)>}>; // a sample
+    for (const std::int64_t raw : {std::int64_t{0},
+                                   std::int64_t{1},
+                                   std::int64_t{65535},
+                                   std::int64_t{65536},
+                                   std::int64_t{6553600000} - 1,
+                                   std::int64_t{6553600000},
+                                   std::int64_t{6553600001},
+                                   std::int64_t{13107200000} - 3,
+                                   std::int64_t{13107200000}}) {
+        const q1616        b = q1616::from_raw(raw, unsafe);
+        const bd::rational r = bd::as_rational(b);
+        EXPECT_EQ(to_string(b), bd::fraction_to_string_u64(r.Den < 0, r.Num, bd::abs_den(r.Den), 0));
+    }
+}
+
+// dot<Out> sums the products in int64 and rounds once: against the exact
+// total stored by the exact store, totals past Out's range included.
+template <class Out, policy_flag F>
+void dot_sweep(std::mt19937_64& g) {
+    using q = inside<{{-2, 2}, per<16384>}>;
+    for (int trial = 0; trial < 2000; ++trial) {
+        std::array<q, 8> a{}, b{};
+        for (std::size_t i = 0; i < 8; ++i) {
+            a[i] = q::from_raw(static_cast<std::uint32_t>(g() % 65537), unsafe);
+            b[i] = q::from_raw(static_cast<std::uint32_t>(g() % 65537), unsafe);
+        }
+        const auto d     = dot<Out>(std::mdspan{a.data(), std::extents<std::size_t, 8>{}},
+                                    std::mdspan{b.data(), std::extents<std::size_t, 8>{}});
+        auto       exact = a[0] * b[0];
+        using E          = inside<{{-32, 32}, per<(std::int64_t{1} << 28)>}, unsafe>; // the exact total: |Σ| ≤ 32
+        E total          = E{exact};
+        for (std::size_t i = 1; i < 8; ++i)
+            total = E{total + a[i] * b[i]};
+        const auto e = exact_store<Out, F>(total);
+        if constexpr (requires { d.has_value(); }) {
+            ASSERT_EQ(d.has_value(), e.has_value());
+            if (d) {
+                EXPECT_EQ(d->raw(), e->raw());
+            } else {
+                EXPECT_EQ(d.error(), e.error());
+            }
+        } else {
+            EXPECT_EQ(d.raw(), e->raw());
+        }
+    }
+}
+TEST(FastPathTest, dot_products_round_once_as_the_exact_total) {
+    std::mt19937_64 g{11};
+    dot_sweep<inside<{{-8, 8}, per<16384>}, clamp | round_half_away>, clamp | round_half_away>(g);
+    dot_sweep<inside<{{-32, 32}, per<1000>}, round_half_even>, round_half_even>(g);
+    dot_sweep<inside<{{-3, 3}, per<100>}, round_floor>, round_floor>(g); // past the range: overflow
+}
+
 TEST(FastPathTest, a_full_int64_source_clamps_and_wraps) {
     using full  = inside<{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()}>;
     using small = inside<{-10, 10}, clamp>;
@@ -206,9 +380,10 @@ TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
         }
 }
 
-TEST(FastPathTest, a_wide_product_clamps_to_the_limit) {
+TEST(FastPathTest, a_wide_product_clamps_and_wraps) {
     using s64 = inside<{-4000000000000000000, 4000000000000000000}>;
     using c64 = inside<{-4000000000000000000, 4000000000000000000}, clamp>;
+    using w64 = inside<{-4000000000000000000, 4000000000000000000}, wrap>;
     for (const std::int64_t a : {std::int64_t{-3000000000},
                                  std::int64_t{-7},
                                  std::int64_t{0},
@@ -221,6 +396,10 @@ TEST(FastPathTest, a_wide_product_clamps_to_the_limit) {
             x *= c64::from_raw(b, unsafe);
             const auto exact = exact_store<c64, clamp>(s64::from_raw(a, unsafe) * s64::from_raw(b, unsafe));
             EXPECT_EQ(x.raw(), exact->raw()) << a << " * " << b;
+            w64 y = w64::from_raw(a, unsafe);
+            y *= w64::from_raw(b, unsafe);
+            const auto folded = exact_store<w64, wrap>(s64::from_raw(a, unsafe) * s64::from_raw(b, unsafe));
+            EXPECT_EQ(y.raw(), folded->raw()) << a << " * " << b << " (wrap)";
         }
 }
 
@@ -260,9 +439,8 @@ TEST(FastPathTest, steps_and_conversions_out_of_lattices) {
     steps_and_values<inside<{{0, 3}, per<65536>}>>();
 }
 
-template <class A, class B>
+template <class A, class B, class Out = inside<{{-1000, 1000}, per<100>}, round_half_even>>
 void divmod_and_onto() {
-    using Out = inside<{{-1000, 1000}, per<100>}, round_half_even>;
     for (const A a : values<A>)
         for (const B b : values<B>) {
             const bd::rational ra = bd::as_rational(a), rb = bd::as_rational(b);
@@ -285,10 +463,84 @@ void divmod_and_onto() {
         }
 }
 
+// div(a, b, mode) off the native paths: the exact quotient rounded once
+// onto the multiples of a's notch, as the exact store rounds a / b.
+template <class X>
+const auto& value_of(const X& x) {
+    if constexpr (requires { x.has_value(); })
+        return *x;
+    else
+        return x;
+}
+template <class A, class B, policy_flag F>
+void div_onto_dividend_notch(const char* what) {
+    std::vector<B> divisors;
+    if constexpr (notch_of<B> != 0)
+        divisors.assign(values<B>.begin(), values<B>.end());
+    else // a continuous divisor: a few values
+        divisors = {B{just<1>}, B{just<13, 12>}, B{just<7, 3>}, B{just<11, 4>}, B{just<4>}};
+    for (const A a : values<A>)
+        for (const B b : divisors) {
+            if (b == 0)
+                continue;
+            const auto d = div(a, b, make_policy<F>());
+            using Q      = std::remove_cvref_t<decltype(value_of(d))>;
+            static_assert(notch_of<Q> == notch_of<A>, "the dividend's notch");
+            const auto e = exact_store<Q, F>(value_of(a / b));
+            ASSERT_TRUE(e.has_value()) << what;
+            EXPECT_EQ(value_of(d).raw(), e->raw()) << what << " " << text_of(a) << " / " << text_of(b);
+        }
+}
+template <policy_flag F>
+void div_modes() {
+    using dec2 = inside<{{-3, 3}, per<100>}>;
+    using q114 = inside<{{-1, 1}, per<16384>}>;
+    using n60  = inside<{{-600, 600}, 60}>;
+    using udec = inside<{{just<1, 200>, just<401, 200>}, per<100>}>; // unanchored
+    using s8   = inside<{-9, 9}>;
+    using nz   = inside<{1, 13}>;
+    using d3   = inside<{{-2, 2}, per<1000>}>;
+    using cont = inside<{{1, 4}, max_denominator{12}}>;
+    div_onto_dividend_notch<dec2, s8, F>("dec2/s8");
+    div_onto_dividend_notch<dec2, nz, F>("dec2/nz");
+    div_onto_dividend_notch<q114, s8, F>("q114/s8");
+    div_onto_dividend_notch<n60, d3, F>("n60/d3");
+    div_onto_dividend_notch<udec, nz, F>("udec/nz");
+    div_onto_dividend_notch<udec, s8, F>("udec/s8");
+    div_onto_dividend_notch<dec2, cont, F>("dec2/cont");
+}
+
+// x /= b on a type that rounds, off the native paths: the exact quotient
+// stored once onto x's own lattice (an unanchored one too), not rounded
+// onto multiples of its notch first.
+TEST(FastPathTest, a_rounding_type_divides_once_onto_its_lattice) {
+    using udec = inside<{{just<1, 200>, just<401, 200>}, per<100>}, clamp | round_half_even>;
+    using nz   = inside<{1, 13}>;
+    for (const udec a : values<udec>)
+        for (const nz b : values<nz>) {
+            udec x = a;
+            x /= b;
+            EXPECT_EQ(x.raw(), (exact_store<udec, clamp | round_half_even>(a / b)->raw()))
+                << text_of(a) << " / " << text_of(b);
+        }
+}
+
+TEST(FastPathTest, div_with_a_mode_rounds_onto_the_dividend_notch) {
+    div_modes<round_floor>();
+    div_modes<round_ceil>();
+    div_modes<round_toward_zero>();
+    div_modes<round_half_away>();
+    div_modes<round_half_even>();
+}
+
 TEST(FastPathTest, divmod_and_rounded_quotients_on_lattices) {
     divmod_and_onto<inside<{{-3, 3}, per<16>}>, inside<{{just<1, 4>, 2}, per<4>}>>();
     divmod_and_onto<inside<{{-1, 1}, per<100>}>, inside<{1, 9}>>();
     divmod_and_onto<inside<{{-70, 70}, 7}>, inside<{{just<1, 2>, 3}, per<2>}>>();
+    // an Out most products and quotients overflow: the error, as the exact store's
+    using narrow = inside<{{-1, 1}, per<100>}, round_half_even>;
+    divmod_and_onto<inside<{{-3, 3}, per<16>}>, inside<{{just<1, 4>, 2}, per<4>}>, narrow>();
+    divmod_and_onto<inside<{{-70, 70}, 7}>, inside<{{just<1, 2>, 3}, per<2>}>, narrow>();
 }
 
 TEST(FastPathTest, exact_cast_and_the_predicates_match_the_exact_store) {

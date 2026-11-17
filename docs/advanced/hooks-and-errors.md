@@ -130,11 +130,11 @@ A store or a free function reports through an `error&`:
 ```cpp
 error ec{};
 inside<{0, 100}> y{50};
-y.policy(ec) = 200;               // ec == error::overflow; y keeps 50
+y.on_error(ec) = 200;             // ec == error::overflow; y keeps 50
 
 inside<{{0, 10}, 2}> coarse{0};
 inside<{{0, 10}, 1}> fine{3};
-coarse.policy<round_toward_zero>(ec) = fine;   // rounds; ec only sees a range error
+coarse.on_error<round_toward_zero>(ec) = fine; // rounds; ec only sees a range error
 ```
 
 The first error is kept; later ones do not overwrite it. A failed store

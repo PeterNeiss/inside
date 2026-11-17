@@ -125,7 +125,7 @@ def int_range(shape, wide):
     return (lo_hi[0] - span, lo_hi[1] + span)
 
 
-@family("store from an integer", ["inside::member (constructor)", "inside::member try_make", "inside::member policy",
+@family("store from an integer", ["inside::member (constructor)", "inside::member try_make", "inside::member with",
                                    "inside::member operator=", "inside exact_cast", "inside conversion_overflows",
                                    "inside conversion_rounds", "inside conversion_loses"])
 def f_store_int():
@@ -141,7 +141,7 @@ def f_store_int():
                     yield Pair("store from an integer", f"store_int/{s}/try_make_onnotch", [("intval", base)],
                                f"return {base}::try_make(a);", tw, note="inputs on the notch")
                 yield Pair("store from an integer", f"store_int/{s}/policy_ec", arg,
-                           f"error ec{{}}; {base} x; x.policy(ec) = a; return std::pair{{x, ec}};", tw)
+                           f"error ec{{}}; {base} x; x.on_error(ec) = a; return std::pair{{x, ec}};", tw)
                 yield Pair("store from an integer", f"store_int/{s}/exact_cast", arg, f"return exact_cast<{base}>(a);", tw)
                 yield Pair("store from an integer", f"store_int/{s}/conversion_overflows", arg,
                            f"return conversion_overflows<{base}>(a);",
@@ -285,7 +285,7 @@ def f_onto():
 
 # --- compound assignment and steps -------------------------------------------
 @family("compound assignment", ["inside::member operator+=", "inside::member operator-=", "inside::member operator*=",
-                                "inside::member operator/=", "inside::member operator%=", "inside::member policy",
+                                "inside::member operator/=", "inside::member operator%=", "inside::member with",
                                 "inside::member on_clamp", "inside::member on_wrap", "inside::member on_error"])
 def f_compound():
     for s in NOTCHED:
@@ -305,7 +305,7 @@ def f_compound():
         S = res(f"std::declval<{C}>() + std::declval<{C}>()")
         tw = f"return twin::store_inside<{C}, {S}, twin::range::check, twin::mode::trunc, false>(twin::add<{S}, {C}, {C}, 1>(a, b));"
         yield Pair("compound assignment", f"compound/{s}+=/policy_ec", [X(s), X(s)],
-                   "error ec{}; a.policy(ec) += b; return std::pair{a, ec};", tw)
+                   "error ec{}; a.on_error(ec) += b; return std::pair{a, ec};", tw)
         yield Pair("compound assignment", f"compound/{s}+=/on_error", [X(s), X(s)],
                    "int n = 0; a.on_error([&](auto&&...) { ++n; }) += b; return std::pair{a, n};", tw)
         yield Pair("compound assignment", f"compound/{s}+=/on_clamp", [("x", T(s, 'clamp')), ("x", T(s, 'clamp'))],
@@ -328,9 +328,9 @@ def f_step():
             yield Pair("++ and --", f"incr/{s}/{p}", [("x", D)], "++a; return a;",
                        f"return twin::finish<{D}, twin::range::{POLICIES[p][1]}>(static_cast<long long>(a) + 1);")
         C = T(s)
-        yield Pair("++ and --", f"incr/{s}/policy_ec", [X(s)], "error ec{}; a.policy(ec) += 1_ins; return std::pair{a, ec};",
+        yield Pair("++ and --", f"incr/{s}/policy_ec", [X(s)], "error ec{}; a.on_error(ec) += 1_ins; return std::pair{a, ec};",
                    f"return twin::finish<{C}, twin::range::check>(static_cast<long long>(a) + 1);",
-                   note="++ has no policy(ec) form: += 1_ins")
+                   note="++ has no on_error(ec) form: += 1_ins")
 
 
 # --- conversions out -----------------------------------------------------------
@@ -391,7 +391,7 @@ def f_helpers():
                                    "cursor::member operator-=", "cursor::member operator+", "cursor::member operator-",
                                    "cursor::member operator=", "cursor::member raw", "cursor::member to",
                                    "cursor::member (conversion)", "cursor::member from_raw", "cursor::member from_step",
-                                   "cursor::member try_make", "cursor::member policy", "cursor::member on_clamp",
+                                   "cursor::member try_make", "cursor::member with", "cursor::member on_clamp",
                                    "cursor::member on_wrap", "cursor::member on_error", "cursor::member operator*=",
                                    "cursor::member operator/=", "cursor::member operator%=", "units view_in",
                                    "units sum"])
@@ -448,7 +448,7 @@ def f_loops():
                        "quantity::member numerical_value_in", "quantity::member operator+=", "quantity::member operator-=",
                        "quantity::member operator*=", "quantity::member operator/=", "quantity::member operator++",
                        "quantity::member operator--", "quantity::member operator=", "quantity::member on_clamp",
-                       "quantity::member on_wrap", "quantity::member on_error", "quantity::member policy",
+                       "quantity::member on_wrap", "quantity::member on_error", "quantity::member with",
                        "quantity::member to", "quantity::member try_make", "quantity::member numerical_value",
                        "units operator+", "units operator-", "units operator*", "units operator/", "units operator%",
                        "units operator<=>", "units operator==", "units value_cast", "units kind_cast", "units exact_cast",
@@ -487,8 +487,8 @@ def f_units():
                "a += b; return a;", "a += b; return a;", "inside")
     yield Pair(F, "q_compound/m+=km/clamp", [("qn", f"quantity<si::metre, inside<{{0, 100000}}, clamp>>"), ("qn", km)],
                "a += b; return a;", "a += b * just<1000>; return a;", "inside")
-    yield Pair(F, "q_policy_ec/m+=m", [("qn", m), ("qn", m)], "error ec{}; a.policy(ec) += b; return std::pair{a, ec};",
-               "error ec{}; a.policy(ec) += b; return std::pair{a, ec};", "inside")
+    yield Pair(F, "q_policy_ec/m+=m", [("qn", m), ("qn", m)], "error ec{}; a.on_error(ec) += b; return std::pair{a, ec};",
+               "error ec{}; a.on_error(ec) += b; return std::pair{a, ec};", "inside")
     yield Pair(F, "q_scale/m*=n", [("qn", f"quantity<si::metre, inside<{{0, 100000}}, clamp>>"), ("int", (0, 9))],
                "a *= b; return a;", "a *= b; return a;", "inside")
     yield Pair(F, "q_value_cast/m->km", [("qn", m)],

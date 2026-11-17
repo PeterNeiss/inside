@@ -70,8 +70,8 @@ int main() {
         if (!stored)
             return;
         const auto reading = point<deg_C>(*stored);
-        weighted_sum.policy(accumulated) += (reading - ref) * w; // a difference in ℃ times a weight: exact
-        weight_sum.policy(accumulated) += w;
+        weighted_sum.on_error(accumulated) += (reading - ref) * w; // a difference in ℃ times a weight: exact
+        weight_sum.on_error(accumulated) += w;
     };
 
     accept(std::type_identity<outdoor_t>{}, raw[0], w_outdoor, "outdoor");

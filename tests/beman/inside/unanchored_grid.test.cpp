@@ -359,7 +359,7 @@ TEST(UnanchoredGridTest, compound_assignment) {
             const auto s = static_cast<rational>(exact{x} + exact{y});
             half       a = test::store<half>(x);
             error      ea{}; // (the sum may leave half's range: a reported store)
-            a.policy(ea) += test::store<ints>(y);
+            a.on_error(ea) += test::store<ints>(y);
             if (includes(half_off.Interval, s)) {
                 EXPECT_EQ(ea, error{});
                 EXPECT_EQ(static_cast<rational>(a), s);
@@ -368,7 +368,7 @@ TEST(UnanchoredGridTest, compound_assignment) {
             half       b = test::store<half>(x);
             const auto d = static_cast<rational>(exact{x} - exact{y});
             error      eb{};
-            b.policy(eb) -= test::store<ints>(y);
+            b.on_error(eb) -= test::store<ints>(y);
             if (includes(half_off.Interval, d)) {
                 EXPECT_EQ(eb, error{});
                 EXPECT_EQ(static_cast<rational>(b), d);
@@ -378,16 +378,16 @@ TEST(UnanchoredGridTest, compound_assignment) {
     // a sum on another lattice rounds back by the policy
     error                         ec{};
     inside<half_off, round_floor> h{2.5};
-    h.policy(ec) += inside<half_off>{0.5};
+    h.on_error(ec) += inside<half_off>{0.5};
     EXPECT_EQ(static_cast<rational>(h), 2.5_r); // 3 floors to 2.5
     inside<half_off, round_ceil> c{2.5};
-    c.policy(ec) *= inside<{2, 2}>{2};
+    c.on_error(ec) *= inside<{2, 2}>{2};
     EXPECT_EQ(static_cast<rational>(c), 5.5_r); // 5 rounds up to 5.5
     half i{4.5};
-    i.policy(ec) += 1_ins; // (++ may step out of half: a channel)
+    i.on_error(ec) += 1_ins; // (++ may step out of half: a channel)
     EXPECT_EQ(static_cast<rational>(i), 5.5_r);
-    i.policy(ec) -= 1_ins;
-    i.policy(ec) -= 1_ins;
+    i.on_error(ec) -= 1_ins;
+    i.on_error(ec) -= 1_ins;
     EXPECT_EQ(static_cast<rational>(i), 3.5_r);
     EXPECT_EQ(ec, error{});
 }

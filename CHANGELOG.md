@@ -6,8 +6,39 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ## Unreleased
 
+### Upgrading
+
+- `policy` is gone from inside and quantity. The error channel is the
+  `on_error` overload that takes an `error&` (beside the hook `on_error(f)`),
+  and the flags for one operation are `with`:
+
+  | Before | Now |
+  |---|---|
+  | `x.policy(ec) += y` | `x.on_error(ec) += y` |
+  | `x.policy<round_floor>(ec) = v` | `x.on_error<round_floor>(ec) = v` |
+  | `x.policy<clamp>() = v` | `x.with<clamp>() = v` |
+  | `(a * b).policy<round_toward_zero>()` | `(a * b).with<round_toward_zero>()` |
+
+  `make_policy<F>(ec)` for a constructor (`T{v, make_policy<clamp>(ec)}`)
+  and `policy_of<T>` are unchanged.
+
 ### Changed
 
+- `div(a, b, mode)` rounds by its mode on every dividend with a notch: off
+  the integer and shared-notch paths it rounds the exact quotient once onto
+  the multiples of `a`'s notch (it returned the exact quotient there and
+  ignored the mode). `div(dec2, u8, round_floor)` is a `dec2`-notched value,
+  in one integer division (10 ns to 2 ns). `x /= b` on a type that rounds is
+  unchanged: off those paths it divides exactly and rounds once onto `x`.
+- `uniform<B>(rng)` draws an index by Lemire's multiply (the high word of
+  w·count, about one generator word per value where the mask took 1.7):
+  5–9 ns to 2.6 ns. A seeded engine yields different values than in 0.9.0,
+  and again the same ones on every standard library.
+- `sin` and `cos` of an angle with a factor of π (degrees, turns) reduce it
+  exactly in int64 and take the double tier's kernels with a proved bound,
+  the exact engine deciding what that bound leaves open (a degree angle onto
+  2⁻²⁰: 92 ns to 5 ns); `value_cast` across π decides in double the same
+  way (31 ns to 1.5 ns). Results are unchanged.
 - Faster at the boundaries, with the same results:
   - An integer stored onto a notch that is not 1/K (seconds into whole
     minutes, `minutes::try_make(n, si::second)`, a notch of 60 or 7/2) takes
@@ -46,8 +77,43 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   - `to_string` of an integer or decimal grid prints with `std::to_chars`
     (52 ns to 6 ns; `per<100>`: 120 ns to 13 ns), and `parse` reads plain
     decimal text in one pass (about 2.5× faster).
+  - Grids past 64 bits: decimal text divides by 10^19 through its
+    reciprocal (two multiplications per limb) into a stack buffer, and an
+    integer grid prints its value without the fraction printer (100 bits:
+    169 ns to 49 ns, 1000 bits: 606 ns to 89 ns, at GMP's `mpz_get_str`);
+    long division takes the divisor's reciprocal once, and an integer
+    quotient is stored as its index without a second division (100 bits:
+    47 ns to 28 ns).
+  - `dot`, `matrix_vector_product` and `matrix_product` sum the products of
+    integer-raw lattices in int64 and round each element once, inline
+    (Q2.14: an 8-element `matrix_vector_product` 63 ns to 25 ns, an 8×8
+    `matrix_product` 300 ns to 205 ns); short raws keep the vectorized sum.
+  - A binary notch 1/2^k prints from the raw (a shift, and the fraction's
+    decimals by one multiplication: Q8.8 27 ns to 15 ns, Q2.14 39 ns to
+    23 ns), and `operator<<` and `std::format` write integer, decimal and
+    binary notches from a stack buffer instead of a `std::string`. `parse`
+    of plain decimals stores n/10^d without a gcd and keeps the full grammar
+    out of line (decimal grids 27 ns to 12 ns).
   - `sum` and the matrix products add 64-bit unit counts in int64 blocks and
     store the total onto a lattice with one rounded division.
+  - A rounded or wrapped store onto an unanchored lattice (Lower off the
+    notch's multiples) rounds its slot in integers, past the limits too, and
+    so does a rounding wrap of an integer onto a coarse notch: `x *= y` on
+    `{{1/2, 201/2}, 1}` under `wrap | round_half_even` 147 ns to 3.6 ns, an
+    integer onto a notch of 7/2 under the same policy 38 ns to 1.8 ns. A
+    Q16.16 product stored back takes the integer path too (190 ns to 2.5 ns).
+  - `div<Out>` and `mul<Out>` between lattices report an overflow from the
+    integer quotient, keep their general store out of line, and take the
+    integer path for integer notches too: every `div<Out>` row of the
+    perfmap at its hand-written twin (decimal grids 5.4 ns to 2.1 ns).
+  - A `double` stored onto limits that are doubles passes in range with one
+    test (NaN, ±∞ and |v| ≥ 2^64 fail it too), and its cold paths no longer
+    take the address of `try_make`'s error: no frame or stack protector on
+    the path that succeeds (about 1 ns less per store). `to<float>` decides a
+    tie on the double's bits (3.1 ns to 1.2 ns on a decimal grid).
+  - A product of two 64-bit values stored back under `wrap` folds its
+    128-bit slot by one-limb divisions (105 ns to 5 ns), and the 128-bit
+    range checks inline (`clamp`: 5.3 ns to 1.4 ns).
 
 ## 0.9.0 — 2026-11-15
 

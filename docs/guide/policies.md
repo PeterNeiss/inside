@@ -60,8 +60,8 @@ pct p{150, clamp};                 // 100: a new value under clamp
 pct q{3.7, round_half_away};         // 4
 
 pct x{50};
-x.policy<clamp>() = 150;           // 100: one assignment under clamp
-x.policy<wrap>()  = 103;           // 2
+x.with<clamp>() = 150;             // 100: one assignment under clamp
+x.with<wrap>()  = 103;             // 2
 ```
 
 The flags of the call replace the type's own of the same kind: a rounding
@@ -77,12 +77,12 @@ auto m = pct::try_make(n);        // a std::expected: !m, m.error() == error::ov
 
 error ec{};
 pct y{50};
-y.policy(ec) = n;                 // ec == error::overflow; y keeps 50
+y.on_error(ec) = n;               // ec == error::overflow; y keeps 50
 ```
 
 - `T::try_make(v)` returns `std::expected<T, error>`. Under `clamp` or `wrap`
   it always succeeds (a NaN aside).
-- `x.policy(ec) = v` reports into an `error&`. The first error is kept, and a
+- `x.on_error(ec) = v` reports into an `error&`. The first error is kept, and a
   failed store leaves the old value.
 - `x.on_error(f) = v` calls `f(x, error, message)`, which may store an
   alternative value.
@@ -138,16 +138,16 @@ pct x{50};                              // a constant: checked while compiling
 auto y = pct::try_make(n);              // a run-time int: std::expected<pct, error>
 pct  z{n, clamp};                       // or clamp, wrap, a rounding mode
 error ec{};
-x.policy(ec) += step;                   // an error&: the first error is kept
+x.on_error(ec) += step;                 // an error&: the first error is kept
 x.on_error([](auto& s, error, auto) { s = 0_ins; }) += step;   // an alternative value
 x = pct::try_make(n).value_or(pct{0});  // the same, as an expected
 pct u{n, unsafe};                       // the fit is your precondition
 // x += step;                           // ❌ does not compile: x + step may pass 100
 ```
 
-A loop that accumulates names the channel once: `acc.policy(ec) += x` with
+A loop that accumulates names the channel once: `acc.on_error(ec) += x` with
 one `error` checked after the loop, or an accumulator type with `clamp`. A
-`double` from outside needs a report channel (`try_make`, `policy(ec)`,
+`double` from outside needs a report channel (`try_make`, `on_error(ec)`,
 `on_error`) or `unsafe`, since NaN fits no clamp.
 
 ## Which channel reports a failure

@@ -75,8 +75,8 @@ TEST(ConsistencyTest, integer_source_rounds_on_every_path) {
     using F = inside<{{0, 10}, 2}, round_half_away>;
     EXPECT_EQ(rational{F{3}}, q(4));
     EXPECT_EQ(rational{*F::try_make(3)}, q(4));
-    F b          = F{0.0};
-    b.policy<>() = 3;
+    F b        = F{0.0};
+    b.with<>() = 3;
     EXPECT_EQ(rational{b}, q(4));
 }
 
@@ -202,11 +202,11 @@ TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
     static_assert(!test::can_add<E, E>);
     E     e{q(1, 1000)};
     error ec{};
-    e.policy(ec) += E{q(1, 999)}; // 1999/999000 is off the grid
+    e.on_error(ec) += E{q(1, 999)}; // 1999/999000 is off the grid
     EXPECT_EQ(ec, error::rounding_error);
     EXPECT_EQ(rational{e}, q(1, 1000)); // left unchanged
     ec = error{};
-    e.policy(ec) *= E{q(1, 999)};
+    e.on_error(ec) *= E{q(1, 999)};
     EXPECT_EQ(ec, error::rounding_error);
 }
 
@@ -234,11 +234,11 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees) {
     X    b{6};
     b.on_error([&](auto&, error e, auto) { called = (e == error::division_by_zero); }) /= X{0};
     EXPECT_TRUE(called);
-    EXPECT_NO_THROW(b.policy<unsafe>() /= X{0});
+    EXPECT_NO_THROW(b.with<unsafe>() /= X{0});
 }
 
 // unsafe is the one opt-out of the runtime checks, and it wins over checked
-// (the default policy's own bit), so a per-call policy<unsafe>() opts a
+// (the default policy's own bit), so a per-call with<unsafe>() opts a
 // default inside out.
 TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
     static_assert(detail::is_checked(checked) && detail::is_checked(clamp | round_half_away) &&
@@ -251,12 +251,12 @@ TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
 
     using D = inside<{0, 10}>;
     D b{6};
-    EXPECT_NO_THROW(b.policy<unsafe>() /= D{0});
-    EXPECT_NO_THROW(b.policy<unsafe>() %= D{0});
+    EXPECT_NO_THROW(b.with<unsafe>() /= D{0});
+    EXPECT_NO_THROW(b.with<unsafe>() %= D{0});
     EXPECT_EQ(b, 6);
-    static_assert(!test::can_div<D, D> && !test::can_div<decltype(b.policy()), D>);
+    static_assert(!test::can_div<D, D> && !test::can_div<decltype(b.with()), D>);
     error ec{};
-    b.policy(ec) /= D{0};
+    b.on_error(ec) /= D{0};
     EXPECT_EQ(ec, error::division_by_zero);
 }
 
@@ -425,7 +425,7 @@ TEST(ConsistencyTest, compound_ops_reject_expected_rhs) {
     auto q3 = Y{6} / Y{2};
     ASSERT_TRUE(q3.has_value());
     error ec{}; // (x + 3 may pass x's grid: a reported store)
-    x.policy(ec) += *q3;
+    x.on_error(ec) += *q3;
     EXPECT_EQ(rational{x}, q(5));
     EXPECT_FALSE(X::try_make(Y{6} / Y{0}).has_value()); // try_make passes the error on
 }

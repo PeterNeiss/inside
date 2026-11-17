@@ -243,7 +243,7 @@ comparing quantities of different kinds`.
 A quantity's stores are its number's stores: `++q`, `q += r` and the
 construction from a number and its unit apply `Rep`'s policy, and
 `q.on_wrap(f)`, `q.on_clamp(f)` and `q.on_error(f)` attach the number paper's
-actions. `q.policy<F>()` and `q.policy(ec)` store under `Rep`'s policy plus
+actions. `q.with<F>()` and `q.on_error(ec)` store under `Rep`'s policy plus
 `F`. `Q::try_make(v, u)`, the flag constructors `Q{q, clamp}` and
 `Q{v, u, clamp}` (a flag or `make_policy<F>(ec)` for one store, `q` a quantity
 converted exactly), `exact_cast<Q>(q)`, `value_cast` and `value_cast`
@@ -304,7 +304,7 @@ namespace std::units {
     template<policy_flag F = checked, class V, class U> static constexpr auto try_make(const V&, U);
     template<class Q2, class Pol> constexpr quantity(const Q2& q, Pol p);   // q converted exactly
     template<class V, class U, class Pol> constexpr quantity(V&& number, U unit, Pol p);
-    template<policy_flag F = checked> constexpr auto policy();       // also policy(error&)
+    template<policy_flag F = checked> constexpr auto with();         // also on_error(error&)
     template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
     // ++, --, compound assignment: a store by Rep's policy
   };

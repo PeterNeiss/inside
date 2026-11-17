@@ -478,10 +478,57 @@ concept matrix_span = mdspan_like<M> && M::extents_type::rank() == 2 && mdspan_e
 template <class X, class Y>
 using product_t = decltype(std::declval<mdspan_value_t<X>>() * std::declval<mdspan_value_t<Y>>());
 
+// Products of integer-raw lattices summed in int64, in units U of the
+// product's value unit, onto an integer-raw lattice Target: one rounded
+// division at the end (units_onto). Max: the largest |units| of one
+// product, so n terms fit int64 while n·Max does.
+template <class Target, class P>
+inline constexpr bool int64_products = [] {
+    if constexpr (!insidable<Target> || !insidable<P>)
+        return false;
+    else if constexpr (!integer_storage<P> || point_storage<P> || wide_valued<P> || !notched<P>)
+        return false;
+    else if constexpr (sizeof(raw_t<P>) <= 4 && lane32_block<P> >= 64)
+        return false; // sum_into adds those raws in vectorized 32-bit lanes
+    else
+        return units_onto<Target, grid_of<P>.value_unit()> && values_fit_int64<P> &&
+               signed_value_bits({units_lo<P, grid_of<P>.value_unit()>, units_hi<P, grid_of<P>.value_unit()>}) < 62;
+}();
+
 // Σ_k a(k)·b(k) over k < n, exactly, into Target: Target where Proven, else
 // an expected.
 template <class Target, bool Proven, class FA, class FB, class I>
 constexpr auto sum_of_products(I n, FA a, FB b) {
+    using P = decltype(a(I{}) * b(I{}));
+    if constexpr (int64_products<Target, P>) {
+        constexpr grid_rational U = grid_of<P>.value_unit();
+        constexpr grid_int max = abs(units_lo<P, U>) < abs(units_hi<P, U>) ? abs(units_hi<P, U>) : abs(units_lo<P, U>);
+        constexpr std::int64_t terms = max == grid_int{0}
+                                           ? std::numeric_limits<std::int64_t>::max()
+                                           : std::numeric_limits<std::int64_t>::max() / static_cast<std::int64_t>(max);
+        if (std::cmp_less_equal(n, terms)) [[likely]] {
+            std::int64_t total = 0;
+            for (I k = 0; k < n; ++k)
+                total += value_in_units<std::int64_t, U>(a(k) * b(k));
+            constexpr grid_rational c  = U / notch_of<Target>;
+            constexpr std::int64_t  cp = static_cast<std::int64_t>(grid_numerator(c));
+            constexpr std::int64_t  cq = static_cast<std::int64_t>(grid_denominator(c));
+            std::int64_t            num;
+            if (!mul_overflow(total, cp, &num)) {
+                const auto s = lattice_round_slot<Target, policy_of<Target>>(num, cq);
+                if (s.Status == lattice_status::ok) [[likely]] {
+                    const Target t = Target::from_raw(raw_from_offset<Target>(s.Slot), unsafe);
+                    if constexpr (Proven)
+                        return t;
+                    else
+                        return std::expected<Target, error>{t};
+                }
+                if constexpr (!Proven)
+                    if (s.Status == lattice_status::overflow)
+                        return std::expected<Target, error>{std::unexpect, error::overflow};
+            }
+        }
+    }
     auto products = std::views::iota(I{0}, n) | std::views::transform([&](I k) { return a(k) * b(k); });
     if constexpr (Proven)
         return element_traits<Target>::total(products);

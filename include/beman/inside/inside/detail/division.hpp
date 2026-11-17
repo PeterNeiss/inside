@@ -189,6 +189,17 @@ struct division {
 
     static constexpr bool native_div = native_div_integer || native_div_fixed || wide_div_integer;
 
+    // Any other dividend on a lattice, with a mode: the quotient rounded once
+    // onto the multiples of the dividend's notch (as native_div_fixed does
+    // on a shared 1/K notch). Without a mode, or for a continuous dividend,
+    // the quotient is exact.
+    static constexpr bool notch_div = [] {
+        if constexpr (native_div || wide_grid_numbers<L> || wide_grid_numbers<R> || !notched<L> || (F & snap) == 0)
+            return false;
+        else
+            return (grid_of<L> / grid_of<R>).has_value();
+    }();
+
     // The rounding mode for the native paths (shared by the grid and runtime).
     static constexpr round_mode rmode = rounding_of(F);
 
@@ -279,6 +290,12 @@ struct division {
                                                            : round_rat(to_rational(x) * k, rmode, up) * n;
             };
             return grid{interval{on(q.Lower, false), on(q.Upper, true)}, n};
+        } else if constexpr (notch_div) {
+            // The exact quotient's limits rounded the same way (rounding is
+            // monotone), onto multiples of n.
+            constexpr interval      q = (*(grid_of<L> / grid_of<R>)).Interval;
+            constexpr grid_rational n = notch_of<L>;
+            return grid{interval{grid_round<rmode>(q.Lower / n) * n, grid_round<rmode>(q.Upper / n) * n}, n};
         } else
             return *(grid_of<L> / grid_of<R>);
     }();
@@ -309,7 +326,24 @@ struct division {
     // lattice scaled by 1/|c| (grid operator/), so it is x's offset (see
     // op_result.hpp) — or, past 64 bits, the exact quotient on that lattice.
     // Exact and in range by construction: it cannot fail.
-    static constexpr bool point_divisor = !native_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
+    static constexpr bool point_divisor =
+        !native_div && !notch_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
+
+    // notch_div in integers: with A and B the operands' values in their own
+    // units uL and uR, the slot is round(A·cp / (B·cd)), cp/cd = uL/(uR·n),
+    // and both products fit int64.
+    static constexpr bool notch_div_int = [] {
+        if constexpr (!notch_div || !notched<R> || !values_fit_int64<L> || !values_fit_int64<R> ||
+                      !values_fit_int64<result>)
+            return false;
+        else {
+            constexpr grid_rational c   = unit_of<L> / (unit_of<R> * notch_of<L>);
+            constexpr grid_int      lim = grid_int{1} << 63;
+            auto max_abs = [](const grid_int& a, const grid_int& b) { return abs(a) < abs(b) ? abs(b) : abs(a); };
+            return max_abs(units_lo<L, unit_of<L>>, units_hi<L, unit_of<L>>) * grid_numerator(c) < lim &&
+                   max_abs(units_lo<R, unit_of<R>>, units_hi<R, unit_of<R>>) * grid_denominator(c) < lim;
+        }
+    }();
 
     // A quotient never overflows: the native paths round onto a grid of the
     // rounded corner quotients, a point divisor scales the lattice, and any
@@ -374,7 +408,28 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
             if (b.is_zero())
                 return zero();
         const I a = value_in_units<I, grid_rational{1}>(lhs);
-        return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
+        return from_value_index<result>(rounded_div<rmode>(a, b)); // notch 1: the value is the index
+    } else if constexpr (notch_div_int) {
+        constexpr grid_rational c  = unit_of<L> / (unit_of<R> * notch_of<L>);
+        constexpr std::int64_t  cp = static_cast<std::int64_t>(grid_numerator(c)),
+                                cd = static_cast<std::int64_t>(grid_denominator(c));
+        const std::int64_t      b  = value_in_units<std::int64_t, unit_of<R>>(rhs);
+        if constexpr (!zero_unchecked)
+            if (b == 0)
+                return zero();
+        const std::int64_t a = value_in_units<std::int64_t, unit_of<L>>(lhs);
+        return from_value_index<result>(div_rounded(a * cp, b * cd, rmode));
+    } else if constexpr (notch_div) {
+        // The exact quotient, rounded once onto result's notch (in range by
+        // construction of result's grid).
+        const auto q = division<L, R>::div(lhs, rhs, policy);
+        if constexpr (std::same_as<std::remove_cvref_t<decltype(q)>, typename division<L, R>::result>)
+            return result{q, make_policy<F | unsafe>()};
+        else {
+            if (!q)
+                return std::unexpected{q.error()};
+            return result{*q, make_policy<F | unsafe>()};
+        }
     } else if constexpr (point_storage<result>) {
         // A point quotient (point / point, or 0 / x): its one value is the type.
         if constexpr (!zero_unchecked)
@@ -650,8 +705,11 @@ struct quotient_remainder {
                     return fail(error::division_by_zero);
             const I a = value_in_units<I, grid_rational{1}>(lhs);
             const I q = rounded_div<rmode>(a, b);
-            return result{exact_result<Q>(wide_rational<K>{q, I{1}}),
-                          exact_result<M>(wide_rational<K>{a - q * b, I{1}})};
+            if constexpr (notch_of<Q> == 1 && notch_of<M> == 1 && anchored<Q> && anchored<M>)
+                return result{from_value_index<Q>(q), from_value_index<M>(I{a - q * b})};
+            else
+                return result{exact_result<Q>(wide_rational<K>{q, I{1}}),
+                              exact_result<M>(wide_rational<K>{a - q * b, I{1}})};
         } else {
             using T         = native_div_t<L, R>;
             const T rhs_val = static_cast<T>(to_value(rhs));

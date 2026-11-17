@@ -330,6 +330,25 @@ constexpr std::int64_t power_of_ten(int n) noexcept {
         p *= 10;
     return p;
 }
+// v/10^d (|v| < 10^18, d ≤ 18) in lowest terms without a gcd: 10^d's only
+// primes are 2 and 5, so the trailing zero bits and the factors 5 of v are
+// what cancel.
+constexpr rational decimal_rational(std::int64_t v, int d) noexcept {
+    std::uint64_t m = v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v) : static_cast<std::uint64_t>(v);
+    if (m == 0)
+        return rational_from_parts(0, 1);
+    const int twos = std::countr_zero(m) < d ? std::countr_zero(m) : d;
+    m >>= twos;
+    int fives = 0;
+    while (fives < d && m % 5 == 0) {
+        m /= 5;
+        ++fives;
+    }
+    std::int64_t den = std::int64_t{1} << (d - twos);
+    for (int i = fives; i < d; ++i)
+        den *= 5;
+    return rational_from_parts(m, v < 0 ? -den : den);
+}
 
 // Runtime text → exact value, the 64-bit fast path for a number (not a
 // fraction): an optional sign, then the literal grammar. Malformed text is

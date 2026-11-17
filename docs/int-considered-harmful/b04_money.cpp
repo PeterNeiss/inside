@@ -20,7 +20,7 @@ int main()
   money total{0};
   error  ec{};                     // a running total names its channel
   for (int i = 0; i < 10000; ++i)
-    total.policy(ec) += money{0.01};
+    total.on_error(ec) += money{0.01};
 
   std::cout << "10000 x $0.01      = $" << total << "\n";
   std::cout << "exactly $100.00    ? "

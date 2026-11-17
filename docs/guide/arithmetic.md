@@ -153,7 +153,7 @@ p /= 3_ins;      // 33: 100/3, rounded toward zero
 `p += 30`, `p *= 2`, `p -= n`. The result has a type, `p`'s, so the integer
 needs no grid of its own; it counts as an inside on the whole range of its
 type, and the store back follows the same rules (a `clamp` or `wrap` type
-takes it, a checked one names a channel: `x.policy(ec) += n`). Everything
+takes it, a checked one names a channel: `x.on_error(ec) += n`). Everything
 else on the right is an inside (`p += 0.5_ins`, `p /= 3_ins`), never a
 `double`, and a division takes no builtin integer, whose
 range holds 0. `++` and `--` move one notch: ±1/4 on

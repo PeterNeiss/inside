@@ -729,6 +729,45 @@ u128n to128(const wide_int<2, S>& w) {
 }
 } // namespace
 
+// limb::divmod on 64-bit limbs takes the divisor's reciprocal (div_preinv)
+// where it yields more than one quotient limb: q·v + r == u and r < v for
+// dividends and divisors of 1 to 8 limbs, dense, sparse and all-ones.
+TEST(WideIntTest, long_division_with_a_reciprocal) {
+    namespace lb = beman::inside::detail::limb;
+    using L      = std::uint64_t;
+    rng next{17};
+    for (int t = 0; t < 50000; ++t) {
+        const std::size_t m = 1 + next() % 8, n = 1 + next() % m;
+        std::vector<L>    u(m), v(n), q(m - n + 1), r(n), un(m + 1), vn(n);
+        for (auto& x : u)
+            x = t % 7 == 0 ? ((next() & 1) ? ~L{0} : L{0}) : next();
+        for (auto& x : v)
+            x = t % 5 == 0 ? ((next() & 1) ? ~L{0} : L{1} << (next() % 64)) : next();
+        if (v[n - 1] == 0)
+            v[n - 1] = 1 + (next() >> 40);
+        lb::divmod(u.data(), m, v.data(), n, q.data(), r.data(), un.data(), vn.data());
+        bool less = false;
+        for (std::size_t i = n; i-- > 0;)
+            if (r[i] != v[i]) {
+                less = r[i] < v[i];
+                break;
+            }
+        ASSERT_TRUE(less) << "m=" << m << " n=" << n;
+        std::vector<L> p(m + 1 + n, 0);
+        lb::mul_basecase(p.data(), q.data(), q.size(), v.data(), n);
+        lb::add(p.data(), p.data(), p.size(), r.data(), n);
+        for (std::size_t i = 0; i < p.size(); ++i)
+            ASSERT_EQ(p[i], i < m ? u[i] : L{0}) << "m=" << m << " n=" << n;
+    }
+    // the reciprocal division itself, against the 128-bit one
+    for (int t = 0; t < 200000; ++t) {
+        const L    d = next() | (L{1} << 63), u1 = next() % d, u0 = next();
+        const auto a = lb::div_preinv(u1, u0, d, lb::reciprocal(d)), b = lb::div(u1, u0, d);
+        ASSERT_EQ(a.Hi, b.Hi);
+        ASSERT_EQ(a.Lo, b.Lo);
+    }
+}
+
 TEST(WideIntTest, two_uint64_limbs_against_int128) {
     using U = u128n;
     using S = __int128;

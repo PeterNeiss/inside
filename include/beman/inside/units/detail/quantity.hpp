@@ -251,7 +251,7 @@ constexpr auto on_quantity_clamp(Q& q, F&& f) {
 }
 
 // The op of a store back into Rep that Rep deletes because the grids cannot
-// prove it (its policy(ec) form, which reports, compiles).
+// prove it (its on_error(ec) form, which reports, compiles).
 struct plus_assign {
     template <class N, class V>
     constexpr void operator()(N&& n, const V& v) const
@@ -285,8 +285,9 @@ struct divide_assign {
     }
 };
 template <class Rep, class V, class Op>
-concept needs_channel = !std::invocable<Op, Rep&, const V&> &&
-                        requires(Rep& n, error& ec) { requires std::invocable<Op, decltype(n.policy(ec)), const V&>; };
+concept needs_channel = !std::invocable<Op, Rep&, const V&> && requires(Rep& n, error& ec) {
+    requires std::invocable<Op, decltype(n.on_error(ec)), const V&>;
+};
 template <class Rep>
 concept step_needs_channel = insidable<Rep> && notch_of<Rep> != 0 && !requires(Rep& n) { ++n; };
 
@@ -319,7 +320,7 @@ struct quantity_action_ref {
         NumRef *= v;
         return Self;
     }
-    // (A builtin integer scales as on an inside: q.policy(ec) *= 2.)
+    // (A builtin integer scales as on an inside: q.on_error(ec) *= 2.)
     template <beman::inside::detail::step_integer N>
         requires requires(Ref& r, N n) { r *= n; }
     constexpr Q& operator*=(N n) {
@@ -543,11 +544,11 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     }
 
     // A compound assignment whose result the grids cannot prove to fit Rep
-    // (Rep's own op is deleted, its policy(ec) form is not) is deleted with
+    // (Rep's own op is deleted, its on_error(ec) form is not) is deleted with
     // the fix, as on an inside.
 #define BEMAN_INSIDE_UNITS_WHY_unproven                                                                 \
     "units: the result may fall outside this quantity's number at run time - store with clamp or wrap " \
-    "(q.policy<clamp>() += d), report with q.policy(ec) += d or q.on_error(f) += d, or opt out with unsafe"
+    "(q.with<clamp>() += d), report with q.on_error(ec) += d or q.on_error(f) += d, or opt out with unsafe"
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> &&
                      detail::needs_channel<Rep, detail::rescaled_t<R2, R, V2>, detail::plus_assign>
@@ -591,8 +592,8 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         --Value;
         return old;
     }
-#define BEMAN_INSIDE_UNITS_WHY_step                                                                                \
-    "units: ++ and -- may step out of this quantity's number - use a clamp or wrap number, q.policy(ec) += step, " \
+#define BEMAN_INSIDE_UNITS_WHY_step                                                                                  \
+    "units: ++ and -- may step out of this quantity's number - use a clamp or wrap number, q.on_error(ec) += step, " \
     "or iterate with a cursor"
     quantity& operator++()
         requires detail::step_needs_channel<Rep>
@@ -629,20 +630,21 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
                                           Value.on_clamp(detail::on_quantity_clamp<R>(*this, std::forward<F>(f))));
     }
     template <class F>
+        requires(!std::same_as<std::remove_cvref_t<F>, error>)
     [[nodiscard]] constexpr auto on_error(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
     }
 
-    // A store under Rep's policy plus F, as inside's policy<F>(): its =, +=
-    // and -= take quantities, *= and /= numbers. policy(ec) sets ec on a
+    // A store under Rep's policy plus F, as inside's with<F>(): its =, +=
+    // and -= take quantities, *= and /= numbers. on_error(ec) sets ec on a
     // failure instead of raising.
     template <policy_flag F = beman::inside::detail::none>
-    [[nodiscard]] constexpr auto policy() & {
-        return detail::make_action_ref<R>(*this, Value.template policy<F>());
+    [[nodiscard]] constexpr auto with() & {
+        return detail::make_action_ref<R>(*this, Value.template with<F>());
     }
     template <policy_flag F = beman::inside::detail::none>
-    [[nodiscard]] constexpr auto policy(error& ec) {
-        return detail::make_action_ref<R>(*this, Value.template policy<F>(ec));
+    [[nodiscard]] constexpr auto on_error(error& ec) {
+        return detail::make_action_ref<R>(*this, Value.template on_error<F>(ec));
     }
 
     // Rep's try_make of a number and its unit: quantity<si::metre,

@@ -25,7 +25,7 @@ int main(int argc, char**)
   // checked_100 y = n;              // does not compile: n may not fit
   error        ec{};
   checked_100 x{50};
-  x.policy(ec) = n;                  // reports; x keeps 50
+  x.on_error(ec) = n;                // reports; x keeps 50
   std::cout << "checked  200 ->    " << error_message(ec) << "\n";
 
   // clamp: saturate at the boundary.
@@ -42,8 +42,8 @@ int main(int argc, char**)
 
   // Per-operation override on an otherwise-checked value.
   checked_100 p{50};
-  p.policy<clamp>() = 150;
-  std::cout << "policy<clamp>() 150 -> " << p << "\n";
+  p.with<clamp>() = 150;
+  std::cout << "with<clamp>() 150 -> " << p << "\n";
 
   return 0;
 }
