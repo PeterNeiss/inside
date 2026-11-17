@@ -200,7 +200,10 @@ turns, degrees, or slots of 2π/65536 rad. `math::sin` and `math::cos`
 reduce such an angle exactly: x·r half turns, for a rational r, minus whole
 quarter turns. Only the rest, at most π/4, is approximated. The result rounds
 once, and Niven's rational values (0, ±1/2, ±1) are exact under any rounding
-mode:
+mode. Where the angle's value times r is a 64-bit integer ratio, the
+reduction runs in int64 and the rest goes through the double tier's
+kernels, decided as every double-tier result is (about 5 ns for a degree
+angle onto 2⁻²⁰); `value_cast` across π takes the same tier:
 
 ```cpp
 #include <beman/inside/units/math.hpp>

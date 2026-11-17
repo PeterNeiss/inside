@@ -185,13 +185,90 @@ inline constexpr reference radian_reference = reference{si::radian};
 template <reference R>
 inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1;
 
+// The double tier for a π-scaled angle x·(n/d)·π (math/detail/tiers.hpp's
+// decision): x = j·u with u = unit_of<V>, so x·n/d = j·A/B half turns with
+// A = num(u)·n, B = den(u)·d, all integers. Where 2·|j·A| < 2^62 and
+// B < 2^52, the reduction is exact in int64: k = round(2·j·A/B) quarter
+// turns and rem = 2·j·A − k·B, |rem| ≤ B/2. Then r = rem·fl(π/(2B)),
+// |r| ≤ π/4, is within 3·2^-53·|r| of the true reduced angle (π's rounding,
+// the quotient's and the product's; rem and B are doubles exactly), which
+// moves sin and cos by at most as much (their slope is at most 1); the
+// polynomials add the double kernel's proved Rel of the value. The bound
+// takes 2^-50·|r| for the first. fp_decide keeps the result only when the
+// whole interval rounds to one slot; anything else takes the exact engine.
+template <beman::inside::detail::grid_rational F, class V>
+struct pi_scaled {
+    using grid_int              = beman::inside::detail::grid_int;
+    static constexpr auto     f = F;
+    static constexpr grid_int A = [] {
+        if constexpr (insidable<V> && beman::inside::detail::notched<V>)
+            return beman::inside::detail::grid_numerator(beman::inside::detail::unit_of<V>) *
+                   beman::inside::detail::grid_numerator(f);
+        else
+            return grid_int{0};
+    }();
+    static constexpr grid_int B = [] {
+        if constexpr (insidable<V> && beman::inside::detail::notched<V>)
+            return beman::inside::detail::grid_denominator(beman::inside::detail::unit_of<V>) *
+                   beman::inside::detail::grid_denominator(f);
+        else
+            return grid_int{1};
+    }();
+    // j·A in int64 with room for the doubling, and B a double exactly.
+    static constexpr bool ints = [] {
+        namespace bd = beman::inside::detail;
+        if constexpr (!insidable<V> || !bd::notched<V> || !bd::integer_storage<V> || bd::wide_valued<V> ||
+                      bd::point_storage<V>)
+            return false;
+        else {
+            constexpr grid_rational u   = bd::unit_of<V>;
+            const grid_int          jlo = bd::units_lo<V, u>, jhi = bd::units_hi<V, u>;
+            const grid_int          j = abs(jlo) < abs(jhi) ? abs(jhi) : abs(jlo);
+            return j * abs(A) < (grid_int{1} << 52) && B < (grid_int{1} << 52) && grid_int{0} < B;
+        }
+    }();
+    static constexpr std::int64_t a = ints ? static_cast<std::int64_t>(A) : 0;
+    static constexpr std::int64_t b = ints ? static_cast<std::int64_t>(B) : 1;
+    template <class X>
+    static std::int64_t units(const X& x) noexcept {
+        return beman::inside::detail::value_in_units<std::int64_t, beman::inside::detail::unit_of<V>>(x);
+    }
+};
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+template <insidable Out, bool Cos, reference R, class V>
+inline constexpr bool pi_trig_fp =
+    pi_scaled<magnitude_of(R.U).Ratio, V>::ints &&
+    beman::inside::math::detail::engine::fp_tier<Out, beman::inside::math::detail::engine::fp_sin, V>;
+template <insidable Out, bool Cos, reference R, class V>
+inline bool pi_trig_double(const V& x, Out& out) noexcept {
+    namespace engine       = beman::inside::math::detail::engine;
+    namespace fpk          = beman::inside::math::detail::fp;
+    using S                = pi_scaled<magnitude_of(R.U).Ratio, V>;
+    using K                = fpk::trig_k<engine::fp_target<Out, engine::fp_sin>>;
+    constexpr double   c2  = 3.141592653589793238462643383279502884 / (2.0 * static_cast<double>(S::b));
+    const std::int64_t two = 2 * S::units(x) * S::a;
+    std::int64_t       k = two / S::b, rem = two - k * S::b;
+    if (2 * rem > S::b) {
+        ++k;
+        rem -= S::b;
+    } else if (2 * rem < -S::b) {
+        --k;
+        rem += S::b;
+    }
+    const double   r  = static_cast<double>(rem) * c2;
+    const unsigned qd = (static_cast<unsigned>(k) + (Cos ? 1u : 0u)) & 3u;
+    const double   p  = (qd & 1u) != 0 ? fpk::cos_poly<K::NC>(r) : fpk::sin_poly<K::NS>(r);
+    const double   v  = (qd & 2u) != 0 ? -p : p;
+    return engine::fp_decide<Out>(v, K::Rel * __builtin_fabs(v) + 0x1p-50 * __builtin_fabs(r) + fpk::tiny, out);
+}
+#endif
+
 // sin or cos of a π-scaled angle: one rounding onto Out. The factor n/d in
 // one limb when it is a 64-bit rational, else in as many as it needs.
 template <insidable Out, bool Cos, reference R, class V>
-constexpr Out pi_trig(const quantity<R, V>& q) {
+constexpr Out pi_trig_exact(const quantity<R, V>& q) {
     namespace engine = beman::inside::math::detail::engine;
     using beman::inside::detail::grid_int;
-    beman::inside::math::detail::entry::require_rounding<Out>();
     constexpr auto        f  = magnitude_of(R.U).Ratio;
     constexpr grid_int    n  = beman::inside::detail::grid_numerator(f);
     constexpr grid_int    d  = beman::inside::detail::grid_denominator(f);
@@ -206,6 +283,44 @@ constexpr Out pi_trig(const quantity<R, V>& q) {
                                                                static_cast<factor>(d),
                                                                ng});
 }
+template <insidable Out, bool Cos, reference R, class V>
+constexpr Out pi_trig(const quantity<R, V>& q) {
+    beman::inside::math::detail::entry::require_rounding<Out>();
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+    if constexpr (pi_trig_fp<Out, Cos, R, V>)
+        if !consteval {
+            Out out;
+            if (pi_trig_double<Out, Cos, R, V>(units::detail::value_of(q), out)) [[likely]]
+                return out;
+            return beman::inside::math::detail::engine::cold_call([q] { return pi_trig_exact<Out, Cos>(q); });
+        }
+#endif
+    return pi_trig_exact<Out, Cos>(q);
+}
+} // namespace detail
+
+namespace detail {
+// x·(n/d)·π^±1 rounded once onto Out, exactly (the engine).
+template <magnitude F, insidable Out, reference R, class V>
+constexpr Out pi_cast_exact(const quantity<R, V>& q) {
+    namespace engine = beman::inside::math::detail::engine;
+    // The factor n/d in one limb when it is a 64-bit rational, else in as
+    // many as it needs (ħ = h/2π in J·s).
+    using beman::inside::detail::grid_int;
+    constexpr grid_int    n  = beman::inside::detail::grid_numerator(F.Ratio);
+    constexpr grid_int    d  = beman::inside::detail::grid_denominator(F.Ratio);
+    constexpr bool        ng = n.negative();
+    constexpr int         NB = n.bit_width();
+    constexpr std::size_t KF = beman::inside::detail::fits_rational(F.Ratio)
+                                   ? 1
+                                   : beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
+    using core               = engine::pi_scale_core<engine::input_limbs<V>, engine::in_mag<V> + NB + 4, F.Pi, KF>;
+    using factor             = typename core::factor;
+    return engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(units::detail::value_of(q)),
+                                                               static_cast<factor>(ng ? -n : n),
+                                                               static_cast<factor>(d),
+                                                               ng});
+}
 } // namespace detail
 
 // value_cast<U, Out>(q) across a pi factor (degree ↔ radian): the exact
@@ -214,30 +329,31 @@ template <auto U, insidable Out, reference R, class V>
     requires detail::is_unit_tag_v<decltype(U)> &&
              (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
-    namespace engine              = beman::inside::math::detail::engine;
     constexpr units::unit_value u = decltype(U)::value;
     constexpr magnitude         f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     beman::inside::math::detail::entry::require_rounding<Out>();
     constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
-    // The factor n/d in one limb when it is a 64-bit rational, else in as
-    // many as it needs (ħ = h/2π in J·s).
-    using beman::inside::detail::grid_int;
-    constexpr grid_int    n  = beman::inside::detail::grid_numerator(f.Ratio);
-    constexpr grid_int    d  = beman::inside::detail::grid_denominator(f.Ratio);
-    constexpr bool        ng = n.negative();
-    constexpr int         NB = n.bit_width();
-    constexpr std::size_t KF = beman::inside::detail::fits_rational(f.Ratio)
-                                   ? 1
-                                   : beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
-    using core               = engine::pi_scale_core<engine::input_limbs<V>, engine::in_mag<V> + NB + 4, f.Pi, KF>;
-    using factor             = typename core::factor;
-    return detail::quantity_access::make<quantity<to, Out>>(
-        engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(units::detail::value_of(q)),
-                                                            static_cast<factor>(ng ? -n : n),
-                                                            static_cast<factor>(d),
-                                                            ng}));
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+    // The double tier: x·(n/d)·π^±1 = (j·A)·c with c = fl(π/B) or
+    // fl(1/(π·B)) (pi_scaled): j·A is a double exactly, c within 3·2^-53 of
+    // its value and the product within 2^-53 more, so y is within 2^-50·|y|.
+    namespace engine = beman::inside::math::detail::engine;
+    using S          = detail::pi_scaled<f.Ratio, V>;
+    if constexpr (S::ints && engine::fp_output<Out>)
+        if !consteval {
+            constexpr double pi = 3.141592653589793238462643383279502884;
+            constexpr double c  = f.Pi == 1 ? pi / static_cast<double>(S::b) : 1.0 / (pi * static_cast<double>(S::b));
+            const double     y  = static_cast<double>(S::units(units::detail::value_of(q)) * S::a) * c;
+            Out              out;
+            if (engine::fp_decide<Out>(y, 0x1p-50 * __builtin_fabs(y), out)) [[likely]]
+                return detail::quantity_access::make<quantity<to, Out>>(out);
+            return detail::quantity_access::make<quantity<to, Out>>(
+                engine::cold_call([q] { return detail::pi_cast_exact<f, Out>(q); }));
+        }
+#endif
+    return detail::quantity_access::make<quantity<to, Out>>(detail::pi_cast_exact<f, Out>(q));
 }
 
 namespace detail {

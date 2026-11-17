@@ -34,6 +34,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   w·count, about one generator word per value where the mask took 1.7):
   5–9 ns to 2.6 ns. A seeded engine yields different values than in 0.9.0,
   and again the same ones on every standard library.
+- `sin` and `cos` of an angle with a factor of π (degrees, turns) reduce it
+  exactly in int64 and take the double tier's kernels with a proved bound,
+  the exact engine deciding what that bound leaves open (a degree angle onto
+  2⁻²⁰: 92 ns to 5 ns); `value_cast` across π decides in double the same
+  way (31 ns to 1.5 ns). Results are unchanged.
 - Faster at the boundaries, with the same results:
   - An integer stored onto a notch that is not 1/K (seconds into whole
     minutes, `minutes::try_make(n, si::second)`, a notch of 60 or 7/2) takes
