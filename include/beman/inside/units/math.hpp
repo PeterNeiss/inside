@@ -196,7 +196,7 @@ inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(
 // polynomials add the double kernel's proved Rel of the value. The bound
 // takes 2^-50·|r| for the first. fp_decide keeps the result only when the
 // whole interval rounds to one slot; anything else takes the exact engine.
-template <beman::inside::detail::grid_rational F, class V>
+template <beman::inside::grid_number F, class V>
 struct pi_scaled {
     using grid_int              = beman::inside::detail::grid_int;
     static constexpr auto     f = F;
@@ -221,9 +221,9 @@ struct pi_scaled {
                       bd::point_storage<V>)
             return false;
         else {
-            constexpr grid_rational u   = bd::unit_of<V>;
-            const grid_int          jlo = bd::units_lo<V, u>, jhi = bd::units_hi<V, u>;
-            const grid_int          j = abs(jlo) < abs(jhi) ? abs(jhi) : abs(jlo);
+            constexpr grid_number u   = bd::unit_of<V>;
+            const grid_int        jlo = bd::units_lo<V, u>, jhi = bd::units_hi<V, u>;
+            const grid_int        j = abs(jlo) < abs(jhi) ? abs(jhi) : abs(jlo);
             return j * abs(A) < (grid_int{1} << 52) && B < (grid_int{1} << 52) && grid_int{0} < B;
         }
     }();

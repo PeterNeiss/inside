@@ -11,7 +11,7 @@ about performance or about the units layer. For the user's view start with
 
 The exact-fraction type is `beman::inside::detail::rational`: no part of the
 user API, where an exact value is an inside. It is the raw of continuous grids and
-the type of the 64-bit fast paths; grids themselves use `detail::big_rational`
+the type of the 64-bit fast paths; grids themselves use `grid_number`
 (§2a). "Rational" below always means this type.
 
 Contents: [1 grid invariants](#1-grid-invariants) ·
@@ -162,15 +162,19 @@ independent of the encoding, and gate different fast paths:
 ## 2a. Grid numbers, wide raws and the exact paths
 
 **Grid numbers.** `inside/detail/grid_rational.hpp` names the vocabulary:
-`grid_rational` (the type of a grid's limits and notch, and of `lower_of`,
+`grid_number` (the type of a grid's limits and notch, and of `lower_of`,
 `upper_of`, `notch_of`), `grid_int` (exact integers for index counts),
 `grid_numerator`, `grid_denominator`, `grid_divides_evenly`,
 `grid_same_lattice`, and `fits_rational` / `to_rational` for the 64-bit fast
-paths. They are `big_rational` and `big_int` (`inside/detail/big_rational.hpp`),
-with their own `+ − × /` and `gcd`: canonical values whose magnitude past one limb is
-interned with `std::define_static_array`, so equal values are equal template
-arguments. Interning is `consteval`: a big value exists only at compile time,
-and runtime code reads big grid numbers through constants.
+paths. A `grid_number` is laid out like `rational`: `Num` the numerator's
+magnitude, `Den` the denominator with the sign. A value past that range has
+`Den == 0` and `Big` pointing at an interned `big_rational`
+(`inside/detail/big_rational.hpp`, `std::define_static_object`; its `big_int`s
+intern their limbs past one with `std::define_static_array`). One form per
+value, reduced and inline whenever it fits, so equal values are equal
+template arguments. `+ − × /`, `abs` and `gcd` are `grid_number`'s own.
+Interning is `consteval`: a big value exists only at compile time, and
+runtime code reads big grid numbers through constants.
 
 The integer fast paths work in 64 bits and read `detail::lower64`, `upper64`
 and `notch64`, which fail the build for a grid number past 64 bits instead of
@@ -436,7 +440,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/number_text.hpp` | the literal and text grammar, and `detail`'s `_r` literal |
 | `inside/detail/float_bits.hpp` | floating points from their IEEE-754 bits: `frexp`, `ldexp`, `is_finite`, `abs_fraction` |
 | `inside/detail/grid_rational.hpp` | the grid-number vocabulary (§2a) |
-| `inside/detail/big_rational.hpp` | `big_int`, `big_rational`: interned grid numbers of any size |
+| `inside/detail/big_rational.hpp` | `big_int`, `big_rational`: the values of grid numbers past 64 bits, interned |
 | `inside/detail/limb_algorithms.hpp` | the limb kernels behind `wide_int` and `big_int`: carries, schoolbook multiply, Knuth's division, shifts, `euclid_gcd` |
 | `inside/detail/wide_int.hpp`, `wide_value.hpp` | `wide_int<N, Signed>` and the width rule `int_for_bits_t`; exact values and wide value-index arithmetic |
 | `math/detail/adaptive.hpp` | the engine's foundation: the decision step, the Ziv driver, the stores, π / ln 2 / ln 10 at any precision, the series kernels |

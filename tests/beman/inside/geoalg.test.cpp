@@ -84,7 +84,7 @@ template <std::size_t N>
 consteval bool products_match(const std::array<basis_ref, N>& basis, unsigned a) {
     for (unsigned b = 0; b < (1U << N); ++b) {
         const unit_value u = units::detail::unit_mul(blade_unit(basis, a), blade_unit(basis, b), 1);
-        if (magnitude_of(u) != magnitude{grid_rational{reference_sign(a, b, basis)}})
+        if (magnitude_of(u) != magnitude{grid_number{reference_sign(a, b, basis)}})
             return false;
         if (reference_sign(a, b, basis) != 0 && !(dimension_of(u) == dimension_of(blade_unit(basis, a ^ b))))
             return false;
@@ -106,20 +106,20 @@ consteval bool all_rows(std::integer_sequence<unsigned, A...>) {
 TEST(GeoalgTest, basis_vectors_square_and_anticommute) {
     static_assert(dimension_of((x * x).value) == dim_one);
     static_assert(magnitude_of((x * x).value).is_one());
-    static_assert(magnitude_of((g1 * g1).value) == magnitude{grid_rational{-1}});
-    static_assert(magnitude_of((p0 * p0).value) == magnitude{grid_rational{0}});
-    static_assert(magnitude_of((y * x).value) == magnitude{grid_rational{-1}});
+    static_assert(magnitude_of((g1 * g1).value) == magnitude{grid_number{-1}});
+    static_assert(magnitude_of((p0 * p0).value) == magnitude{grid_number{0}});
+    static_assert(magnitude_of((y * x).value) == magnitude{grid_number{-1}});
     static_assert(dimension_of((y * x).value) == dimension_of((x * y).value));
-    static_assert(magnitude_of((xy * xy).value) == magnitude{grid_rational{-1}});
+    static_assert(magnitude_of((xy * xy).value) == magnitude{grid_number{-1}});
     // A named blade keeps the sign of its spelling.
-    static_assert(magnitude_of(zx.value) == magnitude{grid_rational{-1}});
+    static_assert(magnitude_of(zx.value) == magnitude{grid_number{-1}});
     // A basis vector's exponent is 0 or 1.
     static_assert(dimension_of(x.value).pow(2) == dim_one);
     static_assert(dimension_of(x.value).pow(3) == dimension_of(x.value));
     static_assert(dimension_of((x / x).value) == dim_one);
     // x⁻¹ = x, (x y)⁻¹ = -(x y).
     static_assert(magnitude_of(inverse(x).value).is_one());
-    static_assert(magnitude_of(inverse(xy).value) == magnitude{grid_rational{-1}});
+    static_assert(magnitude_of(inverse(xy).value) == magnitude{grid_number{-1}});
 }
 
 TEST(GeoalgTest, products_of_basis_blades_match_a_bitmask_reference) {

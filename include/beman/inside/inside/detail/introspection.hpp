@@ -88,11 +88,11 @@ template <std::integral I>
 inline constexpr interval interval_of<I> = {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
 template <insidable B>
-inline constexpr detail::grid_rational lower_of = grid_of<B>.Interval.Lower;
+inline constexpr grid_number lower_of = grid_of<B>.Interval.Lower;
 template <insidable B>
-inline constexpr detail::grid_rational upper_of = grid_of<B>.Interval.Upper;
+inline constexpr grid_number upper_of = grid_of<B>.Interval.Upper;
 template <insidable B>
-inline constexpr detail::grid_rational notch_of = grid_of<B>.Notch;
+inline constexpr grid_number notch_of = grid_of<B>.Notch;
 
 namespace detail {
 // The same as 64-bit rationals, for the paths that work in 64 bits (the

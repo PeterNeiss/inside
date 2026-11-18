@@ -520,7 +520,7 @@ TEST(ConversionTest, continuous_predicates_see_the_rational_store) {
 TEST(ConversionTest, numerator_past_int64) {
     using I64             = std::int64_t;
     constexpr I64 I64_MAX = std::numeric_limits<I64>::max();
-    using detail::big_int, detail::grid_rational;
+    using detail::big_int;
     using X      = inside<grid{{I64{1} << 62, (I64{1} << 62) + 1}, rational{1, 2}}>;
     const X    x = rational{(std::uint64_t{1} << 63) + 1, 2};
     const auto n = x.numerator();
@@ -528,7 +528,7 @@ TEST(ConversionTest, numerator_past_int64) {
     using Z      = inside<grid{{-I64_MAX, -I64_MAX + 1}, rational{1, 2}}>;
     const Z    z = rational{UINT64_MAX - 2, -2};
     const auto m = z.numerator();
-    EXPECT_TRUE(m == -just<grid_rational{big_int{UINT64_MAX - 2}}>);
+    EXPECT_TRUE(m == -just<grid_number{big_int{UINT64_MAX - 2}}>);
     // Numerators and denominators get the tightest integer grids.
     static_assert(grid_of<decltype(std::declval<inside<{{0, 10}, rational{1, 4}}>>().numerator())> == grid{0, 40});
     static_assert(grid_of<decltype(std::declval<inside<{{0, 1}, max_denominator{1000}}>>().numerator())> ==
@@ -798,13 +798,12 @@ using detail::rational;
 // to<long double>() and to<float>() of exact values past the type's range
 // are ±infinity, below its least subnormal 0; zero is 0.
 TEST(ConversionsArmTest, floats_of_values_past_the_range) {
-    using Big = inside<{{0, detail::grid_rational{detail::grid_int{1} << 20000}},
-                        detail::grid_rational{detail::grid_int{1} << 19990}}>;
+    using Big = inside<{{0, grid_number{detail::grid_int{1} << 20000}}, grid_number{detail::grid_int{1} << 19990}}>;
     EXPECT_EQ(Big::from_step(1024_ins).to<long double>(), std::numeric_limits<long double>::infinity());
     EXPECT_EQ(Big::from_step(1024_ins).to<float>(), std::numeric_limits<float>::infinity());
     using F = inside<{0, 340282366920938463463374607431768211456_g}>; // to 2^128
     EXPECT_EQ(F{just<340282366920938463463374607431768211456_g>}.to<float>(), std::numeric_limits<float>::infinity());
-    using T = inside<{{0, 1}, max_denominator{detail::grid_rational{detail::grid_int{1} << 20000}}}>;
+    using T = inside<{{0, 1}, max_denominator{grid_number{detail::grid_int{1} << 20000}}}>;
     EXPECT_EQ((*parse_exact<T>("0")).to<long double>(), 0.0L);
     EXPECT_EQ((*parse_exact<T>("0x1p-19999")).to<long double>(), 0.0L);
 }
@@ -868,8 +867,8 @@ void check_wide_builtins() {
     using u64    = inside<{0, 18446744073709551615_g}>;
 
     // Grid numbers and the type's interval.
-    static_assert(detail::grid_rational{S{1} << 100} == 1267650600228229401496703205376_g);
-    static_assert(detail::grid_rational{-(S{1} << 100)} == -1267650600228229401496703205376_g);
+    static_assert(grid_number{S{1} << 100} == 1267650600228229401496703205376_g);
+    static_assert(grid_number{-(S{1} << 100)} == -1267650600228229401496703205376_g);
     static_assert(interval_of<S>.Lower == -170141183460469231731687303715884105728_g); // −2^127
     static_assert(interval_of<U>.Upper == 340282366920938463463374607431768211455_g);  // 2^128 − 1
     static_assert(static_cast<S>(detail::big_int{-big}) == -big && static_cast<U>(detail::big_int{ubig}) == ubig);

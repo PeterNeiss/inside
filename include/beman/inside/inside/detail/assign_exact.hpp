@@ -87,16 +87,16 @@ constexpr grid overshoot_source_grid() {
     if constexpr (insidable<R>)
         return grid_of<R>;
     else if constexpr (std::integral<R>)
-        return grid{grid_rational{std::numeric_limits<R>::min()}, grid_rational{std::numeric_limits<R>::max()}};
+        return grid{grid_number{std::numeric_limits<R>::min()}, grid_number{std::numeric_limits<R>::max()}};
     else if constexpr (wide_float<R>) {
-        const grid_rational big{grid_int{1} << 1100}, tiny = grid_rational{1} / grid_rational{grid_int{1} << 1130};
+        const grid_number big{grid_int{1} << 1100}, tiny = grid_number{1} / grid_number{grid_int{1} << 1130};
         return grid{interval{-big, big}, tiny};
     } else if constexpr (std::floating_point<R>) {
-        const grid_rational top{static_cast<double>(std::numeric_limits<R>::max())};
-        return grid{interval{-top, top}, grid_rational{static_cast<double>(std::numeric_limits<R>::denorm_min())}};
+        const grid_number top{static_cast<double>(std::numeric_limits<R>::max())};
+        return grid{interval{-top, top}, grid_number{static_cast<double>(std::numeric_limits<R>::denorm_min())}};
     } else { // rational: |Num| < 2^64, |Den| ≤ 2^63
-        const grid_rational top{grid_int{~std::uint64_t{0}}};
-        return grid{interval{-top, top}, max_denominator{grid_rational{grid_int{1} << 63}}};
+        const grid_number top{grid_int{~std::uint64_t{0}}};
+        return grid{interval{-top, top}, max_denominator{grid_number{grid_int{1} << 63}}};
     }
 }
 
@@ -147,13 +147,13 @@ constexpr auto infinite_clamp_overshoot(bool negative) {
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
 constexpr grid wrap_carry_grid() {
-    constexpr grid          G      = grid_of<L>;
-    constexpr grid_rational period = G.Interval.Upper - G.Interval.Lower + G.Notch;
-    if constexpr (period == grid_rational{0})
-        return grid{grid_rational{0}};
+    constexpr grid        G      = grid_of<L>;
+    constexpr grid_number period = G.Interval.Upper - G.Interval.Lower + G.Notch;
+    if constexpr (period == grid_number{0})
+        return grid{grid_number{0}};
     else {
         constexpr interval source   = overshoot_source_grid<R>().Interval;
-        const auto         carry_of = [&](const grid_rational& v) {
+        const auto         carry_of = [&](const grid_number& v) {
             return grid_round<round_mode::floor>((v - G.Interval.Lower) / period);
         };
         return grid{carry_of(source.Lower), carry_of(source.Upper)};

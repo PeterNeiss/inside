@@ -112,7 +112,7 @@ inline std::string unit_symbol(const unit_value& u, text_encoding enc = text_enc
     if (!u.Scale.is_one()) {
         // "1/1250", "π", "2π", "π⁻¹" (ASCII "pi^-1").
         std::string scale =
-            u.Scale.Pi != 0 && u.Scale.Ratio == grid_rational{1} ? "" : beman::inside::to_string(u.Scale.Ratio);
+            u.Scale.Pi != 0 && u.Scale.Ratio == grid_number{1} ? "" : beman::inside::to_string(u.Scale.Ratio);
         if (u.Scale.Pi != 0) {
             scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
             detail::append_exponent(scale, u.Scale.Pi, enc);

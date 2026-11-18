@@ -299,17 +299,17 @@ inline constexpr bool binary_notch =
     std::has_single_bit(static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_denominator(notch_of<X>))));
 template <insidable Out, insidable A, insidable B, bool Div>
 struct lattice_op {
-    static constexpr bool          grids = int_lattice<Out> && int_lattice<A> && int_lattice<B>;
-    static constexpr grid_rational C     = [] {
+    static constexpr bool        grids = int_lattice<Out> && int_lattice<A> && int_lattice<B>;
+    static constexpr grid_number C     = [] {
         if constexpr (!grids)
-            return grid_rational{1};
+            return grid_number{1};
         else if constexpr (Div)
             return notch_of<A> / (notch_of<B> * notch_of<Out>);
         else
             return notch_of<A> * notch_of<B> / notch_of<Out>;
     }();
-    static consteval grid_int max_abs_index(const grid_rational& lo, const grid_rational& hi) {
-        const grid_rational a = abs(lo), b = abs(hi);
+    static consteval grid_int max_abs_index(const grid_number& lo, const grid_number& hi) {
+        const grid_number a = abs(lo), b = abs(hi);
         return grid_numerator(a < b ? b : a);
     }
     static constexpr bool ok = [] {
@@ -371,14 +371,14 @@ template <insidable Out, policy_flag P, bool Div, insidable A, insidable B>
 // A count of units U onto Out (sum's total): Out's value index is
 // count·Cp/Cq, C = U/Notch_Out, while the product fits int64.
 template <insidable Out>
-inline constexpr grid_rational units_to_out = notch_of<Out>;
-template <insidable Out, grid_rational U>
+inline constexpr grid_number units_to_out = notch_of<Out>;
+template <insidable Out, grid_number U>
 inline constexpr bool units_onto = [] {
     if constexpr (!int_lattice<Out>)
         return false;
     else {
-        const grid_rational c = U / notch_of<Out>;
-        constexpr grid_int  lim{std::int64_t{1} << 62};
+        const grid_number  c = U / notch_of<Out>;
+        constexpr grid_int lim{std::int64_t{1} << 62};
         return grid_numerator(c) < lim && grid_denominator(c) < lim && max_index_of<Out> < (std::uint64_t{1} << 62);
     }
 }();
@@ -640,7 +640,7 @@ consteval bool sums_on_lattice() {
     else {
         if (!point_grid<B> && !grid_divides_evenly(lower_of<B>, notch_of<B>))
             return false;
-        const grid_rational step = point_grid<B> ? lower_of<B> : notch_of<B>;
+        const grid_number step = point_grid<B> ? lower_of<B> : notch_of<B>;
         return grid_divides_evenly(step, notch_of<Target>) && grid_divides_evenly(lower_of<Target>, notch_of<Target>);
     }
 }
@@ -656,9 +656,9 @@ constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
     if constexpr (detail::integer_storage<B> && !detail::point_storage<B> && detail::notched<B>) {
         // The total in units of U, the value unit: the notch on an anchored
         // grid, so each value counts as its value index.
-        constexpr detail::grid_rational U = grid_of<B>.value_unit();
-        constexpr int bits = detail::signed_value_bits({detail::units_lo<B, U>, detail::units_hi<B, U>}) + 64;
-        using I            = detail::wide_sint<detail::limbs_for_bits(bits)>;
+        constexpr grid_number U    = grid_of<B>.value_unit();
+        constexpr int         bits = detail::signed_value_bits({detail::units_lo<B, U>, detail::units_hi<B, U>}) + 64;
+        using I                    = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
         if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
             // Each value is base + raw·scale units (scale 1 when anchored), in
@@ -719,12 +719,12 @@ constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
                 total += detail::value_in_units<I, U>(b);
         if constexpr (!detail::wide_valued<B> && detail::units_onto<Target, U>) {
             // A total within int64 onto a lattice: one rounded division.
-            constexpr std::int64_t          lo = std::numeric_limits<std::int64_t>::min(),
-                                            hi = std::numeric_limits<std::int64_t>::max();
-            constexpr detail::grid_rational c  = U / notch_of<Target>;
-            constexpr std::int64_t          cp = static_cast<std::int64_t>(detail::grid_numerator(c));
-            constexpr std::int64_t          cq = static_cast<std::int64_t>(detail::grid_denominator(c));
-            std::int64_t                    n;
+            constexpr std::int64_t lo = std::numeric_limits<std::int64_t>::min(),
+                                   hi = std::numeric_limits<std::int64_t>::max();
+            constexpr grid_number  c  = U / notch_of<Target>;
+            constexpr std::int64_t cp = static_cast<std::int64_t>(detail::grid_numerator(c));
+            constexpr std::int64_t cq = static_cast<std::int64_t>(detail::grid_denominator(c));
+            std::int64_t           n;
             if (!(total < I{lo}) && !(I{hi} < total) &&
                 !detail::mul_overflow(static_cast<std::int64_t>(total), cp, &n))
                 if (const auto s = detail::lattice_round_slot<Target, policy_of<Pol> | policy_of<Target>>(n, cq);
@@ -822,10 +822,10 @@ template <insidable W, insidable A, insidable B, insidable T>
 consteval grid lerp_grid() {
     grid g = grid_of<W>;
     if constexpr (lower_of<T> >= 0 && upper_of<T> <= 1) {
-        grid_rational lo = lower_of<A> < lower_of<B> ? lower_of<A> : lower_of<B>;
-        grid_rational hi = upper_of<A> < upper_of<B> ? upper_of<B> : upper_of<A>;
+        grid_number lo = lower_of<A> < lower_of<B> ? lower_of<A> : lower_of<B>;
+        grid_number hi = upper_of<A> < upper_of<B> ? upper_of<B> : upper_of<A>;
         if (g.Notch != 0) { // onto the lattice, inward
-            const grid_rational base = g.Interval.Lower, n = g.Notch;
+            const grid_number base = g.Interval.Lower, n = g.Notch;
             lo = base + n * grid_round<round_mode::ceil>((lo - base) / n);
             hi = base + n * grid_round<round_mode::floor>((hi - base) / n);
         }

@@ -70,8 +70,8 @@ template <insidable L, insidable R>
 inline constexpr bool lattice_mod_ops = notched<L> && notched<R> && !(integer_lattice<L> && integer_lattice<R>);
 
 template <insidable L, insidable R>
-inline constexpr grid_rational mod_unit =
-    lattice_mod_ops<L, R> ? gcd(grid_of<L>.value_unit(), grid_of<R>.value_unit()) : grid_rational{1};
+inline constexpr grid_number mod_unit =
+    lattice_mod_ops<L, R> ? gcd(grid_of<L>.value_unit(), grid_of<R>.value_unit()) : grid_number{1};
 
 // (A zero divisor grid has no remainder grid: |r| < |b| holds no value.)
 template <insidable L, insidable R, policy_flag F>
@@ -224,12 +224,12 @@ struct division {
         const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
         constexpr bool   big     = wide_grid_numbers<L> || wide_grid_numbers<R>;
         using M                  = std::conditional_t<big, grid_int, std::uint64_t>;
-        using V                  = std::conditional_t<big, grid_rational, rational>;
+        using V                  = std::conditional_t<big, grid_number, rational>;
         struct signed_mag {
             M    Mag;
             bool Neg;
         };
-        auto of = [](const grid_rational& g) {
+        auto of = [](const grid_number& g) {
             if constexpr (big)
                 return signed_mag{abs(grid_numerator(g)), grid_numerator(g).negative()};
             else {
@@ -285,7 +285,7 @@ struct division {
             constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.
             constexpr rational n = notch64<L>, k = rational{1} / n;
-            auto               on = [&](const grid_rational& x, bool up) {
+            auto               on = [&](const grid_number& x, bool up) {
                 return grid_divides_evenly(x, notch_of<L>) ? to_rational(x)
                                                            : round_rat(to_rational(x) * k, rmode, up) * n;
             };
@@ -293,8 +293,8 @@ struct division {
         } else if constexpr (notch_div) {
             // The exact quotient's limits rounded the same way (rounding is
             // monotone), onto multiples of n.
-            constexpr interval      q = (*(grid_of<L> / grid_of<R>)).Interval;
-            constexpr grid_rational n = notch_of<L>;
+            constexpr interval    q = (*(grid_of<L> / grid_of<R>)).Interval;
+            constexpr grid_number n = notch_of<L>;
             return grid{interval{grid_round<rmode>(q.Lower / n) * n, grid_round<rmode>(q.Upper / n) * n}, n};
         } else
             return *(grid_of<L> / grid_of<R>);
@@ -337,8 +337,8 @@ struct division {
                       !values_fit_int64<result>)
             return false;
         else {
-            constexpr grid_rational c   = unit_of<L> / (unit_of<R> * notch_of<L>);
-            constexpr grid_int      lim = grid_int{1} << 63;
+            constexpr grid_number c   = unit_of<L> / (unit_of<R> * notch_of<L>);
+            constexpr grid_int    lim = grid_int{1} << 63;
             auto max_abs = [](const grid_int& a, const grid_int& b) { return abs(a) < abs(b) ? abs(b) : abs(a); };
             return max_abs(units_lo<L, unit_of<L>>, units_hi<L, unit_of<L>>) * grid_numerator(c) < lim &&
                    max_abs(units_lo<R, unit_of<R>>, units_hi<R, unit_of<R>>) * grid_denominator(c) < lim;
@@ -403,17 +403,17 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         // integers, as modulo's remainder.
         constexpr std::size_t K = exact_limbs<L, R, result>;
         using I                 = wide_sint<K>;
-        const I b               = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
+        const I b               = value_in_units<I, grid_number{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
                 return zero();
-        const I a = value_in_units<I, grid_rational{1}>(lhs);
+        const I a = value_in_units<I, grid_number{1}>(lhs);
         return from_value_index<result>(rounded_div<rmode>(a, b)); // notch 1: the value is the index
     } else if constexpr (notch_div_int) {
-        constexpr grid_rational c  = unit_of<L> / (unit_of<R> * notch_of<L>);
-        constexpr std::int64_t  cp = static_cast<std::int64_t>(grid_numerator(c)),
-                                cd = static_cast<std::int64_t>(grid_denominator(c));
-        const std::int64_t      b  = value_in_units<std::int64_t, unit_of<R>>(rhs);
+        constexpr grid_number  c  = unit_of<L> / (unit_of<R> * notch_of<L>);
+        constexpr std::int64_t cp = static_cast<std::int64_t>(grid_numerator(c)),
+                               cd = static_cast<std::int64_t>(grid_denominator(c));
+        const std::int64_t     b  = value_in_units<std::int64_t, unit_of<R>>(rhs);
         if constexpr (!zero_unchecked)
             if (b == 0)
                 return zero();
@@ -493,7 +493,7 @@ struct modulo {
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
     // The values' unit: 1 on integer grids, else the gcd of the value units.
-    static constexpr grid_rational unit_value = mod_unit<L, R>;
+    static constexpr grid_number unit_value = mod_unit<L, R>;
     // A lattice remainder in builtin integers when both operands' unit counts
     // fit int64.
     static constexpr bool lattice_native =
@@ -512,7 +512,7 @@ struct modulo {
     // In units of `unit` (1 on integer grids): b_max − 1 is b_max − unit, and
     // ⌊|b|/2⌋ counts units.
     static constexpr grid result_grid = [] {
-        using G      = grid_rational;
+        using G      = grid_number;
         const G one  = unit_value, zero{0};
         const G a_lo = lower_of<L>, a_hi = upper_of<L>, b_lo = lower_of<R>, b_hi = upper_of<R>;
         const G b_max  = abs(b_lo) > abs(b_hi) ? abs(b_lo) : abs(b_hi);
@@ -600,11 +600,11 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
     } else if constexpr (!native_mod) {
         // Integer values past int64: r = a − round(a/b)·b in exact wide integers.
         using I   = wide_sint<exact_limbs<L, R, result>>;
-        const I b = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
+        const I b = value_in_units<I, grid_number{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
                 return report_or_unexpected<result>(policy, error::division_by_zero);
-        const I a = value_in_units<I, grid_rational{1}>(lhs);
+        const I a = value_in_units<I, grid_number{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
         using T         = native_div_t<L, R>;
@@ -667,9 +667,9 @@ struct quotient_remainder {
         };
         if constexpr (modulo<L, R, FS>::lattice_native && integer_lattice<quotient> && values_fit_int64<quotient>) {
             // A lattice whose unit counts fit int64: one builtin division, as `%`.
-            using M                   = typename modulo<L, R, FS>::result;
-            constexpr grid_rational u = mod_unit<L, R>;
-            const std::int64_t      b = value_in_units<std::int64_t, u>(rhs);
+            using M                 = typename modulo<L, R, FS>::result;
+            constexpr grid_number u = mod_unit<L, R>;
+            const std::int64_t    b = value_in_units<std::int64_t, u>(rhs);
             if constexpr (!divisor_unchecked<L, R, F, G>)
                 if (b == 0)
                     return fail(error::division_by_zero);
@@ -679,11 +679,11 @@ struct quotient_remainder {
             return res;
         } else if constexpr (lattice_mod_ops<L, R>) {
             // A lattice: q and r = a − q·b on the unit counts, exactly.
-            using M                   = typename modulo<L, R, FS>::result;
-            constexpr grid_rational u = mod_unit<L, R>;
-            constexpr std::size_t   K = exact_limbs<L, R, quotient, M>;
-            using I                   = wide_sint<K>;
-            const I b                 = value_in_units<I, u>(rhs);
+            using M                 = typename modulo<L, R, FS>::result;
+            constexpr grid_number u = mod_unit<L, R>;
+            constexpr std::size_t K = exact_limbs<L, R, quotient, M>;
+            using I                 = wide_sint<K>;
+            const I b               = value_in_units<I, u>(rhs);
             if constexpr (!divisor_unchecked<L, R, F, G>)
                 if (b.is_zero())
                     return fail(error::division_by_zero);
@@ -699,11 +699,11 @@ struct quotient_remainder {
             using M                 = typename modulo<L, R, FS>::result;
             constexpr std::size_t K = exact_limbs<L, R, Q, M>;
             using I                 = wide_sint<K>;
-            const I b               = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
+            const I b               = value_in_units<I, grid_number{1}>(rhs); // integer values: no division
             if constexpr (!divisor_unchecked<L, R, F, G>)
                 if (b.is_zero())
                     return fail(error::division_by_zero);
-            const I a = value_in_units<I, grid_rational{1}>(lhs);
+            const I a = value_in_units<I, grid_number{1}>(lhs);
             const I q = rounded_div<rmode>(a, b);
             if constexpr (notch_of<Q> == 1 && notch_of<M> == 1 && anchored<Q> && anchored<M>)
                 return result{from_value_index<Q>(q), from_value_index<M>(I{a - q * b})};

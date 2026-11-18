@@ -162,17 +162,17 @@ constexpr counted multinomial_count(const std::array<big::mag, M>& ks) {
 // The integer grid [lo, hi] (a point when they are equal); Fits false when
 // hi passes max_count_bits.
 struct count_grid {
-    grid Grid{grid_rational{0}};
+    grid Grid{grid_number{0}};
     bool Fits = true;
 };
 consteval count_grid make_count_grid(const counted& lo, const counted& hi) {
     if (!lo.Fits || !hi.Fits)
-        return {grid{grid_rational{0}}, false};
-    const grid_rational l{big_int::from_mag(lo.Value, false)};
-    const grid_rational h{big_int::from_mag(hi.Value, false)};
+        return {grid{grid_number{0}}, false};
+    const grid_number l{big_int::from_mag(lo.Value, false)};
+    const grid_number h{big_int::from_mag(hi.Value, false)};
     if (l == h)
         return {grid{l}, true};
-    return {grid{interval{l, h}, grid_rational{1}}, true};
+    return {grid{interval{l, h}, grid_number{1}}, true};
 }
 
 // factorial is increasing in n.
@@ -240,50 +240,50 @@ inline constexpr int sum_bits = bit_width_of((count_upper<Ks> + ...));
 // multiple of g = gcd(u_a, u_b) and every lcm of l = lcm(u_a, u_b).
 //---------------------------------------------------------------------------
 template <insidable X>
-consteval grid_rational unit_of_values() {
+consteval grid_number unit_of_values() {
     if (notch_of<X> == 0)
         return abs(lower_of<X>);
     return grid_of<X>.value_unit();
 }
 template <insidable X>
-inline constexpr bool holds_zero = grid_of<X>.representable(grid_rational{0});
+inline constexpr bool holds_zero = grid_of<X>.representable(grid_number{0});
 template <insidable X>
-consteval grid_rational largest_magnitude() {
+consteval grid_number largest_magnitude() {
     return abs(lower_of<X>) < abs(upper_of<X>) ? abs(upper_of<X>) : abs(lower_of<X>);
 }
 // The least |v| over X's values.
 template <insidable X>
-consteval grid_rational least_magnitude() {
-    const grid_rational lo = lower_of<X>, hi = upper_of<X>;
+consteval grid_number least_magnitude() {
+    const grid_number lo = lower_of<X>, hi = upper_of<X>;
     if (lo >= 0)
         return lo;
     if (hi <= 0)
         return -hi;
-    const grid_rational n  = notch_of<X>;
-    const grid_rational up = lo + grid_round<round_mode::ceil>(-lo / n) * n; // the first value ≥ 0
-    const grid_rational dn = up - n;                                         // the last ≤ 0
+    const grid_number n  = notch_of<X>;
+    const grid_number up = lo + grid_round<round_mode::ceil>(-lo / n) * n; // the first value ≥ 0
+    const grid_number dn = up - n;                                         // the last ≤ 0
     return up < -dn ? up : -dn;
 }
-consteval grid lattice_grid(const grid_rational& lo, const grid_rational& hi, const grid_rational& unit_value) {
+consteval grid lattice_grid(const grid_number& lo, const grid_number& hi, const grid_number& unit_value) {
     if (lo == hi)
         return grid{lo};
     return grid{interval{lo, hi}, unit_value};
 }
 template <insidable A, insidable B>
 consteval grid gcd_grid_of() {
-    const grid_rational g = gcd(unit_of_values<A>(), unit_of_values<B>());
+    const grid_number g = gcd(unit_of_values<A>(), unit_of_values<B>());
     if (point_grid<A> && point_grid<B>) // the gcd itself
         return grid{g};
     if (g == 0) // both the point 0
-        return grid{grid_rational{0}};
-    const grid_rational ma = largest_magnitude<A>(), mb = largest_magnitude<B>();
-    grid_rational       hi = ma < mb ? ma : mb;
+        return grid{grid_number{0}};
+    const grid_number ma = largest_magnitude<A>(), mb = largest_magnitude<B>();
+    grid_number       hi = ma < mb ? ma : mb;
     if (holds_zero<A> && hi < mb)
         hi = mb;
     if (holds_zero<B> && hi < ma)
         hi = ma;
-    hi                     = grid_round<round_mode::floor>(hi / g) * g;
-    const grid_rational lo = holds_zero<A> && holds_zero<B> ? grid_rational{0} : g;
+    hi                   = grid_round<round_mode::floor>(hi / g) * g;
+    const grid_number lo = holds_zero<A> && holds_zero<B> ? grid_number{0} : g;
     return lattice_grid(lo, hi, g);
 }
 template <insidable A, insidable B>
@@ -294,29 +294,29 @@ inline constexpr grid gcd_grid = gcd_grid_of<A, B>();
 template <insidable X>
 inline constexpr bool has_lattice = notched<X> || point_grid<X>;
 template <insidable A, insidable B>
-inline constexpr grid_rational gcd_unit = gcd(unit_of_values<A>(), unit_of_values<B>());
+inline constexpr grid_number gcd_unit = gcd(unit_of_values<A>(), unit_of_values<B>());
 template <insidable A, insidable B>
 inline constexpr bool integer_operands = integer_lattice<A> && integer_lattice<B>;
 
 // lcm(x, y) = |x·y| / gcd(x, y), and gcd(x, y) is a positive multiple of
 // gcd_unit: at most |x·y| on integers, |x·y| / gcd_unit on fractions.
 template <insidable A, insidable B>
-inline constexpr grid_rational lcm_upper =
+inline constexpr grid_number lcm_upper =
     integer_operands<A, B> ? largest_magnitude<A>() * largest_magnitude<B>()
                            : largest_magnitude<A>() * largest_magnitude<B>() / gcd_unit<A, B>;
 template <insidable A, insidable B>
 consteval grid lcm_grid_of() {
-    const grid_rational ua = unit_of_values<A>(), ub = unit_of_values<B>();
+    const grid_number ua = unit_of_values<A>(), ub = unit_of_values<B>();
     if (ua == 0 || ub == 0) // a point 0: every lcm is 0
-        return grid{grid_rational{0}};
-    const grid_rational l = ua / gcd(ua, ub) * ub;
+        return grid{grid_number{0}};
+    const grid_number l = ua / gcd(ua, ub) * ub;
     if (point_grid<A> && point_grid<B>) // the lcm itself
         return grid{l};
-    const grid_rational hi = lcm_upper<A, B>;
+    const grid_number hi = lcm_upper<A, B>;
     if (holds_zero<A> || holds_zero<B>)
-        return lattice_grid(grid_rational{0}, hi, l);
-    const grid_rational la = least_magnitude<A>(), lb = least_magnitude<B>();
-    const grid_rational lo = grid_round<round_mode::ceil>((la < lb ? lb : la) / l) * l;
+        return lattice_grid(grid_number{0}, hi, l);
+    const grid_number la = least_magnitude<A>(), lb = least_magnitude<B>();
+    const grid_number lo = grid_round<round_mode::ceil>((la < lb ? lb : la) / l) * l;
     return lattice_grid(lo, hi, l);
 }
 template <insidable A, insidable B>
@@ -542,10 +542,10 @@ template <insidable A, insidable B>
         (void)a, (void)b;
         return R::from_raw({}, unsafe);
     } else if constexpr (!detail::integer_operands<A, B>) {
-        constexpr detail::grid_rational u = detail::gcd_unit<A, B>;
-        constexpr int bits                = std::max(bit_width_of(grid_numerator(detail::largest_magnitude<A>() / u)),
-                                                     bit_width_of(grid_numerator(detail::largest_magnitude<B>() / u)));
-        const auto    ux = detail::magnitude_in_units<A, B, bits>(a), uy = detail::magnitude_in_units<A, B, bits>(b);
+        constexpr grid_number u    = detail::gcd_unit<A, B>;
+        constexpr int         bits = std::max(bit_width_of(grid_numerator(detail::largest_magnitude<A>() / u)),
+                                              bit_width_of(grid_numerator(detail::largest_magnitude<B>() / u)));
+        const auto ux = detail::magnitude_in_units<A, B, bits>(a), uy = detail::magnitude_in_units<A, B, bits>(b);
         if constexpr (detail::wide_integer<decltype(ux)>)
             return detail::from_units<R, A, B>(detail::wide_gcd(ux, uy));
         else

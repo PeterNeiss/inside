@@ -83,7 +83,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // (the gcd of their value units), one integer compare — any notches and
     // offsets, without the rational decode.
     else if constexpr (units_cmp_fits<L, R>) {
-        constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
+        constexpr grid_number U = gcd(unit_of<L>, unit_of<R>);
         return cmp(value_in_units<std::int64_t, U>(lhs), value_in_units<std::int64_t, U>(rhs));
     } else
         return cmp(as_rational(lhs), as_rational(rhs));

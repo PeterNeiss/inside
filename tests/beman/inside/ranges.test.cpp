@@ -671,19 +671,18 @@ using namespace beman::inside;
 using namespace beman::inside::formats;
 
 using detail::big_int;
-using detail::grid_rational;
 
 namespace {
-consteval big_int       pow2(int k) { return big_int{1} << k; }
-consteval grid_rational g(big_int v) { return grid_rational{v}; }
+consteval big_int     pow2(int k) { return big_int{1} << k; }
+consteval grid_number g(big_int v) { return grid_number{v}; }
 
-using huge   = inside<{0, g(pow2(100))}>;                             // 2^100 + 1 points
-using fine   = inside<{{0, 1}, grid_rational{big_int{1}, pow2(80)}}>; // notch 2^-80
-using shuge  = inside<{-g(pow2(100)), g(pow2(100))}>;                 // signed, past 64 bits
-using temp   = inside<{-40, 85}>;                                     // a value raw (int8_t)
-using halves = inside<{{0, 5}, 0.5}>;                                 // an index raw (uint8_t)
-using bins   = inside<{{0.5, 255.5}, 1}>;                             // off the notch's multiples
-using five   = inside<{5, 5}>;                                        // a point
+using huge   = inside<{0, g(pow2(100))}>;                           // 2^100 + 1 points
+using fine   = inside<{{0, 1}, grid_number{big_int{1}, pow2(80)}}>; // notch 2^-80
+using shuge  = inside<{-g(pow2(100)), g(pow2(100))}>;               // signed, past 64 bits
+using temp   = inside<{-40, 85}>;                                   // a value raw (int8_t)
+using halves = inside<{{0, 5}, 0.5}>;                               // an index raw (uint8_t)
+using bins   = inside<{{0.5, 255.5}, 1}>;                           // off the notch's multiples
+using five   = inside<{5, 5}>;                                      // a point
 
 // A run-time integer the optimizer cannot see through.
 int at_run_time(int v) {

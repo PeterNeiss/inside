@@ -713,26 +713,26 @@ struct pow_core {
 // interval, so the bound always covers the true value; one escalation makes
 // it tight except within 2^-2W of a lattice point.
 //---------------------------------------------------------------------------
-template <grid_rational Notch>
+template <grid_number Notch>
 inline constexpr std::size_t notch_limbs =
     limbs_for_bits(grid_bits(grid_numerator(Notch)) + grid_bits(grid_denominator(Notch)) + 2);
 
 // k·Notch as a grid number.
-template <grid_rational Notch, std::size_t K>
-constexpr grid_rational lattice_point(const wide_sint<K>& k) {
-    return grid_rational{big_int{k}} * Notch;
+template <grid_number Notch, std::size_t K>
+constexpr grid_number lattice_point(const wide_sint<K>& k) {
+    return grid_number{big_int{k}} * Notch;
 }
 
 // ⌊v/Notch⌋ (Up false) or ⌈v/Notch⌉ (Up true) for v = n/d, d > 0.
-template <grid_rational Notch, bool Up, std::size_t K>
+template <grid_number Notch, bool Up, std::size_t K>
 constexpr wide_sint<K + notch_limbs<Notch>> lattice_index(const wide_sint<K>& n, const wide_sint<K>& d) {
     using J   = wide_sint<K + notch_limbs<Notch>>;
     const J p = static_cast<J>(grid_numerator(Notch)), q = static_cast<J>(grid_denominator(Notch));
     return rounded_div<Up ? round_mode::ceil : round_mode::floor>(J{n} * q, J{d} * p);
 }
 
-template <grid_rational Notch, bool Up, int W, int Cap, typename Core>
-constexpr grid_rational lattice_bound_from(const Core& core) {
+template <grid_number Notch, bool Up, int W, int Cap, typename Core>
+constexpr grid_number lattice_bound_from(const Core& core) {
     const auto            a = core.template run<W>();
     constexpr std::size_t K = limbs_of<decltype(a.Value)> + 1;
     using I                 = wide_sint<K>;
@@ -753,8 +753,8 @@ constexpr grid_rational lattice_bound_from(const Core& core) {
     return lattice_point<Notch>(Up ? hi : lo);
 }
 
-template <grid_rational Notch, bool Up, typename Core>
-constexpr grid_rational lattice_bound(const Core& core) {
+template <grid_number Notch, bool Up, typename Core>
+constexpr grid_number lattice_bound(const Core& core) {
     if constexpr (requires { core.exact(); })
         if (const auto v = core.exact()) {
             return lattice_point<Notch>(lattice_index<Notch, Up>(v->Num, v->Den));
@@ -765,13 +765,13 @@ constexpr grid_rational lattice_bound(const Core& core) {
 
 // An In endpoint as an exact input.
 template <insidable In>
-constexpr wide_rational<input_limbs<In>> grid_input(const grid_rational& r) {
+constexpr wide_rational<input_limbs<In>> grid_input(const grid_number& r) {
     return exact_of_grid<input_limbs<In>>(r);
 }
 
 // ⌈|r|⌉ as an int (deduction bounds), saturated at int64: a grid reaching
 // 2^63 must fail every range gate, not wrap past them.
-consteval std::int64_t ceil_abs(const grid_rational& r) {
+consteval std::int64_t ceil_abs(const grid_number& r) {
     const grid_int         n = grid_numerator(r), d = grid_denominator(r);
     const grid_int         a = abs(n);
     const grid_int         c = (a + d - grid_int{1}) / d;
@@ -788,17 +788,17 @@ template <insidable In>
 inline constexpr policy_flag result_policy = with_default_rounding(policy_of<In> & ~cursor_marker);
 
 // A deduced output on notch N.
-template <insidable In, grid_rational N, grid_rational Lo, grid_rational Hi>
+template <insidable In, grid_number N, grid_number Lo, grid_number Hi>
 using result_grid_t = inside<{{Lo, Hi}, N}, result_policy<In>>;
 
 // The bound of Core's result at In's lower or upper end, on notch N.
-template <insidable In, grid_rational N, typename Core, bool AtUpper, bool Up>
-inline constexpr grid_rational bound_at =
+template <insidable In, grid_number N, typename Core, bool AtUpper, bool Up>
+inline constexpr grid_number bound_at =
     lattice_bound<N, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
 
-template <insidable In, grid_rational N, typename Core>
+template <insidable In, grid_number N, typename Core>
 using increasing_t = result_grid_t<In, N, bound_at<In, N, Core, false, false>, bound_at<In, N, Core, true, true>>;
-template <insidable In, grid_rational N, typename Core>
+template <insidable In, grid_number N, typename Core>
 using decreasing_t = result_grid_t<In, N, bound_at<In, N, Core, true, false>, bound_at<In, N, Core, false, true>>;
 
 // Growth bounds for the deduction: |result| < 2^kmax over In.
@@ -813,7 +813,7 @@ inline constexpr int exp_kmax = [] {
 // Bits of the larger of |b| and 1/|b| over In (b > 0), for pow's growth.
 template <insidable In>
 inline constexpr int log2_span = [] {
-    const std::int64_t m = std::max(ceil_abs(upper_of<In>), ceil_abs(grid_rational{1} / lower_of<In>));
+    const std::int64_t m = std::max(ceil_abs(upper_of<In>), ceil_abs(grid_number{1} / lower_of<In>));
     return std::bit_width(static_cast<std::uint64_t>(m)) + 1;
 }();
 
@@ -882,8 +882,8 @@ inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 // outputs: the notches, or finer where a lattice does not pass through 0.
 // Every value of both inputs is a multiple of it.
 template <insidable A, insidable B>
-inline constexpr grid_rational gcd_notch =
-    !notched<A> || !notched<B> ? grid_rational{0} : gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+inline constexpr grid_number gcd_notch =
+    !notched<A> || !notched<B> ? grid_number{0} : gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 } // namespace beman::inside::math::detail::engine
 
 #endif // BEMAN_INSIDE_MATH_DETAIL_CORES_HPP

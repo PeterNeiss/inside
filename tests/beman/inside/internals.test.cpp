@@ -603,6 +603,29 @@ TEST(BigRationalTest, runtime_overflow_is_reported) {
         (void)big_int::mul(big_int{static_cast<std::uint64_t>(big)}, big_int{static_cast<std::uint64_t>(big)}),
         "64 bits");
 }
+
+// grid_number: one form per value, so equal values are one template
+// argument - reduced, the sign on the denominator, inline while it fits the
+// 64-bit rational, an interned big_rational (Den == 0) past it.
+using beman::inside::grid_number, beman::inside::inside, beman::inside::per;
+template <grid_number V>
+struct gtag {};
+static_assert(grid_number{rational{2, 4}}.Num == 1 && grid_number{rational{2, 4}}.Den == 2); // reduced
+static_assert(std::is_same_v<gtag<grid_number{rational{2, 4}}>, gtag<grid_number{rational{1, 2}}>>);
+static_assert(std::is_same_v<gtag<grid_number{rational{3, 3}}>, gtag<grid_number{1}>>);
+static_assert(std::is_same_v<inside<{{0, 1}, grid_number{rational{2, 4}}}>, inside<{{0, 1}, per<2>}>>);
+static_assert(grid_number{-3}.Num == 3 && grid_number{-3}.Den == -1 && grid_number{-3}.negative());
+static_assert(-grid_number{0} == grid_number{0} && (-grid_number{0}).Den == 1); // no negative zero
+static_assert(std::is_same_v<gtag<-grid_number{0}>, gtag<grid_number{0}>>);
+static_assert(std::is_same_v<gtag<grid_number{big_int{6}, big_int{4}}>, gtag<grid_number{rational{3, 2}}>>);
+// Past 64 bits: interned, and back inline once a result fits.
+constexpr grid_number g100{pow2(100)};
+static_assert(g100.Den == 0 && !g100.fits_rational() && g100.is_integer() && !g100.negative());
+static_assert(std::is_same_v<gtag<g100>, gtag<grid_number{pow2(50) * pow2(50)}>>);
+static_assert(g100 / g100 == 1 && (g100 / g100).Den == 1 && (g100 / g100).fits_rational());
+static_assert((g100 - 1) + 1 == g100 && -g100 < 0 && (-g100).negative() && abs(-g100) == g100);
+static_assert(grid_number{big_int{1}, pow2(90)} * grid_number{pow2(90)} == 1);
+static_assert(gcd(grid_number{rational{1, 4}}, grid_number{rational{1, 6}}) == grid_number{rational{1, 12}});
 } // namespace big_rational_tests
 
 // wide_int against builtin oracles. Small limbs (uint8_t, uint16_t) make the

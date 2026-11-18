@@ -16,12 +16,12 @@ namespace beman::inside {
 // re-runs on the two zero-free halves and joins them).
 //---------------------------------------------------------------------------
 struct interval {
-    detail::grid_rational Lower;
-    detail::grid_rational Upper;
+    grid_number Lower;
+    grid_number Upper;
 
     interval() = default;
 
-    constexpr interval(detail::grid_rational lower, detail::grid_rational upper) : Lower{lower}, Upper{upper} {}
+    constexpr interval(grid_number lower, grid_number upper) : Lower{lower}, Upper{upper} {}
     constexpr interval(detail::plain_number auto lower, detail::plain_number auto upper)
         : Lower{lower}, Upper{upper} {}
 
@@ -35,13 +35,12 @@ struct interval {
     [[nodiscard]] consteval interval operator-() const { return interval{-Upper, -Lower}; }
 
     // (Without forming Upper − Lower: no grid number past 64 bits is made.)
-    [[nodiscard]] constexpr bool divides_evenly(const detail::grid_rational& notch) const {
+    [[nodiscard]] constexpr bool divides_evenly(const grid_number& notch) const {
         return detail::grid_same_lattice(Upper, Lower, notch);
     }
 
     // The span in units of `notch` (the step count of a grid).
-    [[nodiscard]] consteval std::expected<detail::grid_rational, error>
-    operator/(const detail::grid_rational& notch) const {
+    [[nodiscard]] consteval std::expected<grid_number, error> operator/(const grid_number& notch) const {
         if (notch == 0)
             return std::unexpected{error::division_by_zero};
         return (Upper - Lower) / notch;
@@ -58,7 +57,7 @@ struct interval {
     return iv.Lower <= r && r <= iv.Upper;
 }
 
-[[nodiscard]] constexpr bool includes(const interval& iv, const detail::grid_rational& r) noexcept {
+[[nodiscard]] constexpr bool includes(const interval& iv, const grid_number& r) noexcept {
     return iv.Lower <= r && r <= iv.Upper;
 }
 
@@ -79,7 +78,7 @@ template <detail::plain_number A>
         return detail::big::compare(detail::fraction_of(iv.Lower), f) <= 0 &&
                detail::big::compare(f, detail::fraction_of(iv.Upper)) <= 0;
     } else
-        return includes(iv, detail::grid_rational{a});
+        return includes(iv, grid_number{a});
 }
 
 // `excludes` means *strictly disjoint* — the intervals share no value.
@@ -98,10 +97,9 @@ template <detail::plain_number A>
 // The min/max hull of four endpoint combinations — the result interval of an
 // interval product or quotient (interval arithmetic's four-corner rule).
 namespace detail {
-[[nodiscard]] constexpr interval
-corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) noexcept {
-    const grid_rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
-    const grid_rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
+[[nodiscard]] constexpr interval corner_hull(grid_number a, grid_number b, grid_number c, grid_number d) noexcept {
+    const grid_number lo1 = a < b ? a : b, hi1 = a < b ? b : a;
+    const grid_number lo2 = c < d ? c : d, hi2 = c < d ? d : c;
     return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
 }
 

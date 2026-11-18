@@ -62,14 +62,14 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             return 0;
         else
             return d::bit_width_of(G.step_count() + d::grid_int{1}) - 1 -
-                   (G.Interval.Lower < d::grid_rational{0} ? 1 : 0);
+                   (G.Interval.Lower < ::beman::inside::grid_number{0} ? 1 : 0);
     }();
     static constexpr int digits10 = digits * 30103 / 100000; // ⌊digits·log10 2⌋
 
   private:
     // The value v of B (on its grid). Past 64 bits through the exact store:
     // no 64-bit rational holds a big grid's limits.
-    static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
+    static constexpr B at(const beman::inside::grid_number& v) noexcept {
         namespace d = ::beman::inside::detail;
         if constexpr (d::wide_valued<B>) {
             B                    b{};
@@ -91,12 +91,12 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     // for the integer types. They exist where 0 is a value of the grid; on
     // any other grid generic code gets a compile error, not a stand-in.
     static constexpr B epsilon() noexcept
-        requires(G.representable(::beman::inside::detail::grid_rational{0}))
+        requires(G.representable(::beman::inside::grid_number{0}))
     {
-        return at(::beman::inside::detail::grid_rational{0});
+        return at(::beman::inside::grid_number{0});
     }
     static constexpr B round_error() noexcept
-        requires(G.representable(::beman::inside::detail::grid_rational{0}))
+        requires(G.representable(::beman::inside::grid_number{0}))
     {
         return epsilon();
     }

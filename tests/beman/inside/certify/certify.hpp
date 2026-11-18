@@ -97,10 +97,10 @@ constexpr grid grid_from(std::uint64_t lo_n,
 
 // "{[-4, 4], 1/4} round_half_away, clamp": the grid's limits and notch as
 // fractions, and the policy's flags by name.
-inline std::string number_text(const detail::grid_rational& v) {
+inline std::string number_text(const grid_number& v) {
     // A grid number of any size, as the 64-bit form prints it.
-    const std::string n = to_string(v.Num);
-    return v.is_integer() ? n : n + "/" + to_string(v.Den);
+    const std::string n = to_string(v.numerator());
+    return v.is_integer() ? n : n + "/" + to_string(v.denominator());
 }
 inline std::string grid_text(const grid& g) {
     std::string out =

@@ -27,7 +27,7 @@
 namespace twin {
 namespace bi = beman::inside;
 namespace bd = beman::inside::detail;
-using gr     = bd::grid_rational;
+using gr     = bd::grid_number;
 using gi     = bd::grid_int;
 using i64    = std::int64_t;
 using i128   = __int128;

@@ -402,6 +402,11 @@ constexpr int bit_width_of(const big_int& v) { return v.bit_width(); }
 //---------------------------------------------------------------------------
 struct big_rational;
 constexpr big::fraction fraction_of(const big_rational& r);
+} // namespace beman::inside::detail
+namespace beman::inside {
+struct grid_number; // grid_rational.hpp: holds a big_rational past 64 bits
+} // namespace beman::inside
+namespace beman::inside::detail {
 
 template <class T>
 concept big_operand = std::integral<T> || std::same_as<T, rational>;
@@ -418,7 +423,8 @@ struct big_rational {
     // Anything else that converts to `rational` (an inside: just<-6, 5>)
     // takes that one conversion, so it can be a grid limit or notch.
     template <class T>
-        requires(std::is_class_v<T> && !std::same_as<T, rational> && std::convertible_to<const T&, rational>)
+        requires(std::is_class_v<T> && !std::same_as<T, rational> && !std::same_as<T, grid_number> &&
+                 std::convertible_to<const T&, rational>)
     constexpr big_rational(const T& v) : big_rational(rational(v)) {}
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {

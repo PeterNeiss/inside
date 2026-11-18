@@ -370,7 +370,6 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
 //---------------------------------------------------------------------------
 namespace {
 using detail::big_int;
-using detail::grid_rational;
 
 consteval big_int pow2(int k) { return big_int{1} << k; }
 consteval big_int from_limbs(std::initializer_list<std::uint64_t> hi_to_lo) {
@@ -380,12 +379,12 @@ consteval big_int from_limbs(std::initializer_list<std::uint64_t> hi_to_lo) {
     return v;
 }
 
-using fine_in  = inside<{{0, 1}, grid_rational{big_int{1}, pow2(80)}}, round_half_away>;
-using fine_out = inside<{{-1, 1}, grid_rational{big_int{1}, pow2(100)}}, round_half_away>;
-using fine_pos = inside<{{0, 4}, grid_rational{big_int{1}, pow2(100)}}, round_half_away>;
-using huge_in  = inside<{1, grid_rational{pow2(300)}}, round_half_away>;
-using log_out  = inside<{{0, 256}, grid_rational{big_int{1}, pow2(64)}}, round_half_away>;
-using root_out = inside<{0, grid_rational{pow2(150)}}, round_floor>;
+using fine_in  = inside<{{0, 1}, grid_number{big_int{1}, pow2(80)}}, round_half_away>;
+using fine_out = inside<{{-1, 1}, grid_number{big_int{1}, pow2(100)}}, round_half_away>;
+using fine_pos = inside<{{0, 4}, grid_number{big_int{1}, pow2(100)}}, round_half_away>;
+using huge_in  = inside<{1, grid_number{pow2(300)}}, round_half_away>;
+using log_out  = inside<{{0, 256}, grid_number{big_int{1}, pow2(64)}}, round_half_away>;
+using root_out = inside<{0, grid_number{pow2(150)}}, round_floor>;
 
 // x = ⌊2^80/3⌋·2^-80.
 constexpr fine_in third = fine_in::from_raw(static_cast<fine_in::raw_type>(pow2(80) / big_int{3}), unsafe);
@@ -409,7 +408,7 @@ TEST(MathAdaptiveTest, huge_inputs_past_64_bits) {
     EXPECT_EQ(am::sqrt<root_out>(y).raw(), root_raw);
     // log2 of a power of two is exact: 2^299 → 299.
     constexpr huge_in p = huge_in::from_raw(static_cast<huge_in::raw_type>(pow2(299) - big_int{1}), unsafe);
-    using log2_out      = inside<{{0, 512}, grid_rational{big_int{1}, pow2(64)}}, round_half_away>;
+    using log2_out      = inside<{{0, 512}, grid_number{big_int{1}, pow2(64)}}, round_half_away>;
     EXPECT_EQ(am::log2<log2_out>(p), log2_out{299});
 }
 
@@ -419,7 +418,7 @@ TEST(MathAdaptiveTest, deduced_outputs_past_64_bits) {
     static_assert(lower_of<L> == 0 && upper_of<L> == 208);
     // sqrt over [1, 2^300]: exact endpoints, [1, 2^150].
     using R = decltype(am::sqrt(huge_in{1}));
-    static_assert(lower_of<R> == 1 && upper_of<R> == grid_rational{pow2(150)});
+    static_assert(lower_of<R> == 1 && upper_of<R> == grid_number{pow2(150)});
     // sin on a 2^-80 grid keeps the notch: a wide output.
     using S = decltype(am::sin(third));
     static_assert(notch_of<S> == notch_of<fine_in>);

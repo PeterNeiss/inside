@@ -851,10 +851,10 @@ struct assignment<L, R> {
     static constexpr bool integer_raws = integer_storage<L> && integer_storage<R>;
 
     // Exactly; a point R's raw is always 0: the mapping is Offset alone.
-    static constexpr grid_rational offset_exact =
-        integer_raws && notched<L> ? (lower_of<R> - lower_of<L>) / notch_of<L> : grid_rational{0};
-    static constexpr grid_rational factor_exact =
-        integer_raws && notched<L> && !point_storage<R> ? notch_of<R> / notch_of<L> : grid_rational{0};
+    static constexpr grid_number offset_exact =
+        integer_raws && notched<L> ? (lower_of<R> - lower_of<L>) / notch_of<L> : grid_number{0};
+    static constexpr grid_number factor_exact =
+        integer_raws && notched<L> && !point_storage<R> ? notch_of<R> / notch_of<L> : grid_number{0};
 
     // A mapping past the 64-bit rational (a full-int64 source into a fine
     // grid) stores through the rational path, as a continuous side does.
@@ -973,8 +973,8 @@ struct assignment<L, R> {
     // R's value below L's Lower: the integer compare of out_of_interval.
     static constexpr bool below_lower(const R& rhs) {
         if constexpr (units_cmp_fits<L, R>) {
-            constexpr grid_rational U  = gcd(unit_of<L>, unit_of<R>);
-            constexpr std::int64_t  lo = static_cast<std::int64_t>(units_lo<L, U>);
+            constexpr grid_number  U  = gcd(unit_of<L>, unit_of<R>);
+            constexpr std::int64_t lo = static_cast<std::int64_t>(units_lo<L, U>);
             return value_in_units<std::int64_t, U>(rhs) < lo;
         } else
             return as_rational(rhs) < lower64<L>;
@@ -1024,10 +1024,10 @@ struct assignment<L, R> {
     // counts in a common unit against L's endpoints, else the exact value.
     static constexpr bool out_of_interval(const R& rhs) {
         if constexpr (units_cmp_fits<L, R>) {
-            constexpr grid_rational U  = gcd(unit_of<L>, unit_of<R>);
-            constexpr std::int64_t  lo = static_cast<std::int64_t>(units_lo<L, U>),
-                                    hi = static_cast<std::int64_t>(units_hi<L, U>);
-            const std::int64_t      c  = value_in_units<std::int64_t, U>(rhs);
+            constexpr grid_number  U  = gcd(unit_of<L>, unit_of<R>);
+            constexpr std::int64_t lo = static_cast<std::int64_t>(units_lo<L, U>),
+                                   hi = static_cast<std::int64_t>(units_hi<L, U>);
+            const std::int64_t     c  = value_in_units<std::int64_t, U>(rhs);
             return c < lo || c > hi;
         } else
             return not includes(interval_of<L>, as_rational(rhs));
@@ -1247,11 +1247,12 @@ struct assignment<L, R> {
 // takes the out-of-range path; a fraction that wide is overflow.
 //---------------------------------------------------------------------------
 template <insidable L, typename P>
-constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
+constexpr L& assign_grid_number(L& lhs, const grid_number& g, P&& policy) {
     constexpr std::size_t K     = exact_limbs<L>;
+    const big_rational    v     = g.big();
     auto                  limbs = [](const big_int& x) { return x.Size != 0 ? x.Size : std::size_t{1}; };
     if (limbs(v.Num) < K && limbs(v.Den) < K) [[likely]]
-        return assign_exact<rational>(lhs, exact_of_grid<K>(v), policy, no_action{});
+        return assign_exact<rational>(lhs, exact_of_grid<K>(g), policy, no_action{});
     if (!v.is_integer()) {
         no_action none;
         report_failure(lhs, policy, none, error::overflow);
