@@ -29,11 +29,11 @@ using val = inside<{0, 1000}>;
 }
 
 // A unit conversion rescales the grid and keeps the raw.
-using km = ins::quantity<ins::si::kilo(ins::si::metre), inside<{{0, 100}, per<1000>}>>;
+using km = quantity<si::kilo(si::metre), inside<{{0, 100}, per<1000>}>>;
 
 [[gnu::noinline]] auto to_mm(km d)
 {
-  return d.in(ins::si::milli(ins::si::metre));
+  return d.in(si::milli(si::metre));
 }
 
 // A loop, to check that vectorization still happens. In-place += can leave

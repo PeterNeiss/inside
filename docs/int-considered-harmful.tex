@@ -1,4 +1,3 @@
-% SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 % "int considered harmful"
 %
 % Build:  pdflatex -interaction=nonstopmode int-considered-harmful.tex   (x3)
@@ -672,7 +671,7 @@ samples per second. The catalogue supplies the per cent, the degree, the
 radian, the kilometre and the height kind. A number goes into a quantity with
 its unit named:
 
-\lstinputlisting[firstline=16,lastline=46]{int-considered-harmful/b00_declarations.cpp}
+\lstinputlisting[firstline=15,lastline=45]{int-considered-harmful/b00_declarations.cpp}
 \begin{lstlisting}[style=term]
 pct          = 42 %
 money        = 19.99 EUR = 1999 ct
@@ -841,7 +840,7 @@ Scale is not the same as dimension. A quantity carries its unit, so the Mars
 Climate Orbiter mismatch of \S2.11 converts exactly, and adding an impulse to a
 length does not compile:
 
-\lstinputlisting[firstline=16,lastline=34]{int-considered-harmful/b12_impulse.cpp}
+\lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b12_impulse.cpp}
 \begin{lstlisting}[style=term]
 100 N·s + 10 lbf·s = 144.4822161526050 N s
 N·s + m            : does not compile
@@ -857,7 +856,7 @@ Units do more than dimensions. A conversion multiplies the grid, not the
 number. Temperatures are points with origins. Kinds separate quantities that
 share a dimension:
 
-\lstinputlisting[firstline=21,lastline=48]{int-considered-harmful/b13_quantities.cpp}
+\lstinputlisting[firstline=20,lastline=47]{int-considered-harmful/b13_quantities.cpp}
 \begin{lstlisting}[style=term]
 12.5 km in m       = 12500 m   (raw 12500 -> 12500)
 20 C in K          = 293.15 K
@@ -936,7 +935,7 @@ them as a quantity of its kind: $h$ is an action and $e$ an electric charge.
 It also holds the constants that follow from them, the CODATA 2022 measured
 values, and the common mathematical constants (\file{docs/constants.md}):
 
-\lstinputlisting[firstline=22,lastline=41]{int-considered-harmful/b14_constants.cpp}
+\lstinputlisting[firstline=21,lastline=40]{int-considered-harmful/b14_constants.cpp}
 \begin{lstlisting}[style=term]
 $ g++-16 -std=c++26 -freflection -O2 -I ../../include b14_constants.cpp
 h    = 6.62607015e-34 J s
@@ -1021,7 +1020,7 @@ The gain was rounded to whole counts per volt, the division truncated, and the
 over-voltage check compares 2048 counts with 2000 millivolts. With quantities,
 counts get a base dimension of their own, as in \file{examples/adc\_calibration.cpp}:
 
-\lstinputlisting[firstline=15,lastline=40]{int-considered-harmful/m2_after.cpp}
+\lstinputlisting[firstline=14,lastline=39]{int-considered-harmful/m2_after.cpp}
 \begin{lstlisting}[style=term]
 reading            = 1641 mV
 over-voltage?      = no
@@ -1050,7 +1049,7 @@ outright:
 \begin{lstlisting}[style=term]
 $ g++-16 -std=c++26 -freflection -I ../../include x02_range_rejected.cpp
 x02_range_rejected.cpp:14:37: error: uncaught exception of type
-       'ins::inside_error'; 'what()': 'inside: a checked store in a
+       'ins::detail::inside_error'; 'what()': 'inside: a checked store in a
        constant expression is outside the grid's interval - widen the interval,
        or store with clamp or wrap'
 \end{lstlisting}
@@ -1449,11 +1448,10 @@ hardware.
 \section{When not to use this}\label{sec:limits}
 
 \begin{itemize}
-\item \textbf{It is not yet ready for production.} Version 0.5 is at the Beman
-      ``under development'' maturity level, and the API may change.
-\item \textbf{It requires C++23}: GCC 14+, Clang 19+ (Clang 18 with libc++),
-      or MSVC 19.51+. Grids past 64 bits need C++26 static reflection, which
-      today means GCC~16 with \code{-freflection}.
+\item \textbf{It is not yet ready for production.} The library is under
+      development, and the API may change between versions.
+\item \textbf{It requires C++26 static reflection}, which today means
+      GCC~16 with \code{-freflection}.
 \item \textbf{Compile times increase.} Arithmetic on grids is compile-time
       work, and it happens in your build. Units add about 7\,ms per
       expression on top (\file{docs/units.md}).
