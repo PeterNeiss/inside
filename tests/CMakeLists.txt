@@ -1,6 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-find_package(GTest REQUIRED)
+# GoogleTest: an installed one if find_package finds it, else this pinned commit.
+include(FetchContent)
+set(INSTALL_GTEST OFF)
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG 52eb8108c5bdec04579160ae17225d66034bd723
+    FIND_PACKAGE_ARGS NAMES GTest
+)
+FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 #---------------------------------------------------------------------------
@@ -48,10 +57,7 @@ add_subdirectory(differential)
 add_executable(inside.fuzz fuzz.test.cpp)
 target_link_libraries(
     inside.fuzz
-    PRIVATE
-        inside::inside
-        inside.warnings
-        GTest::gtest # (support.hpp's checks)
+    PRIVATE inside::inside inside.warnings GTest::gtest # (support.hpp's checks)
 )
 add_test(NAME inside.tests.fuzz COMMAND inside.fuzz 1 300)
 set_tests_properties(inside.tests.fuzz PROPERTIES LABELS "fuzz")
@@ -59,10 +65,7 @@ set_tests_properties(inside.tests.fuzz PROPERTIES LABELS "fuzz")
 add_executable(inside.accuracy accuracy.test.cpp)
 target_link_libraries(
     inside.accuracy
-    PRIVATE
-        inside::inside
-        inside.warnings
-        GTest::gtest # (support.hpp's checks)
+    PRIVATE inside::inside inside.warnings GTest::gtest # (support.hpp's checks)
 )
 add_test(NAME inside.tests.accuracy COMMAND inside.accuracy --check)
 set_tests_properties(inside.tests.accuracy PROPERTIES LABELS "accuracy")
@@ -74,10 +77,7 @@ set_tests_properties(inside.tests.accuracy PROPERTIES LABELS "accuracy")
 # INSIDE_CERTIFY_FULL every pair up to 2^32 (minutes); a debug build
 # the small ones.
 add_executable(inside.certify certify.test.cpp)
-target_link_libraries(
-    inside.certify
-    PRIVATE inside::inside inside.warnings
-)
+target_link_libraries(inside.certify PRIVATE inside::inside inside.warnings)
 # The cap is passed in every build; an unoptimized one lowers it to 4096.
 if(INSIDE_CERTIFY_FULL)
     set(certify_cap --max-slots 4294967296)
@@ -134,29 +134,17 @@ add_test(
         ${CMAKE_COMMAND} -D INSIDE_ROOT=${PROJECT_SOURCE_DIR} -P
         ${CMAKE_CURRENT_SOURCE_DIR}/no_compat_code.cmake
 )
-set_tests_properties(
-    inside.tests.no_compat_code
-    PROPERTIES LABELS "tooling"
-)
+set_tests_properties(inside.tests.no_compat_code PROPERTIES LABELS "tooling")
 
 # Self-containment smoke: a TU that sees ONLY single_include/ proves the single
 # header stands alone.
-add_executable(
-    inside.tests.single_header_smoke
-    single_header_smoke.test.cpp
-)
+add_executable(inside.tests.single_header_smoke single_header_smoke.test.cpp)
 target_include_directories(
     inside.tests.single_header_smoke
     PRIVATE "${single_include_dir}"
 )
-target_compile_features(
-    inside.tests.single_header_smoke
-    PRIVATE cxx_std_26
-)
-target_link_libraries(
-    inside.tests.single_header_smoke
-    PRIVATE inside.warnings
-)
+target_compile_features(inside.tests.single_header_smoke PRIVATE cxx_std_26)
+target_link_libraries(inside.tests.single_header_smoke PRIVATE inside.warnings)
 
 # Freestanding-leaning smoke: the single header with the io/string block dropped
 # (INSIDE_NO_STRING) and exceptions off, installing a custom
@@ -250,10 +238,7 @@ if(
             ${CMAKE_CURRENT_SOURCE_DIR}/perf_codegen.test.cpp
             ${PROJECT_SOURCE_DIR}/include 26 "${CMAKE_CXX_FLAGS}"
     )
-    set_tests_properties(
-        inside.tests.codegen_guard
-        PROPERTIES LABELS "perf"
-    )
+    set_tests_properties(inside.tests.codegen_guard PROPERTIES LABELS "perf")
 endif()
 
 #---------------------------------------------------------------------------

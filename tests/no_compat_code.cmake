@@ -4,10 +4,12 @@
 # 64-bit grid fallback again — e.g. after a merge from a branch that keeps them.
 # Nor do the names imax and umax return (in an identifier either): a 64-bit
 # fast path spells std::int64_t / std::uint64_t, a name says int64 / uint64.
+# Nor does the library's old project name: the namespace is ins, the
+# include path inside/ and the macro prefix INSIDE_.
 #
 #   cmake -D INSIDE_ROOT=<source dir> -P no_compat_code.cmake
 set(pattern
-    "INSIDE_BIG_GRIDS|INSIDE_DELETE|INSIDE_WARNINGS_|INSIDE_MSVC|INSIDE_HAS_(STD_FORMAT|VALUED_DIAG|DELETE_REASON|OVERFLOW_BUILTINS|UMUL128)|_MSC_VER|__cplusplus|grid_gcd_fits|grid_sum_fits|grid_product_fits|(^|[^A-Za-z0-9])(imax|umax)([^A-Za-z0-9]|$)"
+    "INSIDE_BIG_GRIDS|INSIDE_DELETE|INSIDE_WARNINGS_|INSIDE_MSVC|INSIDE_HAS_(STD_FORMAT|VALUED_DIAG|DELETE_REASON|OVERFLOW_BUILTINS|UMUL128)|_MSC_VER|__cplusplus|grid_gcd_fits|grid_sum_fits|grid_product_fits|(^|[^A-Za-z0-9])(imax|umax)([^A-Za-z0-9]|$)|[Bb][Ee][Mm][Aa][Nn]"
 )
 file(
     GLOB_RECURSE sources
@@ -28,6 +30,6 @@ endforeach()
 if(found)
     message(
         FATAL_ERROR
-        "pre-C++26 compatibility code or the old 64-bit names:${found}"
+        "pre-C++26 compatibility code, the old 64-bit names or the old project name:${found}"
     )
 endif()

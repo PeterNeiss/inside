@@ -34,8 +34,5 @@ if(Python3_Interpreter_FOUND)
         PROPERTIES LABELS "differential"
     )
 else()
-    message(
-        STATUS
-        "inside: no Python 3, the differential test is skipped"
-    )
+    message(STATUS "inside: no Python 3, the differential test is skipped")
 endif()

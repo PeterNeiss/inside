@@ -13,7 +13,6 @@ project(
 # The library requires C++26 with static reflection (GCC 16, -freflection):
 # grid numbers of any size are interned with std::define_static_array.
 
-# [CMAKE.SKIP_TESTS]
 option(
     INSIDE_WARNINGS_AS_ERRORS
     "Make warnings errors in the tests and examples (-Werror)."
@@ -25,7 +24,6 @@ option(
     ${PROJECT_IS_TOP_LEVEL}
 )
 
-# [CMAKE.SKIP_EXAMPLES]
 option(
     INSIDE_BUILD_EXAMPLES
     "Enable building examples. Default: ${PROJECT_IS_TOP_LEVEL}. Values: { ON, OFF }."
@@ -85,9 +83,13 @@ option(
     ON
 )
 
-# for find of beman_install_library and configure_build_telemetry
-include(infra/cmake/beman-install-library.cmake)
-include(infra/cmake/BuildTelemetryConfig.cmake)
+option(
+    INSIDE_INSTALL
+    "Install the headers and the files find_package(inside) needs. Default: ${PROJECT_IS_TOP_LEVEL}. Values: { ON, OFF }."
+    ${PROJECT_IS_TOP_LEVEL}
+)
+
+include(GNUInstallDirs)
 
 add_library(inside INTERFACE)
 add_library(inside::inside ALIAS inside)
@@ -134,8 +136,31 @@ endif()
 
 add_subdirectory(include/inside)
 
-beman_install_library(inside TARGETS inside)
-configure_build_telemetry()
+if(INSIDE_INSTALL)
+    include(CMakePackageConfigHelpers)
+    set(INSIDE_CONFIG_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/inside)
+    install(TARGETS inside EXPORT inside-targets FILE_SET HEADERS)
+    install(
+        EXPORT inside-targets
+        NAMESPACE inside::
+        DESTINATION ${INSIDE_CONFIG_DIR}
+    )
+    file(
+        WRITE ${CMAKE_CURRENT_BINARY_DIR}/inside-config.cmake
+        "include(\"\${CMAKE_CURRENT_LIST_DIR}/inside-targets.cmake\")\n"
+    )
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/inside-config-version.cmake
+        COMPATIBILITY SameMinorVersion
+        ARCH_INDEPENDENT
+    )
+    install(
+        FILES
+            ${CMAKE_CURRENT_BINARY_DIR}/inside-config.cmake
+            ${CMAKE_CURRENT_BINARY_DIR}/inside-config-version.cmake
+        DESTINATION ${INSIDE_CONFIG_DIR}
+    )
+endif()
 
 # The amalgamated single header shares the path inside/inside.hpp with the
 # umbrella header, so it cannot live in the same include root. Ship it under a
@@ -146,7 +171,7 @@ set(INSIDE_SINGLE_HEADER
     CACHE FILEPATH
     "Path of the committed amalgamated single header"
 )
-if(EXISTS "${INSIDE_SINGLE_HEADER}")
+if(INSIDE_INSTALL AND EXISTS "${INSIDE_SINGLE_HEADER}")
     install(
         DIRECTORY single_include
         DESTINATION ${CMAKE_INSTALL_DATADIR}/inside
@@ -168,8 +193,8 @@ add_custom_target(
     inside.amalgamate
     COMMAND
         ${CMAKE_COMMAND} -D
-        INSIDE_AMALGAMATE_INCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
-        -D INSIDE_AMALGAMATE_OUTPUT=${INSIDE_SINGLE_HEADER} -D
+        INSIDE_AMALGAMATE_INCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include -D
+        INSIDE_AMALGAMATE_OUTPUT=${INSIDE_SINGLE_HEADER} -D
         INSIDE_AMALGAMATE_VERSION=${PROJECT_VERSION} -P
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/amalgamate.cmake
     COMMENT "Amalgamating inside into ${INSIDE_SINGLE_HEADER}"

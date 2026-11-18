@@ -16,10 +16,7 @@ add_test(
         ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/check_hash.py --
         $<TARGET_FILE:inside.certify> --no-progress --pair atanh --dump
 )
-set_tests_properties(
-    inside.tests.certify_hash
-    PROPERTIES LABELS "certify"
-)
+set_tests_properties(inside.tests.certify_hash PROPERTIES LABELS "certify")
 
 # Only where the examples are built unoptimized, and slow (about 20 s):
 # with INSIDE_SLOW_TESTS (the weekly CI run).

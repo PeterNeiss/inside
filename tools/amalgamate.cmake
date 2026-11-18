@@ -28,11 +28,7 @@
 #---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.24)
 
-foreach(
-    _req
-    IN
-    ITEMS INSIDE_AMALGAMATE_INCLUDE_DIR INSIDE_AMALGAMATE_OUTPUT
-)
+foreach(_req IN ITEMS INSIDE_AMALGAMATE_INCLUDE_DIR INSIDE_AMALGAMATE_OUTPUT)
     if(NOT DEFINED ${_req})
         message(FATAL_ERROR "amalgamate: ${_req} is not set")
     endif()
@@ -147,11 +143,7 @@ function(amalg_process rel)
         # Flush what we have, then recurse so the child's body lands exactly where
         # the directive was (preserving any surrounding #ifdef). The directive line
         # itself is dropped.
-        if(
-            line
-                MATCHES
-                "^[ \t]*#[ \t]*include[ \t]*[<\"]inside/([^\">]+)[>\"]"
-        )
+        if(line MATCHES "^[ \t]*#[ \t]*include[ \t]*[<\"]inside/([^\">]+)[>\"]")
             file(APPEND "${BODY_FILE}" "${buf}")
             set(buf "")
             amalg_process("inside/${CMAKE_MATCH_1}")
@@ -242,9 +234,7 @@ foreach(r IN LISTS roots)
         set(_guard_open
             "#if !defined(INSIDE_NO_STRING) && !defined(INSIDE_NO_UNITS)"
         )
-        set(_guard_close
-            "#endif // !INSIDE_NO_STRING && !INSIDE_NO_UNITS"
-        )
+        set(_guard_close "#endif // !INSIDE_NO_STRING && !INSIDE_NO_UNITS")
     elseif(r STREQUAL "inside/units/random.hpp")
         set(_guard_open
             "#if __STDC_HOSTED__ && !defined(INSIDE_MATH_NO_FP) && !defined(INSIDE_NO_UNITS)"
@@ -253,9 +243,7 @@ foreach(r IN LISTS roots)
             "#endif // __STDC_HOSTED__ && !INSIDE_MATH_NO_FP && !INSIDE_NO_UNITS"
         )
     elseif(r STREQUAL "inside/inside/mdspan.hpp")
-        set(_guard_open
-            "#if __STDC_HOSTED__ && !defined(INSIDE_NO_MDSPAN)"
-        )
+        set(_guard_open "#if __STDC_HOSTED__ && !defined(INSIDE_NO_MDSPAN)")
         set(_guard_close "#endif // __STDC_HOSTED__ && !INSIDE_NO_MDSPAN")
     elseif(r STREQUAL "inside/units/mdspan.hpp")
         set(_guard_open
@@ -265,12 +253,8 @@ foreach(r IN LISTS roots)
             "#endif // __STDC_HOSTED__ && !INSIDE_NO_MDSPAN && !INSIDE_NO_UNITS"
         )
     elseif(r STREQUAL "inside/inside/random.hpp")
-        set(_guard_open
-            "#if __STDC_HOSTED__ && !defined(INSIDE_MATH_NO_FP)"
-        )
-        set(_guard_close
-            "#endif // __STDC_HOSTED__ && !INSIDE_MATH_NO_FP"
-        )
+        set(_guard_open "#if __STDC_HOSTED__ && !defined(INSIDE_MATH_NO_FP)")
+        set(_guard_close "#endif // __STDC_HOSTED__ && !INSIDE_MATH_NO_FP")
     endif()
     if(_guard_open)
         file(APPEND "${BODY_FILE}" "${NL}${_guard_open}${NL}")
@@ -322,8 +306,7 @@ file(
 if(DEFINED INSIDE_AMALGAMATE_COMPARE)
     execute_process(
         COMMAND
-            "${CMAKE_COMMAND}" -E compare_files
-            "${INSIDE_AMALGAMATE_OUTPUT}"
+            "${CMAKE_COMMAND}" -E compare_files "${INSIDE_AMALGAMATE_OUTPUT}"
             "${INSIDE_AMALGAMATE_COMPARE}"
         RESULT_VARIABLE _diff
     )
