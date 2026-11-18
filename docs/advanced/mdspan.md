@@ -1,9 +1,5 @@
 # mdspan
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 `std::mdspan` holds insides and quantities as it holds any element. Two
 opt-in headers add what the element type alone cannot give:
 

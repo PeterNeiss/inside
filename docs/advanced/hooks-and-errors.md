@@ -1,9 +1,5 @@
 # Hooks and errors
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 What runs when a store clamps, wraps or fails, every way an error is
 reported, and the handler that preconditions reach. Nothing throws: a store
 the grids cannot prove names its channel, or does not compile.

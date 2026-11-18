@@ -1,9 +1,5 @@
 # Adopting safe numbers: the pain of knowing
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 This page is not about an API. It is about the people who would use one.
 
 If you write C++ for a living, you were taught a set of number types (`int`,
@@ -16,7 +12,7 @@ defaults, and they have been with us for decades.
 
 Learning this can hurt. It can feel like discovering a crack in the floor you
 have been standing on for your whole career. If reading the
-[paper](int-considered-harmful.pdf) or the [README](../README.md) gave you a
+[paper](int-considered-harmful.tex) or the [README](../README.md) gave you a
 moment of unease, that is not a sign that you did something wrong. It is a sign
 that you care whether your programs are right. This page is for that moment.
 

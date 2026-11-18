@@ -1,9 +1,5 @@
 # Constants
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 `<inside/math/constants.hpp>` gives the common mathematical constants,
 without units, computed while compiling at the precision each use needs.
 `<inside/units/constants.hpp>` gives the physical constants, each a

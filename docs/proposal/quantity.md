@@ -12,10 +12,6 @@ toc: true
 toc-depth: 2
 ---
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 # Abstract
 
 We propose `std::units::quantity<reference, inside>`: physical quantities whose
@@ -66,9 +62,9 @@ arithmetic.
 
 # A tour
 
-The listings use the reference implementation's namespaces `ins` and
-`ins`. Each one is a region of a program that compiles and
-checks its own results.
+The listings use the reference implementation's namespace `ins`, which
+holds the number and the quantities (this paper's `std::units`). Each one is
+a region of a program that compiles and checks its own results.
 
 **A conversion rescales the grid and keeps the raw; a mixed-unit sum is
 exact.**
@@ -293,7 +289,7 @@ namespace std::units {
   class quantity {
   public:
     using rep = Rep;
-    static constexpr ins::reference reference = R;
+    static constexpr units::reference reference = R;
     constexpr quantity() = default;
     template<class V, class U> constexpr quantity(V&& number, U unit); // a number in unit U of R's quantity
     template<reference R2, class V2>                               // implicit when R2's kind converts and
@@ -347,8 +343,8 @@ namespace std::units {
   // the catalog: namespaces isq, si, international (contents in R1)
 }
 namespace std {
-  template<ins::reference R, class Rep> struct hash<ins::quantity<R, Rep>>;           // the number's
-  template<ins::reference R, class Rep> struct numeric_limits<ins::quantity<R, Rep>>; // limits as quantities
+  template<units::reference R, class Rep> struct hash<units::quantity<R, Rep>>;           // the number's
+  template<units::reference R, class Rep> struct numeric_limits<units::quantity<R, Rep>>; // limits as quantities
 }
 ```
 

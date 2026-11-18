@@ -1,9 +1,5 @@
 # Freestanding and bare metal
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The core has **no `<system_error>` dependency**, builds no `std::string` on
 its own, and never throws: a failure a program can expect is a value (a
 `std::expected`, an `error&`, a hook), and a precondition goes to one

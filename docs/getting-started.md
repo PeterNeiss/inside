@@ -1,9 +1,5 @@
 # Getting started
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 A short tour of the ideas behind `inside`, each with one example. It
 takes about ten minutes; the [guides](README.md#guides) take each idea further.
 
@@ -28,7 +24,7 @@ int main() {
 g++-16 -std=c++26 -freflection -I single_include first.cpp && ./a.out
 ```
 
-With CMake, link the `ins` target instead ([README](../README.md#getting-it)).
+With CMake, link the `inside::inside` target instead ([README](../README.md#getting-it)).
 The single header holds everything; with the separate headers, printing needs
 `<inside/inside/io.hpp>`.
 

@@ -1,9 +1,5 @@
 # The math engine
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 How `ins::math` rounds every result correctly, what exactly is
 guaranteed, the domains and output ranges of each function, its speed, and
 angles over many turns. [Math](../guide/math.md) has the everyday view.

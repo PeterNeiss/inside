@@ -1,9 +1,5 @@
 # Geometric algebra
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 `<inside/units/geoalg.hpp>` adds the geometric algebra of the units: a
 basis vector is a unit of your own, and you state only its square. Sums of
 different blades are multivectors, and the products, involutions, duals and

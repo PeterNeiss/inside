@@ -1,9 +1,5 @@
 # Documentation
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The pages come in three levels. Read [Getting started](getting-started.md)
 first; it introduces every idea the other pages build on.
 
@@ -51,7 +47,7 @@ The details behind the guides, and topics most programs never need.
 | [Roadmap](roadmap.md) | what is not implemented, and why |
 | [Resources](resources.md) | prior art, a feature comparison, talks |
 | [Adopting safe numbers](adoption.md) | why safer number types are hard to adopt |
-| [*int considered harmful*](int-considered-harmful.pdf) | the paper behind the library |
+| [*int considered harmful*](int-considered-harmful.tex) | the paper behind the library (LaTeX: `pdflatex int-considered-harmful.tex`) |
 | [Proposals](proposal/) | three draft WG21 papers: the number, quantities, math |
 
 Generated reports: [performance](performance.md), [math accuracy](accuracy.md)
@@ -68,12 +64,12 @@ and the [certified math pairs](certified.md).
 | `<inside/inside/mdspan.hpp>` | `std::mdspan` support: `extents_of`, `index_for`, `indices`, the accessors, `sum`, `dot`, the matrix products |
 | `<inside/math.hpp>` | `ins::math`: the functions and the constants |
 | `<inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
-| `<inside/units.hpp>` | `ins`: the machinery and the SI and ISQ catalog |
+| `<inside/units.hpp>` | quantities: the machinery and the SI and ISQ catalog |
 | `<inside/units/core.hpp>` | the machinery alone, enough for units of your own |
 | `<inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |
 | `<inside/units/math.hpp>` | math on quantities: roots of units, angles in degrees, `value_cast` across π |
 | `<inside/units/random.hpp>` | `uniform<Q>(rng)` |
-| `<inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `ins::view_in` |
+| `<inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `view_in` |
 | `<inside/units/constants.hpp>` | the physical constants as quantities |
 | `<inside/units/geoalg.hpp>` | geometric algebra: `multivector`, `wedge`, the contractions, `reverse`, `grade<K>`, `inverse`, `dual`, `regressive` |
 

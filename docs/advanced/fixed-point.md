@@ -1,9 +1,5 @@
 # inside for fixed-point users
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 If you think in Qm.n, inside will feel familiar: it *is* fixed point, with the
 scale and the range moved into the type so that the compiler tracks them. This
 page maps the Qm.n habits onto grids, says which grids are fast, and shows the

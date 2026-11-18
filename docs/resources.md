@@ -1,9 +1,5 @@
 # Resources: prior art and talks
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 `inside` did not appear in a vacuum. The idea that a number's range belongs in its
 *type*, that arithmetic should *widen* that range automatically, and that
 fixed-point and overflow safety deserve first-class library support has been

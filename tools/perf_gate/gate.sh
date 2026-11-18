@@ -5,7 +5,7 @@
 # build/perf-gate/out/<label>.md. Compare two labels with insdiff.py.
 #
 # Usage: gate.sh <label> <include-dir>
-# nanobench comes from a INSIDE_BUILD_TOOLS=ON build; set NANOBENCH_INCLUDE
+# nanobench comes from an INSIDE_BUILD_TOOLS=ON build; set NANOBENCH_INCLUDE
 # when it is not in build/p26-bench.
 set -euo pipefail
 R=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)

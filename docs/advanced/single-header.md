@@ -1,9 +1,5 @@
 # The single header
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The whole library is also one self-contained file,
 [`single_include/inside/inside.hpp`](../../single_include/inside/inside.hpp)
 (about 22 000 lines). It inlines every public header — the number, the math,

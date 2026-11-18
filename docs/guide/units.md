@@ -1,9 +1,5 @@
 # Units
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 `<inside/units.hpp>` adds physical quantities: a number (an inside)
 with a unit. Units, dimensions and quantity kinds are checked at compile time,
 and you can add your own. The design follows

@@ -1,15 +1,8 @@
 # inside: numbers that cannot go out of range
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
-<!-- markdownlint-disable line-length -->
-[![Continuous Integration Tests](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml)
-[![Lint Check (pre-commit)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml)
-[![Coverage](https://coveralls.io/repos/github/PeterNeiss/inside/badge.svg?branch=main)](https://coveralls.io/github/PeterNeiss/inside?branch=main)
+[![CI](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml)
+[![Lint](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml)
 [![Try it on Compiler Explorer](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://godbolt.org/z/EEqWMPvj7)
-<!-- markdownlint-restore -->
 
 `inside` is a header-only C++26 library for numbers whose **range and
 step size are part of the type**. Arithmetic widens its result type, so it
@@ -72,7 +65,7 @@ which holds the whole library, and compile with
 Explorer, include it by URL; see
 [advanced/single-header.md](docs/advanced/single-header.md).
 
-**CMake.** Install the library and link the `ins` target, which
+**CMake.** Install the library and link the `inside::inside` target, which
 adds `-freflection` for you:
 
 ```bash
@@ -82,7 +75,7 @@ cmake --install build/gcc-release --prefix /opt/inside
 
 ```cmake
 find_package(inside REQUIRED)             # with -DCMAKE_PREFIX_PATH=/opt/inside
-target_link_libraries(app PRIVATE ins)
+target_link_libraries(app PRIVATE inside::inside)
 ```
 
 `add_subdirectory` or `FetchContent` on this repository gives the same
@@ -92,10 +85,11 @@ target, without the tests and examples.
 |---|---|
 | `<inside/inside.hpp>` | the number `inside`, its arithmetic, policies, ranges |
 | `<inside/math.hpp>` | `ins::math`: correctly rounded functions and constants |
-| `<inside/units.hpp>` | `ins`: quantities, the SI and ISQ catalog |
+| `<inside/units.hpp>` | quantities, the SI and ISQ catalog |
 | `<inside/units/math.hpp>` | the math functions on quantities: degrees, roots of units, … |
 | `…/inside/io.hpp`, `…/units/io.hpp` | text: `to_string`, `<<`, `std::format`, `parse` (opt-in) |
 
+Everything is in namespace `ins`, the math functions in `ins::math`.
 The other opt-in headers are listed in
 [docs/README.md](docs/README.md#headers).
 

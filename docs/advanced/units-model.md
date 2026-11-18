@@ -1,9 +1,5 @@
 # The units model
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 How `<inside/units.hpp>` represents units, dimensions, kinds and
 origins, the full list of operations on quantities, the catalog, and what the
 header costs to compile. [Units](../guide/units.md) has the everyday view.
@@ -291,7 +287,7 @@ through `+ - * / %` as an `expected` inside does; the first error wins.
 | `si` | the base units, the 22 named derived units, the prefixes quecto … quetta, the accepted non-SI units min, h, d, au, °, ′, ″, a, ha, L, t; the eV and the Da; the origins `absolute_zero` and `ice_point` |
 | `si2019` | the defining constants as units (Δν_Cs, c, K_cd, h, e, k, N_A) and g₀: `just<1> * si2019::speed_of_light_in_vacuum` is c exactly |
 | `international` | yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉ |
-| `units` | `percent` (%) and `per_mille` (‰): dimensionless; `one`, the unit of a number |
+| `ins` | `percent` (%) and `per_mille` (‰): dimensionless; `one`, the unit of a number |
 
 [Constants](constants.md) adds the constants that follow from the SI ones
 (ħ, R, F, K_J, R_K, G₀, Φ₀, σ, c₁, c₂), the standard atmosphere and the

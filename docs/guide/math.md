@@ -1,9 +1,5 @@
 # Math
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 `<inside/math.hpp>` has the functions of `<cmath>` for insides, in
 `ins::math`. Each result is the **correctly rounded** point of its
 output grid, so it is the same on every platform, at compile time and

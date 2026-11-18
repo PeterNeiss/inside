@@ -12,10 +12,6 @@ toc: true
 toc-depth: 2
 ---
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 # Abstract
 
 We propose the functions of `<cmath>` for `inside`, the bounded number with an
@@ -63,9 +59,9 @@ formats ([@N3220]); this paper asks the same of every grid.
 
 # A tour
 
-The listings use the reference implementation's namespaces `ins` and
-`ins`. Each one is a region of a program that compiles and
-checks its own results.
+The listings use the reference implementation's namespace `ins`, which
+holds the number and the quantities, and `ins::math`. Each one is a region
+of a program that compiles and checks its own results.
 
 **A function rounds once, onto the grid it returns.**
 

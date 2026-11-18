@@ -1,13 +1,43 @@
 # Changelog
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 ## Unreleased
 
 ### Upgrading
 
+- The library left its Beman-project names behind:
+
+  | Before | Now |
+  |---|---|
+  | `namespace beman::inside` | `namespace ins` |
+  | `namespace beman::inside::units` | `ins` as well: quantities, units and the catalog (`ins::si`, `ins::isq`, …) |
+  | `#include <beman/inside/…>` | `#include <inside/…>` |
+  | `single_include/beman/inside/inside.hpp` | `single_include/inside/inside.hpp` |
+  | macros `BEMAN_INSIDE_…` | `INSIDE_…` (`INSIDE_MATH_NO_FP`, `INSIDE_NO_STRING`, …) |
+  | CMake: `find_package(beman.inside)`, `beman::inside` | `find_package(inside)`, `inside::inside` |
+  | CMake options `BEMAN_INSIDE_…` | `INSIDE_…`; `INSIDE_INSTALL` replaces `BEMAN_INSIDE_INSTALL_CONFIG_FILE_PACKAGE` |
+
+  `using namespace beman::inside; using namespace beman::inside::units;`
+  becomes `using namespace ins;`. The two `divmod_result` templates are one.
+  The types a quantity's type name is made of (`unit_def`, `kind_def`,
+  `symbol_text`, `definition`, `kind_holder`, …) moved from `detail` into
+  `ins`, so type names in diagnostics are shorter
+  (`tools/symbol_lengths.sh`, GCC 16, characters):
+
+  | Type | Mangled before → now | Printed before → now |
+  |---|---|---|
+  | `inside<{{0, 1}, per<100>}, round_half_away>` | 145 → 136 | 221 → 151 |
+  | `quantity<si::metre, …>` | 883 → 837 | 2371 → 1312 |
+  | km/h | 1578 → 1508 | 3942 → 2118 |
+  | J | 3154 → 3006 | 16051 → 8735 |
+  | S | 6486 → 6239 | 52326 → 28636 |
+  | a ℃ point | 1798 → 1751 | 12889 → 7344 |
+
+  The vcpkg port and the Beman infrastructure (`infra/`, its toolchain files
+  and `lockfile.json`) are gone; GoogleTest comes from `find_package` or a
+  pinned FetchContent. CI runs on our own workflows with the `gcc:16` image,
+  without the coverage upload. Developer scripts no test runs moved to
+  `tools/`, and the paper's PDF is no longer committed (build it from the
+  `.tex`).
 - `grid_number` is a class of its own (it was an alias of an internal type),
   and its members mean something else: `Num` is the numerator's magnitude,
   `Den` the denominator with the sign, `0` for a value past 64 bits, which

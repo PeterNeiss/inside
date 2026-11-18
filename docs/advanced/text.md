@@ -1,9 +1,5 @@
 # Text in detail
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 Every printed form, the format specs and how they round, and the grammar
 `parse` reads. [Conversions and text](../guide/conversions.md) has the
 everyday view. Text needs `<inside/inside/io.hpp>` (and

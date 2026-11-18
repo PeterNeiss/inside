@@ -1,9 +1,5 @@
 # Conversions and text
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 How values cross the boundary of an inside: native numbers in and out,
 casts, comparisons, and text.
 

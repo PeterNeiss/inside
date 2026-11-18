@@ -1,9 +1,5 @@
 # Reading compiler errors
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 An inside is `inside<grid G, policy_flag P>`, and a quantity is
 `quantity<reference R, Rep>`. Compilers print template arguments
 structurally, so an error shows the *whole* type. That looks noisy until you

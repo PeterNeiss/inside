@@ -1,9 +1,5 @@
 # Certifying the math of your own grids
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The math engine returns the correctly rounded point of the output grid
 wherever it can decide it, and a deterministic guess where it cannot
 ([the math engine](math-engine.md#what-is-guaranteed)). No bound known today rules the guess
@@ -20,7 +16,7 @@ For one function and one pair of grids (input → output), the tool computes
 1. as any run-time call does, through the `double` and double-double tiers
    where they apply;
 2. on the integer path alone (`math::driver.IntegerOnly`), which is what
-   constant evaluation and a `INSIDE_MATH_NO_FP` build compute.
+   constant evaluation and an `INSIDE_MATH_NO_FP` build compute.
 
 The pair is **certified** when the two agree on every input and the integer
 path decided every result before its precision cap. Then, for every input of
@@ -34,7 +30,7 @@ that pair:
 
 It also prints a **SHA-256 hash of all the results**. Two machines that print
 the same hash for a pair computed the same bits for every input. Run the tool
-on another compiler, another OS, an ARM board or a `INSIDE_MATH_NO_FP`
+on another compiler, another OS, an ARM board or an `INSIDE_MATH_NO_FP`
 build, and compare. That is a determinism check you can run yourself, on the
 grids you ship.
 

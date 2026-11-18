@@ -1,9 +1,5 @@
 # Roadmap
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 What is deliberately *not* implemented, as of November 2026, and what would
 unblock each item. Nothing here is a promise of
 a date; the [changelog](../CHANGELOG.md) records what has shipped.

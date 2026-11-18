@@ -1,9 +1,5 @@
 # Internals
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 This page explains *why* the library is shaped the way it is, for
 contributors: adding an operator, debugging a storage edge case, reasoning
 about performance or about the units layer. For the user's view start with

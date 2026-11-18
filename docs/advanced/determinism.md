@@ -1,9 +1,5 @@
 # Determinism and reproducibility
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 inside is built for results you can reproduce: the same inputs give the same
 bits, across compilers, optimisation levels and machines. That matters for
 fuzzing corpora, record and replay, deterministic simulation, lockstep
@@ -171,7 +167,7 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
 ## How it is checked
 
 - CI runs the exact-value pins on x86-64 Linux with GCC 16, in Debug,
-  Release and sanitizer builds. It also runs a `INSIDE_MATH_NO_FP=ON`
+  Release and sanitizer builds. It also runs an `INSIDE_MATH_NO_FP=ON`
   cell, where the integer path computes every result alone.
 - The differential oracle (`tests/differential`) recomputes
   arithmetic, rounding stores, `to<float>`/`to<double>` and π conversions

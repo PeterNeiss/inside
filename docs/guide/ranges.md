@@ -1,9 +1,5 @@
 # Ranges and the STL
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The values of a grid form a range you can loop over, and insides work with
 the standard containers and algorithms.
 

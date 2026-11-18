@@ -1,9 +1,5 @@
 # Grids
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 An inside's type is a **grid**: the values from a lower limit to an upper
 limit in steps of a *notch*. This page shows how to write grids and their
 values, and the ready-made formats.

@@ -1,9 +1,5 @@
 # Arithmetic
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 Every operation computes its **result type** at compile time, wide enough for
 every value it can produce. So arithmetic never goes out of range; only a
 store into a narrower type can fail, and there the type's

@@ -1,6 +1,6 @@
 # Programs for "int considered harmful"
 
-Every listing and every output block in [`../int-considered-harmful.pdf`](../int-considered-harmful.pdf)
+Every listing and every output block in [`../int-considered-harmful.tex`](../int-considered-harmful.tex)
 comes from a program in this directory. Nothing in the paper was written by
 hand; each block was captured by compiling and running the corresponding file.
 
