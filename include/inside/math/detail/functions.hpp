@@ -285,16 +285,16 @@ template <class F, class S, class... Args>
 // takes no type, so f<T>(x) always names the output. An optional leading
 // template parameter (pow_base's base, pown's exponent) comes before them
 // all: f<P>(x), f<P, Spec…>(x), f<P, C>(x).
-#define INSIDE_MATH_FUNCTION(name, Tag, ...)                                                              \
-    template <__VA_ARGS__ __VA_OPT__(, ) auto... Spec, class... In>                                             \
-        requires ::ins::math::detail::takes<Tag, In...>                                               \
-    [[nodiscard]] [[gnu::always_inline]] constexpr auto name(const In&... x) {                                  \
+#define INSIDE_MATH_FUNCTION(name, Tag, ...)                                                \
+    template <__VA_ARGS__ __VA_OPT__(, ) auto... Spec, class... In>                         \
+        requires ::ins::math::detail::takes<Tag, In...>                                     \
+    [[nodiscard]] [[gnu::always_inline]] constexpr auto name(const In&... x) {              \
         using specs_ = ::ins::math::detail::specs<::ins::math::detail::spec_of<Spec...>()>; \
-        return ::ins::math::detail::call<Tag, specs_>(x...);                                          \
-    }                                                                                                           \
-    template <__VA_ARGS__ __VA_OPT__(, ) class C, class... D>                                                   \
-        requires ::ins::math::detail::takes<Tag, D...>                                                \
-    [[nodiscard]] [[gnu::always_inline]] constexpr auto name(const D&... x) {                                   \
+        return ::ins::math::detail::call<Tag, specs_>(x...);                                \
+    }                                                                                       \
+    template <__VA_ARGS__ __VA_OPT__(, ) class C, class... D>                               \
+        requires ::ins::math::detail::takes<Tag, D...>                                      \
+    [[nodiscard]] [[gnu::always_inline]] constexpr auto name(const D&... x) {               \
         return ::ins::math::detail::call<Tag, ::ins::math::detail::named<C>>(x...);         \
     }
 

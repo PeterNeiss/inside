@@ -143,13 +143,11 @@ consteval unit_value unit_root(const unit_value& u, int n) {
     unit_value r{};
     for (std::int8_t i = 0; i < u.Size; ++i) {
         if (u.Atoms[i].Exp % n != 0)
-            ins::detail::constexpr_error<
-                "units: the root of a unit needs exponents it divides (m², not m)">();
+            ins::detail::constexpr_error<"units: the root of a unit needs exponents it divides (m², not m)">();
         unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, static_cast<std::int8_t>(u.Atoms[i].Exp / n)});
     }
     if (!u.Scale.is_one())
-        ins::detail::constexpr_error<
-            "units: the root of a scaled unit - convert it to a named unit first">();
+        ins::detail::constexpr_error<"units: the root of a scaled unit - convert it to a named unit first">();
     return r;
 }
 
@@ -202,15 +200,13 @@ struct pi_scaled {
     static constexpr auto     f = F;
     static constexpr grid_int A = [] {
         if constexpr (insidable<V> && ins::detail::notched<V>)
-            return ins::detail::grid_numerator(ins::detail::unit_of<V>) *
-                   ins::detail::grid_numerator(f);
+            return ins::detail::grid_numerator(ins::detail::unit_of<V>) * ins::detail::grid_numerator(f);
         else
             return grid_int{0};
     }();
     static constexpr grid_int B = [] {
         if constexpr (insidable<V> && ins::detail::notched<V>)
-            return ins::detail::grid_denominator(ins::detail::unit_of<V>) *
-                   ins::detail::grid_denominator(f);
+            return ins::detail::grid_denominator(ins::detail::unit_of<V>) * ins::detail::grid_denominator(f);
         else
             return grid_int{1};
     }();
@@ -236,9 +232,8 @@ struct pi_scaled {
 };
 #ifndef INSIDE_MATH_NO_FP
 template <insidable Out, bool Cos, reference R, class V>
-inline constexpr bool pi_trig_fp =
-    pi_scaled<magnitude_of(R.U).Ratio, V>::ints &&
-    ins::math::detail::engine::fp_tier<Out, ins::math::detail::engine::fp_sin, V>;
+inline constexpr bool pi_trig_fp = pi_scaled<magnitude_of(R.U).Ratio, V>::ints &&
+                                   ins::math::detail::engine::fp_tier<Out, ins::math::detail::engine::fp_sin, V>;
 template <insidable Out, bool Cos, reference R, class V>
 inline bool pi_trig_double(const V& x, Out& out) noexcept {
     namespace engine       = ins::math::detail::engine;
@@ -273,15 +268,12 @@ constexpr Out pi_trig_exact(const quantity<R, V>& q) {
     constexpr grid_int    n  = ins::detail::grid_numerator(f);
     constexpr grid_int    d  = ins::detail::grid_denominator(f);
     constexpr bool        ng = n.negative();
-    constexpr std::size_t KF = ins::detail::fits_rational(f)
-                                   ? 1
-                                   : ins::detail::limbs_for_bits(std::max(n.bit_width(), d.bit_width()) + 1);
-    using core               = engine::pi_trig_core<engine::input_limbs<V>, Cos, KF>;
-    using factor             = typename core::factor;
-    return engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(ins::detail::value_of(q)),
-                                                               static_cast<factor>(ng ? -n : n),
-                                                               static_cast<factor>(d),
-                                                               ng});
+    constexpr std::size_t KF =
+        ins::detail::fits_rational(f) ? 1 : ins::detail::limbs_for_bits(std::max(n.bit_width(), d.bit_width()) + 1);
+    using core   = engine::pi_trig_core<engine::input_limbs<V>, Cos, KF>;
+    using factor = typename core::factor;
+    return engine::evaluate<Out, engine::start_bits<Out>>(core{
+        engine::exact_input(ins::detail::value_of(q)), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng});
 }
 template <insidable Out, bool Cos, reference R, class V>
 constexpr Out pi_trig(const quantity<R, V>& q) {
@@ -311,15 +303,12 @@ constexpr Out pi_cast_exact(const quantity<R, V>& q) {
     constexpr grid_int    d  = ins::detail::grid_denominator(F.Ratio);
     constexpr bool        ng = n.negative();
     constexpr int         NB = n.bit_width();
-    constexpr std::size_t KF = ins::detail::fits_rational(F.Ratio)
-                                   ? 1
-                                   : ins::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
-    using core               = engine::pi_scale_core<engine::input_limbs<V>, engine::in_mag<V> + NB + 4, F.Pi, KF>;
-    using factor             = typename core::factor;
-    return engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(ins::detail::value_of(q)),
-                                                               static_cast<factor>(ng ? -n : n),
-                                                               static_cast<factor>(d),
-                                                               ng});
+    constexpr std::size_t KF =
+        ins::detail::fits_rational(F.Ratio) ? 1 : ins::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
+    using core   = engine::pi_scale_core<engine::input_limbs<V>, engine::in_mag<V> + NB + 4, F.Pi, KF>;
+    using factor = typename core::factor;
+    return engine::evaluate<Out, engine::start_bits<Out>>(core{
+        engine::exact_input(ins::detail::value_of(q)), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng});
 }
 } // namespace detail
 
@@ -330,7 +319,7 @@ template <auto U, insidable Out, reference R, class V>
              (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
     constexpr ins::unit_value u = decltype(U)::value;
-    constexpr magnitude         f = detail::conversion_factor<R.U, u>;
+    constexpr magnitude       f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     ins::math::detail::entry::require_rounding<Out>();
@@ -422,7 +411,7 @@ inline constexpr math_rule rule_of<m::entry::atan2_fn> = math_rule::arc2;
 template <>
 inline constexpr math_rule rule_of<m::entry::hypot_fn> = math_rule::common;
 #define INSIDE_UNITS_NUMBER_RULE(fn) \
-    template <>                            \
+    template <>                      \
     inline constexpr math_rule rule_of<m::entry::fn##_fn> = math_rule::number;
 INSIDE_UNITS_NUMBER_RULE(exp)
 INSIDE_UNITS_NUMBER_RULE(exp2)

@@ -32,7 +32,7 @@ namespace ins {
 //   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
 // detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
-#define INSIDE_WHY_arith_action                                                                             \
+#define INSIDE_WHY_arith_action                                                                                   \
     "add/sub/mul/div/mod take no hooks: on_clamp / on_wrap / on_error apply to a store - use b.on_clamp(f) etc. " \
     "or a cast"
 
@@ -102,16 +102,16 @@ struct divmod_op {
 // then false, and an inside cannot fall back on its rational conversion and
 // rational's operator.
 
-#define INSIDE_WHY_add                                                                                     \
+#define INSIDE_WHY_add                                                                                           \
     "addition: no result type - the exact sum's fractions pass 1024 bits (store an operand into a coarser type " \
     "first)"
-#define INSIDE_WHY_sub                                                                                  \
+#define INSIDE_WHY_sub                                                                                        \
     "subtraction: no result type - the exact difference's fractions pass 1024 bits (store an operand into a " \
     "coarser type first)"
-#define INSIDE_WHY_mul                                                                                    \
+#define INSIDE_WHY_mul                                                                                          \
     "multiplication: no result type - the exact product's fractions pass 1024 bits - round the product into a " \
     "coarser type with mul<Out>(a, b)"
-#define INSIDE_WHY_div                                                                              \
+#define INSIDE_WHY_div                                                                                    \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
     "1024 bits"
 #define INSIDE_WHY_mod "modulo requires notched grids (a continuous grid has no lattice)"
@@ -140,7 +140,7 @@ inline constexpr policy_flag call_flags = []() -> policy_flag {
 
 // (The leading int&... takes no argument: an explicit template argument,
 // as in mul<Out>(a, b), selects mul<Out> below instead of naming L.)
-#define INSIDE_ARITH_FN(name, op)                                             \
+#define INSIDE_ARITH_FN(name, op)                                                   \
     template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires detail::name                                                       \
     ##_defined<L, R, detail::call_flags<Args...>>&&                                 \
@@ -153,7 +153,7 @@ inline constexpr policy_flag call_flags = []() -> policy_flag {
     }                                                                               \
     template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
-    auto name(L const&, R const&, Args&&...) = delete (INSIDE_WHY_##name);    \
+    auto name(L const&, R const&, Args&&...) = delete (INSIDE_WHY_##name);          \
     template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires(detail::name##_defined<L, R, detail::call_flags<Args...>> &&       \
                  (detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...))       \
@@ -960,7 +960,7 @@ concept expected_operands =
     (expected_like<L> || expected_like<R>) && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>);
 } // namespace detail
 
-#define INSIDE_LIFT_OP(op)                                                            \
+#define INSIDE_LIFT_OP(op)                                                                  \
     template <class L, class R>                                                             \
         requires detail::expected_operands<L, R> &&                                         \
                  requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }         \
@@ -991,16 +991,16 @@ template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
 } // namespace detail
 
-#define INSIDE_SCALAR_MSG                                                          \
+#define INSIDE_SCALAR_MSG                                                                \
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "          \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>::try_make(n)` for a run-time value with a " \
     "known range"
 #define INSIDE_NO_SCALAR(op)                                    \
-    template <insidable B, detail::builtin_arithmetic A>              \
+    template <insidable B, detail::builtin_arithmetic A>        \
     void operator op(B const&, A) = delete (INSIDE_SCALAR_MSG); \
-    template <detail::builtin_arithmetic A, insidable B>              \
+    template <detail::builtin_arithmetic A, insidable B>        \
     void operator op(A, B const&) = delete (INSIDE_SCALAR_MSG); \
-    template <insidable B, detail::builtin_arithmetic A>              \
+    template <insidable B, detail::builtin_arithmetic A>        \
     void operator op## = (B&, A) = delete (INSIDE_SCALAR_MSG);
 
 INSIDE_NO_SCALAR(+)
@@ -1017,13 +1017,13 @@ INSIDE_NO_SCALAR(%)
 // back by the rules of every compound assignment - a clamp or wrap type
 // takes it, a checked one names a channel (x.on_error(ec) += n). A division
 // stays with insides: a builtin integer's range holds 0.
-#define INSIDE_STEP_MSG                                                                              \
+#define INSIDE_STEP_MSG                                                                                    \
     "inside: x op= n stores the result back into x, which the grids cannot prove for a builtin integer - " \
     "use a clamp or wrap type, report with x.on_error(ec) op= n (or a hook, x.on_error(f)), or opt out with unsafe"
-#define INSIDE_INTEGER_STEP(op)                                                                \
+#define INSIDE_INTEGER_STEP(op)                                                                      \
     template <insidable B, detail::builtin_arithmetic A>                                             \
         requires detail::step_integer<A>                                                             \
-    void operator op(B&, A) = delete (INSIDE_STEP_MSG);                                        \
+    void operator op(B&, A) = delete (INSIDE_STEP_MSG);                                              \
     template <insidable B, detail::builtin_arithmetic A>                                             \
         requires detail::step_integer<A> && requires(B& b, const detail::lifted_t<A>& v) { b op v; } \
     constexpr B& operator op(B& b, A a) {                                                            \
@@ -1041,16 +1041,16 @@ INSIDE_INTEGER_STEP(*=)
 // assignment into a builtin number, would leave the grid without a word.
 // Deleted, with the spelling that says so. (Subscripts and pointer
 // arithmetic stay: they are what an index is for.)
-#define INSIDE_BUILTIN_MSG                                                                        \
+#define INSIDE_BUILTIN_MSG                                                                              \
     "an inside takes no builtin integer operator: read the value into the builtin type first (int n = " \
     "x; or x.to<T>()), or keep the arithmetic on insides"
 #define INSIDE_NO_BUILTIN(op)                                           \
-    template <insidable B, class A>                                           \
-        requires detail::builtin_arithmetic<A> || insidable<A>                \
+    template <insidable B, class A>                                     \
+        requires detail::builtin_arithmetic<A> || insidable<A>          \
     void operator op(B const&, A const&) = delete (INSIDE_BUILTIN_MSG); \
-    template <detail::builtin_arithmetic A, insidable B>                      \
+    template <detail::builtin_arithmetic A, insidable B>                \
     void operator op(A, B const&) = delete (INSIDE_BUILTIN_MSG);
-#define INSIDE_NO_BUILTIN_ASSIGN(op)               \
+#define INSIDE_NO_BUILTIN_ASSIGN(op)                     \
     template <detail::builtin_arithmetic A, insidable B> \
     void operator op(A&, B const&) = delete (INSIDE_BUILTIN_MSG);
 
@@ -1079,13 +1079,13 @@ void operator~(const B&) = delete (INSIDE_BUILTIN_MSG);
 // would become rational arithmetic, an expected<rational, error> without a
 // grid. Deleted, with the spelling that keeps the grid; so are the compound
 // assignments (inside/detail/core.hpp, policy_ref.hpp).
-#define INSIDE_RATIONAL_MSG                                                                \
+#define INSIDE_RATIONAL_MSG                                                                      \
     "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
     "(a grid), or store the rational into an inside first"
 #define INSIDE_NO_RATIONAL(op)                                           \
-    template <insidable B, std::same_as<detail::rational> Q>                   \
+    template <insidable B, std::same_as<detail::rational> Q>             \
     void operator op(B const&, Q const&) = delete (INSIDE_RATIONAL_MSG); \
-    template <std::same_as<detail::rational> Q, insidable B>                   \
+    template <std::same_as<detail::rational> Q, insidable B>             \
     void operator op(Q const&, B const&) = delete (INSIDE_RATIONAL_MSG);
 
 INSIDE_NO_RATIONAL(+)

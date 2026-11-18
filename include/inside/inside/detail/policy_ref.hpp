@@ -91,7 +91,7 @@ template <step_integer A>
     return lifted_t<A>::from_raw(static_cast<raw_t<lifted_t<A>>>(a), unsafe);
 }
 
-#define INSIDE_WHY_proxy_unproven                                                                         \
+#define INSIDE_WHY_proxy_unproven                                                                               \
     "inside: the value may fall outside the target grid, or off its notch, at run time - add clamp, wrap or a " \
     "rounding mode to the policy, report with on_error(ec) or on_error(f), or opt out with unsafe"
 
@@ -278,7 +278,7 @@ struct policy_ref {
 
     // A rational has no grid: as on the inside itself, a compound assign
     // takes an inside (0.5_ins, just<1, 2>).
-#define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                \
+#define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                      \
     template <std::same_as<rational> C>                                                                    \
     B& operator op(const C&) = delete ("an inside cannot be combined with a rational: write the constant " \
                                        "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \

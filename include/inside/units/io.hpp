@@ -111,8 +111,7 @@ inline std::string unit_symbol(const unit_value& u, text_encoding enc = text_enc
     }
     if (!u.Scale.is_one()) {
         // "1/1250", "π", "2π", "π⁻¹" (ASCII "pi^-1").
-        std::string scale =
-            u.Scale.Pi != 0 && u.Scale.Ratio == grid_number{1} ? "" : ins::to_string(u.Scale.Ratio);
+        std::string scale = u.Scale.Pi != 0 && u.Scale.Ratio == grid_number{1} ? "" : ins::to_string(u.Scale.Ratio);
         if (u.Scale.Pi != 0) {
             scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
             detail::append_exponent(scale, u.Scale.Pi, enc);
@@ -172,11 +171,11 @@ std::ostream& operator<<(std::ostream& os, const multivector<P...>& x) {
 }
 
 // A point as its quantity from its origin: "20 ℃".
-template <reference R, detail::origin_ref O, class V>
+template <reference R, origin_ref O, class V>
 std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8) {
     return ins::to_string(p.quantity_from_origin(), enc);
 }
-template <reference R, detail::origin_ref O, class V>
+template <reference R, origin_ref O, class V>
 std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
     return os << ins::to_string(p);
 }
@@ -208,9 +207,8 @@ struct std::formatter<ins::multivector<P...>> : std::formatter<std::string_view>
     }
 };
 
-template <ins::reference R, ins::detail::origin_ref O, class V>
-struct std::formatter<ins::quantity_point<R, O, V>>
-    : std::formatter<ins::quantity<R, V>> {
+template <ins::reference R, ins::origin_ref O, class V>
+struct std::formatter<ins::quantity_point<R, O, V>> : std::formatter<ins::quantity<R, V>> {
     template <typename Ctx>
     auto format(const ins::quantity_point<R, O, V>& p, Ctx& ctx) const {
         return std::formatter<ins::quantity<R, V>>::format(p.quantity_from_origin(), ctx);

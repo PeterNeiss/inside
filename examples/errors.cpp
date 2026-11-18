@@ -40,8 +40,8 @@ int main() {
 
     // === Section 2: Per-operation overrides on a default-checked inside ===
 
-    ins::error ec{};
-    checked_100          z(50);
+    ins::error  ec{};
+    checked_100 z(50);
     z.on_error(ec) = n;
     std::cout << "policy ec:" << (ec != error{} ? error_message(ec) : "no error") << " (z=" << z << ")" << "\n";
 

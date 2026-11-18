@@ -394,9 +394,8 @@ inline constexpr auto factorial_table = [] {
     return t;
 }();
 
-#define INSIDE_WHY_count(fn) \
-    "ins::math::" #fn ": the counts are insides on the integers from 0 (inside<{0, 20}>)"
-#define INSIDE_WHY_too_large(fn)                                                                            \
+#define INSIDE_WHY_count(fn) "ins::math::" #fn ": the counts are insides on the integers from 0 (inside<{0, 20}>)"
+#define INSIDE_WHY_too_large(fn)                                                                        \
     "ins::math::" #fn ": the result would pass 16384 bits (math::detail::max_count_bits) - narrow the " \
     "input grids"
 
@@ -603,7 +602,7 @@ template <insidable A, insidable B>
 // The tags (math/detail/functions.hpp): exact, each deduced output the
 // result's own grid; a call takes what the implementation above takes.
 //---------------------------------------------------------------------------
-#define INSIDE_COUNT_TAG(fn)                                                                           \
+#define INSIDE_COUNT_TAG(fn)                                                                                 \
     struct fn##_fn {                                                                                         \
         static constexpr bool rounds = false;                                                                \
         template <class... In>                                                                               \

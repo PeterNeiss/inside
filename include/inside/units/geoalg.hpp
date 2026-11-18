@@ -575,8 +575,7 @@ class multivector {
 
     // The same with a one-shot policy for each part's store: {x, clamp}.
     template <multivector_like X, class Pol>
-        requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>) &&
-                (embeds<X, Pol>())
+        requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>) && (embeds<X, Pol>())
     constexpr multivector(const X& x, const Pol& pol) : P{embed(x, pol)} {}
 
     [[nodiscard]] constexpr const parts_type& parts() const noexcept { return P; }

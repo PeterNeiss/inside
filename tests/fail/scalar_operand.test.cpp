@@ -6,6 +6,6 @@
 
 int main() {
     ins::inside<{0, 100}> percent{50};
-    auto                            sum = percent + 1; // ill-formed: scalar has no grid
+    auto                  sum = percent + 1; // ill-formed: scalar has no grid
     (void)sum;
 }

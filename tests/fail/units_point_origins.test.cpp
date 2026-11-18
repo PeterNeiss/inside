@@ -3,8 +3,7 @@
 // Two points counted from unrelated absolute origins have no difference.
 #include <inside/units.hpp>
 
-inline constexpr auto other_zero =
-    ins::origin<"other_zero", ins::base_dimension<"thermodynamic_temperature">>;
+inline constexpr auto other_zero = ins::origin<"other_zero", ins::base_dimension<"thermodynamic_temperature">>;
 
 int main() {
     using namespace ins;

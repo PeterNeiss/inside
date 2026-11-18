@@ -428,7 +428,7 @@ TEST(CursorTest, steps_and_ends) {
     cur t;
     EXPECT_DEATH(--t, "ins: value does not fit"); // nothing before Lower: a precondition
     cur u = 4_ins;
-    ++u;                                                    // the end
+    ++u;                                          // the end
     EXPECT_DEATH(++u, "ins: value does not fit"); // nothing past the end: a precondition
     // the values convert back to T exactly
     for (cur v; v != end(v); ++v) {

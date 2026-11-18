@@ -347,7 +347,7 @@ struct ga_exp_core {
             const I sh                  = eng::round_shift(ev - inv, 1);
             ec                          = (eev + ei) / 2 + 1;
             sq                          = eng::div_q(sh, lam, S);
-            es = 1.5 * ((eev + ei) / 2 + 1) + 3 * ::ins::detail::ldexp(1.0, H + 1) + 2;
+            es                          = 1.5 * ((eev + ei) / 2 + 1) + 3 * ::ins::detail::ldexp(1.0, H + 1) + 2;
         }
         // e^a at scale S: exp_fixed gives e^r·2^k at scale S - k (approx::below
         // is 1 at scale S + 2, which rescales to 0 within 1).
@@ -1212,7 +1212,7 @@ struct deduced {
                   "exp<per<K>>(x)");
     static constexpr policy_flag flags = ::ins::math::detail::spec_flags(
         ::ins::detail::with_default_rounding(policy_of<num_t<std::tuple_element_t<0, typename D::DP>>> &
-                                                       ~::ins::detail::cursor_marker),
+                                             ~::ins::detail::cursor_marker),
         S);
     static consteval grid_number limit(double m) {
         const grid_number v{m * (1 + 0x1p-30)};

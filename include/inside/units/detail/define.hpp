@@ -37,11 +37,10 @@ namespace ins {
 //   .recipe    the quantities it is made of, for a child that has a recipe of
 //              its own (velocity: displacement / duration, under speed)
 struct kind_options {
-    bool              distinct{false};
-    detail::kind_expr recipe{};
+    bool      distinct{false};
+    kind_expr recipe{};
 };
 
-namespace detail {
 // A definition object of type T, named by a template argument: T{name, args…}
 // as a static member, which gives it static storage and one identity.
 template <class T, symbol_text Name, auto... Args>
@@ -49,6 +48,7 @@ struct definition {
     static constexpr T value{Name.view(), Args...};
 };
 
+namespace detail {
 // What a unit is defined by, as unit_def takes it: a unit (si::joule /
 // si::second), a kind (the base unit of that kind), or the quantity it
 // equals (1.8288_ins * si::metre): its number times its unit.
@@ -64,6 +64,7 @@ struct unit_definition<Def> {
                   "units: a unit is defined by a constant - unit<\"ftm\", 1.8288_ins * si::metre>");
     static constexpr auto value = mag<lower_of<typename Q::rep>> * unit_t<Q::unit>{};
 };
+} // namespace detail
 
 // A kind's definition by its options (specializations, not a lambda: the
 // catalog declares some eighty kinds).
@@ -74,7 +75,7 @@ struct kind_holder {
 template <symbol_text Name, kind_options O, auto Parent>
     requires(O.distinct && O.recipe.Recipe.Size == 0)
 struct kind_holder<Name, O, Parent> {
-    static constexpr kind_def value{Name.view(), Parent, distinct};
+    static constexpr kind_def value{Name.view(), Parent, detail::distinct};
 };
 template <symbol_text Name, kind_options O, auto Parent>
     requires(!O.distinct && O.recipe.Recipe.Size != 0)
@@ -84,7 +85,7 @@ struct kind_holder<Name, O, Parent> {
 template <symbol_text Name, kind_options O, auto Parent>
     requires(O.distinct && O.recipe.Recipe.Size != 0)
 struct kind_holder<Name, O, Parent> {
-    static constexpr kind_def value{Name.view(), Parent, O.recipe, distinct};
+    static constexpr kind_def value{Name.view(), Parent, O.recipe, detail::distinct};
 };
 
 // An origin is absolute (named by a kind or a dimension: the zero of that
@@ -103,43 +104,42 @@ struct origin_holder {
             static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
             return origin_def{Name.view(),
                               dimension_of(Q::unit),
-                              absolute_of(P::origin),
-                              offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio};
+                              detail::absolute_of(P::origin),
+                              detail::offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio};
         } else if constexpr (requires { dimension{Def}; })
             return origin_def{Name.view(), dimension{Def}};
         else
             return origin_def{Name.view(), Def.value->Dim};
     }();
 };
-} // namespace detail
 
 // unit<"sym", definition, options>: a unit of your own. The definition is
 // the quantity it equals (1.8288_ins * si::metre), another unit (si::joule /
 // si::second), or a kind, whose base unit it then is.
-template <detail::symbol_text Sym, auto Def, unit_options O = {}>
+template <symbol_text Sym, auto Def, unit_options O = {}>
 inline constexpr auto unit =
-    detail::unit_tag<detail::definition<detail::unit_def, Sym, detail::unit_definition<Def>::value, O>::value>;
+    detail::unit_tag<definition<unit_def, Sym, detail::unit_definition<Def>::value, O>::value>;
 
 // kind<"name", parent, options>: a kind of quantity. The parent is a kind
 // (depth under length), a product of kinds (speed: length / duration) or a
 // dimension (a base quantity).
-template <detail::symbol_text Name, auto Parent, kind_options O = {}>
-inline constexpr auto kind = detail::kind_tag<detail::kind_holder<Name, O, Parent>::value>;
+template <symbol_text Name, auto Parent, kind_options O = {}>
+inline constexpr auto kind = detail::kind_tag<kind_holder<Name, O, Parent>::value>;
 
 // base_dimension<"name">: a dimension of your own, which mixes with no other.
-template <detail::symbol_text Name>
-inline constexpr dimension base_dimension = dimension_of(detail::definition<detail::base_dimension_def, Name>::value);
+template <symbol_text Name>
+inline constexpr dimension base_dimension = dimension_of(definition<base_dimension_def, Name>::value);
 
 // base_unit<"sym", "dimension">: a unit of something that mixes with nothing
 // else (money, pixels, counts): a new dimension, its kind, and this unit.
-template <detail::symbol_text Sym, detail::symbol_text Dimension, unit_options O = {}>
+template <symbol_text Sym, symbol_text Dimension, unit_options O = {}>
 inline constexpr auto base_unit = unit<Sym, kind<Dimension, base_dimension<Dimension>>, O>;
 
 // origin<"name", where>: where points count from. An absolute origin is
 // named by a kind or a dimension; any other lies at a point of one:
 // origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>.
-template <detail::symbol_text Name, auto Def>
-inline constexpr auto origin = detail::origin_tag<detail::origin_holder<Name, Def>::value>;
+template <symbol_text Name, auto Def>
+inline constexpr auto origin = detail::origin_tag<origin_holder<Name, Def>::value>;
 
 // pi: the number π as a unit, exactly. A unit that is a multiple of π says
 // so, and conversions between such units stay exact:
@@ -167,9 +167,8 @@ template <insidable V>
 
 // basis_vector<"e₁", +1>: a basis vector of a geometric algebra, by its
 // square (+1, -1 or 0).
-template <detail::symbol_text Sym, int Square, unit_options O = {}>
-inline constexpr auto basis_vector =
-    detail::unit_tag<detail::definition<detail::basis_vector_def, Sym, Square, O>::value>;
+template <symbol_text Sym, int Square, unit_options O = {}>
+inline constexpr auto basis_vector = detail::unit_tag<definition<basis_vector_def, Sym, Square, O>::value>;
 } // namespace ins
 
 #endif // INSIDE_UNITS_DETAIL_DEFINE_HPP

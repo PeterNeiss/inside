@@ -766,7 +766,7 @@ TEST(ConversionsArmTest, rounds_on_a_point_and_past_the_64_bit_steps) {
 TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
     using T = inside<{{-12000000000000000000_g, 12000000000000000000_g}, just<3, 2>}>;
     static_assert(detail::rational_readable<T>);
-    const T t = T::from_step(15333333333333333333_ins); // 10999999999999999999.5
+    const T t = T::from_step(15333333333333333333_ins);                              // 10999999999999999999.5
     EXPECT_DEATH((void)rational{t}, "ins: inside: value past the 64-bit rationals"); // a precondition
 }
 } // namespace reached_arms_tests

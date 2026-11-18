@@ -33,7 +33,7 @@ int main() {
 
     // a checked arithmetic op that stays in range: its result's own grid
     const ins::inside<{0, 100}, ins::checked> s0{40};
-    const auto s = s0 + ins::inside<{0, 10}, ins::checked>{10}; // 50, on [0, 110]
+    const auto                                s = s0 + ins::inside<{0, 10}, ins::checked>{10}; // 50, on [0, 110]
 
     std::printf("a=%d w=%d s=%d ec=%d\n",
                 static_cast<int>(ins::detail::to_value(a)),

@@ -798,17 +798,14 @@ inline constexpr round_mode display_rounding =
 // and an integer grid past int64 the integer types too ({:#x}, {:b}, {:o}, {:d}).
 template <ins::grid G, ins::policy_flag P>
 struct std::formatter<ins::inside<G, P>>
-    : ins::detail::numeric_spec_formatter<
-          std::conditional_t<ins::detail::integer_lattice<ins::inside<G, P>> &&
-                                 ins::detail::values_fit_int64<ins::inside<G, P>>,
-                             std::formatter<std::int64_t>,
-                             ins::detail::exact_format_spec<
-                                 ins::detail::integer_lattice<ins::inside<G, P>>>>> {
+    : ins::detail::numeric_spec_formatter<std::conditional_t<
+          ins::detail::integer_lattice<ins::inside<G, P>> && ins::detail::values_fit_int64<ins::inside<G, P>>,
+          std::formatter<std::int64_t>,
+          ins::detail::exact_format_spec<ins::detail::integer_lattice<ins::inside<G, P>>>>> {
     using B = ins::inside<G, P>;
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
-    static constexpr bool integer_path =
-        ins::detail::integer_lattice<B> && ins::detail::values_fit_int64<B>;
+    static constexpr bool integer_path = ins::detail::integer_lattice<B> && ins::detail::values_fit_int64<B>;
 
     template <typename Ctx>
     auto format(const B& b, Ctx& ctx) const {
@@ -827,8 +824,7 @@ struct std::formatter<ins::inside<G, P>>
 };
 
 template <>
-struct std::formatter<ins::detail::rational>
-    : ins::detail::numeric_spec_formatter<ins::detail::exact_format_spec<>> {
+struct std::formatter<ins::detail::rational> : ins::detail::numeric_spec_formatter<ins::detail::exact_format_spec<>> {
     template <typename Ctx>
     auto format(const ins::detail::rational& r, Ctx& ctx) const {
         namespace d = ins::detail;

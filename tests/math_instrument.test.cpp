@@ -13,9 +13,9 @@
 using namespace ins;
 namespace engine = ins::math::detail::engine;
 namespace am     = ins::math;
-using ins::math::driver;
 using detail::wide_rational;
 using detail::wide_sint;
+using ins::math::driver;
 
 namespace {
 using eighths = inside<{{0, 1}, rational{1, 8}}, round_half_away>;

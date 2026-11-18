@@ -793,7 +793,7 @@ template <plain_number T>
     return rational_div<true, false>(a, b);
 }
 
-#define INSIDE_RATIONAL_OP(op)                                       \
+#define INSIDE_RATIONAL_OP(op)                                             \
     template <plain_number T>                                              \
     [[nodiscard]] inline consteval auto operator op(T lhs, rational rhs) { \
         return rational{lhs} op rhs;                                       \

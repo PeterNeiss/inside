@@ -130,8 +130,8 @@ template <class Q, class X>
 concept castable_from = quantity_like<Q> && castable_quantity<Q, X>;
 // A number: an inside, a built-in, a rational or a grid number.
 template <class V>
-concept number_value = ins::detail::numeric<std::remove_cvref_t<V>> ||
-                       std::same_as<std::remove_cvref_t<V>, ins::grid_number>;
+concept number_value =
+    ins::detail::numeric<std::remove_cvref_t<V>> || std::same_as<std::remove_cvref_t<V>, ins::grid_number>;
 // A bare number where a quantity is wanted: the deleted overloads' test.
 template <class Q, class X>
 concept bare_number_for = quantity_like<Q> && !quantity_like<X> && number_value<X>;
@@ -374,7 +374,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     using holder::Value;
 
   public:
-    using rep                                    = Rep;
+    using rep                                  = Rep;
     static constexpr ins::reference  reference = R;
     static constexpr ins::unit_value unit      = R.U;
     static constexpr ins::dimension  dimension = dimension_of(R.U);
@@ -384,7 +384,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         if constexpr (static_cast<bool>(R.Kind))
             return kind_t<R.Kind.P>{};
         else
-            return detail::kind_expr{R.Derived, dimension_of(R.U)};
+            return kind_expr{R.Derived, dimension_of(R.U)};
     }();
 
     constexpr quantity() = default;
@@ -406,8 +406,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         : holder(Rep(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)), std::forward<Pol>(pol))) {}
     // x a quantity, converted to R's unit exactly first.
     template <class X, class Pol>
-        requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>) &&
-                detail::castable_from<quantity, X> &&
+        requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>) && detail::castable_from<quantity, X> &&
                 std::constructible_from<Rep, decltype(detail::number_in<quantity>(std::declval<const X&>())), Pol>
     constexpr quantity(const X& x, Pol&& pol) : holder(Rep(detail::number_in<quantity>(x), std::forward<Pol>(pol))) {}
 
@@ -496,11 +495,9 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     // A dimensionless quantity's number as a built-in, as inside's to<T>(): its value in unit one (5 % is 1/20), under
     // the same rule as the conversion above.
     template <typename T, policy_flag Round = ins::detail::none>
-        requires detail::number_like_v<R> &&
-                 requires(const detail::number_t<R, Rep>& n) { ins::to<T, Round>(n); }
+        requires detail::number_like_v<R> && requires(const detail::number_t<R, Rep>& n) { ins::to<T, Round>(n); }
     [[nodiscard]] constexpr auto to() const {
-        return ins::to<T, Round>(
-            detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
+        return ins::to<T, Round>(detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
     }
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
@@ -546,7 +543,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     // A compound assignment whose result the grids cannot prove to fit Rep
     // (Rep's own op is deleted, its on_error(ec) form is not) is deleted with
     // the fix, as on an inside.
-#define INSIDE_UNITS_WHY_unproven                                                                 \
+#define INSIDE_UNITS_WHY_unproven                                                                       \
     "units: the result may fall outside this quantity's number at run time - store with clamp or wrap " \
     "(q.with<clamp>() += d), report with q.on_error(ec) += d or q.on_error(f) += d, or opt out with unsafe"
     template <ins::reference R2, class V2>
@@ -592,7 +589,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         --Value;
         return old;
     }
-#define INSIDE_UNITS_WHY_step                                                                                  \
+#define INSIDE_UNITS_WHY_step                                                                                        \
     "units: ++ and -- may step out of this quantity's number - use a clamp or wrap number, q.on_error(ec) += step, " \
     "or iterate with a cursor"
     quantity& operator++()
@@ -721,25 +718,25 @@ consteval reference scaled_reference(reference r, const magnitude& m) {
 }
 } // namespace detail
 template <magnitude M, reference R, class V>
-[[nodiscard]] constexpr auto operator*(detail::mag_t<M>, const quantity<R, V>& q) {
+[[nodiscard]] constexpr auto operator*(mag_t<M>, const quantity<R, V>& q) {
     return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(ins::detail::value_of(q));
 }
 template <reference R, class V, magnitude M>
-[[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, detail::mag_t<M>) {
+[[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, mag_t<M>) {
     return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(ins::detail::value_of(q));
 }
 // A magnitude times a number: the number in the scaled unit one ([π]), so
 // pi * just<2> * si::second is 2 in [π s].
 template <magnitude M, insidable V>
-[[nodiscard]] constexpr auto operator*(detail::mag_t<M>, const V& v) {
+[[nodiscard]] constexpr auto operator*(mag_t<M>, const V& v) {
     return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
 }
 template <insidable V, magnitude M>
-[[nodiscard]] constexpr auto operator*(const V& v, detail::mag_t<M>) {
+[[nodiscard]] constexpr auto operator*(const V& v, mag_t<M>) {
     return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
 }
 template <reference R, class V, magnitude M>
-[[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, detail::mag_t<M>) {
+[[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, mag_t<M>) {
     return detail::quantity_access::make<quantity<detail::scaled_reference(R, magnitude{} / M), V>>(
         ins::detail::value_of(q));
 }
@@ -850,28 +847,25 @@ template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '<'>
 [[nodiscard]] constexpr auto min(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        ins::min(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+    return detail::make_quantity<C>(ins::min(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
 }
 template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '<'>
 [[nodiscard]] constexpr auto max(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        ins::max(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+    return detail::make_quantity<C>(ins::max(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
 }
 template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '+'>
 [[nodiscard]] constexpr auto midpoint(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        ins::midpoint(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+    return detail::make_quantity<C>(ins::midpoint(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
 }
 
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
-#define INSIDE_UNITS_SUM_DELETED(ret, op, blades)                                    \
+#define INSIDE_UNITS_SUM_DELETED(ret, op, blades)                                          \
     template <reference A, class VA, reference B, class VB>                                \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)            \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                               \
@@ -1211,10 +1205,9 @@ template <class Q, std::ranges::input_range Rng>
              detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.U,
                                      Q::reference.U>
 [[nodiscard]] constexpr auto sum(Rng&& r) {
-    return detail::lift_to<Q>(
-        ins::sum<typename Q::rep>(std::forward<Rng>(r) | std::views::transform([](const auto& q) {
-                                                return ins::detail::value_of(q.template in<Q::reference.U>());
-                                            })));
+    return detail::lift_to<Q>(ins::sum<typename Q::rep>(
+        std::forward<Rng>(r) |
+        std::views::transform([](const auto& q) { return ins::detail::value_of(q.template in<Q::reference.U>()); })));
 }
 
 // conversion_overflows<Q>(v, u) / conversion_rounds / conversion_loses: v, a
@@ -1274,17 +1267,11 @@ template <reference A, class VA, reference B, class VB, insidable T>
              requires(const quantity<A, VA>& a, const quantity<B, VB>& b, T t) { a + (b - a) * t; }
 [[nodiscard]] constexpr auto lerp(const quantity<A, VA>& a, const quantity<B, VB>& b, const T& t) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        ins::lerp(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), t));
+    return detail::make_quantity<C>(ins::lerp(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), t));
 }
 
 // divmod(a, b, args...) of two quantities of one dimension, in their common
 // unit: the quotient is a plain number, the remainder a quantity.
-template <class Q, class R>
-struct divmod_result {
-    Q Quotient;
-    R Remainder;
-};
 namespace detail {
 // The remainder as a quantity in C (an expected's error passed on).
 template <reference C, class D>
@@ -1306,23 +1293,23 @@ template <reference A, class VA, reference B, class VB, class... Args>
                       Args&&... args) { ins::divmod(x, y, std::forward<Args>(args)...); }
 [[nodiscard]] constexpr auto divmod(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::quantity_divmod<C>(ins::divmod(
-        detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
+    return detail::quantity_divmod<C>(
+        ins::divmod(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
 }
 
 // add / sub / mod(a, b, args...) of two quantities of one kind, in their
 // common unit as + takes it, and mul / div of two quantities (units multiply)
 // or of a quantity and a number (the number scales): inside's free arithmetic
 // on the numbers, with its per-call policy, flag or error&.
-#define INSIDE_UNITS_SUM_FN(name)                                                                      \
+#define INSIDE_UNITS_SUM_FN(name)                                                                            \
     template <reference A, class VA, reference B, class VB, class... Args>                                   \
         requires detail::common_rescalable<A, VA, B, VB> &&                                                  \
                  requires(const detail::common_number_t<A, VA, B>& x,                                        \
                           const detail::common_number_t<B, VB, A>& y,                                        \
-                          Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); }        \
+                          Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); }                  \
     [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {  \
         constexpr reference C = detail::sum_reference<A, B>();                                               \
-        return detail::make_quantity<C>(ins::name(                                                 \
+        return detail::make_quantity<C>(ins::name(                                                           \
             detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...)); \
     }
 INSIDE_UNITS_SUM_FN(add)
@@ -1330,22 +1317,17 @@ INSIDE_UNITS_SUM_FN(sub)
 INSIDE_UNITS_SUM_FN(mod)
 #undef INSIDE_UNITS_SUM_FN
 
-#define INSIDE_UNITS_PRODUCT_FN(name, sign)                                                           \
-    template <int&... Barrier, reference A, class VA, reference B, class VB, class... Args>                 \
-        requires requires(const VA& x, const VB& y, Args&&... args) {                                       \
-            ins::name(x, y, std::forward<Args>(args)...);                                         \
-        }                                                                                                   \
-    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) { \
-        return detail::make_quantity<detail::product_reference<A, B, sign>()>(ins::name(          \
-            ins::detail::value_of(a), ins::detail::value_of(b), std::forward<Args>(args)...));          \
-    }                                                                                                       \
-    template <int&... Barrier, reference A, class VA, insidable V, class... Args>                           \
-        requires requires(const VA& x, const V& y, Args&&... args) {                                        \
-            ins::name(x, y, std::forward<Args>(args)...);                                         \
-        }                                                                                                   \
-    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const V& v, Args&&... args) {               \
-        return detail::make_quantity<A>(                                                                    \
-            ins::name(ins::detail::value_of(a), v, std::forward<Args>(args)...));               \
+#define INSIDE_UNITS_PRODUCT_FN(name, sign)                                                                           \
+    template <int&... Barrier, reference A, class VA, reference B, class VB, class... Args>                           \
+        requires requires(const VA& x, const VB& y, Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); } \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {           \
+        return detail::make_quantity<detail::product_reference<A, B, sign>()>(                                        \
+            ins::name(ins::detail::value_of(a), ins::detail::value_of(b), std::forward<Args>(args)...));              \
+    }                                                                                                                 \
+    template <int&... Barrier, reference A, class VA, insidable V, class... Args>                                     \
+        requires requires(const VA& x, const V& y, Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); }  \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const V& v, Args&&... args) {                         \
+        return detail::make_quantity<A>(ins::name(ins::detail::value_of(a), v, std::forward<Args>(args)...));         \
     }
 INSIDE_UNITS_PRODUCT_FN(mul, 1)
 INSIDE_UNITS_PRODUCT_FN(div, -1)
@@ -1354,16 +1336,12 @@ INSIDE_UNITS_PRODUCT_FN(div, -1)
 // A number times or over a quantity, as the operators. (The leading int&...
 // takes no argument: mul<C>(a, b) is the named form above.)
 template <int&... Barrier, insidable V, reference A, class VA, class... Args>
-    requires requires(const V& x, const VA& y, Args&&... args) {
-        ins::mul(x, y, std::forward<Args>(args)...);
-    }
+    requires requires(const V& x, const VA& y, Args&&... args) { ins::mul(x, y, std::forward<Args>(args)...); }
 [[nodiscard]] constexpr auto mul(const V& v, const quantity<A, VA>& a, Args&&... args) {
     return detail::make_quantity<A>(ins::mul(v, ins::detail::value_of(a), std::forward<Args>(args)...));
 }
 template <int&... Barrier, insidable V, reference A, class VA, class... Args>
-    requires requires(const V& x, const VA& y, Args&&... args) {
-        ins::div(x, y, std::forward<Args>(args)...);
-    }
+    requires requires(const V& x, const VA& y, Args&&... args) { ins::div(x, y, std::forward<Args>(args)...); }
 [[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args) {
     constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>();
     return detail::make_quantity<R>(ins::div(v, ins::detail::value_of(a), std::forward<Args>(args)...));
@@ -1373,10 +1351,10 @@ template <int&... Barrier, insidable V, reference A, class VA, class... Args>
 // overload with the reason.
 namespace detail {
 template <class L, class R, class... Args>
-concept arith_with_hook = (quantity_like<L> || quantity_like<R>) &&
-                          (ins::detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...);
+concept arith_with_hook =
+    (quantity_like<L> || quantity_like<R>) && (ins::detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...);
 }
-#define INSIDE_UNITS_HOOK_DELETED(name)                                                                    \
+#define INSIDE_UNITS_HOOK_DELETED(name)                                                                          \
     template <int&... Barrier, class L, class R, class... Args>                                                  \
         requires detail::arith_with_hook<L, R, Args...>                                                          \
     auto name(const L&, const R&, Args&&...) = delete (                                                          \
@@ -1409,9 +1387,7 @@ struct std::numeric_limits<ins::quantity<R, Rep>> : std::numeric_limits<Rep> {
   public:
     static constexpr Q min() noexcept { return ins::detail::quantity_access::make<Q>(N::min()); }
     static constexpr Q max() noexcept { return ins::detail::quantity_access::make<Q>(N::max()); }
-    static constexpr Q lowest() noexcept {
-        return ins::detail::quantity_access::make<Q>(N::lowest());
-    }
+    static constexpr Q lowest() noexcept { return ins::detail::quantity_access::make<Q>(N::lowest()); }
     static constexpr Q epsilon() noexcept
         requires requires { N::epsilon(); }
     {

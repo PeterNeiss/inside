@@ -31,7 +31,7 @@ TYPES=(
 
 prologue() {
   printf '#include <inside/units.hpp>\n'
-  printf 'using namespace ins;\nusing namespace ins;\n'
+  printf 'using namespace ins;\n'
 }
 
 printf '%-24s %8s %8s\n' "type" "mangled" "printed"

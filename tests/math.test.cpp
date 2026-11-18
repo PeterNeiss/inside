@@ -1162,7 +1162,7 @@ inline constexpr bool range_on_notch = [] {
         return grid_of<S> == grid_of<math::detail::on_notch_t<D, grid_number{per<1 << 20>}>>;
 }();
 
-#define INSIDE_CALL_FORMS(fn, X, v, rounds)                                                               \
+#define INSIDE_CALL_FORMS(fn, X, v, rounds)                                                                     \
     {                                                                                                           \
         const X x{v};                                                                                           \
         EXPECT_EQ((math::fn<o_t>(x)), (math::fn<o_t, X>(x))) << #fn;                                            \
@@ -1184,14 +1184,12 @@ TEST(MathCallFormTest, named_spec_and_deduced_forms_agree){
                     INSIDE_CALL_FORMS(cos, x_t, 0.5, true) INSIDE_CALL_FORMS(tan, x_t, 0.5, true)
                         INSIDE_CALL_FORMS(asin, x_t, 0.5, true) INSIDE_CALL_FORMS(acos, x_t, 0.5, true)
                             INSIDE_CALL_FORMS(atan, x_t, 0.5, true) INSIDE_CALL_FORMS(sinh, x_t, 0.5, true)
-                                INSIDE_CALL_FORMS(cosh, x_t, 0.5, true)
-                                    INSIDE_CALL_FORMS(tanh, x_t, 0.5, true)
-                                        INSIDE_CALL_FORMS(asinh, x_t, 0.5, true)
-                                            INSIDE_CALL_FORMS(acosh, y_t, 1.5, true)
-                                                INSIDE_CALL_FORMS(atanh, x_t, 0.5, true)
-                                                    INSIDE_CALL_FORMS(abs, x_t, 0.5, false)
-                                                        INSIDE_CALL_FORMS(floor, x_t, 0.5, false)
-                                                            INSIDE_CALL_FORMS(round, x_t, 0.5, false)}
+                                INSIDE_CALL_FORMS(cosh, x_t, 0.5, true) INSIDE_CALL_FORMS(tanh, x_t, 0.5, true)
+                                    INSIDE_CALL_FORMS(asinh, x_t, 0.5, true) INSIDE_CALL_FORMS(acosh, y_t, 1.5, true)
+                                        INSIDE_CALL_FORMS(atanh, x_t, 0.5, true)
+                                            INSIDE_CALL_FORMS(abs, x_t, 0.5, false)
+                                                INSIDE_CALL_FORMS(floor, x_t, 0.5, false)
+                                                    INSIDE_CALL_FORMS(round, x_t, 0.5, false)}
 #undef INSIDE_CALL_FORMS
 
 TEST(MathCallFormTest, two_argument_and_leading_argument_forms) {

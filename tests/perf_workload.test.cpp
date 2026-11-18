@@ -226,12 +226,10 @@ std::int64_t run_math_decimal() {
 inline constexpr auto e1 = ins::basis_vector<"e1", +1>;
 inline constexpr auto e2 = ins::basis_vector<"e2", +1>;
 inline constexpr auto e3 = ins::basis_vector<"e3", +1>;
-using bivector           = ins::
-    multivector<ins::quantity<e1 * e2, angle>, ins::quantity<e1 * e3, angle>, ins::quantity<e2 * e3, angle>>;
-using rotor = ins::multivector<out20,
-                                 ins::quantity<e1 * e2, out20>,
-                                 ins::quantity<e1 * e3, out20>,
-                                 ins::quantity<e2 * e3, out20>>;
+using bivector =
+    ins::multivector<ins::quantity<e1 * e2, angle>, ins::quantity<e1 * e3, angle>, ins::quantity<e2 * e3, angle>>;
+using rotor = ins::
+    multivector<out20, ins::quantity<e1 * e2, out20>, ins::quantity<e1 * e3, out20>, ins::quantity<e2 * e3, out20>>;
 
 std::int64_t run_math_rotor() {
     std::int64_t   acc = 0, x = 1;

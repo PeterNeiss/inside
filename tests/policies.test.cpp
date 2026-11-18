@@ -274,14 +274,14 @@ TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
 TEST(PolicyActionsTest, free_fn_div_with_ins_error_sets_ec_on_div_0__success_path_leaves_ec_clear) {
     using c100 = inside<{0, 100}, checked>;
     ins::error ec{};
-    auto                 q = div(c100{10}, c100{0}, ec);
+    auto       q = div(c100{10}, c100{0}, ec);
     ASSERT_EQ(ec, error::division_by_zero);
     ASSERT_FALSE(q.has_value());
 
     {
         SCOPED_TRACE("success path leaves ec clear");
         ins::error ec2{};
-        auto                 r = div(c100{10}, c100{2}, ec2);
+        auto       r = div(c100{10}, c100{2}, ec2);
         ASSERT_EQ(ec2, error{});
         ASSERT_TRUE(r.has_value());
     }
@@ -291,7 +291,7 @@ TEST(PolicyActionsTest, free_fn_div_with_ins_error_sets_ec_on_div_0__success_pat
 TEST(PolicyActionsTest, free_fn_mod_with_ins_error_sets_ec_on_div_0) {
     using u100ic = inside<{0, 100}, checked | round_toward_zero>;
     ins::error ec{};
-    auto                 m = mod(u100ic{7}, u100ic{0}, ec);
+    auto       m = mod(u100ic{7}, u100ic{0}, ec);
     ASSERT_EQ(ec, error::division_by_zero);
     ASSERT_FALSE(m.has_value());
 }
@@ -300,7 +300,7 @@ TEST(PolicyActionsTest, free_fn_mod_with_ins_error_sets_ec_on_div_0) {
 TEST(PolicyActionsTest, free_fn_add_with_ins_error_compiles_and_clears_on_success) {
     using c100 = inside<{0, 100}, checked>;
     ins::error ec{};
-    auto                 sum = add(c100{40}, c100{50}, ec);
+    auto       sum = add(c100{40}, c100{50}, ec);
     ASSERT_EQ(ec, error{});
     ASSERT_EQ(sum, 90);
 
@@ -342,7 +342,7 @@ TEST(PolicyActionsTest, on_error_catches_rounding_error_on_float_assignment) {
 // on_error(ec) catches rounding_error on float assignment
 TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment) {
     using coarse = inside<{{0, 10}, 2}>;
-    coarse               c{0};
+    coarse     c{0};
     ins::error ec{};
     c.on_error(ec) = 3.0;
     ASSERT_EQ(ec, error::rounding_error);

@@ -402,8 +402,7 @@ static void bench_accumulate() {
             sum.on_error(g_checked_ec) += v; // a checked += names its channel
         doNotOptimizeAway(sum.raw());
     });
-    bench.run("ins::sum<checked> (bulk check)",
-              [&] { doNotOptimizeAway(ins::sum<u200k_checked>(bvc)->raw()); });
+    bench.run("ins::sum<checked> (bulk check)", [&] { doNotOptimizeAway(ins::sum<u200k_checked>(bvc)->raw()); });
     bench.run("std::accumulate native",
               [&] { doNotOptimizeAway(std::accumulate(nv.begin(), nv.end(), std::uint32_t{0})); });
     bench.run("std::accumulate inside",
@@ -1416,17 +1415,17 @@ static void bench_cmath() {
 
     // std double first (native baseline), inside second.
 #define INSIDE_CMATH_GROUP(title, std_expr, ins_expr) \
-    {                                                       \
-        auto bench = group(title, 50'000);                  \
-        bench.run("std double", [&] {                       \
-            ++i;                                            \
-            doNotOptimizeAway(std_expr);                    \
-        });                                                 \
-        bench.run("ins::math inside", [&] {       \
-            ++i;                                            \
-            doNotOptimizeAway(ins_expr);                    \
-        });                                                 \
-        finish(bench);                                      \
+    {                                                 \
+        auto bench = group(title, 50'000);            \
+        bench.run("std double", [&] {                 \
+            ++i;                                      \
+            doNotOptimizeAway(std_expr);              \
+        });                                           \
+        bench.run("ins::math inside", [&] {           \
+            ++i;                                      \
+            doNotOptimizeAway(ins_expr);              \
+        });                                           \
+        finish(bench);                                \
     }
 
     INSIDE_CMATH_GROUP("math: abs", std::abs(d_qs[i & J]), ins::math::abs(v_alg[i & J]).raw())
@@ -1437,23 +1436,19 @@ static void bench_cmath() {
     INSIDE_CMATH_GROUP("math: log2", std::log2(fp_log2[i & J]), ins::math::log2(v_log2[i & J]).raw())
     INSIDE_CMATH_GROUP("math: exp", std::exp(d_qs[i & J]), ins::math::exp(v_exp[i & J]).raw())
     INSIDE_CMATH_GROUP("math: log", std::log(fp_log[i & J]), ins::math::log(v_log[i & J]).raw())
-    INSIDE_CMATH_GROUP(
-        "math: pow10", std::pow(10.0, d_qs[i & J]), ins::math::pow_base<10>(v_pow[i & J]).raw())
+    INSIDE_CMATH_GROUP("math: pow10", std::pow(10.0, d_qs[i & J]), ins::math::pow_base<10>(v_pow[i & J]).raw())
     INSIDE_CMATH_GROUP("math: sin", std::sin(d_qs[i & J]), ins::math::sin(v_ang[i & J]).raw())
     INSIDE_CMATH_GROUP("math: cos", std::cos(d_qs[i & J]), ins::math::cos(v_ang[i & J]).raw())
     INSIDE_CMATH_GROUP("math: tan", std::tan(fp_tan[i & J]), ins::math::tan(v_tan[i & J]))
-    INSIDE_CMATH_GROUP("math: atan2",
-                             std::atan2(d_aty[i & J], d_atx[i & J]),
-                             ins::math::atan2(v_aty[i & J], v_atx[i & J]).raw())
-    INSIDE_CMATH_GROUP("math: fmod",
-                             std::fmod(d_qs[i & J], d_fmy[i & J]),
-                             ins::math::fmod(v_fmx[i & J], v_fmy[i & J]).raw())
+    INSIDE_CMATH_GROUP(
+        "math: atan2", std::atan2(d_aty[i & J], d_atx[i & J]), ins::math::atan2(v_aty[i & J], v_atx[i & J]).raw())
+    INSIDE_CMATH_GROUP(
+        "math: fmod", std::fmod(d_qs[i & J], d_fmy[i & J]), ins::math::fmod(v_fmx[i & J], v_fmy[i & J]).raw())
     INSIDE_CMATH_GROUP("math: asin", std::asin(d_aty[i & J]), ins::math::asin(v_aty[i & J]).raw())
     INSIDE_CMATH_GROUP("math: tanh", std::tanh(d_qs[i & J]), ins::math::tanh(v_exp[i & J]).raw())
     INSIDE_CMATH_GROUP("math: cbrt", std::cbrt(d_qs[i & J]), ins::math::cbrt(v_alg[i & J]).raw())
-    INSIDE_CMATH_GROUP("math: hypot",
-                             std::hypot(d_qs[i & J], d_q[i & J]),
-                             ins::math::hypot(v_alg[i & J], v_alg2[i & J]).raw())
+    INSIDE_CMATH_GROUP(
+        "math: hypot", std::hypot(d_qs[i & J], d_q[i & J]), ins::math::hypot(v_alg[i & J], v_alg2[i & J]).raw())
     INSIDE_CMATH_GROUP("math: ceil", std::ceil(d_qs[i & J]), ins::math::ceil(v_alg[i & J]).raw())
     INSIDE_CMATH_GROUP("math: atan", std::atan(d_aty[i & J]), ins::math::atan(v_aty[i & J]).raw())
     INSIDE_CMATH_GROUP("math: acos", std::acos(d_aty[i & J]), ins::math::acos(v_aty[i & J]).raw())
@@ -1462,8 +1457,8 @@ static void bench_cmath() {
     INSIDE_CMATH_GROUP(
         "math: pown<3>", d_qs[i & J] * d_qs[i & J] * d_qs[i & J], ins::math::pown<3>(v_alg[i & J]).raw())
     INSIDE_CMATH_GROUP("math: pow (expected)",
-                             std::pow(d_powb[i & J], d_powe[i & J]),
-                             ins::math::pow(v_powb[i & J], v_powe[i & J]).raw())
+                       std::pow(d_powb[i & J], d_powe[i & J]),
+                       ins::math::pow(v_powb[i & J], v_powe[i & J]).raw())
 #undef INSIDE_CMATH_GROUP
 }
 
@@ -1521,30 +1516,26 @@ static void bench_geoalg() {
     std::size_t           i = 0;
     constexpr std::size_t J = M - 1;
 #define INSIDE_GA_GROUP(title, std_expr, ins_expr) \
-    {                                                    \
-        auto bench = group(title, 50'000);               \
-        bench.run("std double", [&] {                    \
-            ++i;                                         \
-            doNotOptimizeAway(std_expr);                 \
-        });                                              \
-        bench.run("ins::math inside", [&] {    \
-            ++i;                                         \
-            doNotOptimizeAway(ins_expr);                 \
-        });                                              \
-        finish(bench);                                   \
+    {                                              \
+        auto bench = group(title, 50'000);         \
+        bench.run("std double", [&] {              \
+            ++i;                                   \
+            doNotOptimizeAway(std_expr);           \
+        });                                        \
+        bench.run("ins::math inside", [&] {        \
+            ++i;                                   \
+            doNotOptimizeAway(ins_expr);           \
+        });                                        \
+        finish(bench);                             \
     }
-    INSIDE_GA_GROUP("math: exp of a complex number (onto 2^-20)",
-                          std::exp(d_c[i & J]),
-                          (ins::math::exp<c20>(v_c[i & J])))
-    INSIDE_GA_GROUP("math: exp of a complex number (onto 2^-52)",
-                          std::exp(d_c[i & J]),
-                          (ins::math::exp<c52>(v_c[i & J])))
-    INSIDE_GA_GROUP("math: exp of a bivector, a rotor (onto 2^-20)",
-                          native_rotor(d_b[i & J]),
-                          (ins::math::exp<r20>(v_b[i & J])))
-    INSIDE_GA_GROUP("math: exp of a bivector, a rotor (onto 2^-52)",
-                          native_rotor(d_b[i & J]),
-                          (ins::math::exp<r52>(v_b[i & J])))
+    INSIDE_GA_GROUP(
+        "math: exp of a complex number (onto 2^-20)", std::exp(d_c[i & J]), (ins::math::exp<c20>(v_c[i & J])))
+    INSIDE_GA_GROUP(
+        "math: exp of a complex number (onto 2^-52)", std::exp(d_c[i & J]), (ins::math::exp<c52>(v_c[i & J])))
+    INSIDE_GA_GROUP(
+        "math: exp of a bivector, a rotor (onto 2^-20)", native_rotor(d_b[i & J]), (ins::math::exp<r20>(v_b[i & J])))
+    INSIDE_GA_GROUP(
+        "math: exp of a bivector, a rotor (onto 2^-52)", native_rotor(d_b[i & J]), (ins::math::exp<r52>(v_b[i & J])))
 #undef INSIDE_GA_GROUP
 }
 

@@ -164,7 +164,7 @@ template <insidable B, class A>
 // No comparison with a floating-point value: 0.1 is not 1/10 in binary, so
 // an inside holding 1/10 would compare unequal to 0.1. Compare with a
 // rational (0.1_r), a point (just<1, 10>) or an inside.
-#define INSIDE_WHY_float_compare                                                                    \
+#define INSIDE_WHY_float_compare                                                                          \
     "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
     "just<1, 10> or an inside"
 template <insidable B, std::floating_point A>

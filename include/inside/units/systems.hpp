@@ -167,8 +167,7 @@ inline constexpr prefix_t<30>  quetta{};
 inline constexpr auto second = unit<"s", isq::duration>;
 inline constexpr auto metre  = unit<"m", isq::length>;
 // (The gram is 1/1000 of the coherent unit of mass, which the kilogram names.)
-inline constexpr auto gram =
-    detail::unit_tag<detail::definition<detail::unit_def, "g", detail::mag<1_g / 1000_g>, isq::mass>::value>;
+inline constexpr auto gram = detail::unit_tag<definition<unit_def, "g", detail::mag<1_g / 1000_g>, isq::mass>::value>;
 inline constexpr auto kilogram = kilo(gram);
 } // namespace si
 namespace si {

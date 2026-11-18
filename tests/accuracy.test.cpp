@@ -157,7 +157,7 @@ int main(int argc, char** argv) {
                  "|---------|---------------|----------------|-------------|--------------|---------|\n");
 
     // One macro row per (function, grid kind, reference).
-#define INSIDE_ACCURACY(fn, In, Dec, domain, ref)                                    \
+#define INSIDE_ACCURACY(fn, In, Dec, domain, ref)                                          \
     row(out,                                                                               \
         #fn,                                                                               \
         "dyadic 2^-14",                                                                    \

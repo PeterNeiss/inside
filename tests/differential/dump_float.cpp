@@ -22,9 +22,9 @@ void floats(rng_t& g, int n) {
             const float  f   = static_cast<float>(x.template to<double>());
             const double mid = (static_cast<double>(f) + static_cast<double>(std::nextafter(f, 1e30f))) / 2;
             if (const auto y = T::template try_make<round_floor>(mid)) {
-                std::uint64_t k  = static_cast<std::uint64_t>(y->raw()) -
-                                   static_cast<std::uint64_t>(ins::detail::raw_lo<T>);
-                const auto    dk = static_cast<std::int64_t>(g() % 5) - 2;
+                std::uint64_t k =
+                    static_cast<std::uint64_t>(y->raw()) - static_cast<std::uint64_t>(ins::detail::raw_lo<T>);
+                const auto dk = static_cast<std::int64_t>(g() % 5) - 2;
                 if (!(dk < 0 && k < static_cast<std::uint64_t>(-dk)))
                     k += static_cast<std::uint64_t>(dk);
                 if (k > mx)

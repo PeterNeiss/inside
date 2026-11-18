@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Parity between inside and quantity: every public function of
-// ins, and every public member function of an inside, either has a
+// Parity between inside and quantity: every public function of ins
+// declared outside the units headers (the number's; quantities share the
+// namespace), and every public member function of an inside, either has a
 // quantity form (checked below with a requires-expression) or is listed with
 // the reason it has none. Reflection lists the functions, so a new inside
 // function without either fails this test.
@@ -117,13 +118,18 @@ constexpr bool excepted(std::string_view n) {
     return std::ranges::any_of(inside_only, [n](const exception& e) { return e.Name == n; });
 }
 
+// Declared in a units header: a quantity's function, not the number's.
+consteval bool in_units_header(std::meta::info m) {
+    return std::string_view{std::meta::source_location_of(m).file_name()}.contains("/units/");
+}
+
 template <std::meta::info Scope, bool Members>
 std::vector<std::string> function_names() {
     std::vector<std::string> names;
     template for (constexpr auto m :
                   std::define_static_array(std::meta::members_of(Scope, std::meta::access_context::current()))) {
         if constexpr ((std::meta::is_function_template(m) || std::meta::is_function(m)) &&
-                      std::meta::has_identifier(m))
+                      std::meta::has_identifier(m) && (Members || !in_units_header(m)))
             if constexpr (!Members || std::meta::is_public(m))
                 // (Reserved names are the compiler's: GCC lists deduction
                 // guides as __dguide_<class>.)

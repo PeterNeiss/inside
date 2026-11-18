@@ -74,8 +74,7 @@ inline constexpr grid_number fine_unit = half_unit<Out> / grid_number{1024};
 
 template <insidable Out>
 inline constexpr bool integer_bracket = [] {
-    using ::ins::detail::signed_value_bits, ::ins::detail::units_lo,
-        ::ins::detail::units_hi;
+    using ::ins::detail::signed_value_bits, ::ins::detail::units_lo, ::ins::detail::units_hi;
     if constexpr (wide_valued<Out>)
         return false;
     else {
@@ -224,12 +223,12 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // and dd attempts as expressions in r (nothing of them without an FPU). FP
 // and DD in parentheses.
 #ifndef INSIDE_MATH_NO_FP
-    #define INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
+    #define INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                     \
         return ::ins::math::detail::entry::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
-                                                                        [=](auto& r) -> bool { return dd_call; }, \
-                                                                        [=] { return __VA_ARGS__; });
+                                                              [=](auto& r) -> bool { return dd_call; }, \
+                                                              [=] { return __VA_ARGS__; });
 #else
-    #define INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
+    #define INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                           \
         ::ins::math::detail::engine::note<::ins::math::detail::engine::probe::integer_run>(); \
         return __VA_ARGS__;
 #endif
@@ -237,15 +236,15 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // The tiers of a one-input kernel fn, where ok holds.
 #define INSIDE_ENGINE_KERNEL_TIERS(Out, In, fn, x, ok, ...)                  \
     INSIDE_ENGINE_TIERS(Out,                                                 \
-                              (engine::fp_tier<Out, engine::fp_##fn, In> && (ok)), \
-                              (engine::dd_tier<Out, In> && (ok)),                  \
-                              (engine::fp_attempt<Out, engine::fp_##fn>(x, r)),    \
-                              (engine::dd_attempt<Out, engine::fp_##fn>(x, r)),    \
-                              __VA_ARGS__)
+                        (engine::fp_tier<Out, engine::fp_##fn, In> && (ok)), \
+                        (engine::dd_tier<Out, In> && (ok)),                  \
+                        (engine::fp_attempt<Out, engine::fp_##fn>(x, r)),    \
+                        (engine::dd_attempt<Out, engine::fp_##fn>(x, r)),    \
+                        __VA_ARGS__)
 
 // The table tier's lookup, inside an eval: In has few slots and every
 // result lies in Out's range.
-#define INSIDE_ENGINE_TABLE(Out, In, x)                                           \
+#define INSIDE_ENGINE_TABLE(Out, In, x)                                                 \
     if constexpr (engine::table_input<In> && engine::table_output<Out>) {               \
         using table = engine::result_table<Out, In, engine::start_bits<Out>, [](In v) { \
             return core{engine::exact_input(v)};                                        \
@@ -508,7 +507,7 @@ struct rounding_fn {
 
 // One-input functions: the domain (checked on In's grid, `true` for none),
 // the double kernel's argument range (fp_ok), and the integer core.
-#define INSIDE_ENGINE_UNARY(fn, domain_v, msg, fp_ok, ...)                                                 \
+#define INSIDE_ENGINE_UNARY(fn, domain_v, msg, fp_ok, ...)                                                       \
     struct fn##_fn : rounding_fn<1> {                                                                            \
         template <class... In>                                                                                   \
         static constexpr bool domain = [] {                                                                      \
@@ -519,14 +518,14 @@ struct rounding_fn {
         using result_on = results::fn<N, In>;                                                                    \
         template <insidable Out, insidable In>                                                                   \
         [[nodiscard]] static constexpr Out eval(In x) {                                                          \
-            static_assert(domain<In>, "ins::math::" #fn ": " msg);                                     \
+            static_assert(domain<In>, "ins::math::" #fn ": " msg);                                               \
             require_rounding<Out>();                                                                             \
             if constexpr (anchoring::unanchored_call<Out, In>)                                                   \
                 return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_fn::eval<O>(v); }, x); \
             else {                                                                                               \
                 using core = __VA_ARGS__;                                                                        \
-                INSIDE_ENGINE_TABLE(Out, In, x)                                                            \
-                INSIDE_ENGINE_KERNEL_TIERS(                                                                \
+                INSIDE_ENGINE_TABLE(Out, In, x)                                                                  \
+                INSIDE_ENGINE_KERNEL_TIERS(                                                                      \
                     Out,                                                                                         \
                     In,                                                                                          \
                     fn,                                                                                          \
@@ -538,26 +537,25 @@ struct rounding_fn {
     };
 
 INSIDE_ENGINE_UNARY(exp,
-                          true,
-                          "",
-                          engine::in_max<In> <= 700,
-                          engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
-INSIDE_ENGINE_UNARY(
-    exp2,
-    true,
-    "",
-    engine::in_max<In> <= 1000,
-    engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+                    true,
+                    "",
+                    engine::in_max<In> <= 700,
+                    engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+INSIDE_ENGINE_UNARY(exp2,
+                    true,
+                    "",
+                    engine::in_max<In> <= 1000,
+                    engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
 INSIDE_ENGINE_UNARY(sin,
-                          true,
-                          "",
-                          engine::in_max<In> <= 0x1p20,
-                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::sin, 1>)
+                    true,
+                    "",
+                    engine::in_max<In> <= 0x1p20,
+                    engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::sin, 1>)
 INSIDE_ENGINE_UNARY(cos,
-                          true,
-                          "",
-                          engine::in_max<In> <= 0x1p20,
-                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::cos, 1>)
+                    true,
+                    "",
+                    engine::in_max<In> <= 0x1p20,
+                    engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::cos, 1>)
 INSIDE_ENGINE_UNARY(atan, true, "", true, engine::atan_core<engine::input_limbs<In>>)
 INSIDE_ENGINE_UNARY(
     sinh,
@@ -572,10 +570,10 @@ INSIDE_ENGINE_UNARY(
     engine::in_max<In> <= 700,
     engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_out_kmax<Out, In>>)
 INSIDE_ENGINE_UNARY(tanh,
-                          true,
-                          "",
-                          engine::in_max<In> <= 300,
-                          engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>)
+                    true,
+                    "",
+                    engine::in_max<In> <= 300,
+                    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>)
 INSIDE_ENGINE_UNARY(
     asinh,
     true,
@@ -584,30 +582,30 @@ INSIDE_ENGINE_UNARY(
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>)
 INSIDE_ENGINE_UNARY(cbrt, true, "", true, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>)
 INSIDE_ENGINE_UNARY(log,
-                          (lower_of<In0> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>)
+                    (lower_of<In0> > 0),
+                    "input must be strictly positive",
+                    true,
+                    engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>)
 INSIDE_ENGINE_UNARY(log2,
-                          (lower_of<In0> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>)
+                    (lower_of<In0> > 0),
+                    "input must be strictly positive",
+                    true,
+                    engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>)
 INSIDE_ENGINE_UNARY(log10,
-                          (lower_of<In0> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>)
+                    (lower_of<In0> > 0),
+                    "input must be strictly positive",
+                    true,
+                    engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>)
 INSIDE_ENGINE_UNARY(asin,
-                          (lower_of<In0> >= -1 && upper_of<In0> <= 1),
-                          "input must be in [-1, 1]",
-                          true,
-                          engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>)
+                    (lower_of<In0> >= -1 && upper_of<In0> <= 1),
+                    "input must be in [-1, 1]",
+                    true,
+                    engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>)
 INSIDE_ENGINE_UNARY(acos,
-                          (lower_of<In0> >= -1 && upper_of<In0> <= 1),
-                          "input must be in [-1, 1]",
-                          true,
-                          engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>)
+                    (lower_of<In0> >= -1 && upper_of<In0> <= 1),
+                    "input must be in [-1, 1]",
+                    true,
+                    engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>)
 INSIDE_ENGINE_UNARY(
     acosh,
     (lower_of<In0> >= 1),
@@ -672,11 +670,11 @@ struct tan_fn : rounding_fn<1> {
             using core = engine::
                 trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, engine::out_kmax<Out>>;
             INSIDE_ENGINE_TIERS(Out,
-                                      (engine::fp_tier<Out, engine::fp_tan, In> && engine::in_max<In> <= 0x1p20),
-                                      (engine::dd_tier<Out, In> && engine::in_max<In> <= 0x1p20),
-                                      (engine::fp_attempt_tan<Out>(x, r)),
-                                      (engine::dd_attempt_tan<Out>(x, r)),
-                                      engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))
+                                (engine::fp_tier<Out, engine::fp_tan, In> && engine::in_max<In> <= 0x1p20),
+                                (engine::dd_tier<Out, In> && engine::in_max<In> <= 0x1p20),
+                                (engine::fp_attempt_tan<Out>(x, r)),
+                                (engine::dd_attempt_tan<Out>(x, r)),
+                                engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))
         }
     }
 };
@@ -694,13 +692,13 @@ struct atan2_fn : rounding_fn<2> {
             constexpr std::size_t E = std::max(engine::input_limbs<InY>, engine::input_limbs<InX>);
             using F                 = ::ins::detail::wide_rational<E>;
             INSIDE_ENGINE_TIERS(Out,
-                                      (engine::fp_tier<Out, engine::fp_atan2, InY, InX> &&
-                                       engine::in_max<InY> <= 0x1p500 && engine::in_max<InX> <= 0x1p500),
-                                      (engine::dd_tier<Out, InY, InX>),
-                                      (engine::fp_attempt_atan2<Out>(y, x, r)),
-                                      (engine::dd_attempt_atan2<Out>(y, x, r)),
-                                      engine::evaluate<Out, engine::start_bits<Out>>(
-                                          engine::atan2_core<E>{F{engine::exact_input(y)}, F{engine::exact_input(x)}}))
+                                (engine::fp_tier<Out, engine::fp_atan2, InY, InX> && engine::in_max<InY> <= 0x1p500 &&
+                                 engine::in_max<InX> <= 0x1p500),
+                                (engine::dd_tier<Out, InY, InX>),
+                                (engine::fp_attempt_atan2<Out>(y, x, r)),
+                                (engine::dd_attempt_atan2<Out>(y, x, r)),
+                                engine::evaluate<Out, engine::start_bits<Out>>(
+                                    engine::atan2_core<E>{F{engine::exact_input(y)}, F{engine::exact_input(x)}}))
         }
     }
 };
@@ -719,14 +717,14 @@ struct hypot_fn : rounding_fn<2> {
             constexpr std::size_t E    = ::ins::detail::limbs_for_bits(Bits);
             using F                    = ::ins::detail::wide_rational<E>;
             INSIDE_ENGINE_TIERS(Out,
-                                      (engine::fp_tier<Out, engine::fp_hypot, InX, InY> &&
-                                       engine::in_max<InX> <= 0x1p500 && engine::in_max<InY> <= 0x1p500),
-                                      (engine::dd_tier<Out, InX, InY>),
-                                      (engine::fp_attempt_hypot<Out>(x, y, r)),
-                                      (engine::dd_attempt_hypot<Out>(x, y, r)),
-                                      engine::evaluate<Out, engine::start_bits<Out>>(engine::sqrt_core<E, Bits>{
-                                          F{engine::exact_input(x)} * F{engine::exact_input(x)} +
-                                          F{engine::exact_input(y)} * F{engine::exact_input(y)}}))
+                                (engine::fp_tier<Out, engine::fp_hypot, InX, InY> && engine::in_max<InX> <= 0x1p500 &&
+                                 engine::in_max<InY> <= 0x1p500),
+                                (engine::dd_tier<Out, InX, InY>),
+                                (engine::fp_attempt_hypot<Out>(x, y, r)),
+                                (engine::dd_attempt_hypot<Out>(x, y, r)),
+                                engine::evaluate<Out, engine::start_bits<Out>>(
+                                    engine::sqrt_core<E, Bits>{F{engine::exact_input(x)} * F{engine::exact_input(x)} +
+                                                               F{engine::exact_input(y)} * F{engine::exact_input(y)}}))
         }
     }
 };
@@ -778,11 +776,11 @@ struct pow_fn : rounding_fn<2> {
                     return engine::evaluate<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
             };
             INSIDE_ENGINE_TIERS(Out,
-                                      (engine::fp_tier<Out, engine::fp_pow, InB, InE>),
-                                      (engine::dd_tier<Out, InB, InE>),
-                                      (engine::fp_attempt_pow<Out>(base, exp, r)),
-                                      (engine::dd_attempt_pow<Out>(base, exp, r)),
-                                      integer())
+                                (engine::fp_tier<Out, engine::fp_pow, InB, InE>),
+                                (engine::dd_tier<Out, InB, InE>),
+                                (engine::fp_attempt_pow<Out>(base, exp, r)),
+                                (engine::dd_attempt_pow<Out>(base, exp, r)),
+                                integer())
         }
     }
 };
@@ -799,8 +797,7 @@ struct pow_base_fn : rounding_fn<1> {
         static_assert(base_ok<Base>, "ins::math::pow_base: Base must be an integer of at least 2");
         require_rounding<Out>();
         if constexpr (grid_base<Base> && ::ins::detail::fits_int64(interval{Base, Base}))
-            return pow_base_fn<static_cast<std::int64_t>(
-                ::ins::detail::grid_numerator(Base))>::template eval<Out>(x);
+            return pow_base_fn<static_cast<std::int64_t>(::ins::detail::grid_numerator(Base))>::template eval<Out>(x);
         else if constexpr (std::integral<decltype(Base)> &&
                            !::ins::detail::fits_int64(interval{grid_number{Base}, grid_number{Base}}))
             return pow_base_fn<grid_number{Base}>::template eval<Out>(x); // a builtin past int64: the grid path

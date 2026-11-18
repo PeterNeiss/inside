@@ -149,7 +149,7 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
 
     // error mode: out-of-range reports, value unchanged.
     ins::error ec{};
-    R                    d{2.0};
+    R          d{2.0};
     d.on_error<checked>(ec) = 9.5;
     ASSERT_TRUE(ec != error{});
     ASSERT_TRUE(static_cast<double>(rational{d}) == 2.0);

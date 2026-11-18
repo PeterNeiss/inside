@@ -27,8 +27,8 @@
 //---------------------------------------------------------------------------
 namespace ins {
 // divmod's result: the rounded quotient and its remainder, for
-// `auto [q, r] = divmod(a, b);`.
-template <insidable Q, insidable R>
+// `auto [q, r] = divmod(a, b);`. Of two quantities, the remainder is a quantity.
+template <class Q, class R>
 struct divmod_result {
     Q Quotient;
     R Remainder;

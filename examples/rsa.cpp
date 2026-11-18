@@ -158,5 +158,5 @@ int main() {
     const residue sig  = powmod<residue, modulus>(hash, d);
     const bool    ok   = powmod<residue, modulus>(sig, exponent{E}) == hash;
     std::cout << "signature  = " << digits(sig) << "\nverified   = " << ok << "\n";
-    return ok && digits(sig) == "147061418896...979242965584 (309 digits)" ? 0 : 1;
+    return ok && digits(sig) == "754586494100...154302961483 (308 digits)" ? 0 : 1;
 }

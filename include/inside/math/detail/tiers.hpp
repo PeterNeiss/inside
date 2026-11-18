@@ -346,7 +346,7 @@ inline constexpr int unbounded = 1024;
 struct fp_plain {
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
 };
-    #define INSIDE_ENGINE_KERNEL_ON(base, fn, kernel, call, mag, limit, slope_expr)                    \
+    #define INSIDE_ENGINE_KERNEL_ON(base, fn, kernel, call, mag, limit, slope_expr)                          \
         struct fp_##fn : base {                                                                              \
             static constexpr int Mag   = mag;                                                                \
             static constexpr int Limit = limit;                                                              \
@@ -374,8 +374,7 @@ INSIDE_ENGINE_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel
 INSIDE_ENGINE_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), __builtin_fabs(v) + 1)
 INSIDE_ENGINE_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 INSIDE_ENGINE_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
-INSIDE_ENGINE_KERNEL(
-    asin, asin_k, asin, 1, fp_limit(fp_full_asin::Rel), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+INSIDE_ENGINE_KERNEL(asin, asin_k, asin, 1, fp_limit(fp_full_asin::Rel), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
 INSIDE_ENGINE_KERNEL(
     acos, asin_k, acos, 2, fp_limit(4 * fp_full_asin::AcosRel), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
 INSIDE_ENGINE_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / __builtin_fabs(x))
@@ -386,11 +385,11 @@ INSIDE_ENGINE_KERNEL(
     atanh, log_k, atanh, unbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
 // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
 INSIDE_ENGINE_KERNEL(cbrt,
-                           pow_k,
-                           cbrt,
-                           unbounded,
-                           fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
-                           x == 0 ? 0.0 : __builtin_fabs(v / x))
+                     pow_k,
+                     cbrt,
+                     unbounded,
+                     fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
+                     x == 0 ? 0.0 : __builtin_fabs(v / x))
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh_eval {
@@ -399,12 +398,12 @@ struct fp_acosh_eval {
     }
 };
 INSIDE_ENGINE_KERNEL_ON(fp_acosh_eval,
-                              acosh,
-                              log_k,
-                              acosh,
-                              unbounded,
-                              fp_limit(fp_full_log::AcoshRel),
-                              1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
+                        acosh,
+                        log_k,
+                        acosh,
+                        unbounded,
+                        fp_limit(fp_full_log::AcoshRel),
+                        1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
     #undef INSIDE_ENGINE_KERNEL_ON
     #undef INSIDE_ENGINE_KERNEL
 
@@ -527,7 +526,7 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
 // at x and its proved bound.
 template <typename K>
 struct dd_lean {};
-    #define INSIDE_ENGINE_LEAN(fn)         \
+    #define INSIDE_ENGINE_LEAN(fn)               \
         template <>                              \
         struct dd_lean<fp_##fn> {                \
             template <typename D>                \

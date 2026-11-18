@@ -23,7 +23,6 @@ printf '#include <inside/units.hpp>\nint main() {}\n' > "$DIR/include.cpp"
 {
   echo '#include <inside/units.hpp>'
   echo 'using namespace ins;'
-  echo 'using namespace ins;'
   echo 'int sink(const auto& q) { return static_cast<int>(sizeof(q)); }'
   echo 'int main() {'
   echo '    int s = 0;'

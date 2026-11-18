@@ -19,7 +19,7 @@ namespace ins {
 //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
 //   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
 //---------------------------------------------------------------------------
-template <reference R, detail::origin_ref O, insidable Rep>
+template <reference R, origin_ref O, insidable Rep>
 class quantity_point;
 
 namespace detail {
@@ -64,23 +64,23 @@ constexpr auto make_point(Q&& q) {
 }
 } // namespace detail
 
-template <reference R, detail::origin_ref O, insidable Rep>
+template <reference R, origin_ref O, insidable Rep>
 class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>> {
     using holder = detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>>;
     using holder::Value; // the quantity from the origin
 
   public:
-    using quantity_type                           = quantity<R, Rep>;
-    using rep                                     = Rep;
-    static constexpr ins::reference   reference = R;
-    static constexpr detail::origin_ref origin    = O;
+    using quantity_type                       = quantity<R, Rep>;
+    using rep                                 = Rep;
+    static constexpr ins::reference reference = R;
+    static constexpr origin_ref     origin    = O;
 
     constexpr quantity_point() = default;
     constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
-    template <ins::reference R2, detail::origin_ref O2, class V2>
+    template <ins::reference R2, origin_ref O2, class V2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O))) && detail::implicit_v<R2, R> &&
                 std::constructible_from<
                     quantity<R, Rep>,
@@ -92,7 +92,7 @@ class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quant
 
     // The quantity from this point's origin, or from another one.
     [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Value; }
-    template <detail::origin_ref O2>
+    template <origin_ref O2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0 &&
                  detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
@@ -101,10 +101,10 @@ class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quant
             quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(ins::detail::value_of(Value)))>>>(
             detail::shift<c>(ins::detail::value_of(Value)));
     }
-    template <detail::origin_ref O2>
+    template <origin_ref O2>
         requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
     void quantity_from(origin_t<O2>) const = delete ("units: points of different absolute origins");
-    template <detail::origin_ref O2>
+    template <origin_ref O2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi != 0)
     void quantity_from(origin_t<O2>) const =
         delete ("units: an origin shift in a unit with a pi magnitude has no exact grid");
@@ -116,7 +116,7 @@ class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quant
         return quantity_from(origin_t<detail::absolute_of(O)>{});
     }
     // The same point counted from another origin.
-    template <detail::origin_ref O2>
+    template <origin_ref O2>
         requires requires(const quantity_point& p, origin_t<O2> o) { p.quantity_from(o); }
     [[nodiscard]] constexpr auto point_for(origin_t<O2> o) const {
         return detail::make_point<O2>(quantity_from(o));
@@ -161,12 +161,12 @@ constexpr auto point_at(const Q& q) {
         return quantity_point<Q::reference, O, typename Q::rep>{q};
 }
 } // namespace detail
-template <insidable Rep2, reference R, detail::origin_ref O, class V>
+template <insidable Rep2, reference R, origin_ref O, class V>
     requires requires(const quantity<R, V>& q) { value_cast<Rep2>(q); }
 [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
     return detail::point_at<O>(value_cast<Rep2>(p.quantity_from_origin()));
 }
-template <auto U, insidable Rep2, reference R, detail::origin_ref O, class V>
+template <auto U, insidable Rep2, reference R, origin_ref O, class V>
     requires requires(const quantity<R, V>& q) { value_cast<U, Rep2>(q); }
 [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
     return detail::point_at<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
@@ -186,11 +186,11 @@ template <auto U, insidable V>
 }
 
 // origin + quantity: si::absolute_zero + just<300> * si::kelvin.
-template <detail::origin_ref O, reference R, class V>
+template <origin_ref O, reference R, class V>
 [[nodiscard]] constexpr auto operator+(origin_t<O>, const quantity<R, V>& q) {
     return quantity_point<R, O, V>{q};
 }
-template <reference R, class V, detail::origin_ref O>
+template <reference R, class V, origin_ref O>
 [[nodiscard]] constexpr auto operator+(const quantity<R, V>& q, origin_t<O>) {
     return quantity_point<R, O, V>{q};
 }
@@ -208,36 +208,36 @@ constexpr auto in_point_unit(const quantity<R2, V2>& q) {
         return q;
 }
 } // namespace detail
-template <reference R, detail::origin_ref O, class V, reference R2, class V2>
+template <reference R, origin_ref O, class V, reference R2, class V2>
     requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a + detail::in_point_unit<R.U>(b); }
 [[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
     return detail::make_point<O>(p.quantity_from_origin() + detail::in_point_unit<R.U>(q));
 }
-template <reference R2, class V2, reference R, detail::origin_ref O, class V>
+template <reference R2, class V2, reference R, origin_ref O, class V>
     requires requires(const quantity<R2, V2>& a, const quantity<R, V>& b) { detail::in_point_unit<R.U>(a) + b; }
 [[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p) {
     return detail::make_point<O>(detail::in_point_unit<R.U>(q) + p.quantity_from_origin());
 }
-template <reference R, detail::origin_ref O, class V, reference R2, class V2>
+template <reference R, origin_ref O, class V, reference R2, class V2>
     requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a - detail::in_point_unit<R.U>(b); }
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
     return detail::make_point<O>(p.quantity_from_origin() - detail::in_point_unit<R.U>(q));
 }
-template <reference R, detail::origin_ref O, class V, reference R2, detail::origin_ref O2, class V2>
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
     requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
         a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
     }
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
 }
-template <reference R, detail::origin_ref O, class V, reference R2, detail::origin_ref O2, class V2>
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
     requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
         a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
     }
 [[nodiscard]] constexpr bool operator==(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
 }
-template <reference R, detail::origin_ref O, class V, reference R2, detail::origin_ref O2, class V2>
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
     requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
         a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
     }

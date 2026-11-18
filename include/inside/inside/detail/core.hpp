@@ -347,7 +347,7 @@ struct inside : detail::raw_holder<G, P> {
     // A std::expected is never stored implicitly: check it and store *e, or
     // use try_make(e), which passes its error on. Construction, assignment and
     // the compound assignments from an expected are deleted with that reason.
-#define INSIDE_WHY_expected                                                                       \
+#define INSIDE_WHY_expected                                                                             \
     "inside: a std::expected is not stored implicitly - check it and store *e, or use T::try_make(e), " \
     "which passes its error on"
     template <detail::numeric A>
@@ -405,7 +405,7 @@ struct inside : detail::raw_holder<G, P> {
         return *this;
     }
 
-#define INSIDE_WHY_unproven                                                                                 \
+#define INSIDE_WHY_unproven                                                                                       \
     "inside: the source's values may fall outside this grid, or off its notch, at run time - store with clamp, "  \
     "wrap or a rounding mode (x.with<clamp>() = v, T{v, clamp}), report with T::try_make(v), x.on_error(ec) = v " \
     "or x.on_error(f) = v, or opt out with unsafe"
@@ -419,10 +419,10 @@ struct inside : detail::raw_holder<G, P> {
     // A store that can never succeed is deleted, with the clause that fails:
     // a trait or `requires` probe sees it as ill-formed, and the error names
     // the fix. explain_assignable<To, From> prints the two grids.
-#define INSIDE_WHY_disjoint                                                                   \
+#define INSIDE_WHY_disjoint                                                                         \
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
-#define INSIDE_WHY_notch                                                                                    \
+#define INSIDE_WHY_notch                                                                                          \
     "inside: incompatible notches - the source's values miss this grid's notch; use x.with<round_toward_zero>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <detail::numeric A>
@@ -1061,7 +1061,7 @@ struct inside : detail::raw_holder<G, P> {
     // A rational has no grid, like an int or a double: a compound assign
     // takes an inside (`x += 0.5_ins`, `x += just<1, 2>`), as the binary
     // operators do (arithmetic.hpp deletes inside ⋈ rational the same way).
-#define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                     \
+#define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                           \
     template <std::same_as<detail::rational> A>                                                                 \
     inside& operator op(const A&) = delete ("an inside cannot be combined with a rational: write the constant " \
                                             "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
@@ -1138,7 +1138,7 @@ struct inside : detail::raw_holder<G, P> {
     template <insidable R>
         requires compound_assignable<remainder_t<R>> && (!compound_proven<remainder_t<R>>)
     inside& operator%=(const R&) = delete (INSIDE_WHY_unproven);
-#define INSIDE_WHY_zero                                                                                     \
+#define INSIDE_WHY_zero                                                                                           \
     "inside: the divisor's grid holds 0 - report it with x.on_error(ec) /= d (or a hook, x.on_error(f)), divide " \
     "with div(x, d) (a std::expected), or give the divisor a grid without 0"
     template <insidable R>
@@ -1211,7 +1211,7 @@ struct inside : detail::raw_holder<G, P> {
         --*this;
         return t;
     }
-#define INSIDE_WHY_step_out                                                                                     \
+#define INSIDE_WHY_step_out                                                                                           \
     "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_ins, x.on_error(f) " \
     "+= 1_ins, or iterate with a cursor"
     inside& operator++()

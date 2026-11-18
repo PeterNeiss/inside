@@ -1800,7 +1800,7 @@ TEST(ArithmeticTest, continuous_sum_is_exact) {
                                 fine{rational{1, 1973}}};
     using total  = inside<{{0, 6}, per<(1ll << 40)>}, round_half_away>;
     const auto s = ins::sum<total>(r); // Σ 1/p, rounded once
-    EXPECT_EQ(s->raw(), 3318520424);             // round(2^40 · Σ 1/p)
+    EXPECT_EQ(s->raw(), 3318520424);   // round(2^40 · Σ 1/p)
     using sixths = inside<{{-1, 1}, max_denominator{6}}>;
     const std::array<sixths, 4> h{
         sixths{rational{1, 2}}, sixths{rational{1, 3}}, sixths{rational{1, 6}}, sixths{rational{-5, 6}}};

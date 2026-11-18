@@ -55,9 +55,8 @@ struct element_traits<Q> {
         auto numbers =
             std::forward<Rng>(r) | std::views::transform([](const P& p) { return ins::detail::value_of(p); });
         return try_store<N, policy_of<N>>([&](N& out, auto&& policy) { sum_into(numbers, out, policy); })
-            .transform([](const N& t) {
-                return Q{ins::detail::quantity_access::make<ins::quantity<P::reference, N>>(t)};
-            });
+            .transform(
+                [](const N& t) { return Q{ins::detail::quantity_access::make<ins::quantity<P::reference, N>>(t)}; });
     }
     template <class V>
     static constexpr std::expected<Q, error> try_store_of(const V& v) {

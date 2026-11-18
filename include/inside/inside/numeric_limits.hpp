@@ -72,12 +72,10 @@ struct std::numeric_limits<ins::inside<G, P>> {
     static constexpr B at(const ins::grid_number& v) noexcept {
         namespace d = ::ins::detail;
         if constexpr (d::wide_valued<B>) {
-            B                    b{};
+            B          b{};
             ins::error ec{};
-            d::assign_exact<d::rational>(b,
-                                         d::exact_of_grid<d::exact_limbs<B>>(v),
-                                         ins::make_policy<P>(ec),
-                                         ins::detail::no_action{});
+            d::assign_exact<d::rational>(
+                b, d::exact_of_grid<d::exact_limbs<B>>(v), ins::make_policy<P>(ec), ins::detail::no_action{});
             return b;
         } else
             return d::stored<B>(d::to_rational(v));

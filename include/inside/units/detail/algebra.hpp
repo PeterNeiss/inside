@@ -26,7 +26,7 @@
 #include <vector>
 
 // The diagnostic of a π conversion asked to be exact (rescale, in()).
-#define INSIDE_UNITS_WHY_PI                                                                  \
+#define INSIDE_UNITS_WHY_PI                                                                        \
     "units: this conversion multiplies by a power of pi, which has no exact grid - round it with " \
     "value_cast<unit, Rep>(q) from <inside/units/math.hpp>, Rep declared with a rounding mode"
 
@@ -38,22 +38,18 @@ using ins::grid_number;
 // dimension is a base_dimension<"name">: the SI ones (length, mass, time…)
 // and yours (currency, information) alike. Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
-namespace detail {
 struct unit_def;
-} // namespace detail
 
 // A base dimension: base_dimension<"currency"> (units/detail/define.hpp).
 // A basis vector of a geometric algebra is one too (see basis_vector): its
 // exponent is 0 or 1, it squares to Square (+1, -1 or 0), two of them
 // anticommute, and Vector is its unit. Vector is read only when Basis is set.
-namespace detail {
 struct base_dimension_def {
     std::string_view Name;
     std::int8_t      Square{0};
     bool             Basis{false};
     const unit_def*  Vector{};
 };
-} // namespace detail
 
 struct dimension;
 
@@ -79,9 +75,9 @@ struct dimension {
     // numbers' limbs are, so a dimension holds any number of them. Two arrays
     // of scalars, not one of pairs: GCC 16 cannot intern an array of a class
     // type that equals one already interned.
-    const detail::base_dimension_def* const* Base{};
-    const std::int8_t*                       Exp{};
-    std::size_t                              Size{0}; // tested instead of the pointers (see big_int::Size)
+    const base_dimension_def* const* Base{};
+    const std::int8_t*               Exp{};
+    std::size_t                      Size{0}; // tested instead of the pointers (see big_int::Size)
 
     // An exponent past ±127 is an error, not a wrap.
     static constexpr std::int8_t exponent(int e) {
@@ -205,7 +201,7 @@ constexpr bool sorted_add(T (&items)[N], std::int8_t& size, T x, int e, Same sam
 } // namespace detail
 
 // The dimension of one base dimension (its exponent 1).
-constexpr dimension dimension_of(const detail::base_dimension_def& b) {
+constexpr dimension dimension_of(const base_dimension_def& b) {
     detail::exponents u;
     u.add(&b, 1);
     return u.intern();
@@ -323,23 +319,23 @@ struct magnitude {
 };
 
 // mag<r> — a magnitude tag: mag<1000> * si::metre, mag<1_g / 3_g> * …
-namespace detail {
 template <magnitude M>
 struct mag_t {
     static constexpr magnitude value = M;
 };
+namespace detail {
 template <auto R>
 inline constexpr mag_t<magnitude{grid_number{R}}>    mag{};
 inline constexpr mag_t<magnitude{grid_number{1}, 1}> mag_pi{};
 } // namespace detail
 
 template <magnitude A, magnitude B>
-consteval auto operator*(detail::mag_t<A>, detail::mag_t<B>) {
-    return detail::mag_t<A * B>{};
+consteval auto operator*(mag_t<A>, mag_t<B>) {
+    return mag_t<A * B>{};
 }
 template <magnitude A, magnitude B>
-consteval auto operator/(detail::mag_t<A>, detail::mag_t<B>) {
-    return detail::mag_t<A / B>{};
+consteval auto operator/(mag_t<A>, mag_t<B>) {
+    return mag_t<A / B>{};
 }
 
 //---------------------------------------------------------------------------
@@ -351,16 +347,13 @@ consteval auto operator/(detail::mag_t<A>, detail::mag_t<B>) {
 // it never converts implicitly across that boundary (angular_measure vs a
 // dimensionless ratio).
 //---------------------------------------------------------------------------
-namespace detail {
 struct kind_def;
-} // namespace detail
 
 // An optional reference to a static object (a parent kind, a unit's kind, an
 // origin). It is tested by its flag, never against nullptr, and compared by
 // content, never by address: under GCC's -fsanitize=undefined `&obj ==
 // nullptr`, and under -fsanitize=pointer-compare `&a == &b`, is no constant
 // expression.
-namespace detail {
 template <class T>
 struct ref_or_none {
     const T* P{};
@@ -381,11 +374,13 @@ struct kind_factor {
     friend constexpr bool operator==(const kind_factor& a, const kind_factor& b);
 };
 
+namespace detail {
 inline constexpr std::size_t max_kind_factors = 6;
+} // namespace detail
 
 // A product of named kinds to integer powers, sorted by name.
 struct recipe {
-    kind_factor           F[max_kind_factors]{};
+    kind_factor           F[detail::max_kind_factors]{};
     std::int8_t           Size{0};
     friend constexpr bool operator==(const recipe& a, const recipe& b) {
         return a.Size == b.Size && std::equal(a.F, a.F + a.Size, b.F);
@@ -397,7 +392,6 @@ struct kind_expr {
     recipe    Recipe{};
     dimension Dim{};
 };
-} // namespace detail
 
 namespace detail {
 struct distinct_t {
@@ -406,15 +400,14 @@ struct distinct_t {
 inline constexpr distinct_t distinct{};
 } // namespace detail
 
-template <const detail::kind_def* S>
+template <const kind_def* S>
 struct kind_t;
 
-namespace detail {
 struct kind_def {
     std::string_view Name;
     dimension        Dim{};
-    detail::kind_ref Parent{};
-    detail::recipe   Recipe{};
+    kind_ref         Parent{};
+    recipe           Recipe{};
     bool             Distinct{false};
 
     // A base quantity: a dimension of its own (length, currency).
@@ -423,26 +416,25 @@ struct kind_def {
     template <const kind_def* P>
     constexpr kind_def(std::string_view name, kind_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
     template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>, distinct_t)
+    constexpr kind_def(std::string_view name, kind_t<P>, detail::distinct_t)
         : Name{name}, Dim{P->Dim}, Parent{P}, Distinct{true} {}
     // A derived root: named by its recipe.
-    constexpr kind_def(std::string_view name, const detail::kind_expr& e) : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
-    constexpr kind_def(std::string_view name, const detail::kind_expr& e, distinct_t)
+    constexpr kind_def(std::string_view name, const kind_expr& e) : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
+    constexpr kind_def(std::string_view name, const kind_expr& e, detail::distinct_t)
         : Name{name}, Dim{e.Dim}, Recipe{e.Recipe}, Distinct{true} {}
     // A child with a recipe of its own (velocity: speed, displacement / duration).
     template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>, const detail::kind_expr& e)
+    constexpr kind_def(std::string_view name, kind_t<P>, const kind_expr& e)
         : Name{name}, Dim{P->Dim}, Parent{P}, Recipe{e.Recipe} {
         if (!(e.Dim == P->Dim))
             ins::detail::constexpr_error<"units: a kind's recipe must have its parent's dimension">();
     }
     template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>, const detail::kind_expr& e, distinct_t)
+    constexpr kind_def(std::string_view name, kind_t<P>, const kind_expr& e, detail::distinct_t)
         : kind_def{name, kind_t<P>{}, e} {
         Distinct = true;
     }
 };
-} // namespace detail
 
 namespace detail {
 // Identity by content (see ref_or_none). A kind is its name, dimension, recipe, kind boundary and parent chain: a
@@ -461,9 +453,13 @@ constexpr bool same(const kind_ref& a, const kind_ref& b) {
     return same(a.P, b.P);
 }
 
+} // namespace detail
+
 constexpr bool operator==(const kind_factor& a, const kind_factor& b) {
-    return same(a.Kind, b.Kind) && a.Exp == b.Exp;
+    return detail::same(a.Kind, b.Kind) && a.Exp == b.Exp;
 }
+
+namespace detail {
 
 // The kind's kind root: the first Distinct kind on the way up, else the root.
 consteval const kind_def* kind_root(const kind_def* s) {
@@ -539,10 +535,10 @@ consteval bool recipe_matches(const recipe& have, const recipe& want) {
 }
 } // namespace detail
 
-template <const detail::kind_def* S>
+template <const kind_def* S>
 struct kind_t {
-    static constexpr const detail::kind_def* value = S;
-    constexpr operator detail::kind_ref() const { return S; } // unit_options{.kind = isq::frequency}
+    static constexpr const kind_def* value = S;
+    constexpr                        operator kind_ref() const { return S; } // unit_options{.kind = isq::frequency}
     // isq::height[si::metre] — defined after unit_t and reference_t.
     template <class U>
     consteval auto operator[](U) const;
@@ -572,59 +568,53 @@ consteval kind_expr kind_combine(const kind_expr& a, const kind_expr& b, int sig
 } // namespace detail
 
 template <detail::kind_operand A, detail::kind_operand B>
-consteval detail::kind_expr operator*(A a, B b) {
+consteval kind_expr operator*(A a, B b) {
     return detail::kind_combine(detail::expr_of(a), detail::expr_of(b), 1);
 }
 template <detail::kind_operand A, detail::kind_operand B>
-consteval detail::kind_expr operator/(A a, B b) {
+consteval kind_expr operator/(A a, B b) {
     return detail::kind_combine(detail::expr_of(a), detail::expr_of(b), -1);
 }
 // Two kinds are equal when their expressions are: one named kind, or one
 // recipe of named kinds (isq::length / isq::duration == isq::length / isq::time).
 template <detail::kind_operand A, detail::kind_operand B>
 consteval bool operator==(A a, B b) {
-    const detail::kind_expr x = detail::expr_of(a), y = detail::expr_of(b);
+    const kind_expr x = detail::expr_of(a), y = detail::expr_of(b);
     return x.Recipe == y.Recipe && x.Dim == y.Dim;
 }
 
 template <int N, detail::kind_operand A>
-consteval detail::kind_expr pow(A a) {
-    detail::kind_expr r{};
+consteval kind_expr pow(A a) {
+    kind_expr r{};
     for (int i = 0; i < (N < 0 ? -N : N); ++i)
         r = detail::kind_combine(r, detail::expr_of(a), N < 0 ? -1 : 1);
     return r;
 }
 template <detail::kind_operand A>
-consteval detail::kind_expr inverse(A a) {
-    return detail::kind_combine(detail::kind_expr{}, detail::expr_of(a), -1);
+consteval kind_expr inverse(A a) {
+    return detail::kind_combine(kind_expr{}, detail::expr_of(a), -1);
 }
 
-namespace detail {
 struct unit_def;
-} // namespace detail
 
 //---------------------------------------------------------------------------
 // origin_def — where a quantity_point's number counts from. An absolute
 // origin (absolute zero) or one at an exact offset from one, in the coherent
 // unit of the dimension (the ice point: absolute zero + 273.15 K).
 //---------------------------------------------------------------------------
-namespace detail {
 struct origin_def {
-    std::string_view                Name;
-    dimension                       Dim{};
-    detail::ref_or_none<origin_def> Absolute{}; // none for an absolute origin
-    grid_number                     Offset{0};  // from Absolute, in the coherent unit
+    std::string_view        Name;
+    dimension               Dim{};
+    ref_or_none<origin_def> Absolute{}; // none for an absolute origin
+    grid_number             Offset{0};  // from Absolute, in the coherent unit
 };
-} // namespace detail
 
-namespace detail {
 using origin_ref = ref_or_none<origin_def>; // none: the implicit zero of a dimension
-} // namespace detail
 
-template <detail::origin_ref O>
+template <origin_ref O>
 struct origin_t {
-    static constexpr detail::origin_ref value = O;
-    constexpr operator detail::origin_ref() const { return O; } // unit_options{.origin = si::ice_point}
+    static constexpr origin_ref value = O;
+    constexpr                   operator origin_ref() const { return O; } // unit_options{.origin = si::ice_point}
 };
 
 namespace detail {
@@ -638,7 +628,6 @@ constexpr bool same(const origin_ref& a, const origin_ref& b) {
 consteval grid_number offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_number{0}; }
 } // namespace detail
 
-namespace detail {
 // A short text held by value (a symbol, a name), so that a type which holds
 // one is structural: a template argument, as in unit<"ftm", …> and
 // {.ascii = "R"}.
@@ -659,7 +648,6 @@ struct symbol_text {
     [[nodiscard]] constexpr bool             empty() const { return Size == 0; }
     friend constexpr bool                    operator==(const symbol_text&, const symbol_text&) = default;
 };
-} // namespace detail
 
 // A named unit's options, all optional (designated, in this order):
 //   .ascii         the ASCII symbol ("ohm" for Ω), else the symbol itself
@@ -667,13 +655,12 @@ struct symbol_text {
 //   .origin        the default origin of its points (℃: the ice point)
 //   .space_before  false for a symbol written against the number (90°)
 struct unit_options {
-    detail::symbol_text ascii{};
-    detail::kind_ref    kind{};
-    detail::origin_ref  origin{};
-    bool                space_before{true};
+    symbol_text ascii{};
+    kind_ref    kind{};
+    origin_ref  origin{};
+    bool        space_before{true};
 };
 
-namespace detail {
 struct unit_atom {
     const unit_def*       U{};
     std::int8_t           Prefix{0}; // power of ten
@@ -681,6 +668,7 @@ struct unit_atom {
     friend constexpr bool operator==(const unit_atom& a, const unit_atom& b);
 };
 
+namespace detail {
 inline constexpr std::size_t max_unit_atoms = 6;
 } // namespace detail
 
@@ -690,12 +678,12 @@ inline constexpr std::size_t max_unit_atoms = 6;
 // a sum). A structural value: it is the template argument.
 //---------------------------------------------------------------------------
 struct unit_value {
-    detail::unit_atom Atoms[detail::max_unit_atoms]{};
-    std::int8_t       Size{0};
-    magnitude         Scale{};
+    unit_atom   Atoms[detail::max_unit_atoms]{};
+    std::int8_t Size{0};
+    magnitude   Scale{};
 
     constexpr unit_value() = default;
-    constexpr unit_value(const detail::unit_def& u) : Atoms{{&u, 0, 1}}, Size{1} {}
+    constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}}, Size{1} {}
 
     friend constexpr bool operator==(const unit_value& a, const unit_value& b) {
         return a.Size == b.Size && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + a.Size, b.Atoms);
@@ -713,15 +701,14 @@ struct unit_t {
 // magnitude is relative to the coherent unit of its dimension; Kind (if
 // any) is the quantity kind it measures (Hz: frequency, Bq: activity).
 //---------------------------------------------------------------------------
-namespace detail {
 struct unit_def {
-    std::string_view    Utf8;
-    detail::symbol_text Ascii; // empty: the symbol itself
-    dimension           Dim{};
-    magnitude           Mag{};
-    detail::kind_ref    Kind{};
-    bool                SpaceBefore{true};
-    detail::origin_ref  Origin{}; // the default origin of its points (K: absolute zero)
+    std::string_view Utf8;
+    symbol_text      Ascii; // empty: the symbol itself
+    dimension        Dim{};
+    magnitude        Mag{};
+    kind_ref         Kind{};
+    bool             SpaceBefore{true};
+    origin_ref       Origin{}; // the default origin of its points (K: absolute zero)
 
     // A base unit of a kind: the coherent unit of its dimension, or a scale
     // of it (g: 1/1000 of the coherent kg).
@@ -746,7 +733,6 @@ struct unit_def {
     constexpr unit_def(std::string_view sym, unit_options o)
         : Utf8{sym}, Ascii{o.ascii}, SpaceBefore{o.space_before} {}
 };
-} // namespace detail
 
 //---------------------------------------------------------------------------
 // basis_vector_def — the definition of a basis vector of a geometric
@@ -755,7 +741,6 @@ struct unit_def {
 // Two different basis vectors anticommute, so a product of units is again a
 // unit, up to a sign: e₂e₁ = -e₁e₂.
 //---------------------------------------------------------------------------
-namespace detail {
 struct basis_vector_def {
     unit_def           Unit;
     base_dimension_def Self;
@@ -769,7 +754,6 @@ struct basis_vector_def {
         Unit.Dim = dimension_of(Self);
     }
 };
-} // namespace detail
 
 namespace detail {
 // A unit is its symbols, dimension, magnitude, kind and origin.
@@ -778,9 +762,13 @@ constexpr bool same(const unit_def* a, const unit_def* b) { // both set
            same(a->Kind, b->Kind) && same(a->Origin, b->Origin);
 }
 
+} // namespace detail
+
 constexpr bool operator==(const unit_atom& a, const unit_atom& b) {
-    return same(a.U, b.U) && a.Prefix == b.Prefix && a.Exp == b.Exp;
+    return detail::same(a.U, b.U) && a.Prefix == b.Prefix && a.Exp == b.Exp;
 }
+
+namespace detail {
 
 constexpr bool atom_before(const unit_atom& a, const unit_atom& b) {
     if (a.U->Utf8 != b.U->Utf8)
@@ -796,8 +784,7 @@ consteval void unit_add(unit_value& u, unit_atom a) {
             a.Exp,
             [](const unit_atom& x, const unit_atom& y) { return same(x.U, y.U) && x.Prefix == y.Prefix; },
             atom_before))
-        ins::detail::constexpr_error<
-            "units: a unit holds at most 6 factors - name it with unit<\"sym\", …>">();
+        ins::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with unit<\"sym\", …>">();
 }
 
 // An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
@@ -875,7 +862,7 @@ consteval int atoms_blade_sign(const unit_value& u) {
         const int   e = u.Atoms[i].Exp;
         if (e < 0 && blade_sign(b, b) == 0)
             ins::detail::constexpr_error<"units: a null blade (a basis vector that squares to 0) has no "
-                                                   "inverse">();
+                                         "inverse">();
         for (int k = 0; k < (e < 0 ? -e : e); ++k)
             s *= (e < 0 ? blade_sign(b, b) : 1) * blade_mul(acc, b); // B⁻¹ = B·B²
     }
@@ -908,7 +895,7 @@ consteval unit_value blade_unit_mul(const unit_value& a, const unit_value& b, in
         const int sq = blade_sign(br, br);
         if (sq == 0)
             ins::detail::constexpr_error<"units: a null blade (a basis vector that squares to 0) has no "
-                                                   "inverse">();
+                                         "inverse">();
         s *= sq;
     }
     const magnitude target = sign > 0 ? magnitude_of(a) * magnitude_of(b) : magnitude_of(a) / magnitude_of(b);
@@ -955,8 +942,8 @@ consteval bool space_before(const unit_value& u) { return !(is_single_named(u) &
 } // namespace detail
 
 // The kind a unit measures: a named unit's (with a prefix too), else none.
-consteval detail::kind_ref kind_of(const unit_value& u) {
-    return detail::is_single_named(u) ? u.Atoms[0].U->Kind : detail::kind_ref{};
+consteval kind_ref kind_of(const unit_value& u) {
+    return detail::is_single_named(u) ? u.Atoms[0].U->Kind : kind_ref{};
 }
 
 namespace detail {
@@ -967,7 +954,7 @@ consteval kind_ref inherited_kind(const unit_value& u) {
 } // namespace detail
 
 template <unit_value U>
-constexpr detail::unit_def::unit_def(std::string_view sym, unit_t<U>, unit_options o)
+constexpr unit_def::unit_def(std::string_view sym, unit_t<U>, unit_options o)
     : Utf8{sym},
       Ascii{o.ascii},
       Dim{dimension_of(U)},
@@ -981,14 +968,14 @@ constexpr detail::unit_def::unit_def(std::string_view sym, unit_t<U>, unit_optio
         ins::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
     if (detail::has_blade(Dim) && !detail::same_outside_blade(Dim, dim_one))
         ins::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
-                                               "write si::metre * e1, not a unit of both">();
+                                     "write si::metre * e1, not a unit of both">();
     if (Mag.Ratio == grid_number{0})
         ins::detail::constexpr_error<"units: a named unit of a product that vanishes (a null vector "
-                                               "squared)">();
+                                     "squared)">();
 }
-template <unit_value U, const detail::kind_def* K>
-constexpr detail::unit_def::unit_def(std::string_view sym, unit_t<U>, kind_t<K>, unit_options o)
-    : detail::unit_def{sym, unit_t<U>{}, unit_options{o.ascii, K, o.origin, o.space_before}} {}
+template <unit_value U, const kind_def* K>
+constexpr unit_def::unit_def(std::string_view sym, unit_t<U>, kind_t<K>, unit_options o)
+    : unit_def{sym, unit_t<U>{}, unit_options{o.ascii, K, o.origin, o.space_before}} {}
 
 // The tag of a definition object: what unit<…>, kind<…> and origin<…> give
 // (units/detail/define.hpp).
@@ -1028,19 +1015,19 @@ consteval auto operator/(unit_t<A>, unit_t<B>) {
     return unit_t<detail::unit_mul(A, B, -1)>{};
 }
 template <magnitude M, unit_value B>
-consteval auto operator*(detail::mag_t<M>, unit_t<B>) {
+consteval auto operator*(mag_t<M>, unit_t<B>) {
     return unit_t<detail::unit_scaled(B, M)>{};
 }
 template <magnitude M, unit_value B>
-consteval auto operator/(detail::mag_t<M>, unit_t<B>) {
+consteval auto operator/(mag_t<M>, unit_t<B>) {
     return unit_t<detail::unit_scaled(detail::unit_pow(B, -1), M)>{};
 }
 template <unit_value B, magnitude M>
-consteval auto operator*(unit_t<B>, detail::mag_t<M>) {
+consteval auto operator*(unit_t<B>, mag_t<M>) {
     return unit_t<detail::unit_scaled(B, M)>{};
 }
 template <unit_value B, magnitude M>
-consteval auto operator/(unit_t<B>, detail::mag_t<M>) {
+consteval auto operator/(unit_t<B>, mag_t<M>) {
     return unit_t<detail::unit_scaled(B, magnitude{} / M)>{};
 }
 template <int N, unit_value A>
@@ -1079,13 +1066,13 @@ struct prefix_t {
 //   Kind null, Derived empty   any quantity of the unit's dimension (m/s)
 //---------------------------------------------------------------------------
 struct reference {
-    detail::kind_ref Kind{};
-    bool             KindOf{false};
-    detail::recipe   Derived{};
-    unit_value       U{};
+    kind_ref   Kind{};
+    bool       KindOf{false};
+    recipe     Derived{};
+    unit_value U{};
 
     constexpr reference() = default;
-    constexpr reference(detail::kind_ref s, bool kind_of, detail::recipe derived, unit_value u)
+    constexpr reference(kind_ref s, bool kind_of, recipe derived, unit_value u)
         : Kind{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
     // A unit tag as a reference: quantity<si::metre, …>.
     template <unit_value V>
@@ -1097,8 +1084,8 @@ struct reference {
 };
 
 consteval reference reference_of(const unit_value& u) {
-    const detail::kind_ref k = kind_of(u);
-    return reference{k, static_cast<bool>(k), detail::recipe{}, u};
+    const kind_ref k = kind_of(u);
+    return reference{k, static_cast<bool>(k), recipe{}, u};
 }
 
 template <reference R>
@@ -1131,16 +1118,16 @@ consteval reference reference_of(reference_t<R>) {
     return R;
 }
 
-template <const detail::kind_def* S>
+template <const kind_def* S>
 template <class U>
 consteval auto kind_t<S>::operator[](U) const {
     static_assert(detail::is_reference_tag_v<U> && requires { U::value.Size; }, "units: kind[unit] takes a unit");
     constexpr unit_value u = U::value;
     static_assert(dimension_of(u) == S->Dim, "units: kind[unit] - the unit has another dimension than the kind");
-    constexpr detail::kind_ref k = kind_of(u);
+    constexpr kind_ref k = kind_of(u);
     static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
                   "units: kind[unit] - the unit measures another kind of quantity (Hz for activity?)");
-    return reference_t<reference{S, false, detail::recipe{}, u}>{};
+    return reference_t<reference{S, false, recipe{}, u}>{};
 }
 
 namespace detail {
