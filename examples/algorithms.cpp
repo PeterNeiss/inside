@@ -8,11 +8,11 @@
 #include <ranges>
 #include <vector>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
 namespace rng = std::ranges;
-using namespace beman::inside;
+using namespace ins;
 
 using celsius  = inside<{{-40, 60}, 0.5}, round_half_away>;
 using channel  = inside<{0, 255}, clamp>;

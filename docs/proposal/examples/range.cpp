@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour 1: the range is part of the type, and arithmetic widens it.
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
 #include <type_traits>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]

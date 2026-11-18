@@ -12,14 +12,13 @@
 #include <cstdio>
 #include <iostream>
 
-#include <beman/inside/math.hpp>
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 using radians = quantity<si::radian, inside<{0, (std::int64_t{1} << 62) - 1}>>; // whole rad up to 2^62 − 1
 

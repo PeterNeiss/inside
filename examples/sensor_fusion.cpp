@@ -14,14 +14,13 @@
 #include <iostream>
 #include <type_traits>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/inside/predicates.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/inside/predicates.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 constexpr auto deg_C = si::degree_Celsius;
 

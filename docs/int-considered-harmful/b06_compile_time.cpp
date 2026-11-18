@@ -5,10 +5,10 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 using pct   = inside<{0, 100}>;
 using angle = inside<{0, 359}, wrap>;

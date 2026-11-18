@@ -20,7 +20,7 @@ inside<grid{interval{grid_number{3, 1, 0}, grid_number{3, 1, 0}},
             grid_number{0, 1, 0}, grid_number{0, 1, 0}}, 0>
 ```
 
-GCC also prefixes `beman::inside::`, shortened here. The `grid_number` pair
+GCC also prefixes `ins::`, shortened here. The `grid_number` pair
 is the interval, the next one the notch, the last the bound:
 
 | Part | Means |
@@ -46,7 +46,7 @@ is the interval, the next one the notch, the last the bound:
 The other bits are unused, and an inside rejects a policy that holds one or
 names two rounding modes. `checked`, the default, has no bits: `0` is
 `inside<G>`, and `48` is `round_half_away`. Every policy without the `unsafe`
-bit is checked. (The definitions are in `include/beman/inside/inside/policy_flag.hpp`.)
+bit is checked. (The definitions are in `include/inside/inside/policy_flag.hpp`.)
 
 ## Decoding a quantity
 
@@ -114,7 +114,7 @@ probes answer `false`, so insides work in `std::variant`, `std::optional` and
 other code that probes convertibility. For the two grids' numbers, ask:
 
 ```cpp
-static_assert(beman::inside::explain_assignable<Dst, decltype(src)>);   // prints the intervals and notches
+static_assert(ins::explain_assignable<Dst, decltype(src)>);   // prints the intervals and notches
 ```
 
 ## A store that names no channel
@@ -146,7 +146,7 @@ constructor exists, so `std::is_constructible_v<T, int>` is `true`; a generic
 `emplace_back(5_ins)`). A constant that does not fit fails with the text:
 
 ```text
-error: uncaught exception of type 'beman::inside::detail::inside_error'; 'what()': 'inside: a checked
+error: uncaught exception of type 'ins::detail::inside_error'; 'what()': 'inside: a checked
        store in a constant expression is outside the grid's interval - widen the interval, …'
 ```
 
@@ -166,12 +166,12 @@ instead (`= delete("…")`):
 | `q.numerical_value()` | `units: a number alone has no unit - read q.numerical_value_in(si::metre)` |
 | `q * 2` | `units: a raw number has no grid - scale by just<2>, not 2` |
 | `length.in(si::second)` | `units: in() - the unit has another dimension` |
-| `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <beman/inside/units/math.hpp>, Rep declared with a rounding mode` |
+| `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <inside/units/math.hpp>, Rep declared with a rounding mode` |
 | `inside<{0, 7}> x = angle;` | `units: an angle (a distinct kind) or a pi-scaled ratio is no plain number - read numerical_value_in(si::radian), or value_cast it first` |
 | `math::sin(degrees)` (the deduced form) | `units: sin and cos of an angle with a factor of pi (°, a turn) - name the result's notch: sin<per<K>>(q)` |
 
 Kinds that never mix (Hz and Bq, Gy and Sv), and the kind boundaries of
-angles, give messages of the same form. The `tests/beman/inside/fail/units_*`
+angles, give messages of the same form. The `tests/fail/units_*`
 cases pin each message.
 
 ## Probing operations: honest `requires`

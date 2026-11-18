@@ -57,8 +57,8 @@ Notes:
 6. `ranged<T>` constrains a range; repo archived April 2026 with only `trapping<T>` fully implemented.
 7. `Trigonometric` / `ExpLog` / `Root` mix-ins delegate to `<cmath>` on the wrapped type.
 8. implemented as C++20 modules, so not header-only in the classic sense.
-9. a *generated* amalgamation of the multi-file source (`single_include/beman/inside/inside.hpp`, standard-library-only), rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are instead authored as a single file; the rest ship a multi-header tree (fpm, e.g., splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
-10. core compiles `-fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` compiles the `<cmath>` dependency out of `beman::inside::math` entirely; `-ffreestanding` waits for a freestanding `<meta>` — see [freestanding.md](advanced/freestanding.md). The units' text (`units/io.hpp`) needs a hosted library.
+9. a *generated* amalgamation of the multi-file source (`single_include/inside/inside.hpp`, standard-library-only), rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are instead authored as a single file; the rest ship a multi-header tree (fpm, e.g., splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
+10. core compiles `-fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `inside/inside/io.hpp`, droppable via `INSIDE_NO_STRING`). `INSIDE_MATH_NO_FP` compiles the `<cmath>` dependency out of `ins::math` entirely; `-ffreestanding` waits for a freestanding `<meta>` — see [freestanding.md](advanced/freestanding.md). The units' text (`units/io.hpp`) needs a hosted library.
 11. C++20 modules (clang-only) with throwing policies; no documented freestanding / no-exceptions path.
 12. `-fno-exceptions` via the compile-time `trap` exception policy; the default policy throws.
 13. non-throwing overflow tags (`native` / `saturated` / `undefined`) and no `<cmath>`, but no explicit `-ffreestanding` guarantee.
@@ -69,7 +69,7 @@ Notes:
 18. strong-typedef only — no overflow checks, so nothing to throw, but no numeric-safety story either.
 19. also models disjoint interval *unions* (e.g. `ival<-1000,-1> || ival<1,1000>` to exclude zero), not just a single `[lo,hi]`; arithmetic propagates ranges via the Cartesian product of the operand intervals.
 20. no documented freestanding / `-fno-exceptions` path; integer-only (no `<cmath>`).
-21. `<beman/inside/units.hpp>`, an opt-in header: quantities, kinds, points and units of your own on an inside, in the style of mp-units ([Units](guide/units.md)). The libraries above have no units; the dedicated units libraries are listed [below](#units-libraries).
+21. `<inside/units.hpp>`, an opt-in header: quantities, kinds, points and units of your own on an inside, in the style of mp-units ([Units](guide/units.md)). The libraries above have no units; the dedicated units libraries are listed [below](#units-libraries).
 
 Freestanding marks are best-effort from each project's docs as of June 2026 — corrections welcome.
 

@@ -7,10 +7,10 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 // Dollars in 1-cent steps, up to $10M. The scale is part of the type.
 using money = inside<{{0, 10'000'000}, per<100>}, round_half_away>;

@@ -28,9 +28,9 @@
 #include <stdexcept>
 #include <vector>
 
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 template<typename T>
 [[gnu::always_inline]] inline void sink(T&& v)

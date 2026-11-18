@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour 3: the policy decides what a narrowing store does.
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]

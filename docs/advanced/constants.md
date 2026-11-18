@@ -4,18 +4,17 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-`<beman/inside/math/constants.hpp>` gives the common mathematical constants,
+`<inside/math/constants.hpp>` gives the common mathematical constants,
 without units, computed while compiling at the precision each use needs.
-`<beman/inside/units/constants.hpp>` gives the physical constants, each a
+`<inside/units/constants.hpp>` gives the physical constants, each a
 [quantity](../guide/units.md) of its ISQ kind. Products of physical constants
 are exact.
 
 ```cpp
-#include <beman/inside/math/constants.hpp>
-#include <beman/inside/units/constants.hpp>
-using namespace beman::inside;
-using namespace beman::inside::units;
-namespace pc = units::constants;
+#include <inside/math/constants.hpp>
+#include <inside/units/constants.hpp>
+using namespace ins;
+namespace pc = ins::constants;
 
 using angle_t = inside<{{0, 4}, per<(1 << 10)>}>;
 auto x = angle_t{1.5} * math::pi;                                   // π to angle_t's resolution
@@ -60,7 +59,7 @@ Two ways avoid approximating π at all: scale a unit with `pi`
 in degrees or turns, which `math::sin` reduces exactly
 ([the math engine](math-engine.md#angles-over-many-turns)).
 
-## Physical constants: `units::constants::`
+## Physical constants: `ins::constants::`
 
 Each constant is the number 1 of a named unit whose magnitude is the
 constant, under the constant's ISQ kind where one fits. Products therefore
@@ -119,5 +118,5 @@ not represented, so a result is only as good as the constant behind it.
 ## In the single header
 
 The math constants come with `math.hpp`, also freestanding. The physical
-constants sit inside the units guard: `BEMAN_INSIDE_NO_UNITS` drops them
+constants sit inside the units guard: `INSIDE_NO_UNITS` drops them
 ([the single header](single-header.md)).

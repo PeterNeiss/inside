@@ -6,13 +6,13 @@
 //   g++-16 -std=c++26 -freflection -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 //   objdump -d p01.o
 //
-// The repo enforces exactly this in CI: tests/beman/inside/check_codegen.sh disassembles
+// The repo enforces exactly this in CI: tests/check_codegen.sh disassembles
 // the kernels and fails the build if any of them contains a `call`.
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/units.hpp>
+#include <inside/inside.hpp>
+#include <inside/units.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 using val = inside<{0, 1000}>;
 
@@ -29,11 +29,11 @@ using val = inside<{0, 1000}>;
 }
 
 // A unit conversion rescales the grid and keeps the raw.
-using km = units::quantity<units::si::kilo(units::si::metre), inside<{{0, 100}, per<1000>}>>;
+using km = ins::quantity<ins::si::kilo(ins::si::metre), inside<{{0, 100}, per<1000>}>>;
 
 [[gnu::noinline]] auto to_mm(km d)
 {
-  return d.in(units::si::milli(units::si::metre));
+  return d.in(ins::si::milli(ins::si::metre));
 }
 
 // A loop, to check that vectorization still happens. In-place += can leave

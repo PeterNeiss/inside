@@ -2,20 +2,20 @@
 // Which raw an inside stores: always deduced from the grid.
 //   1. The smallest integer that numbers every point — the value itself for a
 //      whole-number range where that costs no width, else the 0-based index.
-//   2. Presets from <beman/inside/inside/formats.hpp>: native byte widths (uint8, int16,
+//   2. Presets from <inside/inside/formats.hpp>: native byte widths (uint8, int16,
 //      unorm16, uq8_8, …) that still carry a range and a policy.
 //   3. A fixed wire layout: write `to<T>()` into the field.
 
 #include <cstdint>
 #include <iostream>
 
-#include <beman/inside/inside/formats.hpp>
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp> // to_string_debug: value, raw and raw type
+#include <inside/inside/formats.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp> // to_string_debug: value, raw and raw type
 
-using namespace beman::inside;
+using namespace ins;
 
-using namespace beman::inside::formats;
+using namespace ins::formats;
 
 int main() {
     // 1. Deduced storage.

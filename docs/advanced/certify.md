@@ -20,7 +20,7 @@ For one function and one pair of grids (input → output), the tool computes
 1. as any run-time call does, through the `double` and double-double tiers
    where they apply;
 2. on the integer path alone (`math::driver.IntegerOnly`), which is what
-   constant evaluation and a `BEMAN_INSIDE_MATH_NO_FP` build compute.
+   constant evaluation and a `INSIDE_MATH_NO_FP` build compute.
 
 The pair is **certified** when the two agree on every input and the integer
 path decided every result before its precision cap. Then, for every input of
@@ -34,7 +34,7 @@ that pair:
 
 It also prints a **SHA-256 hash of all the results**. Two machines that print
 the same hash for a pair computed the same bits for every input. Run the tool
-on another compiler, another OS, an ARM board or a `BEMAN_INSIDE_MATH_NO_FP`
+on another compiler, another OS, an ARM board or a `INSIDE_MATH_NO_FP`
 build, and compare. That is a determinism check you can run yourself, on the
 grids you ship.
 
@@ -44,13 +44,13 @@ pair the [examples](../../examples) use. Every CI configuration (optimized,
 debug, sanitized, the FP-free build) recomputes the pairs up to 2²⁰ inputs and
 must match; the weekly run recomputes all of them. A weekly test also scans
 the examples' unoptimized build and fails if one of their pairs has no row
-(`find_grids`, with `-DBEMAN_INSIDE_SLOW_TESTS=ON`).
+(`find_grids`, with `-DINSIDE_SLOW_TESTS=ON`).
 
 ## Certify your program's grids
 
 **1. Build your program unoptimized**: a Debug build, or
 add `-O0` (or `-fkeep-inline-functions`). Each math call instantiates
-`beman::inside::math::detail::entry::<fn>_fn::eval<Out, In>`, and an unoptimized build
+`ins::math::detail::entry::<fn>_fn::eval<Out, In>`, and an unoptimized build
 keeps that instantiation as a symbol whose demangled name spells both grids
 exactly. That includes outputs deduced by `math::sin(x)`, aliases, and the
 numbers inside quantities.
@@ -59,7 +59,7 @@ numbers inside quantities.
 object files, libraries and executables, and reads their symbols with `nm`:
 
 ```sh
-python3 tests/beman/inside/certify/find_grids.py path/to/build
+python3 tests/certify/find_grids.py path/to/build
 ```
 
 ```text
@@ -75,7 +75,7 @@ Arguments after `--` go to that program; `--estimate` times a sample of each
 pair and stops:
 
 ```sh
-python3 tests/beman/inside/certify/find_grids.py path/to/build --run -- --estimate
+python3 tests/certify/find_grids.py path/to/build --run -- --estimate
 ```
 
 ```text
@@ -113,7 +113,7 @@ The certify program's options:
 | `--progress`, `--no-progress` | progress on stderr; the default is "when stderr is a terminal" |
 
 `find_grids.py` takes `--nm` (an `nm` of your toolchain, such as `llvm-nm`),
-`--cxx` and `--cxxflags` for the compile, `-I` for the beman.inside include
+`--cxx` and `--cxxflags` for the compile, `-I` for the inside include
 directory (default: this repository's), `--std` and `--json FILE` (the pairs
 as JSON).
 
@@ -139,7 +139,7 @@ as JSON).
   a kind byte (0 for a value ≥ 0, 1 for a negative value, 2 for an `error`),
   then the reduced value's numerator magnitude and denominator, 8 bytes
   little-endian each (for an `error`, its code and 0). `--dump` prints the
-  records; `tests/beman/inside/certify/check_hash.py` recomputes the hash with
+  records; `tests/certify/check_hash.py` recomputes the hash with
   Python's `hashlib`.
 
 ## Your own pair list
@@ -149,9 +149,9 @@ A certify program is a list of pairs handed to `certify::main`.
 for example for a call that only runs at compile time (it leaves no symbol):
 
 ```cpp
-#include "certify.hpp" // tests/beman/inside/certify; before any beman.inside header
+#include "certify.hpp" // tests/certify; before any inside header
 
-using namespace beman::inside;
+using namespace ins;
 using angle = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>;
 using level = inside<{{-1, 1}, per<(1 << 10)>}, round_floor>;
 
@@ -162,9 +162,9 @@ void pairs(certify::runner& r) {
 int main(int argc, char** argv) { return certify::main(argc, argv, pairs); }
 ```
 
-Compile it optimized (`-O2 -DNDEBUG`) with `-I tests/beman/inside/certify` and
-the beman.inside include directory. The repository's own list,
-[`certify.test.cpp`](../../tests/beman/inside/certify.test.cpp), is written the
+Compile it optimized (`-O2 -DNDEBUG`) with `-I tests/certify` and
+the inside include directory. The repository's own list,
+[`certify.test.cpp`](../../tests/certify.test.cpp), is written the
 same way.
 
 ## Limits

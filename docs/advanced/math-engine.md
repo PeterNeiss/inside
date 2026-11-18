@@ -4,7 +4,7 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-How `beman::inside::math` rounds every result correctly, what exactly is
+How `ins::math` rounds every result correctly, what exactly is
 guaranteed, the domains and output ranges of each function, its speed, and
 angles over many turns. [Math](../guide/math.md) has the everyday view.
 
@@ -61,7 +61,7 @@ and the speed each guard costs, are in
   `log10(1000)`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30° — are stored
   exactly, so a tie between two points or a point under directed rounding
   rounds correctly. The theorems that make the list complete are named in
-  `math/detail/cores.hpp`, and `tests/beman/inside/math.test.cpp`
+  `math/detail/cores.hpp`, and `tests/math.test.cpp`
   checks each kind.
 - **Correctly rounded, except within about 2^−4W of a boundary.** W is the
   start precision (the output's bits plus 8, at least 16). The engine doubles
@@ -76,7 +76,7 @@ and the speed each guard costs, are in
   hashes all its results. [Certifying math](certify.md) shows how to find and
   certify the pairs your own program uses; [certified.md](../certified.md)
   lists the library's and the examples', with their hashes.
-  `BEMAN_INSIDE_MATH_INSTRUMENT=1` gives a program of your own the counters
+  `INSIDE_MATH_INSTRUMENT=1` gives a program of your own the counters
   (`math::driver`); such a build has no table path, so the counters see every
   call.
 - **Inverse trigonometry into degrees rounds twice.** `asin`, `acos`, `atan`
@@ -206,8 +206,8 @@ kernels, decided as every double-tier result is (about 5 ns for a degree
 angle onto 2⁻²⁰); `value_cast` across π takes the same tier:
 
 ```cpp
-#include <beman/inside/units/math.hpp>
-using namespace beman::inside::units;
+#include <inside/units/math.hpp>
+using namespace ins;
 
 inline constexpr auto       slot = unit<"slot", just<1, 32768> * pi * si::radian>;           // 2π/65536 rad
 
@@ -246,7 +246,7 @@ auto s = math::sin<per<(1 << 14)>>(angle_t{phase * math::two_pi});   // 1
 
 ## Without floating point
 
-Under `BEMAN_INSIDE_MATH_NO_FP` (automatic with `-ffreestanding`) the
+Under `INSIDE_MATH_NO_FP` (automatic with `-ffreestanding`) the
 floating-point tiers compile out and the integer path computes every result.
 **The results do not change**
-([freestanding](freestanding.md#math-without-cmath-beman_inside_math_no_fp)).
+([freestanding](freestanding.md#math-without-cmath-inside_math_no_fp)).

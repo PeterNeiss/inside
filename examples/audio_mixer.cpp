@@ -17,15 +17,14 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/inside/formats.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/inside/formats.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
-using namespace beman::inside::formats;
-using namespace beman::inside::units;
+using namespace ins::formats;
 
 namespace {
 inline constexpr auto level_kind = kind<"level", isq::dimensionless, {.distinct = true}>;

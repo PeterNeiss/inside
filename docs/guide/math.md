@@ -4,14 +4,14 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-`<beman/inside/math.hpp>` has the functions of `<cmath>` for insides, in
-`beman::inside::math`. Each result is the **correctly rounded** point of its
+`<inside/math.hpp>` has the functions of `<cmath>` for insides, in
+`ins::math`. Each result is the **correctly rounded** point of its
 output grid, so it is the same on every platform, at compile time and
 without an FPU.
 
 ```cpp
-#include <beman/inside/math.hpp>
-using namespace beman::inside;
+#include <inside/math.hpp>
+using namespace ins;
 
 using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
 auto s = math::sin(angle{1});                   // 0.84149169921875, on the input's notch
@@ -127,14 +127,14 @@ compile: give it `clamp` or `wrap`.
 
 ## Angles
 
-Angles are in radians, as in `<cmath>`. With `<beman/inside/units/math.hpp>`
+Angles are in radians, as in `<cmath>`. With `<inside/units/math.hpp>`
 an angle can be a quantity in degrees, in turns, or in any unit that is a
 rational multiple of π. Then the reduction is exact, and only the remainder,
 at most π/4, is approximated, so exact values come out exact:
 
 ```cpp
-#include <beman/inside/units/math.hpp>
-using namespace beman::inside::units;
+#include <inside/units/math.hpp>
+using namespace ins;
 
 quantity<si::degree, inside<{0, 360}>> deg{120, si::degree};
 math::cos<per<(1 << 14)>, round_floor>(deg);   // exactly −1/2, even rounding down
@@ -149,7 +149,7 @@ steps of 2π/2ⁿ, as [`oscillator.cpp`](../../examples/oscillator.cpp) does.
 
 ## Quantities
 
-`<beman/inside/units/math.hpp>` gives each function the unit it should have,
+`<inside/units/math.hpp>` gives each function the unit it should have,
 in every form above:
 
 | Function | Takes | Gives |
@@ -178,7 +178,7 @@ A level in dB converts to a gain with
 are computed while compiling at the precision each use needs: `Out o =
 math::pi` rounds π correctly onto `Out`, `radius * math::two_pi` takes 2π to
 `radius`'s resolution, and `x < math::pi` compares exactly. The physical
-constants are quantities in `units::constants`
+constants are quantities in `ins::constants`
 ([Constants](../advanced/constants.md)).
 
 ## Speed

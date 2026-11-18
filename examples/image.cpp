@@ -19,15 +19,14 @@
 #include <ranges>
 #include <string>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/inside/mdspan.hpp>
-#include <beman/inside/math.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/mdspan.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/inside/mdspan.hpp>
+#include <inside/math.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/mdspan.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 using pixel  = inside<{0, 255}>;
 using smooth = inside<{0, 255}, round_half_away>; // a blurred pixel: rounded once

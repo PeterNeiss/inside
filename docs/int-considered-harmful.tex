@@ -635,7 +635,7 @@ and its edge policy:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/beman/inside/inside/detail/core.hpp:160
+struct inside;                        // include/inside/inside/detail/core.hpp:160
 \end{lstlisting}
 
 \noindent
@@ -656,9 +656,9 @@ The number is always an \code{inside}:
 
 \begin{lstlisting}
 template<reference R, insidable Rep>
-class quantity;                       // include/beman/inside/units/detail/quantity.hpp:314
+class quantity;                       // include/inside/units/detail/quantity.hpp:314
 template<reference R, origin_ref O, insidable Rep>
-class quantity_point;                 // include/beman/inside/units/detail/point.hpp:66
+class quantity_point;                 // include/inside/units/detail/point.hpp:66
 \end{lstlisting}
 
 \noindent
@@ -767,7 +767,7 @@ round_toward_zero = -3
 mode is honoured for negative operands, where truncation and flooring differ.
 A property test pins $(a/b) \cdot b + a \bmod b = a$ across whole grids, in
 every mode and with negative divisors
-(\file{tests/beman/inside/division.test.cpp:151}).
+(\file{tests/division.test.cpp:151}).
 \end{sloppypar}
 
 \subsection{The edge is a policy you declare}
@@ -1050,7 +1050,7 @@ outright:
 \begin{lstlisting}[style=term]
 $ g++-16 -std=c++26 -freflection -I ../../include x02_range_rejected.cpp
 x02_range_rejected.cpp:14:37: error: uncaught exception of type
-       'beman::inside::inside_error'; 'what()': 'inside: a checked store in a
+       'ins::inside_error'; 'what()': 'inside: a checked store in a
        constant expression is outside the grid's interval - widen the interval,
        or store with clamp or wrap'
 \end{lstlisting}
@@ -1062,7 +1062,7 @@ the store is rejected too: a constant the grids cannot prove is checked while
 compiling, and a run-time value names how a failure is reported. Dimension and kind mismatches are
 caught the same way, as constraint failures with a stated reason
 (\S\ref{sec:units}). The library's
-\file{tests/beman/inside/constexpr.test.cpp} relies on this: 155
+\file{tests/constexpr.test.cpp} relies on this: 155
 \code{static\_assert}s that run inside the compiler.
 
 \subsection{The error vocabulary}
@@ -1138,7 +1138,7 @@ For integer and rational storage, \code{+ - * /} reproduce unconditionally,
 because no floating point is involved. Conversion from \code{double} decodes
 the IEEE-754 bits and needs no FPU.
 
-\code{beman::inside::math} returns the \emph{correctly rounded} point of its
+\code{ins::math} returns the \emph{correctly rounded} point of its
 output grid, under the output's rounding mode. That result depends only on the
 input and the grid, so it is the same at compile time, at runtime, and with or
 without an FPU. Each result is computed with a proved error bound and escalated
@@ -1219,7 +1219,7 @@ the grid and keeps the raw. An in-place \code{+=} can leave its range, so on
 a \code{checked} element it names a channel: \code{x.on\_error(ec) += 1\_ins}
 checks every pass and the loop stays scalar, as in the accumulate table below. With \code{unsafe} it vectorises, on 16-bit lanes
 (its storage for $[0,1000]$) where native uses 32-bit lanes.
-\file{tests/beman/inside/check\_codegen.sh} runs in CI. It disassembles named
+\file{tests/check\_codegen.sh} runs in CI. It disassembles named
 kernels and fails on any \code{call} other than the cold error report, and on
 a unit conversion that does arithmetic. Whether the loop vectorises is
 reported, not gated.
@@ -1230,7 +1230,7 @@ The fastest row in every table is plain, unchecked native code. It is fastest
 because it does not do the job: it is the code of \S\ref{sec:indictment}.
 The honest baselines are native code that enforces the same range, written as
 a competent programmer would write it
-(\file{tests/beman/inside/bench.test.cpp:66}):
+(\file{tests/bench.test.cpp:66}):
 \begin{itemize}
 \item \code{native clamped}: \code{std::clamp(v, 0, 200)};
 \item \code{native checked}: a hand-rolled bounded struct that throws on
@@ -1352,7 +1352,7 @@ run.
   100.0\% & 0.05 & 1.03 & \texttt{native loop} \\
   97.7\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
   24.2\% & 0.21 & 8.01 & \texttt{inside<checked> loop} \\
-  87.4\% & 0.06 & 1.24 & \texttt{beman::inside::sum<checked> (bulk check)} \\
+  87.4\% & 0.06 & 1.24 & \texttt{ins::sum<checked> (bulk check)} \\
   100.0\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
   98.7\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
 \end{benchtable}
@@ -1360,7 +1360,7 @@ run.
 \noindent
 A checked element-wise loop reports each element's store into an \code{error}
 (\code{acc.on\_error(ec) += v}) and so cannot vectorise.
-\code{beman::inside::sum} checks the total instead and is 3.6$\times$ faster.
+\code{ins::sum} checks the total instead and is 3.6$\times$ faster.
 Without the check, both loops vectorise like native code.
 
 \begin{benchtable}{comparison ==}
@@ -1389,7 +1389,7 @@ stores an integer index. Sort and \code{std::transform} run at 90.6\% and
 
 \subsection{What correct rounding costs}\label{sec:mathcost}
 
-The cost of \code{beman::inside::math} follows the output grid. The report
+The cost of \code{ins::math} follows the output grid. The report
 measures it onto the grid deduced from a $2^{-14}$ input:
 
 \begin{center}

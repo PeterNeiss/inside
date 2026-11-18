@@ -6,10 +6,10 @@
 #include <array>
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main()
 {

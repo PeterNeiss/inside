@@ -61,21 +61,21 @@ and the [certified math pairs](certified.md).
 
 | Header | Holds |
 |---|---|
-| `<beman/inside/inside.hpp>` | the number: `inside`, grids, policies, arithmetic, casts, ranges, `cursor`, `std::hash` and `std::numeric_limits` |
-| `<beman/inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
-| `<beman/inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `uq8_8` …, and the counters |
-| `<beman/inside/inside/random.hpp>` | `uniform<B>(rng)` |
-| `<beman/inside/inside/mdspan.hpp>` | `std::mdspan` support: `extents_of`, `index_for`, `indices`, the accessors, `sum`, `dot`, the matrix products |
-| `<beman/inside/math.hpp>` | `beman::inside::math`: the functions and the constants |
-| `<beman/inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
-| `<beman/inside/units.hpp>` | `beman::inside::units`: the machinery and the SI and ISQ catalog |
-| `<beman/inside/units/core.hpp>` | the machinery alone, enough for units of your own |
-| `<beman/inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |
-| `<beman/inside/units/math.hpp>` | math on quantities: roots of units, angles in degrees, `value_cast` across π |
-| `<beman/inside/units/random.hpp>` | `uniform<Q>(rng)` |
-| `<beman/inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `units::view_in` |
-| `<beman/inside/units/constants.hpp>` | the physical constants as quantities |
-| `<beman/inside/units/geoalg.hpp>` | geometric algebra: `multivector`, `wedge`, the contractions, `reverse`, `grade<K>`, `inverse`, `dual`, `regressive` |
+| `<inside/inside.hpp>` | the number: `inside`, grids, policies, arithmetic, casts, ranges, `cursor`, `std::hash` and `std::numeric_limits` |
+| `<inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
+| `<inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `uq8_8` …, and the counters |
+| `<inside/inside/random.hpp>` | `uniform<B>(rng)` |
+| `<inside/inside/mdspan.hpp>` | `std::mdspan` support: `extents_of`, `index_for`, `indices`, the accessors, `sum`, `dot`, the matrix products |
+| `<inside/math.hpp>` | `ins::math`: the functions and the constants |
+| `<inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
+| `<inside/units.hpp>` | `ins`: the machinery and the SI and ISQ catalog |
+| `<inside/units/core.hpp>` | the machinery alone, enough for units of your own |
+| `<inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |
+| `<inside/units/math.hpp>` | math on quantities: roots of units, angles in degrees, `value_cast` across π |
+| `<inside/units/random.hpp>` | `uniform<Q>(rng)` |
+| `<inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `ins::view_in` |
+| `<inside/units/constants.hpp>` | the physical constants as quantities |
+| `<inside/units/geoalg.hpp>` | geometric algebra: `multivector`, `wedge`, the contractions, `reverse`, `grade<K>`, `inverse`, `dual`, `regressive` |
 
 The [single header](advanced/single-header.md) holds all of them.
 

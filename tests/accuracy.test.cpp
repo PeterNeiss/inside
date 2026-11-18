@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//---------------------------------------------------------------------------
+// accuracy — characterizes the math engine against a long-double <cmath>
+// reference, fpm-style. Reports max/mean error in units of the OUTPUT grid
+// notch (an error < 0.5 notch means the engine returned the correctly rounded
+// grid point). The long-double reference lives only in this test harness.
+//
+//   ./inside.accuracy             # markdown table to stdout
+//   ./inside.accuracy <file.md>   # write the table to <file.md>
+//
+// The `inside.accuracy_report` CMake target regenerates docs/accuracy.md with it.
+//---------------------------------------------------------------------------
+#include <inside/inside.hpp>
+#include <inside/math.hpp>
+
+#include "support.hpp"
+
+#include <cfloat>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <string_view>
+
+using namespace ins;
+
+namespace {
+// Exact value of an inside (or grid constant) as long double, via rational.
+long double to_long_double(rational r) { return static_cast<long double>(r.Num) / static_cast<long double>(r.Den); }
+
+struct stats {
+    long double max_err  = 0.0L; // in output notches
+    long double mean_err = 0.0L;
+    long        samples  = 0;
+};
+
+// Sweeps `engine_fn` over the whole input grid (strided to ~`target_samples`
+// points) and accumulates the error against `reference_fn` in output-notch
+// units.
+template <typename In, typename EngineFn, typename ReferenceFn>
+stats sweep(EngineFn engine_fn, ReferenceFn reference_fn, long target_samples = 20000) {
+    const long double lo       = to_long_double(lower_of<In>);
+    const long double in_notch = to_long_double(notch_of<In>);
+    const long double span     = to_long_double(upper_of<In>) - lo;
+    const long        count    = static_cast<long>(span / in_notch);
+    const long        stride   = count > target_samples ? count / target_samples : 1;
+
+    stats       s;
+    long double sum = 0.0L;
+    for (long i = 0; i <= count; i += stride) {
+        const long double value = lo + static_cast<long double>(i) * in_notch;
+        const In          x     = test::store<In>(static_cast<double>(value));
+
+        // Some ops return expected<inside, error> (runtime-failable domains);
+        // unwrap and skip the rare out-of-domain sample.
+        const auto     outcome  = engine_fn(x);
+        constexpr bool failable = requires {
+            outcome.has_value();
+            *outcome;
+        };
+        if constexpr (failable)
+            if (!outcome.has_value())
+                continue;
+        const auto result = [&] {
+            if constexpr (failable)
+                return *outcome;
+            else
+                return outcome;
+        }();
+        const long double out_notch = to_long_double(notch_of<std::remove_cv_t<decltype(result)>>);
+        const long double err =
+            std::fabs(to_long_double(rational{result}) - reference_fn(value)) / (out_notch > 0.0L ? out_notch : 1.0L);
+
+        if (err > s.max_err)
+            s.max_err = err;
+        sum += err;
+        ++s.samples;
+    }
+    s.mean_err = s.samples ? sum / static_cast<long double>(s.samples) : 0.0L;
+    return s;
+}
+
+// --check: the rows whose max error passes half a notch, plus the slack of
+// the long-double reference (64 bits: 2^-10 notch on the 2^-40 outputs;
+// where long double is a double, those rows are not checked).
+int failures = 0;
+
+bool within_half_notch(const char* grid, long double max_err) {
+    const bool fine = std::string_view{grid} == "out 2^-40";
+    if (fine && LDBL_MANT_DIG < 64)
+        return true;
+    return max_err <= 0.5L + (fine ? 0x1p-10L : 1e-6L);
+}
+
+void row(std::FILE* out, const char* function, const char* grid, const char* domain, stats s) {
+    if (!within_half_notch(grid, s.max_err)) {
+        ++failures;
+        std::fprintf(stderr, "accuracy: %s on %s exceeds half a notch: %.6Lf\n", function, grid, s.max_err);
+    }
+    std::fprintf(out,
+                 "| %-7s | %-13s | %-14s | %10.4Lf | %10.6Lf | %ld |\n",
+                 function,
+                 grid,
+                 domain,
+                 s.max_err,
+                 s.mean_err,
+                 s.samples);
+}
+
+// Input grids, in three kinds: dyadic 2^-14 lattices (deduced outputs),
+// the same ranges in steps of 1/1000 (inputs
+// that are not doubles exactly), and explicit outputs with a 2^-40 notch.
+using angle_grid = inside<{{-8, 8}, per<16384>}, round_half_away>;
+using tan_grid   = inside<{{-1.5, 1.5}, per<16384>}, round_half_away>;
+using unit_grid  = inside<{{-1, 1}, per<16384>}, round_half_away>;
+using sqrt_grid  = inside<{{0, 16}, per<16384>}, round_half_away>;
+using log_grid   = inside<{{1, 1000}, per<16384>}, round_half_away>;
+using atanh_grid = inside<{{-0.99951171875, 0.99951171875}, per<16384>}, round_half_away>;
+
+using angle_dec = inside<{{-8, 8}, per<1000>}, round_half_away>;
+using tan_dec   = inside<{{-1.5, 1.5}, per<1000>}, round_half_away>;
+using unit_dec  = inside<{{-1, 1}, per<1000>}, round_half_away>;
+using sqrt_dec  = inside<{{0, 16}, per<1000>}, round_half_away>;
+using log_dec   = inside<{{1, 1000}, per<1000>}, round_half_away>;
+using atanh_dec = inside<{{rational{-999, 1000}, rational{999, 1000}}, per<1000>}, round_half_away>;
+
+using fine_out = inside<{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_half_away>;
+} // namespace
+
+int main(int argc, char** argv) {
+    std::FILE* out   = stdout;
+    const bool check = argc > 1 && std::string_view{argv[1]} == "--check";
+    if (argc > 1 && !check) {
+        out = std::fopen(argv[1], "w");
+        if (!out) {
+            std::perror(argv[1]);
+            return 1;
+        }
+    }
+
+    std::fprintf(out,
+                 "# Math accuracy\n\n"
+                 "Generated by `inside.accuracy` (tests/accuracy.test.cpp) — do not edit by hand.\n"
+                 "Regenerate with `cmake --build <build-dir> --target inside.accuracy_report` (configure with "
+                 "`-DINSIDE_BUILD_TOOLS=ON`).\n\n"
+                 "Error is measured against a long-double `<cmath>` reference, in units of\n"
+                 "the **output grid notch**: max < 0.5 means every sampled result is the\n"
+                 "correctly rounded grid point. The engine rounds correctly wherever it\n"
+                 "decides a result ([the math engine](advanced/math-engine.md#what-is-guaranteed)); this table\n"
+                 "checks it on three kinds of grid:\n"
+                 "`dyadic 2^-14` (dyadic inputs, deduced outputs),\n"
+                 "`decimal` (inputs in steps of 1/1000, deduced outputs) and `out 2^-40`\n"
+                 "(the dyadic inputs into an explicit output with a 2^-40 notch). The\n"
+                 "long-double reference carries 64 bits, so on the 2^-40 outputs a result\n"
+                 "within about 2^-20 notch of a rounding boundary can read as up to a hair\n"
+                 "past 0.5.\n\n"
+                 "| fn      | grid          | domain         | max (notch) | mean (notch) | samples |\n"
+                 "|---------|---------------|----------------|-------------|--------------|---------|\n");
+
+    // One macro row per (function, grid kind, reference).
+#define INSIDE_ACCURACY(fn, In, Dec, domain, ref)                                    \
+    row(out,                                                                               \
+        #fn,                                                                               \
+        "dyadic 2^-14",                                                                    \
+        domain,                                                                            \
+        sweep<In>([](In x) { return math::fn(x); }, [](long double v) { return ref; }));   \
+    row(out,                                                                               \
+        #fn,                                                                               \
+        "decimal",                                                                         \
+        domain,                                                                            \
+        sweep<Dec>([](Dec x) { return math::fn(x); }, [](long double v) { return ref; })); \
+    row(out,                                                                               \
+        #fn,                                                                               \
+        "out 2^-40",                                                                       \
+        domain,                                                                            \
+        sweep<In>([](In x) { return math::fn<fine_out>(x); }, [](long double v) { return ref; }));
+
+    INSIDE_ACCURACY(sin, angle_grid, angle_dec, "[-8, 8]", sinl(v))
+    INSIDE_ACCURACY(cos, angle_grid, angle_dec, "[-8, 8]", cosl(v))
+    INSIDE_ACCURACY(tan, tan_grid, tan_dec, "[-1.5, 1.5]", tanl(v))
+    INSIDE_ACCURACY(asin, unit_grid, unit_dec, "[-1, 1]", asinl(v))
+    INSIDE_ACCURACY(acos, unit_grid, unit_dec, "[-1, 1]", acosl(v))
+    INSIDE_ACCURACY(atan, angle_grid, angle_dec, "[-8, 8]", atanl(v))
+    INSIDE_ACCURACY(sinh, angle_grid, angle_dec, "[-8, 8]", sinhl(v))
+    INSIDE_ACCURACY(cosh, angle_grid, angle_dec, "[-8, 8]", coshl(v))
+    INSIDE_ACCURACY(tanh, angle_grid, angle_dec, "[-8, 8]", tanhl(v))
+    INSIDE_ACCURACY(asinh, angle_grid, angle_dec, "[-8, 8]", asinhl(v))
+    INSIDE_ACCURACY(acosh, log_grid, log_dec, "[1, 1000]", acoshl(v))
+    INSIDE_ACCURACY(atanh, atanh_grid, atanh_dec, "(-1, 1)", atanhl(v))
+    INSIDE_ACCURACY(exp, angle_grid, angle_dec, "[-8, 8]", expl(v))
+    INSIDE_ACCURACY(exp2, angle_grid, angle_dec, "[-8, 8]", exp2l(v))
+    INSIDE_ACCURACY(log, log_grid, log_dec, "[1, 1000]", logl(v))
+    INSIDE_ACCURACY(log2, log_grid, log_dec, "[1, 1000]", log2l(v))
+    INSIDE_ACCURACY(log10, log_grid, log_dec, "[1, 1000]", log10l(v))
+    INSIDE_ACCURACY(sqrt, sqrt_grid, sqrt_dec, "[0, 16]", sqrtl(v))
+    INSIDE_ACCURACY(cbrt, angle_grid, angle_dec, "[-8, 8]", cbrtl(v))
+#undef INSIDE_ACCURACY
+
+    if (out != stdout)
+        std::fclose(out);
+    return check && failures > 0 ? 1 : 0;
+}

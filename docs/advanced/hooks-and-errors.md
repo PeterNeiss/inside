@@ -111,7 +111,7 @@ combination (`clamp | round_floor`) and a call's policy.
 
 ## Error codes
 
-Errors are reported as a `beman::inside::error`. The library does not use
+Errors are reported as a `ins::error`. The library does not use
 `std::error_code` or `<system_error>`, and nothing throws.
 
 | Code | Means |
@@ -195,14 +195,14 @@ yourself does.
 
 A precondition that no channel can take (a cursor stepped past its end, a
 raw value read off the grid) goes
-through one handler. By default it writes `beman::inside: <message>` to
+through one handler. By default it writes `ins: <message>` to
 `stderr` and calls `std::abort()`; a freestanding build traps.
 `set_error_handler` installs your own:
 
 ```cpp
-[[noreturn]] void on_inside_error(beman::inside::error code, const char* what) noexcept;
+[[noreturn]] void on_inside_error(ins::error code, const char* what) noexcept;
 
-beman::inside::set_error_handler(&on_inside_error);   // returns the previous handler
+ins::set_error_handler(&on_inside_error);   // returns the previous handler
 // get_error_handler() reads it; set_error_handler(nullptr) restores the default
 ```
 
@@ -211,7 +211,7 @@ exception of your own (the library is exception-neutral). `what` is a static
 string, so no allocation happens.
 
 In a constant expression a failed check is a compile error that names it: with
-exceptions on, `uncaught exception of type 'beman::inside::detail::inside_error';
+exceptions on, `uncaught exception of type 'ins::detail::inside_error';
 'what()': '…'` (a C++26 constexpr exception, never thrown at run time);
 without, a call to `constexpr_error` whose template argument is the text. There is one handler per program. It
 is atomic, so one thread may install a handler while others raise, and it has

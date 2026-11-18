@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Audio-shaped corners of beman::inside::math, each result the correctly
+// Audio-shaped corners of ins::math, each result the correctly
 // rounded point of its output grid (no <cmath>, the same at compile time and on
 // every platform):
 //   1. An exponential envelope over a stepping loop, exp(t / τ), t in s and
@@ -10,14 +10,13 @@
 
 #include <iostream>
 
-#include <beman/inside/math.hpp>
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 int main() {
     // 1. Growth and decay: t = −4, −3.75, …, 4 s by a cursor over the number

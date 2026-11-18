@@ -40,8 +40,8 @@ Every number in a grid, and every constant in an expression, is exact:
 | `just<N, D>` | the exact ratio N/D, as an inside of one point; `just<N>` is N |
 | `5_ins`, `0.1_ins` | the integer 5, the exact decimal 1/10: an inside of one point |
 
-The literals `_ins` and `_g` are also in `beman::inside::literals`:
-`using namespace beman::inside::literals;` brings only them.
+The literals `_ins` and `_g` are also in `ins::literals`:
+`using namespace ins::literals;` brings only them.
 
 `0.1` is not 1/10 in binary, so a grid or a constant that needs 1/10 says
 `0.1_ins`, `per<10>` or `just<1, 10>`. A value at run time can be a `double`:
@@ -86,8 +86,8 @@ explains the bound.
 
 ## Predefined formats
 
-`<beman/inside/inside/formats.hpp>` names grids that fill a native width, in
-`beman::inside::formats` (`using namespace beman::inside::formats;` brings
+`<inside/inside/formats.hpp>` names grids that fill a native width, in
+`ins::formats` (`using namespace ins::formats;` brings
 them in):
 
 | Types | Range, notch | Stored as | Policy |
@@ -100,7 +100,7 @@ them in):
 | `wrap_counter<Max>` | `inside<{0, Max}, wrap>`: `++` wraps Max → 0 | the smallest that fits | `wrap` |
 
 ```cpp
-using namespace beman::inside::formats;
+using namespace ins::formats;
 
 uq8_8 gain{1.5};              // stored as 384
 wrap_counter<255> seq{255};

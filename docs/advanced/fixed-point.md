@@ -23,10 +23,10 @@ An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
 65536 bit patterns) is:
 
 ```cpp
-using uq8_8 = inside<{{0, just<65535, 256>}, per<(1 << 8)>}, round_half_away>;   // == beman::inside::uq8_8
+using uq8_8 = inside<{{0, just<65535, 256>}, per<(1 << 8)>}, round_half_away>;   // == ins::uq8_8
 ```
 
-`<beman/inside/inside/formats.hpp>` has the common ones, in `beman::inside::formats` ([Grids](../guide/grids.md#predefined-formats)):
+`<inside/inside/formats.hpp>` has the common ones, in `ins::formats` ([Grids](../guide/grids.md#predefined-formats)):
 
 | Alias | Format | Raw |
 |---|---|---|
@@ -86,7 +86,7 @@ element.
 [performance.md](../performance.md) has the measured tables for Q8.8 and Q16.16
 construct, add, sub, mul, div, store and accumulate, and for the math
 functions, each against a native baseline with hardware counters (built by the
-`beman.inside.perf_report` target). On the reference machine Q8.8 accumulation
+`inside.perf_report` target). On the reference machine Q8.8 accumulation
 runs faster than the hand-written native code; construction and division
 match it; an add, a subtraction or a product costs a few instructions more
 (about 70–85% of native speed). A checked store adds a compare and branch; `unsafe`
@@ -97,8 +97,8 @@ or `sum` removes it from a proven-safe inner loop.
 A unit puts a meaning on the same raw at no cost (see [Units](../guide/units.md)):
 
 ```cpp
-#include <beman/inside/units.hpp>
-using namespace beman::inside::units;
+#include <inside/units.hpp>
+using namespace ins;
 
 using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;     // a 0.5 °C step, a uint8_t
 auto room = point<si::degree_Celsius>(celsius{21.4});        // 21.5 ℃: rounded onto the step

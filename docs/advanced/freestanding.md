@@ -9,7 +9,7 @@ its own, and never throws: a failure a program can expect is a value (a
 `std::expected`, an `error&`, a hook), and a precondition goes to one
 **replaceable handler**. The math engine needs no FPU. This page shows how to
 build without exceptions or floating point, and where the limits are. It is
-also the home of `BEMAN_INSIDE_MATH_NO_FP`.
+also the home of `INSIDE_MATH_NO_FP`.
 
 > [!IMPORTANT]
 > `-ffreestanding` does not compile today. The library needs static
@@ -24,10 +24,10 @@ also the home of `BEMAN_INSIDE_MATH_NO_FP`.
   install a handler with `set_error_handler` if a trap is not what a broken
   precondition should do;
 - don't include `inside/io.hpp`, `units/io.hpp`, `inside/random.hpp` or
-  `units/random.hpp` (with the single header, define `BEMAN_INSIDE_NO_STRING`;
+  `units/random.hpp` (with the single header, define `INSIDE_NO_STRING`;
   it leaves the random headers out of a freestanding or
-  `BEMAN_INSIDE_MATH_NO_FP` build by itself);
-- for the math without an FPU, build with `BEMAN_INSIDE_MATH_NO_FP`, and
+  `INSIDE_MATH_NO_FP` build by itself);
+- for the math without an FPU, build with `INSIDE_MATH_NO_FP`, and
   `<cmath>` is never included.
 
 ## What needs a hosted library
@@ -41,7 +41,7 @@ also the home of `BEMAN_INSIDE_MATH_NO_FP`.
 
 Beyond `<meta>`, no `<system_error>`, `<string>`, `<ostream>`, `<format>` or
 `<stdexcept>` reaches the core with exceptions off. Under
-`BEMAN_INSIDE_MATH_NO_FP` (no FPU, but a full library) units and their math
+`INSIDE_MATH_NO_FP` (no FPU, but a full library) units and their math
 work unchanged: neither header uses floating point.
 
 ## Two build conditions
@@ -51,7 +51,7 @@ work unchanged: neither header uses floating point.
 A store the grids cannot prove names its channel or does not compile, so an
 out-of-range store, a division by zero, a rounding mismatch or a non-finite
 input is a value the program reads. What is left is a broken precondition (a
-cursor stepped past its end, a raw read off the grid): it goes through `beman::inside::detail::raise`, which calls the
+cursor stepped past its end, a raw read off the grid): it goes through `ins::detail::raise`, which calls the
 installed handler. The **default** handler prints the message and calls
 `std::abort()` on a hosted build, and **traps** on a freestanding one.
 `<stdexcept>` is included only with exceptions on, for the compile-time
@@ -60,17 +60,17 @@ diagnostic of a constant expression.
 For anything other than that, install your own handler:
 
 ```cpp
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
 // The handler must not return (raise() traps if it does): log, reset, longjmp.
-[[noreturn]] void on_inside_error(beman::inside::error code, const char* what) noexcept {
+[[noreturn]] void on_inside_error(ins::error code, const char* what) noexcept {
     board_log(static_cast<int>(code), what);   // `what` is a static message
     board_fault_reset();
     for (;;) {}
 }
 
 int main() {
-    beman::inside::set_error_handler(&on_inside_error);   // returns the previous handler
+    ins::set_error_handler(&on_inside_error);   // returns the previous handler
     // get_error_handler() reads it; set_error_handler(nullptr) restores the default
 }
 ```
@@ -83,13 +83,13 @@ no allocation, no `<string>`.
 `to_string`, `operator<<`, `operator>>` and the `std::formatter`
 specializations live in `inside/io.hpp` and `units/io.hpp`, the only headers
 that pull in `<string>`, `<ostream>` and `<format>`. Don't include them. With the
-[single header](single-header.md), define `BEMAN_INSIDE_NO_STRING` before the
+[single header](single-header.md), define `INSIDE_NO_STRING` before the
 include; it drops `inside/io.hpp` and `units/io.hpp`, the text of insides and
-quantities (`BEMAN_INSIDE_NO_UNITS` drops the units as well):
+quantities (`INSIDE_NO_UNITS` drops the units as well):
 
 ```cpp
-#define BEMAN_INSIDE_NO_STRING
-#include <beman/inside/inside.hpp>   // single_include/beman/inside/inside.hpp
+#define INSIDE_NO_STRING
+#include <inside/inside.hpp>   // single_include/inside/inside.hpp
 ```
 
 Report state through the handler and the error codes instead.
@@ -107,10 +107,10 @@ Besides the handler, errors come back as values, without `std::error_code`:
 
 [Hooks and errors](hooks-and-errors.md#error-codes) shows the surface.
 
-## Math without `<cmath>` (`BEMAN_INSIDE_MATH_NO_FP`)
+## Math without `<cmath>` (`INSIDE_MATH_NO_FP`)
 
 The math functions (`math::sin`, `cos`, `exp`, `log`, `sqrt`, `pow`, `atan`, …
-in `math.hpp`) work without an FPU. Under `BEMAN_INSIDE_MATH_NO_FP`
+in `math.hpp`) work without an FPU. Under `INSIDE_MATH_NO_FP`
 the engine's `double` and double-double tiers, and their `#include <cmath>`,
 are compiled out **entirely**; the integer path computes every result. The
 interface, the output grids, the types **and the values** are unchanged:
@@ -118,18 +118,18 @@ the floating-point tiers only ever return the integer path's point
 ([the math engine](math-engine.md#what-is-guaranteed)).
 
 - It turns on by itself when `__STDC_HOSTED__ == 0` (`-ffreestanding`), or set
-  the CMake option `BEMAN_INSIDE_MATH_NO_FP=ON`, or define the macro.
+  the CMake option `INSIDE_MATH_NO_FP=ON`, or define the macro.
 - It holds for the modular headers and for the single header. The CI smoke
   `single_header_nofp_smoke` compiles the single header with a *poison*
   `<cmath>` first on the include path, so any `<cmath>` that sneaks in breaks
-  the build. That smoke defines `BEMAN_INSIDE_NO_STRING` too, because
+  the build. That smoke defines `INSIDE_NO_STRING` too, because
   `<format>` includes `<cmath>`.
-- The whole test suite also runs with `BEMAN_INSIDE_MATH_NO_FP=ON` on a hosted
+- The whole test suite also runs with `INSIDE_MATH_NO_FP=ON` on a hosted
   build, units included.
 - Every math function is `constexpr`, so it works at compile time too.
 
 ```bash
-g++-16 -std=c++26 -freflection -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp
+g++-16 -std=c++26 -freflection -DINSIDE_MATH_NO_FP -I single_include my_app.cpp
 ```
 
 ## Limits
@@ -137,19 +137,19 @@ g++-16 -std=c++26 -freflection -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_ap
 - **It depends on the toolchain.** `-ffreestanding` waits for a libstdc++
   whose `<meta>` is freestanding; the library does not work around that.
 - **Bare metal.** A bare-metal link also needs `abort` or `__builtin_trap` for the failure path,
-  libm's `sqrt` and `fma` unless `BEMAN_INSIDE_MATH_NO_FP` is on, and a start-up
+  libm's `sqrt` and `fma` unless `INSIDE_MATH_NO_FP` is on, and a start-up
   that does not assume a hosted environment.
 - **Exceptions on, freestanding** needs `<stdexcept>` for the compile-time
   diagnostic of a constant expression: use `-fno-exceptions`.
 
 ## A worked example
 
-`tests/beman/inside/single_header_freestanding_smoke.test.cpp` is a complete
+`tests/single_header_freestanding_smoke.test.cpp` is a complete
 translation unit that sees **only** the single header, with the text layer
 dropped and exceptions off. It installs a trapping handler and runs clamp,
 wrap, the error codes and arithmetic:
 
 ```sh
 ctest --test-dir <build-dir> -R single_header_freestanding_smoke
-# built with -DBEMAN_INSIDE_NO_STRING -fno-exceptions, -I single_include only
+# built with -DINSIDE_NO_STRING -fno-exceptions, -I single_include only
 ```

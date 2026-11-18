@@ -10,13 +10,12 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 namespace {
 constexpr auto kohm = si::kilo(si::ohm);

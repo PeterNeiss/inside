@@ -78,7 +78,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
     long folds with one add or subtract.
 - Faster wherever a store or a quotient took 64-bit fractions, with the same
   results (measured against hand-written integer code for every operation,
-  grid shape and policy; `tests/beman/inside/perf_gate/perfmap.py`):
+  grid shape and policy; `tools/perf_gate/perfmap.py`):
   - A store past the target's limits under `clamp` or `wrap`, from an
     integer or another inside, rounds the slot in integers and stores the
     endpoint or folds it (`store_inside dec2 → dec3` under `wrap`: 170 ns to

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour 4: Lower need not be a multiple of the notch.
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
 #include <type_traits>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]

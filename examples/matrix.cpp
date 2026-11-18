@@ -18,14 +18,13 @@
 #include <iostream>
 #include <numbers>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/inside/mdspan.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/inside/mdspan.hpp>
+#include <inside/units.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 using q14     = inside<{{-2, 2}, per<(1 << 14)>}, round_half_away>; // Q1.14
 using coord   = inside<{{-100, 100}, per<(1 << 8)>}, round_half_away>;

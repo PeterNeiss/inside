@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: a policy for one call, and actions that see what a policy did.
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]

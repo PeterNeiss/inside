@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: a function rounds once, onto the grid it returns.
-#include <beman/inside/math.hpp>
+#include <inside/math.hpp>
 
 #include <type_traits>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]

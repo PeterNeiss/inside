@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: a conversion rescales the grid and keeps the raw; a mixed-unit sum is exact.
-#include <beman/inside/units.hpp>
+#include <inside/units.hpp>
 
 #include <type_traits>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 template <class A, class B>
 concept addable = requires(A a, B b) { a + b; };

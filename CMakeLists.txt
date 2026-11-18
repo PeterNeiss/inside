@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.30...4.4)
 
 project(
-    beman.inside
+    inside
     DESCRIPTION
         "Numbers that cannot go out of range: the range and step size live in the type"
     LANGUAGES CXX
@@ -15,19 +15,19 @@ project(
 
 # [CMAKE.SKIP_TESTS]
 option(
-    BEMAN_INSIDE_WARNINGS_AS_ERRORS
+    INSIDE_WARNINGS_AS_ERRORS
     "Make warnings errors in the tests and examples (-Werror)."
     OFF
 )
 option(
-    BEMAN_INSIDE_BUILD_TESTS
+    INSIDE_BUILD_TESTS
     "Enable building tests and test infrastructure. Default: ${PROJECT_IS_TOP_LEVEL}. Values: { ON, OFF }."
     ${PROJECT_IS_TOP_LEVEL}
 )
 
 # [CMAKE.SKIP_EXAMPLES]
 option(
-    BEMAN_INSIDE_BUILD_EXAMPLES
+    INSIDE_BUILD_EXAMPLES
     "Enable building examples. Default: ${PROJECT_IS_TOP_LEVEL}. Values: { ON, OFF }."
     ${PROJECT_IS_TOP_LEVEL}
 )
@@ -37,16 +37,16 @@ option(
 # compiles, so they are opt-in. (The fuzzer and the accuracy sweep always run
 # as tests.)
 option(
-    BEMAN_INSIDE_BUILD_TOOLS
+    INSIDE_BUILD_TOOLS
     "Enable building benchmarks, the docs reports and the perf workload. Default: OFF. Values: { ON, OFF }."
     OFF
 )
 
 # The certify test checks the pairs of docs/certified.md up to 2^20 inputs
-# (seconds); BEMAN_INSIDE_CERTIFY_FULL=ON checks every pair up to 2^32 (the
+# (seconds); INSIDE_CERTIFY_FULL=ON checks every pair up to 2^32 (the
 # weekly CI run, minutes).
 option(
-    BEMAN_INSIDE_CERTIFY_FULL
+    INSIDE_CERTIFY_FULL
     "Check every certified math pair, not only those up to 2^20 inputs. Default: OFF. Values: { ON, OFF }."
     OFF
 )
@@ -54,19 +54,19 @@ option(
 # Tests too slow for every run, and unable to run in an optimized build:
 # find_grids reads the math instantiations of the unoptimized examples. The
 # weekly CI run turns them on. (The exhaustive sweeps that can run optimized
-# do so in every release build instead, see tests/beman/inside/support.hpp.)
+# do so in every release build instead, see tests/support.hpp.)
 option(
-    BEMAN_INSIDE_SLOW_TESTS
+    INSIDE_SLOW_TESTS
     "Run the slow debug-only tests (find_grids). Default: OFF. Values: { ON, OFF }."
     OFF
 )
 
-# BEMAN_INSIDE_MATH_NO_FP=ON builds with no hardware floating point: the math
+# INSIDE_MATH_NO_FP=ON builds with no hardware floating point: the math
 # engine's double and dd tiers compile out (its integer path computes every
 # result; results do not change).
 # Auto-enabled on freestanding targets.
 option(
-    BEMAN_INSIDE_MATH_NO_FP
+    INSIDE_MATH_NO_FP
     "Build without hardware floating point. Default: OFF. Values: { ON, OFF }."
     OFF
 )
@@ -75,12 +75,12 @@ option(
 # is what makes them bit-reproducible across platforms. Baseline x86-64 has no
 # FMA instruction, so without -mfma every std::fma is a software-emulated libm
 # call (math::sin ~4x slower; the results are identical either way). ON adds
-# -mfma to everything that links beman::inside on x86-64 GCC/Clang. The binary
+# -mfma to everything that links inside::inside on x86-64 GCC/Clang. The binary
 # then needs AVX+FMA (-mfma implies AVX; Intel Haswell / AMD Piledriver, 2013+) and
 # dies with SIGILL on older ones — turn this OFF to target those. AArch64 and
 # other ISAs with FMA in their baseline need nothing.
 option(
-    BEMAN_INSIDE_FMA
+    INSIDE_FMA
     "Add -mfma on x86-64 GCC/Clang so std::fma is one instruction, not a libm call. Default: ON. Values: { ON, OFF }."
     ON
 )
@@ -89,99 +89,99 @@ option(
 include(infra/cmake/beman-install-library.cmake)
 include(infra/cmake/BuildTelemetryConfig.cmake)
 
-add_library(beman.inside INTERFACE)
-add_library(beman::inside ALIAS beman.inside)
+add_library(inside INTERFACE)
+add_library(inside::inside ALIAS inside)
 
 target_sources(
-    beman.inside
+    inside
     PUBLIC FILE_SET HEADERS BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 set_target_properties(
-    beman.inside
+    inside
     PROPERTIES VERIFY_INTERFACE_HEADER_SETS ${PROJECT_IS_TOP_LEVEL}
 )
-target_compile_features(beman.inside INTERFACE cxx_std_26)
+target_compile_features(inside INTERFACE cxx_std_26)
 
-if(BEMAN_INSIDE_MATH_NO_FP)
-    target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_NO_FP)
+if(INSIDE_MATH_NO_FP)
+    target_compile_definitions(inside INTERFACE INSIDE_MATH_NO_FP)
 endif()
 # Static reflection (std::define_static_array) interns grid numbers of any
 # size. GCC 16 gates it behind -freflection, which it accepts only in C++26
 # mode: probe the two together (a consumer may not set CMAKE_CXX_STANDARD).
 include(CheckCXXCompilerFlag)
 set(CMAKE_REQUIRED_FLAGS "-std=c++26")
-check_cxx_compiler_flag(-freflection BEMAN_INSIDE_HAS_FREFLECTION)
+check_cxx_compiler_flag(-freflection INSIDE_HAS_FREFLECTION)
 unset(CMAKE_REQUIRED_FLAGS)
-if(NOT BEMAN_INSIDE_HAS_FREFLECTION)
+if(NOT INSIDE_HAS_FREFLECTION)
     message(
         FATAL_ERROR
-        "beman.inside needs C++26 static reflection: build with g++-16 (-freflection)"
+        "inside needs C++26 static reflection: build with g++-16 (-freflection)"
     )
 endif()
-target_compile_options(beman.inside INTERFACE -freflection)
-if(BEMAN_INSIDE_FMA AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-    target_compile_options(beman.inside INTERFACE -mfma)
+target_compile_options(inside INTERFACE -freflection)
+if(INSIDE_FMA AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    target_compile_options(inside INTERFACE -mfma)
 endif()
 
 # Error reporting carries no strings and nothing throws: a store the grids cannot
 # prove names its channel (an expected, an errc&, a hook) or does not compile; a
-# precondition funnels through the installed beman::inside::error_handler (default
+# precondition funnels through the installed ins::error_handler (default
 # prints and aborts / traps freestanding) with a static const-char* message — the core
 # never drags <string>/<system_error> into a translation unit. General-purpose
 # stringification (to_string / operator<< / std::formatter) lives in the opt-in
-# <beman/inside/inside/io.hpp>; in the single header that block is wrapped in
-# BEMAN_INSIDE_NO_STRING so a freestanding consumer can drop it wholesale.
+# <inside/inside/io.hpp>; in the single header that block is wrapped in
+# INSIDE_NO_STRING so a freestanding consumer can drop it wholesale.
 
-add_subdirectory(include/beman/inside)
+add_subdirectory(include/inside)
 
-beman_install_library(beman.inside TARGETS beman.inside)
+beman_install_library(inside TARGETS inside)
 configure_build_telemetry()
 
-# The amalgamated single header shares the path beman/inside/inside.hpp with the
+# The amalgamated single header shares the path inside/inside.hpp with the
 # umbrella header, so it cannot live in the same include root. Ship it under a
 # separate directory; consumers who want the single-header form add
-# <prefix>/${CMAKE_INSTALL_DATADIR}/beman.inside/single_include to their include path.
-set(BEMAN_INSIDE_SINGLE_HEADER
-    "${CMAKE_CURRENT_SOURCE_DIR}/single_include/beman/inside/inside.hpp"
+# <prefix>/${CMAKE_INSTALL_DATADIR}/inside/single_include to their include path.
+set(INSIDE_SINGLE_HEADER
+    "${CMAKE_CURRENT_SOURCE_DIR}/single_include/inside/inside.hpp"
     CACHE FILEPATH
     "Path of the committed amalgamated single header"
 )
-if(EXISTS "${BEMAN_INSIDE_SINGLE_HEADER}")
+if(EXISTS "${INSIDE_SINGLE_HEADER}")
     install(
         DIRECTORY single_include
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/beman.inside
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/inside
         FILES_MATCHING
         PATTERN "*.hpp"
     )
 endif()
 
 # Single-header amalgamation. The committed single header is generated by
-# inlining the whole include/ tree (pure CMake, see cmake/amalgamate.cmake — no
+# inlining the whole include/ tree (pure CMake, see tools/amalgamate.cmake — no
 # Python or other tooling). Regenerate after touching any include/ header with:
 #
-#     cmake --build <build-dir> --target beman.inside.amalgamate
+#     cmake --build <build-dir> --target inside.amalgamate
 #
 # It is the drop-in form of the library and the artifact behind the Compiler
 # Explorer raw-URL include:
-#   #include <https://raw.githubusercontent.com/PeterNeiss/inside/main/single_include/beman/inside/inside.hpp>
+#   #include <https://raw.githubusercontent.com/PeterNeiss/inside/main/single_include/inside/inside.hpp>
 add_custom_target(
-    beman.inside.amalgamate
+    inside.amalgamate
     COMMAND
         ${CMAKE_COMMAND} -D
-        BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
-        -D BEMAN_INSIDE_AMALGAMATE_OUTPUT=${BEMAN_INSIDE_SINGLE_HEADER} -D
-        BEMAN_INSIDE_AMALGAMATE_VERSION=${PROJECT_VERSION} -P
-        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/amalgamate.cmake
-    COMMENT "Amalgamating beman.inside into ${BEMAN_INSIDE_SINGLE_HEADER}"
+        INSIDE_AMALGAMATE_INCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+        -D INSIDE_AMALGAMATE_OUTPUT=${INSIDE_SINGLE_HEADER} -D
+        INSIDE_AMALGAMATE_VERSION=${PROJECT_VERSION} -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/amalgamate.cmake
+    COMMENT "Amalgamating inside into ${INSIDE_SINGLE_HEADER}"
     VERBATIM
 )
 
-if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
+if(INSIDE_BUILD_TESTS OR INSIDE_BUILD_EXAMPLES)
     # Warning flags for this project's own tests and examples. Kept off the
-    # public beman.inside interface so consumers don't inherit them.
-    add_library(beman.inside.warnings INTERFACE)
+    # public inside interface so consumers don't inherit them.
+    add_library(inside.warnings INTERFACE)
     target_compile_options(
-        beman.inside.warnings
+        inside.warnings
         INTERFACE
             -Wall
             -Wextra
@@ -195,18 +195,18 @@ if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
             -Wno-uninitialized
             -Wno-missing-field-initializers
             -Wformat=2
-            $<$<BOOL:${BEMAN_INSIDE_WARNINGS_AS_ERRORS}>:-Werror>
+            $<$<BOOL:${INSIDE_WARNINGS_AS_ERRORS}>:-Werror>
     )
 endif()
 
-if(BEMAN_INSIDE_BUILD_TESTS)
+if(INSIDE_BUILD_TESTS)
     enable_testing()
-    add_subdirectory(tests/beman/inside)
+    add_subdirectory(tests)
     add_subdirectory(docs/proposal)
 endif()
 
-if(BEMAN_INSIDE_BUILD_EXAMPLES)
-    if(NOT BEMAN_INSIDE_BUILD_TESTS)
+if(INSIDE_BUILD_EXAMPLES)
+    if(NOT INSIDE_BUILD_TESTS)
         enable_testing()
     endif()
     add_subdirectory(examples)

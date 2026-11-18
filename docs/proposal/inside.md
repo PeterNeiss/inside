@@ -37,7 +37,7 @@ quantities*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/math
 adds the functions of `<cmath>`.
 
 The reference implementation is
-[beman.inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0). A
+[inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0). A
 long-form motivation with compiled exhibits is [*int considered
 harmful*](https://github.com/PeterNeiss/inside/blob/v0.5.0/docs/int-considered-harmful.pdf)
 (the *paper* below).
@@ -75,7 +75,7 @@ proofs.
 
 # A tour
 
-The listings use the reference implementation's namespace `beman::inside`.
+The listings use the reference implementation's namespace `ins`.
 Each one is a region of a program that compiles and checks its own results.
 
 **The range is part of the type, and arithmetic widens it.**

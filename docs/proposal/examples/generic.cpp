@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: insides in generic code — common_type, numeric_limits and hash.
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
 #include <algorithm>
 #include <limits>
 #include <type_traits>
 #include <unordered_set>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]
