@@ -30,7 +30,7 @@
 //---------------------------------------------------------------------------
 namespace beman::inside::math::detail::entry {
 namespace engine = ::beman::inside::math::detail::engine;
-using ::beman::inside::detail::grid_rational;
+using ::beman::inside::grid_number;
 using ::beman::inside::detail::wide_valued;
 
 //---------------------------------------------------------------------------
@@ -58,10 +58,9 @@ constexpr auto anchored_input(const In& x) {
 }
 
 template <insidable Out>
-inline constexpr grid_rational half_unit =
-    ::beman::inside::detail::gcd(notch_of<Out> / grid_rational{2}, lower_of<Out>);
+inline constexpr grid_number half_unit = gcd(notch_of<Out> / grid_number{2}, lower_of<Out>);
 
-template <insidable Out, policy_flag R, grid_rational Unit = half_unit<Out>>
+template <insidable Out, policy_flag R, grid_number Unit = half_unit<Out>>
 using bracket_t =
     inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (policy_of<Out> & clamp)>;
 
@@ -71,7 +70,7 @@ using bracket_t =
 // bracket point in 1024) does rounding up decide whether the value is exactly y.
 // Then Out's slot follows from the bracket index by one integer division.
 template <insidable Out>
-inline constexpr grid_rational fine_unit = half_unit<Out> / grid_rational{1024};
+inline constexpr grid_number fine_unit = half_unit<Out> / grid_number{1024};
 
 template <insidable Out>
 inline constexpr bool integer_bracket = [] {
@@ -113,15 +112,15 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         return fn.template operator()<Out>(anchored_input(xs)...);
     else if constexpr (integer_bracket<Out>) {
         using namespace ::beman::inside::detail;
-        constexpr grid_rational F = fine_unit<Out>;
-        constexpr std::int64_t  c = static_cast<std::int64_t>(exact_quotient(lower_of<Out>, F)); // Lower in F
-        constexpr std::int64_t  s = static_cast<std::int64_t>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
-        using Lo                  = bracket_t<Out, round_floor, F>;
-        using Hi                  = bracket_t<Out, round_ceil, F>;
-        using R                   = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
-        constexpr bool checked    = expected_like<R>;
-        using Res                 = std::conditional_t<checked, std::expected<Out, error>, Out>;
-        const R lo                = fn.template operator()<Lo>(anchored_input(xs)...);
+        constexpr grid_number  F = fine_unit<Out>;
+        constexpr std::int64_t c = static_cast<std::int64_t>(exact_quotient(lower_of<Out>, F)); // Lower in F
+        constexpr std::int64_t s = static_cast<std::int64_t>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
+        using Lo                 = bracket_t<Out, round_floor, F>;
+        using Hi                 = bracket_t<Out, round_ceil, F>;
+        using R                  = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
+        constexpr bool checked   = expected_like<R>;
+        using Res                = std::conditional_t<checked, std::expected<Out, error>, Out>;
+        const R lo               = fn.template operator()<Lo>(anchored_input(xs)...);
         const auto               unwrap = [](const auto& r) -> const auto& {
             if constexpr (checked)
                 return *r;
@@ -271,28 +270,28 @@ consteval void require_rounding() noexcept {
 // bounds the distance from the nearer pole below: |tan| < 1/Gap on In.
 namespace tan_branch {
 using ::beman::inside::detail::grid_int;
-inline constexpr grid_rational notch = grid_rational{1} / grid_rational{grid_int{1} << 200};
-inline constexpr grid_rational pi_lo =
+inline constexpr grid_number notch = grid_number{1} / grid_number{grid_int{1} << 200};
+inline constexpr grid_number pi_lo =
     engine::lattice_bound<notch, false>(engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
-inline constexpr grid_rational pi_hi =
+inline constexpr grid_number pi_hi =
     engine::lattice_bound<notch, true>(engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
 
 // A bound on m·π: below (up false) or above.
-consteval grid_rational pi_times(const grid_rational& m, bool up) { return (m < 0) != up ? m * pi_hi : m * pi_lo; }
+consteval grid_number pi_times(const grid_number& m, bool up) { return (m < 0) != up ? m * pi_hi : m * pi_lo; }
 
 struct result {
-    bool          Ok;
-    grid_rational Gap;
+    bool        Ok;
+    grid_number Gap;
 };
 
 template <insidable In>
 consteval result of() {
     using ::beman::inside::detail::grid_round, ::beman::inside::detail::round_mode;
-    const grid_rational lo = lower_of<In>, hi = upper_of<In>, half = grid_rational{1} / grid_rational{2};
-    const grid_rational k     = grid_round<round_mode::floor>((lo + hi) / (grid_rational{2} * pi_lo) + half);
-    const grid_rational below = pi_times(k - half, true), above = pi_times(k + half, false);
+    const grid_number lo = lower_of<In>, hi = upper_of<In>, half = grid_number{1} / grid_number{2};
+    const grid_number k     = grid_round<round_mode::floor>((lo + hi) / (grid_number{2} * pi_lo) + half);
+    const grid_number below = pi_times(k - half, true), above = pi_times(k + half, false);
     if (!(below < lo && hi < above))
-        return {false, grid_rational{0}};
+        return {false, grid_number{0}};
     return {true, std::min(lo - below, above - hi)};
 }
 
@@ -300,7 +299,7 @@ consteval result of() {
 template <insidable In>
 consteval int kmax_of() {
     using ::beman::inside::detail::grid_round, ::beman::inside::detail::round_mode;
-    const grid_rational inv = grid_rational{1} / of<In>().Gap;
+    const grid_number inv = grid_number{1} / of<In>().Gap;
     return bit_width_of(::beman::inside::detail::grid_numerator(grid_round<round_mode::ceil>(inv))) + 1;
 }
 } // namespace tan_branch
@@ -314,7 +313,7 @@ inline constexpr int tan_kmax = tan_branch::kmax_of<In>();
 // any size (one within int64 takes the int64 path; one past it skips the
 // double and dd tiers, whose ln Base is a 64-bit table).
 template <auto Base>
-inline constexpr bool grid_base = std::same_as<decltype(Base), grid_rational>;
+inline constexpr bool grid_base = std::same_as<decltype(Base), grid_number>;
 template <auto Base>
 inline constexpr bool base_ok = [] {
     if constexpr (std::integral<decltype(Base)>)
@@ -340,57 +339,57 @@ inline constexpr bool pow_pole = lower_of<InB> == 0 && lower_of<InE> < 0;
 // compile error.
 //---------------------------------------------------------------------------
 namespace results {
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using exp =
     engine::increasing_t<In, N, engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using exp2 =
     engine::increasing_t<In, N, engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using log = engine::increasing_t<In, N, engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using log2 = engine::increasing_t<In, N, engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using log10 = engine::increasing_t<In, N, engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using sqrt = engine::increasing_t<In, N, engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using cbrt = engine::increasing_t<In, N, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using atan = engine::increasing_t<In, N, engine::atan_core<engine::input_limbs<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using asin = engine::increasing_t<In, N, engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using acos = engine::decreasing_t<In, N, engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using sinh = engine::increasing_t<
     In,
     N,
     engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_kmax<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using tanh =
     engine::increasing_t<In, N, engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using asinh = engine::increasing_t<
     In,
     N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using acosh = engine::increasing_t<
     In,
     N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using atanh = engine::increasing_t<
     In,
     N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using sin = inside<{{-1, 1}, N}, engine::result_policy<In>>;
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using cos = sin<N, In>;
 // tan is increasing on its branch (tan_domain).
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using tan = engine::increasing_t<
     In,
     N,
@@ -401,19 +400,19 @@ using tan = engine::increasing_t<
 template <insidable In>
 using cosh_core =
     engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_kmax<In>>;
-template <grid_rational N, insidable In>
-inline constexpr grid_rational cosh_lo = (lower_of<In> <= 0 && upper_of<In> >= 0) ? grid_rational{1}
-                                         : (lower_of<In> > 0) ? engine::bound_at<In, N, cosh_core<In>, false, false>
-                                                              : engine::bound_at<In, N, cosh_core<In>, true, false>;
-template <grid_rational N, insidable In>
-inline constexpr grid_rational cosh_hi =
+template <grid_number N, insidable In>
+inline constexpr grid_number cosh_lo = (lower_of<In> <= 0 && upper_of<In> >= 0) ? grid_number{1}
+                                       : (lower_of<In> > 0) ? engine::bound_at<In, N, cosh_core<In>, false, false>
+                                                            : engine::bound_at<In, N, cosh_core<In>, true, false>;
+template <grid_number N, insidable In>
+inline constexpr grid_number cosh_hi =
     std::max(engine::bound_at<In, N, cosh_core<In>, true, true>, engine::bound_at<In, N, cosh_core<In>, false, true>);
-template <grid_rational N, insidable In>
+template <grid_number N, insidable In>
 using cosh = engine::result_grid_t<In, N, cosh_lo<N, In>, cosh_hi<N, In>>;
 
 // max(|Lower|, |Upper|) (hypot's bound).
 template <insidable In>
-inline constexpr grid_rational max_abs = std::max(upper_of<In>, -lower_of<In>);
+inline constexpr grid_number max_abs = std::max(upper_of<In>, -lower_of<In>);
 
 // pow_base: pow_core with the base bound.
 template <auto Base, std::size_t E, int Mag, int KMax>
@@ -428,15 +427,15 @@ inline constexpr int pow_base_kmax = [] {
                   "the output: pow_base<B, C>(x)");
     return static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2;
 }();
-template <grid_rational N, auto Base, insidable In>
+template <grid_number N, auto Base, insidable In>
 using pow_base = engine::
     increasing_t<In, N, pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
 
 // atan2: [−π, π] rounded outward on N (π = atan2(0, −1)).
-template <grid_rational N>
-inline constexpr grid_rational pi_up =
+template <grid_number N>
+inline constexpr grid_number pi_up =
     engine::lattice_bound<N, true>(engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
-template <grid_rational N, insidable InY, insidable InX>
+template <grid_number N, insidable InY, insidable InX>
 using atan2 = inside<{{-pi_up<N>, pi_up<N>}, N}, engine::result_policy<InY>>;
 
 // hypot: [0, hypot of the largest magnitudes] on N.
@@ -444,17 +443,17 @@ template <insidable InX, insidable InY>
 inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(engine::hypot_bits<InX, InY>);
 // (A consteval function, not an immediately invoked lambda: the lambda would
 // become immediate, and GCC 16 then takes the address of its invoker.)
-template <grid_rational N, insidable InX, insidable InY>
-consteval grid_rational hypot_upper() {
+template <grid_number N, insidable InX, insidable InY>
+consteval grid_number hypot_upper() {
     using F   = ::beman::inside::detail::wide_rational<hypot_limbs<InX, InY>>;
     const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
     const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
     return engine::lattice_bound<N, true>(
         engine::sqrt_core<hypot_limbs<InX, InY>, engine::hypot_bits<InX, InY>>{a * a + b * b});
 }
-template <grid_rational N, insidable InX, insidable InY>
-inline constexpr grid_rational hypot_hi = hypot_upper<N, InX, InY>();
-template <grid_rational N, insidable InX, insidable InY>
+template <grid_number N, insidable InX, insidable InY>
+inline constexpr grid_number hypot_hi = hypot_upper<N, InX, InY>();
+template <grid_number N, insidable InX, insidable InY>
 using hypot = inside<{{0, hypot_hi<N, InX, InY>}, N}, engine::result_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
@@ -466,23 +465,23 @@ using pow_core = engine::pow_core<engine::input_limbs<InB>,
                                   engine::pow_kmax<InB, InE>,
                                   engine::input_bits<InB>,
                                   engine::input_bits<InE>>;
-template <grid_rational N, insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
-inline constexpr grid_rational pow_corner =
+template <grid_number N, insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
+inline constexpr grid_number pow_corner =
     engine::lattice_bound<N, Up>(pow_core<InB, InE>{engine::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
                                                     engine::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
 // The least (Up: greatest) bound over the four corners.
-template <grid_rational N, insidable InB, insidable InE, bool Up>
-inline constexpr grid_rational pow_extreme = [] {
+template <grid_number N, insidable InB, insidable InE, bool Up>
+inline constexpr grid_number pow_extreme = [] {
     static_assert(lower_of<InB> > 0,
                   "beman::inside::math::pow: the deduced output needs a base grid above 0 - name the output: "
                   "pow<C>(b, e)");
-    const std::initializer_list<grid_rational> c{pow_corner<N, InB, InE, false, false, Up>,
-                                                 pow_corner<N, InB, InE, false, true, Up>,
-                                                 pow_corner<N, InB, InE, true, false, Up>,
-                                                 pow_corner<N, InB, InE, true, true, Up>};
+    const std::initializer_list<grid_number> c{pow_corner<N, InB, InE, false, false, Up>,
+                                               pow_corner<N, InB, InE, false, true, Up>,
+                                               pow_corner<N, InB, InE, true, false, Up>,
+                                               pow_corner<N, InB, InE, true, true, Up>};
     return Up ? std::max(c) : std::min(c);
 }();
-template <grid_rational N, insidable InB, insidable InE>
+template <grid_number N, insidable InB, insidable InE>
 using pow = inside<{{pow_extreme<N, InB, InE, false>, pow_extreme<N, InB, InE, true>}, N}, engine::result_policy<InB>>;
 } // namespace results
 
@@ -499,7 +498,7 @@ struct rounding_fn {
     static constexpr bool domain = true;
     // The arguments' notch: the gcd of their value units (0 when one has none).
     template <class... In>
-    static constexpr grid_rational notch = [] {
+    static constexpr grid_number notch = [] {
         if constexpr (Arity == 1)
             return notch_of<In...[0]>;
         else
@@ -516,7 +515,7 @@ struct rounding_fn {
             using In0 [[maybe_unused]] = In...[0];                                                               \
             return domain_v;                                                                                     \
         }();                                                                                                     \
-        template <grid_rational N, insidable In>                                                                 \
+        template <grid_number N, insidable In>                                                                   \
         using result_on = results::fn<N, In>;                                                                    \
         template <insidable Out, insidable In>                                                                   \
         [[nodiscard]] static constexpr Out eval(In x) {                                                          \
@@ -628,7 +627,7 @@ BEMAN_INSIDE_ENGINE_UNARY(
 struct sqrt_fn : rounding_fn<1> {
     template <class... In>
     static constexpr bool domain = lower_of<In...[0]> >= 0;
-    template <grid_rational N, insidable In>
+    template <grid_number N, insidable In>
     using result_on = results::sqrt<N, In>;
     template <insidable Out, insidable In>
     [[nodiscard]] static constexpr Out eval(In x) {
@@ -656,7 +655,7 @@ struct sqrt_fn : rounding_fn<1> {
 struct tan_fn : rounding_fn<1> {
     template <class... In>
     static constexpr bool domain = tan_domain<In...[0]>;
-    template <grid_rational N, insidable In>
+    template <grid_number N, insidable In>
     using result_on = results::tan<N, In>;
     template <insidable Out, insidable In>
     [[nodiscard]] static constexpr Out eval(In x) {
@@ -683,7 +682,7 @@ struct tan_fn : rounding_fn<1> {
 };
 
 struct atan2_fn : rounding_fn<2> {
-    template <grid_rational N, insidable InY, insidable InX>
+    template <grid_number N, insidable InY, insidable InX>
     using result_on = results::atan2<N, InY, InX>;
     template <insidable Out, insidable InY, insidable InX>
     [[nodiscard]] static constexpr Out eval(InY y, InX x) {
@@ -707,7 +706,7 @@ struct atan2_fn : rounding_fn<2> {
 };
 
 struct hypot_fn : rounding_fn<2> {
-    template <grid_rational N, insidable InX, insidable InY>
+    template <grid_number N, insidable InX, insidable InY>
     using result_on = results::hypot<N, InX, InY>;
     template <insidable Out, insidable InX, insidable InY>
     [[nodiscard]] static constexpr Out eval(InX x, InY y) {
@@ -738,8 +737,8 @@ struct pow_fn : rounding_fn<2> {
     template <class... In>
     static constexpr bool domain = lower_of<In...[0]> >= 0;
     template <class InB, class InE>
-    static constexpr grid_rational notch = ::beman::inside::detail::notched<InE> ? notch_of<InB> : grid_rational{0};
-    template <grid_rational N, insidable InB, insidable InE>
+    static constexpr grid_number notch = ::beman::inside::detail::notched<InE> ? notch_of<InB> : grid_number{0};
+    template <grid_number N, insidable InB, insidable InE>
     using result_on = results::pow<N, InB, InE>;
     template <insidable Out, insidable InB, insidable InE>
     [[nodiscard]] static constexpr auto eval(InB base, InE exp)
@@ -793,7 +792,7 @@ template <auto Base>
 struct pow_base_fn : rounding_fn<1> {
     template <class... In>
     static constexpr bool domain = base_ok<Base>;
-    template <grid_rational N, insidable In>
+    template <grid_number N, insidable In>
     using result_on = results::pow_base<N, Base, In>;
     template <insidable Out, insidable In>
     [[nodiscard]] static constexpr Out eval(In x) {
@@ -803,8 +802,8 @@ struct pow_base_fn : rounding_fn<1> {
             return pow_base_fn<static_cast<std::int64_t>(
                 ::beman::inside::detail::grid_numerator(Base))>::template eval<Out>(x);
         else if constexpr (std::integral<decltype(Base)> &&
-                           !::beman::inside::detail::fits_int64(interval{grid_rational{Base}, grid_rational{Base}}))
-            return pow_base_fn<grid_rational{Base}>::template eval<Out>(x); // a builtin past int64: the grid path
+                           !::beman::inside::detail::fits_int64(interval{grid_number{Base}, grid_number{Base}}))
+            return pow_base_fn<grid_number{Base}>::template eval<Out>(x); // a builtin past int64: the grid path
         else if constexpr (anchoring::unanchored_call<Out, In>)
             return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_fn::eval<O>(v); }, x);
         else {

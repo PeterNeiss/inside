@@ -50,26 +50,25 @@ constexpr Out store_value(const V& v) {
 }
 
 // The sign of a grid number, for the deduced sign() output.
-constexpr grid_rational grid_sign(const grid_rational& r) { return grid_rational{(r > 0) - (r < 0)}; }
+constexpr grid_number grid_sign(const grid_number& r) { return grid_number{(r > 0) - (r < 0)}; }
 
 // max(|Lower|, |Upper|): sizes the abs and copysign outputs.
 template <insidable In>
-inline constexpr grid_rational abs_result_upper = abs(lower_of<In>) > abs(upper_of<In>) ? abs(lower_of<In>)
-                                                                                        : abs(upper_of<In>);
+inline constexpr grid_number abs_result_upper = abs(lower_of<In>) > abs(upper_of<In>) ? abs(lower_of<In>)
+                                                                                      : abs(upper_of<In>);
 
 // The lattice of ±x: x's notch, refined by 2·Lower when x's lattice does
 // not pass through 0 (±(0.25 + k/2) lie on 0.25 + ℤ/2; ±(0.5 + k) on ℤ/2).
 template <insidable In>
-inline constexpr grid_rational sym_notch =
-    anchored<In> ? notch_of<In> : gcd(notch_of<In>, lower_of<In> + lower_of<In>);
+inline constexpr grid_number sym_notch = anchored<In> ? notch_of<In> : gcd(notch_of<In>, lower_of<In> + lower_of<In>);
 
 // The lowest non-negative point of that lattice: 0 when it passes through 0.
 template <insidable In>
-inline constexpr grid_rational sym_floor = [] {
+inline constexpr grid_number sym_floor = [] {
     if constexpr (anchored<In>)
-        return grid_rational{0};
+        return grid_number{0};
     else {
-        const grid_rational n = sym_notch<In>, l = lower_of<In>;
+        const grid_number n = sym_notch<In>, l = lower_of<In>;
         // l − n·⌊l/n⌋, with ⌊l/n⌋ from the rounding helper below
         return l - (n * grid_round<round_mode::floor>(l / n));
     }
@@ -78,16 +77,16 @@ inline constexpr grid_rational sym_floor = [] {
 // An exact math output's grid: the lattice when it has a notch, else
 // continuous with the denominator bound d (an exact ±x or x − k·y keeps the
 // inputs' denominators bounded, grid.hpp den_bound).
-consteval grid exact_out_grid(const interval& iv, const grid_rational& notch, const grid_int& d) {
+consteval grid exact_out_grid(const interval& iv, const grid_number& notch, const grid_int& d) {
     return notch == 0 ? bounded_continuous(iv, d) : grid{iv, notch};
 }
 
 // The smallest |x|: the lattice's lowest non-negative point when x's range
 // spans 0, else the limit nearer 0.
 template <insidable Mag>
-inline constexpr grid_rational abs_result_lower = (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)  ? sym_floor<Mag>
-                                                  : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>)
-                                                                                              : abs(upper_of<Mag>);
+inline constexpr grid_number abs_result_lower = (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)  ? sym_floor<Mag>
+                                                : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>)
+                                                                                            : abs(upper_of<Mag>);
 
 // |x| ranges over [smallest |x|, largest |x|].
 template <insidable In>
@@ -201,19 +200,19 @@ inline constexpr bool fmod_int_fast = [] {
     else {
         // In grid numbers, exactly: a count past 64 bits makes the fast path
         // inapplicable, not the build fail.
-        constexpr grid_rational g = gcd(notch_of<InX>, notch_of<InY>);
+        constexpr grid_number g = gcd(notch_of<InX>, notch_of<InY>);
         if (!fits_rational(g) || grid_denominator(g / notch_of<Out>) != grid_int{1})
             return false;
-        constexpr auto      mag  = [](const grid_rational& a, const grid_rational& b) { return a < b ? b : a; };
-        const grid_rational maxx = mag(abs(lower_of<InX>), abs(upper_of<InX>));
-        const grid_rational maxy = mag(abs(lower_of<InY>), abs(upper_of<InY>));
+        constexpr auto    mag  = [](const grid_number& a, const grid_number& b) { return a < b ? b : a; };
+        const grid_number maxx = mag(abs(lower_of<InX>), abs(upper_of<InX>));
+        const grid_number maxy = mag(abs(lower_of<InY>), abs(upper_of<InY>));
         // Out holds every remainder: |r| ≤ min(max|x|, max|y|), with x's sign.
-        const grid_rational bound = maxx < maxy ? maxx : maxy;
-        if (lower_of<Out> > (lower_of<InX> < 0 ? -bound : grid_rational{0}) ||
-            upper_of<Out> < (upper_of<InX> > 0 ? bound : grid_rational{0}))
+        const grid_number bound = maxx < maxy ? maxx : maxy;
+        if (lower_of<Out> > (lower_of<InX> < 0 ? -bound : grid_number{0}) ||
+            upper_of<Out> < (upper_of<InX> > 0 ? bound : grid_number{0}))
             return false;
         // Every unit count, and Out's value index of Lower, within int64/4.
-        const grid_rational lim{std::numeric_limits<std::int64_t>::max() / 4};
+        const grid_number lim{std::numeric_limits<std::int64_t>::max() / 4};
         return !(lim < maxx / g) && !(lim < maxy / g) && !(lim < maxy / notch_of<Out>) &&
                !(lim < abs(lower_index_of<Out>));
     }
@@ -264,12 +263,12 @@ template <insidable Out, insidable InX, insidable InY>
 // fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
 // both notches (x − k·y lies on that lattice, so the result is exact).
 template <insidable InX, insidable InY>
-inline constexpr grid_rational fmod_bound =
+inline constexpr grid_number fmod_bound =
     abs_result_upper<InX> < abs_result_upper<InY> ? abs_result_upper<InX> : abs_result_upper<InY>;
 
 template <insidable InX, insidable InY>
-using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
-                                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
+using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_number{0}),
+                                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_number{0})},
                                             engine::gcd_notch<InX, InY>,
                                             den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
                              with_default_rounding(out_policy<InX>)>;

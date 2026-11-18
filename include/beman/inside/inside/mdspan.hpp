@@ -74,7 +74,7 @@ struct extents_of_impl {
 
 // 0 … n − 1 in steps of 1 (inside<{0, n − 1}>, also for n = 1).
 consteval grid index_range_grid(std::size_t n) {
-    return grid{interval{grid_rational{0}, grid_rational{n - 1}}, grid_rational{1}};
+    return grid{interval{grid_number{0}, grid_number{n - 1}}, grid_number{1}};
 }
 
 template <class E>
@@ -104,9 +104,8 @@ using extent_index_t = inside<detail::index_range_grid(E::static_extent(R))>;
 // nothing). `static_assert(index_for<row, image::extents_type, 0>)`, or a
 // constraint on a function that takes indices.
 template <class I, class E, std::size_t R>
-concept index_for =
-    detail::index_inside<I> && detail::is_extents_v<E> && (R < E::rank()) &&
-    (E::static_extent(R) != std::dynamic_extent) && (upper_of<I> < detail::grid_rational{E::static_extent(R)});
+concept index_for = detail::index_inside<I> && detail::is_extents_v<E> && (R < E::rank()) &&
+                    (E::static_extent(R) != std::dynamic_extent) && (upper_of<I> < grid_number{E::static_extent(R)});
 
 // Any std::mdspan (or a type derived from one).
 template <class M>
@@ -376,7 +375,7 @@ inline constexpr std::size_t static_size = [] {
 
 // The sum of n values of g: n·Lower … n·Upper on g's notch.
 consteval grid n_fold_grid(const grid& g, std::size_t n) {
-    const grid_rational k{n};
+    const grid_number k{n};
     if (n == 0 || g.Interval.Lower == g.Interval.Upper)
         return grid{g.Interval.Lower * k};
     return grid{interval{g.Interval.Lower * k, g.Interval.Upper * k}, g.Notch};
@@ -501,7 +500,7 @@ template <class Target, bool Proven, class FA, class FB, class I>
 constexpr auto sum_of_products(I n, FA a, FB b) {
     using P = decltype(a(I{}) * b(I{}));
     if constexpr (int64_products<Target, P>) {
-        constexpr grid_rational U = grid_of<P>.value_unit();
+        constexpr grid_number U = grid_of<P>.value_unit();
         constexpr grid_int max = abs(units_lo<P, U>) < abs(units_hi<P, U>) ? abs(units_hi<P, U>) : abs(units_lo<P, U>);
         constexpr std::int64_t terms = max == grid_int{0}
                                            ? std::numeric_limits<std::int64_t>::max()
@@ -510,10 +509,10 @@ constexpr auto sum_of_products(I n, FA a, FB b) {
             std::int64_t total = 0;
             for (I k = 0; k < n; ++k)
                 total += value_in_units<std::int64_t, U>(a(k) * b(k));
-            constexpr grid_rational c  = U / notch_of<Target>;
-            constexpr std::int64_t  cp = static_cast<std::int64_t>(grid_numerator(c));
-            constexpr std::int64_t  cq = static_cast<std::int64_t>(grid_denominator(c));
-            std::int64_t            num;
+            constexpr grid_number  c  = U / notch_of<Target>;
+            constexpr std::int64_t cp = static_cast<std::int64_t>(grid_numerator(c));
+            constexpr std::int64_t cq = static_cast<std::int64_t>(grid_denominator(c));
+            std::int64_t           num;
             if (!mul_overflow(total, cp, &num)) {
                 const auto s = lattice_round_slot<Target, policy_of<Target>>(num, cq);
                 if (s.Status == lattice_status::ok) [[likely]] {

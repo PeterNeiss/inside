@@ -31,7 +31,7 @@
     "value_cast<unit, Rep>(q) from <beman/inside/units/math.hpp>, Rep declared with a rounding mode"
 
 namespace beman::inside::units {
-using beman::inside::detail::grid_rational;
+using beman::inside::grid_number;
 
 //---------------------------------------------------------------------------
 // dimension — a product of base dimensions to integer powers. Every base
@@ -303,8 +303,8 @@ constexpr int conjugate_sign(int k) { return (k * (k + 1) / 2) % 2 == 0 ? 1 : -1
 // magnitude — Ratio·π^Pi, exact.
 //---------------------------------------------------------------------------
 struct magnitude {
-    grid_rational Ratio{1};
-    std::int8_t   Pi{0};
+    grid_number Ratio{1};
+    std::int8_t Pi{0};
 
     friend constexpr bool      operator==(const magnitude&, const magnitude&) = default;
     friend consteval magnitude operator*(const magnitude& a, const magnitude& b) {
@@ -319,7 +319,7 @@ struct magnitude {
             r = r * *this;
         return n < 0 ? magnitude{} / r : r;
     }
-    constexpr bool is_one() const { return Ratio == grid_rational{1} && Pi == 0; }
+    constexpr bool is_one() const { return Ratio == grid_number{1} && Pi == 0; }
 };
 
 // mag<r> — a magnitude tag: mag<1000> * si::metre, mag<1_g / 3_g> * …
@@ -329,8 +329,8 @@ struct mag_t {
     static constexpr magnitude value = M;
 };
 template <auto R>
-inline constexpr mag_t<magnitude{grid_rational{R}}>    mag{};
-inline constexpr mag_t<magnitude{grid_rational{1}, 1}> mag_pi{};
+inline constexpr mag_t<magnitude{grid_number{R}}>    mag{};
+inline constexpr mag_t<magnitude{grid_number{1}, 1}> mag_pi{};
 } // namespace detail
 
 template <magnitude A, magnitude B>
@@ -613,7 +613,7 @@ struct origin_def {
     std::string_view                Name;
     dimension                       Dim{};
     detail::ref_or_none<origin_def> Absolute{}; // none for an absolute origin
-    grid_rational                   Offset{0};  // from Absolute, in the coherent unit
+    grid_number                     Offset{0};  // from Absolute, in the coherent unit
 };
 } // namespace detail
 
@@ -635,7 +635,7 @@ constexpr bool same(const origin_ref& a, const origin_ref& b) {
         return !a && !b;
     return a->Name == b->Name && a->Dim == b->Dim && a->Offset == b->Offset && same(a->Absolute, b->Absolute);
 }
-consteval grid_rational offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
+consteval grid_number offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_number{0}; }
 } // namespace detail
 
 namespace detail {
@@ -844,7 +844,7 @@ consteval unit_value unit_prefixed(unit_value u, int p) {
 }
 
 consteval magnitude ten_pow(int p) {
-    magnitude ten{grid_rational{10}};
+    magnitude ten{grid_number{10}};
     return ten.pow(p);
 }
 } // namespace detail
@@ -888,7 +888,7 @@ consteval magnitude magnitude_of(const unit_value& u) {
     for (std::int8_t i = 0; i < u.Size; ++i)
         m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
     if (detail::has_blade_atoms(u))
-        m = m * magnitude{grid_rational{detail::atoms_blade_sign(u)}};
+        m = m * magnitude{grid_number{detail::atoms_blade_sign(u)}};
     return m;
 }
 
@@ -942,7 +942,7 @@ consteval unit_value blade_unit_mul(const unit_value& a, const unit_value& b, in
     else
         for (const base_dimension_def* v : bl)
             unit_add(r, unit_atom{v->Vector, 0, 1});
-    r.Scale = s == 0 ? magnitude{grid_rational{0}} : target * magnitude{grid_rational{s}} / magnitude_of(r);
+    r.Scale = s == 0 ? magnitude{grid_number{0}} : target * magnitude{grid_number{s}} / magnitude_of(r);
     return r;
 }
 } // namespace detail
@@ -982,7 +982,7 @@ constexpr detail::unit_def::unit_def(std::string_view sym, unit_t<U>, unit_optio
     if (detail::has_blade(Dim) && !detail::same_outside_blade(Dim, dim_one))
         beman::inside::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
                                                "write si::metre * e1, not a unit of both">();
-    if (Mag.Ratio == grid_rational{0})
+    if (Mag.Ratio == grid_number{0})
         beman::inside::detail::constexpr_error<"units: a named unit of a product that vanishes (a null vector "
                                                "squared)">();
 }
@@ -1303,14 +1303,14 @@ consteval bool unit_before(const unit_value& a, const unit_value& b) {
 consteval unit_value common_unit(const unit_value& a, const unit_value& b) {
     if (a == b)
         return a;
-    const magnitude     ma = magnitude_of(a), mb = magnitude_of(b);
-    const grid_rational sa = beman::inside::detail::abs(ma.Ratio), sb = beman::inside::detail::abs(mb.Ratio);
+    const magnitude   ma = magnitude_of(a), mb = magnitude_of(b);
+    const grid_number sa = abs(ma.Ratio), sb = abs(mb.Ratio);
     if (ma.Pi == mb.Pi && sa == sb) // one size, two spellings (J, N m): the shorter, then by symbol
         return unit_before(b, a) ? b : a;
     if (ma.Pi != mb.Pi)
         beman::inside::detail::constexpr_error<
             "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first">();
-    const grid_rational g = beman::inside::detail::gcd(sa, sb);
+    const grid_number g = gcd(sa, sb);
     if (g == sa)
         return a;
     if (g == sb)

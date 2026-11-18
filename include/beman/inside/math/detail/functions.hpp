@@ -39,13 +39,13 @@ using namespace beman::inside::detail;
 // and policy flags, as template arguments of the call.
 //---------------------------------------------------------------------------
 struct out_spec {
-    bool          HasNotch = false;
-    grid_rational Notch{0};
-    policy_flag   Flags = 0;
+    bool        HasNotch = false;
+    grid_number Notch{0};
+    policy_flag Flags = 0;
 };
 
 template <auto S>
-inline constexpr bool notch_spec = std::same_as<decltype(S), rational> || std::same_as<decltype(S), grid_rational>;
+inline constexpr bool notch_spec = std::same_as<decltype(S), rational> || std::same_as<decltype(S), grid_number>;
 template <auto S>
 inline constexpr bool flag_spec = flag_like<decltype(S)> || std::same_as<decltype(S), policy_flag>;
 
@@ -53,7 +53,7 @@ template <auto S>
 consteval out_spec add_spec(out_spec s) {
     if constexpr (notch_spec<S>) {
         s.HasNotch = true;
-        s.Notch    = grid_rational{S};
+        s.Notch    = grid_number{S};
     } else
         s.Flags |= static_cast<policy_flag>(S);
     return s;
@@ -89,7 +89,7 @@ template <insidable R, out_spec S>
 using with_spec_flags_t = inside<grid_of<R>, spec_flags(policy_of<R>, S)>;
 
 // An exact output R on notch N: its range rounded outward onto N.
-template <insidable R, grid_rational N>
+template <insidable R, grid_number N>
 using on_notch_t = inside<
     grid{{grid_round<round_mode::floor>(lower_of<R> / N) * N, grid_round<round_mode::ceil>(upper_of<R> / N) * N}, N},
     policy_of<R>>;
@@ -196,8 +196,7 @@ inline constexpr bool is_named_v<named<C>> = true;
 // continuous O).
 template <class F, class O, class... In>
 using named_range_t =
-    typename F::template result_on<notch_of<O> != 0 ? notch_of<O> : grid_rational{1} / grid_of<O>.MaxDenominator,
-                                   In...>;
+    typename F::template result_on<notch_of<O> != 0 ? notch_of<O> : grid_number{1} / grid_of<O>.MaxDenominator, In...>;
 
 // Whether the library bounds f over In… (entry.hpp specializes it false for
 // grids where a deduced output would not exist: exp of |x| past 4096, pow of
@@ -229,13 +228,13 @@ consteval bool named_fits() {
 
 template <class F, class O, class... In>
 consteval grid named_twin_grid() {
-    using R                = named_range_t<F, O, In...>;
-    const grid_rational lo = lower_of<O> < lower_of<R> ? lower_of<O> : lower_of<R>;
-    const grid_rational hi = upper_of<R> < upper_of<O> ? upper_of<O> : upper_of<R>;
+    using R              = named_range_t<F, O, In...>;
+    const grid_number lo = lower_of<O> < lower_of<R> ? lower_of<O> : lower_of<R>;
+    const grid_number hi = upper_of<R> < upper_of<O> ? upper_of<O> : upper_of<R>;
     if constexpr (notch_of<O> == 0)
         return grid{interval{lo, hi}, max_denominator{grid_of<O>.MaxDenominator}};
     else {
-        const grid_rational n = notch_of<O>; // whole notches out from O's limits
+        const grid_number n = notch_of<O>; // whole notches out from O's limits
         return grid{interval{lower_of<O> - grid_round<round_mode::ceil>((lower_of<O> - lo) / n) * n,
                              upper_of<O> + grid_round<round_mode::ceil>((hi - upper_of<O>) / n) * n},
                     n};

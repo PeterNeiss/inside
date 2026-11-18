@@ -55,10 +55,10 @@ template <std::size_t N, class Fn>
 // The sign of a part's unit against its canonical blade (j := e₃e₁ is -1).
 template <class P>
 consteval int part_sign() {
-    constexpr grid_rational f = blade_factor(unit_of_part<P>());
-    static_assert(f == grid_rational{1} || f == grid_rational{-1},
+    constexpr grid_number f = blade_factor(unit_of_part<P>());
+    static_assert(f == grid_number{1} || f == grid_number{-1},
                   "math::exp: a part's unit scales its blade (a prefix, a scaled unit) - use the blade's own unit");
-    return f == grid_rational{1} ? 1 : -1;
+    return f == grid_number{1} ? 1 : -1;
 }
 
 template <class P>
@@ -1192,21 +1192,21 @@ struct output_parts {
 // notch N: the parts' own (their gcd) unless S names one; the parts' policy
 // (rounding to nearest unless it names a mode) under S's flags.
 template <class Domain>
-inline constexpr grid_rational parts_notch = []<std::size_t... P>(std::index_sequence<P...>) {
+inline constexpr grid_number parts_notch = []<std::size_t... P>(std::index_sequence<P...>) {
     using DP = parts_t<Domain>;
-    grid_rational g{0};
-    for (const grid_rational& n : {notch_of<num_t<std::tuple_element_t<P, DP>>>...}) {
+    grid_number g{0};
+    for (const grid_number& n : {notch_of<num_t<std::tuple_element_t<P, DP>>>...}) {
         if (n == 0)
-            return grid_rational{0};
-        g = g == 0 ? n : ::beman::inside::detail::gcd(g, n);
+            return grid_number{0};
+        g = g == 0 ? n : gcd(g, n);
     }
     return g;
 }(std::make_index_sequence<std::tuple_size_v<parts_t<Domain>>>{});
 
 template <class Domain, ::beman::inside::math::detail::out_spec S>
 struct deduced {
-    using D                              = domain_facts<Domain>;
-    static constexpr grid_rational notch = S.HasNotch ? S.Notch : parts_notch<Domain>;
+    using D                            = domain_facts<Domain>;
+    static constexpr grid_number notch = S.HasNotch ? S.Notch : parts_notch<Domain>;
     static_assert(notch != 0,
                   "math::exp: a deduced output takes the argument's notch - its parts need one, or name it: "
                   "exp<per<K>>(x)");
@@ -1214,8 +1214,8 @@ struct deduced {
         ::beman::inside::detail::with_default_rounding(policy_of<num_t<std::tuple_element_t<0, typename D::DP>>> &
                                                        ~::beman::inside::detail::cursor_marker),
         S);
-    static consteval grid_rational limit(double m) {
-        const grid_rational v{m * (1 + 0x1p-30)};
+    static consteval grid_number limit(double m) {
+        const grid_number v{m * (1 + 0x1p-30)};
         return ::beman::inside::detail::grid_round<::beman::inside::detail::round_mode::ceil>(v / notch) * notch;
     }
     // Part J of y, or J = N for the scalar part.

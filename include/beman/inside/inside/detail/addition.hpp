@@ -44,8 +44,8 @@ struct addition {
             // gcd(N_L, N_R) on anchored grids), in int64 or by wrapping arithmetic
             // (wide_value.hpp). Exact for every grid, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
-            constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
-            using W                   = index_work_t<result, L, U, R, U, U>;
+            constexpr grid_number U = gcd(unit_of<L>, unit_of<R>);
+            using W                 = index_work_t<result, L, U, R, U, U>;
             return from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
         }
     }

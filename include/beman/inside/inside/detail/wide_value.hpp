@@ -79,12 +79,12 @@ constexpr wide_rational<K> exact_of(T v) noexcept {
 
 // A grid number (a limit or notch, of any size) as an exact value.
 template <std::size_t K>
-constexpr wide_rational<K> exact_of_grid(const grid_rational& r) noexcept {
+constexpr wide_rational<K> exact_of_grid(const grid_number& r) noexcept {
     return {static_cast<wide_sint<K>>(grid_numerator(r)), static_cast<wide_sint<K>>(grid_denominator(r))};
 }
 
 // a / b for grid numbers, known at compile time to be an integer.
-consteval grid_int exact_quotient(const grid_rational& a, const grid_rational& b) {
+consteval grid_int exact_quotient(const grid_number& a, const grid_number& b) {
     return grid_numerator(a) * grid_denominator(b) / (grid_denominator(a) * grid_numerator(b));
 }
 
@@ -96,7 +96,7 @@ inline constexpr grid_int slot_base = notched<B> ? exact_quotient(lower_of<B>, n
 // Bits that bound every value of B's grid: |value| < 2^grid_magnitude_bits.
 template <insidable B>
 inline constexpr int grid_magnitude_bits = [] {
-    auto bits = [](const grid_rational& r) {
+    auto bits = [](const grid_number& r) {
         const grid_int n = grid_numerator(r);
         return bit_width_of(abs(n)) - (bit_width_of(grid_denominator(r)) - 1) + 1;
     };
@@ -605,7 +605,7 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
 // is then an integer.)
 template <insidable B>
 inline constexpr raw_t<B> default_raw = []() -> raw_t<B> {
-    constexpr bool zero = grid_of<B>.representable(grid_rational{0});
+    constexpr bool zero = grid_of<B>.representable(grid_number{0});
     if constexpr (point_storage<B>)
         return {};
     else if constexpr (rational_storage<B>)
@@ -634,14 +634,14 @@ template <insidable Result>
 using wrap_work_t = std::conditional_t<wide_index_storage<Result>, raw_t<Result>, std::uint64_t>;
 
 // An operand's value-index range in `Unit`s: Lower/Unit .. Upper/Unit.
-template <insidable X, grid_rational Unit>
+template <insidable X, grid_number Unit>
 inline constexpr grid_int units_lo = exact_quotient(lower_of<X>, Unit);
-template <insidable X, grid_rational Unit>
+template <insidable X, grid_number Unit>
 inline constexpr grid_int units_hi = exact_quotient(upper_of<X>, Unit);
 
 // Whether from_value_in_units<Result, Unit> divides: the result is counted
 // in a unit finer than its notch (or off its lattice's multiples).
-template <insidable Result, grid_rational Unit>
+template <insidable Result, grid_number Unit>
 inline constexpr bool divides_units = !(point_storage<Result> || (anchored<Result> && Unit == notch_of<Result>));
 
 // The work type of an integer + or ×: signed int64 when every value index
@@ -653,12 +653,12 @@ inline constexpr bool divides_units = !(point_storage<Result> || (anchored<Resul
 // URes: the unit the result is counted in (its notch, or a finer unit
 // that also divides its Lower when the grids do not pass through 0); its
 // slot offsets in that unit are what from_value_in_units divides.
-template <insidable     Result,
-          insidable     L,
-          grid_rational UL,
-          insidable     R,
-          grid_rational UR,
-          grid_rational URes = notch_of<Result>>
+template <insidable   Result,
+          insidable   L,
+          grid_number UL,
+          insidable   R,
+          grid_number UR,
+          grid_number URes = notch_of<Result>>
 inline constexpr int index_work_bits =
     signed_value_bits({units_lo<L, UL>,
                        units_hi<L, UL>,
@@ -667,12 +667,12 @@ inline constexpr int index_work_bits =
                        units_lo<Result, URes>,
                        units_hi<Result, URes>,
                        grid_of<Result>.step_count() * exact_quotient(notch_of<Result>, URes)});
-template <insidable     Result,
-          insidable     L,
-          grid_rational UL,
-          insidable     R,
-          grid_rational UR,
-          grid_rational URes = notch_of<Result>>
+template <insidable   Result,
+          insidable   L,
+          grid_number UL,
+          insidable   R,
+          grid_number UR,
+          grid_number URes = notch_of<Result>>
 using index_work_t = std::conditional_t<(index_work_bits<Result, L, UL, R, UR, URes> <= 63),
                                         std::int64_t,
                                         std::conditional_t<divides_units<Result, URes>,
@@ -695,7 +695,7 @@ constexpr W value_index(const X& x) noexcept {
 // The unit an integer path counts X's values in: its value unit (the notch
 // on an anchored grid), or |c| for a point c.
 template <insidable X>
-inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
+inline constexpr grid_number unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
 
 // Two integer raws whose values, counted in the gcd of their value units,
 // fit int64.
@@ -704,14 +704,14 @@ inline constexpr bool units_cmp_fits = [] {
     if constexpr (!integer_storage<L> || !integer_storage<R>)
         return false;
     else {
-        constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
+        constexpr grid_number U = gcd(unit_of<L>, unit_of<R>);
         return signed_value_bits({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
     }
 }();
 
 // x's value in units of `Unit` (an integer: the unit divides x's notch and
 // Lower, or x's value for a point).
-template <typename W, grid_rational Unit, insidable X>
+template <typename W, grid_number Unit, insidable X>
 constexpr W value_in_units(const X& x) noexcept {
     // A point (Lower == Upper) holds its value in the type.
     if constexpr (point_grid<X>) {
@@ -751,7 +751,7 @@ constexpr Result from_value_index(const W& j) noexcept {
 
 // The Result whose value is j `Unit`s (on its lattice by construction; an
 // exact division when Unit is finer than its notch).
-template <insidable Result, grid_rational Unit, typename W>
+template <insidable Result, grid_number Unit, typename W>
 constexpr Result from_value_in_units(const W& j) noexcept {
     if constexpr (!divides_units<Result, Unit>)
         return from_value_index<Result>(j);
@@ -761,7 +761,7 @@ constexpr Result from_value_in_units(const W& j) noexcept {
         return Result::from_raw(static_cast<raw_t<Result>>((j - static_cast<W>(base)) / static_cast<W>(scale)),
                                 unsafe);
     } else // integer values counted in Unit = 1/k
-        return Result::from_raw(static_cast<raw_t<Result>>(j / static_cast<W>(exact_quotient(grid_rational{1}, Unit))),
+        return Result::from_raw(static_cast<raw_t<Result>>(j / static_cast<W>(exact_quotient(grid_number{1}, Unit))),
                                 unsafe);
 }
 

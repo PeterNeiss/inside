@@ -10,10 +10,11 @@
 
 //---------------------------------------------------------------------------
 // The grid-number vocabulary. A grid's limits and notch (the NTTP substrate
-// of `interval` and `grid`) are big_rationals, of any size: C++26 static
-// reflection (std::define_static_array) interns their limbs in static
-// storage, so equal values stay the same template argument.
-//   grid_rational          the type of a grid's limits and notch
+// of `interval` and `grid`) are grid_numbers, of any size: inline while they
+// fit the 64-bit rational, else an interned big_rational (C++26 static
+// reflection, std::define_static_object), so equal values stay the same
+// template argument.
+//   grid_number            the type of a grid's limits and notch
 //   grid_int               exact integers for grid computations (step counts,
 //                          value indices): wide enough for every grid
 //   grid_numerator(r) /    a grid number's signed numerator and positive
@@ -22,7 +23,7 @@
 //   grid_same_lattice      (a − b) / n is an integer (true for n == 0)
 //   fits_rational(r) /     whether, and as which, 64-bit rational a grid
 //   to_rational(r)         number serves the 64-bit fast paths
-// + − × / and gcd are big_rational's own.
+// + − × /, abs and gcd are grid_number's own (hidden friends).
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 // (a − b) / n is an integer (true for n == 0), for 64-bit rationals. A
@@ -42,15 +43,213 @@ constexpr bool same_lattice64(const rational& a, const rational& b, const ration
     return num % den == W{0};
 }
 
-using grid_rational = big_rational;
-using grid_int      = big_int;
+using grid_int = big_int;
+} // namespace beman::inside::detail
 
-constexpr grid_int grid_numerator(const big_rational& r) { return r.Num; }
-constexpr grid_int grid_denominator(const big_rational& r) { return r.Den; }
+namespace beman::inside {
+// grid_number — an exact rational of any size, and a structural type: the
+// type of a grid's limits, notch and bound, of `_g` and of lower_of /
+// upper_of / notch_of. A value that fits the 64-bit rational is held inline,
+// as detail::rational holds it (the numerator's magnitude, and the
+// denominator with the sign), so a grid's type reads short:
+// grid_number{1, 100, 0} is 1/100. A larger value is an interned
+// big_rational, which exists only at compile time; Den == 0 marks it (tested
+// instead of the pointer: under -fsanitize=null GCC cannot compare an
+// interned pointer with nullptr in a constant expression). One form per
+// value - reduced, and inline whenever it fits - so equal values are the
+// same template argument.
+struct grid_number {
+    std::uint64_t               Num{0};
+    std::int64_t                Den{1};
+    const detail::big_rational* Big{nullptr};
+
+    constexpr grid_number() = default;
+    template <std::integral T>
+        requires(std::numeric_limits<T>::digits <= 64)
+    constexpr grid_number(T v) noexcept
+        : Num{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
+                                           : static_cast<std::uint64_t>(v)},
+          Den{std::is_signed_v<T> && v < 0 ? -1 : 1} {}
+    template <std::integral T>
+        requires(std::numeric_limits<T>::digits > 64)
+    constexpr grid_number(T v) : grid_number(detail::big_rational{v}) {}
+    constexpr grid_number(detail::big_int n, detail::big_int d = detail::big_int{1})
+        : grid_number(detail::big_rational{n, d}) {}
+    // A 64-bit rational, in lowest terms whether or not it was.
+    constexpr grid_number(const detail::rational& r)
+        : grid_number(detail::big_rational{detail::big_int::of_limb(r.Num, r.Den < 0),
+                                           detail::big_int{detail::abs_den(r.Den)}}) {}
+    // Anything else that converts to the 64-bit rational (an inside:
+    // just<-6, 5>) takes that one conversion, so it can be a grid limit.
+    template <class T>
+        requires(std::is_class_v<T> && !std::same_as<T, detail::rational> && !std::same_as<T, grid_number> &&
+                 !std::same_as<T, detail::big_rational> && std::convertible_to<const T&, detail::rational>)
+    constexpr grid_number(const T& v) : grid_number(detail::rational(v)) {}
+    constexpr grid_number(std::floating_point auto d) : grid_number(detail::big_rational{d}) {} // exact
+    constexpr grid_number(const detail::big_rational& b) {
+        if (b.fits_rational()) {
+            Num                  = b.Num.Small;
+            const std::int64_t d = static_cast<std::int64_t>(b.Den.Small);
+            Den                  = b.Num.negative() ? -d : d;
+            return;
+        }
+        if consteval {
+            Num = 0;
+            Den = 0;
+            Big = std::define_static_object(b);
+        } else {
+            detail::fail_hard<"grid number past 64 bits at run time">(error::overflow);
+        }
+    }
+
+    // The value as a big_rational (a copy of the interned one, or built from
+    // the inline parts, already in lowest terms).
+    [[nodiscard]] constexpr detail::big_rational big() const {
+        if (Den == 0)
+            return *Big;
+        detail::big_rational r;
+        r.Num = detail::big_int::of_limb(Num, Den < 0);
+        r.Den = detail::big_int{detail::abs_den(Den)};
+        return r;
+    }
+    // The numerator (signed) and the denominator (> 0), in lowest terms.
+    [[nodiscard]] constexpr detail::big_int numerator() const { return big().Num; }
+    [[nodiscard]] constexpr detail::big_int denominator() const { return big().Den; }
+
+    [[nodiscard]] constexpr bool fits_rational() const noexcept { return Den != 0; }
+    [[nodiscard]] constexpr bool negative() const noexcept { return Den != 0 ? Den < 0 : Big->Num.negative(); }
+    [[nodiscard]] constexpr bool is_zero() const noexcept { return Den != 0 && Num == 0; }
+    [[nodiscard]] constexpr bool is_integer() const noexcept {
+        return Den != 0 ? (Den == 1 || Den == -1) : Big->is_integer();
+    }
+
+    // Implicit: lets every 64-bit path keep working on a small grid. A value
+    // past 64 bits fails the build when such a path meets it.
+    constexpr operator detail::rational() const {
+        if (Den == 0)
+            detail::fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(error::overflow);
+        return detail::rational_from_parts(Num, Den);
+    }
+    constexpr explicit operator double() const { return static_cast<double>(big()); }
+    constexpr explicit operator float() const { return static_cast<float>(big()); }
+
+    // By content, never by address (see Den): both inline, or both interned.
+    friend constexpr bool operator==(const grid_number& a, const grid_number& b) {
+        if (a.Den != b.Den)
+            return false;
+        return a.Den != 0 ? a.Num == b.Num : *a.Big == *b.Big;
+    }
+    friend constexpr std::strong_ordering operator<=>(const grid_number& a, const grid_number& b) {
+        if (a.Den != 0 && b.Den != 0)
+            return detail::rational_from_parts(a.Num, a.Den) <=> detail::rational_from_parts(b.Num, b.Den);
+        return a.big() <=> b.big();
+    }
+
+    // The arithmetic by name, for run-time paths on 64-bit values.
+    static constexpr grid_number neg(const grid_number& a) {
+        if (a.Den == 0)
+            return detail::big_rational::neg(*a.Big);
+        grid_number r = a;
+        if (r.Num != 0)
+            r.Den = -r.Den;
+        return r;
+    }
+    static constexpr grid_number add(const grid_number& a, const grid_number& b) {
+        return detail::big_rational::add(a.big(), b.big());
+    }
+    static constexpr grid_number sub(const grid_number& a, const grid_number& b) {
+        return detail::big_rational::sub(a.big(), b.big());
+    }
+    static constexpr grid_number mul(const grid_number& a, const grid_number& b) {
+        return detail::big_rational::mul(a.big(), b.big());
+    }
+    // Pre: b ≠ 0.
+    static constexpr grid_number div(const grid_number& a, const grid_number& b) {
+        return detail::big_rational::div(a.big(), b.big());
+    }
+
+    // Found by argument-dependent lookup, from every namespace.
+    friend constexpr grid_number abs(grid_number a) {
+        if (a.Den == 0)
+            return detail::abs(*a.Big);
+        if (a.Den < 0)
+            a.Den = -a.Den;
+        return a;
+    }
+    // gcd of two fractions: gcd of numerators over lcm of denominators.
+    friend constexpr grid_number gcd(const grid_number& a, const grid_number& b) {
+        return detail::gcd(a.big(), b.big());
+    }
+
+    friend consteval grid_number operator-(const grid_number& a) { return neg(a); }
+    friend consteval grid_number operator+(const grid_number& a, const grid_number& b) { return add(a, b); }
+    friend consteval grid_number operator-(const grid_number& a, const grid_number& b) { return sub(a, b); }
+    friend consteval grid_number operator*(const grid_number& a, const grid_number& b) { return mul(a, b); }
+    friend consteval grid_number operator/(const grid_number& a, const grid_number& b) { return div(a, b); }
+
+    // Mixed with an integer or the 64-bit rational: each converts to both
+    // grid_number and rational, so these exact overloads keep the operators
+    // unambiguous.
+    // (A comparison with the 64-bit rational compares in place: it needs no
+    // reduced form, so a run-time range check forms no big value.)
+    template <detail::big_operand T>
+    friend constexpr std::strong_ordering operator<=>(const grid_number& a, const T& b) {
+        if constexpr (std::same_as<T, detail::rational>) {
+            if (a.Den != 0)
+                return detail::rational_from_parts(a.Num, a.Den) <=> b;
+            return *a.Big <=> detail::big_rational{b};
+        } else
+            return a <=> grid_number{b};
+    }
+    template <detail::big_operand T>
+    friend constexpr bool operator==(const grid_number& a, const T& b) {
+        return (a <=> b) == 0;
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator+(const grid_number& a, const T& b) {
+        return a + grid_number{b};
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator+(const T& a, const grid_number& b) {
+        return grid_number{a} + b;
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator-(const grid_number& a, const T& b) {
+        return a - grid_number{b};
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator-(const T& a, const grid_number& b) {
+        return grid_number{a} - b;
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator*(const grid_number& a, const T& b) {
+        return a * grid_number{b};
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator*(const T& a, const grid_number& b) {
+        return grid_number{a} * b;
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator/(const grid_number& a, const T& b) {
+        return a / grid_number{b};
+    }
+    template <detail::big_operand T>
+    friend consteval grid_number operator/(const T& a, const grid_number& b) {
+        return grid_number{a} / b;
+    }
+};
+} // namespace beman::inside
+
+namespace beman::inside::detail {
+// A grid number as a transient fraction, for tests that run at runtime too.
+constexpr big::fraction fraction_of(const grid_number& r) { return fraction_of(r.big()); }
+
+constexpr grid_int grid_numerator(const grid_number& r) { return r.numerator(); }
+constexpr grid_int grid_denominator(const grid_number& r) { return r.denominator(); }
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
 // (No big value is formed, so the test runs at runtime too.)
-constexpr bool grid_same_lattice(const big_rational& a, const big_rational& b, const big_rational& n) {
+constexpr bool grid_same_lattice(const grid_number& a, const grid_number& b, const grid_number& n) {
     if (n == 0)
         return true;
     if (a.fits_rational() && b.fits_rational() && n.fits_rational())
@@ -59,13 +258,13 @@ constexpr bool grid_same_lattice(const big_rational& a, const big_rational& b, c
 }
 
 // (Convention, as divides_evenly: everything divides 0 evenly.)
-constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n) {
-    return grid_same_lattice(a, big_rational{0}, n);
+constexpr bool grid_divides_evenly(const grid_number& a, const grid_number& n) {
+    return grid_same_lattice(a, grid_number{0}, n);
 }
 
 // The 64-bit rational of a grid number, for the 64-bit fast paths.
-constexpr bool     fits_rational(const big_rational& r) { return r.fits_rational(); }
-constexpr rational to_rational(const big_rational& r) { return r; }
+constexpr bool     fits_rational(const grid_number& r) { return r.fits_rational(); }
+constexpr rational to_rational(const grid_number& r) { return r; }
 
 constexpr grid_int grid_numerator(const rational& r) noexcept {
     const grid_int n{r.Num};
@@ -84,7 +283,7 @@ constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept
 
 // r rounded to an integer by M (half away from zero for nearest).
 template <round_mode M>
-constexpr grid_rational grid_round(const grid_rational& r) {
+constexpr grid_number grid_round(const grid_number& r) {
     const grid_int n = grid_numerator(r), d = grid_denominator(r);
     grid_int       q   = n / d;
     const grid_int rem = n - q * d;
@@ -92,7 +291,7 @@ constexpr grid_rational grid_round(const grid_rational& r) {
     const bool     odd = !(q / grid_int{2} * grid_int{2} == q);
     if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
         q = neg ? q - grid_int{1} : q + grid_int{1};
-    return grid_rational{q};
+    return grid_number{q};
 }
 
 //---------------------------------------------------------------------------
@@ -102,7 +301,7 @@ constexpr grid_rational grid_round(const grid_rational& r) {
 // point); _r parses the same grammar into the 64-bit rational.
 //---------------------------------------------------------------------------
 template <char... Chars>
-consteval grid_rational parse_grid_literal() {
+consteval grid_number parse_grid_literal() {
     if constexpr (octal_literal<Chars...>())
         constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
     constexpr char text[] = {Chars...};
@@ -129,7 +328,7 @@ consteval grid_rational parse_grid_literal() {
     if (sc.Exp > 10000)
         constexpr_error<"_g/_ins literal: exponent too large">();
     if (m == grid_int{0})
-        return big_rational{0};
+        return grid_number{0};
     grid_int   num   = m, den{1};
     const auto scale = [&](int x, int k) { // ·x^k
         const grid_int p    = pow_by_squaring(grid_int{x}, static_cast<unsigned>(k < 0 ? -k : k));
@@ -138,7 +337,7 @@ consteval grid_rational parse_grid_literal() {
     scale(sc.Base, e + zeros);
     if (sc.HasP || sc.HasE)
         scale(sc.HasP ? 2 : 10, sc.ExpNeg ? -sc.Exp : sc.Exp);
-    return big_rational{num, den};
+    return grid_number{num, den};
 }
 } // namespace beman::inside::detail
 
@@ -153,15 +352,15 @@ consteval auto make_per() {
         if constexpr (std::in_range<std::int64_t>(D))
             return rational{std::int64_t{1}, static_cast<std::int64_t>(D)};
         else
-            return grid_rational{1} / grid_rational{D};
+            return grid_number{1} / grid_number{D};
     } else {
-        static_assert(std::same_as<decltype(D), grid_rational>, "per<D>: D is an integer");
+        static_assert(std::same_as<decltype(D), grid_number>, "per<D>: D is an integer");
         static_assert(D >= 1 && grid_denominator(D) == grid_int{1},
                       "per<D> is the positive step 1/D for an integer D; a continuous grid is spelled 0");
-        if constexpr (fits_rational(grid_rational{1} / D))
-            return to_rational(grid_rational{1} / D);
+        if constexpr (fits_rational(grid_number{1} / D))
+            return to_rational(grid_number{1} / D);
         else
-            return grid_rational{1} / D;
+            return grid_number{1} / D;
     }
 }
 } // namespace beman::inside::detail
@@ -183,7 +382,7 @@ inline constexpr auto per = detail::make_per<D>();
 // decimal notch `{{0, 1}, 1e-30_g}`, or a binary one `0x1p-100_g`. Any size.
 inline namespace literals {
 template <char... Chars>
-consteval detail::grid_rational operator""_g() {
+consteval grid_number operator""_g() {
     return detail::parse_grid_literal<Chars...>();
 }
 } // namespace literals

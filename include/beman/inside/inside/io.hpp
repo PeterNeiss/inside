@@ -265,7 +265,7 @@ inline constexpr auto powers_of_5 = [] {
 } // namespace detail
 
 // A grid number of any size, in the forms of to_string(rational).
-[[nodiscard]] inline std::string to_string(const detail::big_rational& r);
+[[nodiscard]] inline std::string to_string(const grid_number& g);
 
 [[nodiscard]] inline std::string to_string(interval ival) {
     std::string str{"["};
@@ -378,8 +378,9 @@ std::string big_fraction_to_string(const big_rational& r) {
 }
 } // namespace detail
 
-[[nodiscard]] inline std::string to_string(const detail::big_rational& r) {
-    const int bits = r.Num.bit_width() > r.Den.bit_width() ? r.Num.bit_width() : r.Den.bit_width();
+[[nodiscard]] inline std::string to_string(const grid_number& g) {
+    const detail::big_rational r    = g.big();
+    const int                  bits = r.Num.bit_width() > r.Den.bit_width() ? r.Num.bit_width() : r.Den.bit_width();
     if (bits < 512)
         return detail::big_fraction_to_string<8>(r);
     if (bits < 4096)
@@ -453,7 +454,7 @@ template <insidable B>
     if constexpr (detail::wide_valued<B> && detail::integer_lattice<B> && !detail::point_storage<B>)
         // integers past 64 bits: the value's digits, no fraction to reduce
         return detail::wide_to_decimal(
-            detail::value_in_units<detail::wide_sint<detail::exact_limbs<B>>, detail::grid_rational{1}>(b));
+            detail::value_in_units<detail::wide_sint<detail::exact_limbs<B>>, grid_number{1}>(b));
     else if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
     else if constexpr (detail::buffered_text<B>) {

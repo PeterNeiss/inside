@@ -36,7 +36,7 @@ struct diag_text {
         return *this;
     }
     // A grid number: an integer, or N/D.
-    constexpr diag_text& operator<<(const grid_rational& r) {
+    constexpr diag_text& operator<<(const grid_number& r) {
         append(grid_numerator(r));
         if (const grid_int d = grid_denominator(r); !(d == grid_int{1})) {
             push('/');

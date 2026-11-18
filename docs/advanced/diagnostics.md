@@ -16,20 +16,16 @@ probe an operation without an error at all.
 GCC spells every name out. The point `3_ins`:
 
 ```text
-inside<grid{interval{grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}},
-                     grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}}},
-            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}},
-            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}}}, 0>
+inside<grid{interval{grid_number{3, 1, 0}, grid_number{3, 1, 0}},
+            grid_number{0, 1, 0}, grid_number{0, 1, 0}}, 0>
 ```
 
-GCC also prefixes `beman::inside::` and `beman::inside::detail::`, shortened
-here. The first `grid_rational` pair is the interval, the next the notch, the
-last the bound:
+GCC also prefixes `beman::inside::`, shortened here. The `grid_number` pair
+is the interval, the next one the notch, the last the bound:
 
 | Part | Means |
 |---|---|
-| `grid_rational{num, den}` | a grid number, an exact fraction: numerator and denominator as `big_int`s |
-| `big_int{small, limbs, size, negative}` | an integer: `small` is the magnitude while it fits 64 bits (`limbs` 0, `size` 0); past that `limbs` points to `size` interned 64-bit limbs, least significant first. −3 is `big_int{3, 0, 0, true}` |
+| `grid_number{num, den, big}` | a grid number, an exact fraction in lowest terms: `num` the numerator's magnitude, `den` the denominator with the sign, so −3 is `grid_number{3, -1, 0}` and 1/100 is `grid_number{1, 100, 0}`. A value past 64 bits has `den` 0 and `big` pointing at the interned value |
 | interval | the range, both limits included |
 | notch | the step. 0 is a *continuous* grid or a point, not a missing value |
 | bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([exact arithmetic](exact-arithmetic.md#bounded-continuous-grids)); 0 otherwise |
@@ -57,16 +53,17 @@ bit is checked. (The definitions are in `include/beman/inside/inside/policy_flag
 GCC prints a quantity's reference as the structure behind it:
 
 ```text
-quantity<reference{spec_ref{(& isq_defs::length), true}, true, recipe{…},
-                   unit{unit_atom[6]{unit_atom{(& si_defs::metre), 3, 1}}, 1, magnitude{grid_rational{…}, 0}}},
+quantity<reference{kind_ref{(& kind_holder<symbol_text{"length", 6}, …>::value), true}, true, recipe{…},
+                   unit_value{unit_atom [6]{unit_atom{(& definition<unit_def, symbol_text{"m", 1}, …>::value), 3, 1}},
+                              1, magnitude{grid_number{1, 1, 0}, 0}}},
          inside<…>>
 ```
 
 | Part | Means |
 |---|---|
-| `spec_ref{(& isq_defs::length), true}` | the quantity kind: `isq::length` |
-| `unit_atom{(& si_defs::metre), 3, 1}` | a named unit, its decimal prefix as a power of 10 (3: kilo), and its exponent (1) |
-| `magnitude{grid_rational{…}, 0}` | the unit's extra factor as a grid number and a power of π: here 1·π⁰ |
+| `kind_ref{(& kind_holder<symbol_text{"length", 6}, …>::value), true}` | the quantity kind: `isq::length` |
+| `unit_atom{(& definition<unit_def, symbol_text{"m", 1}, …>::value), 3, 1}` | a named unit (`m`, and after it what it is defined by), its decimal prefix as a power of 10 (3: kilo), and its exponent (1) |
+| `magnitude{grid_number{1, 1, 0}, 0}` | the unit's extra factor as a grid number and a power of π: here 1·π⁰ |
 | `inside<…>` | the number, decoded as above |
 
 ## Values in the message

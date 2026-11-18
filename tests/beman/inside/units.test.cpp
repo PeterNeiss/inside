@@ -38,11 +38,11 @@ consteval bool addable() {
 TEST(UnitsTest, dimensions_and_magnitudes) {
     static_assert(dimension_of(si::newton.value) ==
                   base_dimension<"mass"> * base_dimension<"length"> / base_dimension<"time">.pow(2));
-    static_assert(magnitude_of(km.value) == magnitude{grid_rational{1000}});
+    static_assert(magnitude_of(km.value) == magnitude{grid_number{1000}});
     static_assert(magnitude_of(si::kilogram.value).is_one());
-    static_assert(magnitude_of(si::gram.value) == magnitude{grid_rational{rational{1, 1000}}});
-    static_assert(magnitude_of(si::hour.value) == magnitude{grid_rational{3600}});
-    static_assert(magnitude_of(international::inch.value) == magnitude{grid_rational{rational{254, 10000}}});
+    static_assert(magnitude_of(si::gram.value) == magnitude{grid_number{rational{1, 1000}}});
+    static_assert(magnitude_of(si::hour.value) == magnitude{grid_number{3600}});
+    static_assert(magnitude_of(international::inch.value) == magnitude{grid_number{rational{254, 10000}}});
     static_assert(magnitude_of(si::degree.value).Pi == 1);
     // m·s/s is m again, and the factors are kept in one order.
     static_assert(si::metre * si::second / si::second == si::metre);
@@ -1045,8 +1045,7 @@ constexpr bool converts_to_km = requires(const Q& q) { q.template in<km>(); };
 // point + quantity, where the quantity has no exact km (its fractions would
 // pass 1024 bits there): the sum in the common unit, metres.
 TEST(UnitsArmTest, point_plus_a_quantity_without_the_point_unit) {
-    using V = inside<{
-        {0, 1}, max_denominator{beman::inside::detail::grid_rational{beman::inside::detail::big_int{1} << 510}}}>;
+    using V = inside<{{0, 1}, max_denominator{beman::inside::grid_number{beman::inside::detail::big_int{1} << 510}}}>;
     const quantity<si::metre, V> q{rational{1, 3}, si::metre};
     static_assert(!converts_to_km<std::remove_cvref_t<decltype(q)>>);
     const auto p = point<km>(inside<{{0, rational{1, 1000}}, per<1000>}>{rational{1, 1000}}); // 1 m

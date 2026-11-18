@@ -33,7 +33,7 @@ namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:
 // (offset(From) − offset(To)) / mag(U).
 template <origin_ref From, origin_ref To, unit_value U>
-consteval grid_rational origin_shift() {
+consteval grid_number origin_shift() {
     static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
     constexpr magnitude m = magnitude_of(U);
     static_assert(m.Pi == 0, "units: an origin shift in a unit with a pi magnitude has no exact grid");
@@ -41,12 +41,12 @@ consteval grid_rational origin_shift() {
 }
 
 // Whether shift<C> forms on V: inside's v + C exists.
-template <grid_rational C, class V>
-concept shift_forms = C == grid_rational{0} || requires(const V& v) { v + just<C>; };
+template <grid_number C, class V>
+concept shift_forms = C == grid_number{0} || requires(const V& v) { v + just<C>; };
 
-template <grid_rational C, insidable V>
+template <grid_number C, insidable V>
 constexpr auto shift(const V& v) {
-    if constexpr (C == grid_rational{0})
+    if constexpr (C == grid_number{0})
         return v;
     else
         return v + just<C>;
@@ -96,7 +96,7 @@ class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quant
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0 &&
                  detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
-        constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
+        constexpr grid_number c = detail::origin_shift<O, O2, R.U>();
         return detail::quantity_access::make<
             quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Value)))>>>(
             detail::shift<c>(units::detail::value_of(Value)));

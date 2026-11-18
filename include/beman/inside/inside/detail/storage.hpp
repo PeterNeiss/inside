@@ -130,9 +130,9 @@ constexpr auto exact_of(const B& b); // wide_value.hpp
 // continuous one), exactly, and as 64-bit rationals (for the 64-bit paths)
 // where both fit.
 template <insidable B>
-inline constexpr grid_rational lower_index_of = notched<B> ? lower_of<B> / notch_of<B> : grid_rational{0};
+inline constexpr grid_number lower_index_of = notched<B> ? lower_of<B> / notch_of<B> : grid_number{0};
 template <insidable B>
-inline constexpr grid_rational upper_index_of = notched<B> ? upper_of<B> / notch_of<B> : grid_rational{0};
+inline constexpr grid_number upper_index_of = notched<B> ? upper_of<B> / notch_of<B> : grid_number{0};
 template <insidable B>
 inline constexpr bool value_indices_fit64 =
     notched<B> && fits_rational(lower_index_of<B>) && fits_rational(upper_index_of<B>);
@@ -142,16 +142,16 @@ inline constexpr rational lower_index64 = to_rational(lower_index_of<B>);
 template <insidable B>
 inline constexpr bool lower_index_fits_int64 =
     notched<B> && grid_denominator(lower_index_of<B>) == grid_int{1} &&
-    !(lower_index_of<B> < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
-    !(grid_rational{std::numeric_limits<std::int64_t>::max()} < lower_index_of<B>);
+    !(lower_index_of<B> < grid_number{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_number{std::numeric_limits<std::int64_t>::max()} < lower_index_of<B>);
 template <insidable B>
 inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
 // Every value index of an anchored grid (value/Notch, an integer) fits
 // int64: value_index<std::int64_t> is exact. (uint64's do not.)
 template <insidable B>
 inline constexpr bool value_indices_fit_int64 =
-    notched<B> && anchored<B> && !(lower_index_of<B> < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
-    !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_index_of<B>);
+    notched<B> && anchored<B> && !(lower_index_of<B> < grid_number{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_number{std::numeric_limits<std::int64_t>::max()} < upper_index_of<B>);
 
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
@@ -254,7 +254,7 @@ constexpr std::int64_t raw_int64(B b) noexcept {
 }
 
 // ⌊a / b⌋ for grid numbers (b > 0).
-consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b) {
+consteval grid_int floor_quotient(const grid_number& a, const grid_number& b) {
     const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
     const grid_int q = n / d;
     return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
@@ -273,9 +273,9 @@ inline constexpr bool q_format_fits = [] {
     else if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in int64
-        constexpr grid_rational nd{grid_denominator(notch_of<B>)};
-        return !(lower_of<B> * nd < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
-               !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_of<B> * nd);
+        constexpr grid_number nd{grid_denominator(notch_of<B>)};
+        return !(lower_of<B> * nd < grid_number{std::numeric_limits<std::int64_t>::min()}) &&
+               !(grid_number{std::numeric_limits<std::int64_t>::max()} < upper_of<B> * nd);
     }
 }();
 
@@ -312,9 +312,9 @@ inline constexpr lattice_codec_t lattice_codec = [] {
         // Mag: ⌈max(|Lower|, |Upper|)⌉ + 1, from the grid numbers (|Lower|
         // may be 2^63, past an int64 ceiling).
         constexpr grid_int mag_g = [] {
-            const grid_rational a = abs(lower_of<L>), b = abs(upper_of<L>);
-            const grid_rational m = a < b ? b : a;
-            return floor_quotient(m, grid_rational{1}) + grid_int{2}; // ≥ the ceiling + 1
+            const grid_number a = abs(lower_of<L>), b = abs(upper_of<L>);
+            const grid_number m = a < b ? b : a;
+            return floor_quotient(m, grid_number{1}) + grid_int{2}; // ≥ the ceiling + 1
         }();
         if constexpr (!(mag_g < grid_int{std::int64_t{1} << 62}))
             return no;
@@ -605,9 +605,9 @@ inline constexpr double_lattice_t double_lattice = [] {
             return no;
         // every in-range |v|·K below 2^51
         constexpr grid_int mag_g = [] {
-            const grid_rational a = abs(lower_of<L>), b = abs(upper_of<L>);
-            const grid_rational mm = a < b ? b : a;
-            return floor_quotient(mm, grid_rational{1}) + grid_int{2};
+            const grid_number a = abs(lower_of<L>), b = abs(upper_of<L>);
+            const grid_number mm = a < b ? b : a;
+            return floor_quotient(mm, grid_number{1}) + grid_int{2};
         }();
         if constexpr (!(mag_g < grid_int{std::int64_t{1} << 62}))
             return no;
@@ -833,8 +833,8 @@ round_offset_unanchored(std::uint64_t q, std::uint64_t r, std::uint64_t den) noe
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
     if constexpr (lower_of<L> < 0) {
-        constexpr grid_rational c  = -lower_index_of<L>; // > 0
-        constexpr grid_int      cn = grid_numerator(c), cd = grid_denominator(c);
+        constexpr grid_number c  = -lower_index_of<L>; // > 0
+        constexpr grid_int    cn = grid_numerator(c), cd = grid_denominator(c);
         using W  = wide_uint<limbs_for_bits(64 + std::max(cn.bit_width(), cd.bit_width()))>;
         negative = W{q * den + r} * static_cast<W>(cd) < static_cast<W>(cn) * W{den};
     }
@@ -904,8 +904,8 @@ template <insidable L, typename P>
     bool                   negative = q < fc;
     if constexpr (!anchored<L>)
         if (q == fc) {
-            constexpr grid_rational frac = -lower_index_of<L> - grid_rational{zero_slot_floor<L>};
-            constexpr grid_int      fn = grid_numerator(frac), fd = grid_denominator(frac);
+            constexpr grid_number frac = -lower_index_of<L> - grid_number{zero_slot_floor<L>};
+            constexpr grid_int    fn = grid_numerator(frac), fd = grid_denominator(frac);
             using W  = wide_uint<limbs_for_bits(64 + fd.bit_width())>;
             negative = W{static_cast<std::uint64_t>(r)} * static_cast<W>(fd) <
                        static_cast<W>(fn) * W{static_cast<std::uint64_t>(den)};

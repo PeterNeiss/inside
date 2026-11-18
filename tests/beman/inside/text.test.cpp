@@ -591,8 +591,8 @@ TEST(TextArmTest, extraction_from_an_empty_stream) {
 
 // A grid number past 4096 bits prints its numerator and denominator.
 TEST(TextArmTest, to_string_of_a_huge_grid_number) {
-    constexpr detail::grid_rational big = detail::grid_rational{detail::grid_int{1} << 5000} / 3;
-    const std::string               s   = to_string(big);
+    constexpr grid_number big = grid_number{detail::grid_int{1} << 5000} / 3;
+    const std::string     s   = to_string(big);
     EXPECT_EQ(s.substr(s.size() - 2), "/3");
     EXPECT_EQ(s.substr(0, 10), "1412467032");
 }
@@ -629,7 +629,7 @@ using namespace beman::inside::formats;
 // a grid number of 512 to 4096 bits prints in full.
 TEST(TextArmTest, denominator_past_int64_and_a_kilobit_grid_number) {
     EXPECT_EQ((parse<inside<{{0, 1}, max_denominator{1000}}>>("1e-19").error()), error::rounding_error);
-    constexpr auto g = detail::grid_rational{detail::grid_int{1} << 1000} / 7;
+    constexpr auto g = grid_number{detail::grid_int{1} << 1000} / 7;
     EXPECT_EQ(to_string(g).substr(0, 12), "107150860718");
 }
 } // namespace reached_arms_tests

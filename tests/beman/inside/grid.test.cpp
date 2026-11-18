@@ -193,9 +193,8 @@ TEST(GridTest, two_limit_ctor_derives_the_notch) {
     static_assert(grid{0, 0x1p-10}.Notch == rational{1, 1024});   // at the double bound
     static_assert(grid{0, 0x1p-11_r}.Notch == rational{1, 2048}); // exact spelling: no bound
     // Big grid numbers: the exact notch 1/(2^62·(2^62−1)), past 64 bits.
-    static_assert(
-        grid{just<1, (1ll << 62)>, just<1, (1ll << 62) - 1>}.Notch ==
-        detail::grid_rational{detail::big_int{1}, detail::big_int{1ll << 62} * detail::big_int{(1ll << 62) - 1}});
+    static_assert(grid{just<1, (1ll << 62)>, just<1, (1ll << 62) - 1>}.Notch ==
+                  grid_number{detail::big_int{1}, detail::big_int{1ll << 62} * detail::big_int{(1ll << 62) - 1}});
     static_assert(grid::validate<grid{just<-6, 5>, just<3, 5>}>());
     // _g: grid numbers from decimal literals, exactly, of any size.
     static_assert(grid{0, 2.5_g}.Notch == rational{1, 2});
@@ -751,9 +750,8 @@ TEST(GridTest, grid_plus_reports_gcd_lcm_overflow) {
     constexpr grid g2{interval{0_r, 1_r}, third};
 
     // Big grid numbers: the notch gcd 1/(3·2^62) is exact.
-    static_assert(
-        (g1 + g2).Notch ==
-        detail::grid_rational{detail::big_int{1}, detail::big_int{3} * detail::big_int{std::int64_t{1} << 62}});
+    static_assert((g1 + g2).Notch ==
+                  grid_number{detail::big_int{1}, detail::big_int{3} * detail::big_int{std::int64_t{1} << 62}});
 }
 
 } // namespace pinned_tests
@@ -763,29 +761,28 @@ TEST(GridTest, grid_plus_reports_gcd_lcm_overflow) {
 namespace big_spelling_tests {
 using namespace beman::inside;
 using namespace beman::inside::formats;
-using detail::grid_rational;
-constexpr grid_rational two_70 = 1180591620717411303424_g;
+constexpr grid_number two_70 = 1180591620717411303424_g;
 
 TEST(GridTest, spellings_past_64_bits) {
     // per<D>: a 64-bit rational where 1/D fits one, else a grid number.
     static_assert(std::is_same_v<decltype(per<4>), const detail::rational>);
-    static_assert(per<two_70> == grid_rational{1} / two_70 && per<1024_g> == detail::rational{1, 1024});
-    static_assert(per<(1ull << 63)> == grid_rational{1} / 9223372036854775808_g);
-    static_assert(notch_of<inside<{{0, 1}, per<two_70>}>> == grid_rational{1} / two_70);
+    static_assert(per<two_70> == grid_number{1} / two_70 && per<1024_g> == detail::rational{1, 1024});
+    static_assert(per<(1ull << 63)> == grid_number{1} / 9223372036854775808_g);
+    static_assert(notch_of<inside<{{0, 1}, per<two_70>}>> == grid_number{1} / two_70);
     // just<N, D> with a grid-number D.
-    static_assert(lower_of<decltype(just<1, two_70>)> == grid_rational{1} / two_70);
-    static_assert(lower_of<decltype(just<3, 6_g>)> == grid_rational{detail::rational{1, 2}});
+    static_assert(lower_of<decltype(just<1, two_70>)> == grid_number{1} / two_70);
+    static_assert(lower_of<decltype(just<3, 6_g>)> == grid_number{detail::rational{1, 2}});
     // _g in every form of the literal grammar, of any size.
-    static_assert(0x1p100_g == 1267650600228229401496703205376_g && 0x1p-70_g == grid_rational{1} / two_70);
+    static_assert(0x1p100_g == 1267650600228229401496703205376_g && 0x1p-70_g == grid_number{1} / two_70);
     static_assert(0xffff'ffff'ffff'ffff'ffff_g == 1208925819614629174706175_g);
     static_assert(0b1'0000'0000_g == 256_g && 0x1.8p3_g == 12_g && 1.5e3_g == 1500_g);
     // _ins past 64 bits, and the same types as before within them.
     static_assert(upper_of<decltype(18446744073709551616_ins)> == 18446744073709551616_g);
-    static_assert(lower_of<decltype(0x1p-70_ins)> == grid_rational{1} / two_70);
+    static_assert(lower_of<decltype(0x1p-70_ins)> == grid_number{1} / two_70);
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(1.25_ins)>, std::remove_cvref_t<decltype(just<5, 4>)>>);
     // Counters and the amplitude grid past 64 bits.
     static_assert(upper_of<wrap_counter<two_70>> == two_70 && upper_of<clamp_counter<255>> == 255);
-    static_assert(notch_of<math::unit_amplitude<two_70>> == grid_rational{1} / two_70);
+    static_assert(notch_of<math::unit_amplitude<two_70>> == grid_number{1} / two_70);
     wrap_counter<two_70> c{two_70};
     ++c;
     EXPECT_TRUE(c == 0);

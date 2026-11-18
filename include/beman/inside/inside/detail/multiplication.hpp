@@ -43,8 +43,8 @@ struct multiplication {
             // (wide_value.hpp). The product of the unit counts counts the product in the product of the units — on
             // anchored grids the result notch — exact for every grid and sign, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
-            constexpr grid_rational U = unit_of<L> * unit_of<R>;
-            using W                   = index_work_t<result, L, unit_of<L>, R, unit_of<R>, U>;
+            constexpr grid_number U = unit_of<L> * unit_of<R>;
+            using W                 = index_work_t<result, L, unit_of<L>, R, unit_of<R>, U>;
             return from_value_in_units<result, U>(value_in_units<W, unit_of<L>>(lhs) *
                                                   value_in_units<W, unit_of<R>>(rhs));
         }

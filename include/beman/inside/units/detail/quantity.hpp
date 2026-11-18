@@ -131,7 +131,7 @@ concept castable_from = quantity_like<Q> && castable_quantity<Q, X>;
 // A number: an inside, a built-in, a rational or a grid number.
 template <class V>
 concept number_value = beman::inside::detail::numeric<std::remove_cvref_t<V>> ||
-                       std::same_as<std::remove_cvref_t<V>, beman::inside::detail::grid_rational>;
+                       std::same_as<std::remove_cvref_t<V>, beman::inside::grid_number>;
 // A bare number where a quantity is wanted: the deleted overloads' test.
 template <class Q, class X>
 concept bare_number_for = quantity_like<Q> && !quantity_like<X> && number_value<X>;
@@ -209,7 +209,7 @@ constexpr auto lift_to(V&& v) {
 template <reference R>
 consteval reference unsigned_reference() {
     reference r     = R;
-    r.U.Scale.Ratio = beman::inside::detail::abs(r.U.Scale.Ratio);
+    r.U.Scale.Ratio = abs(r.U.Scale.Ratio);
     return r;
 }
 
@@ -219,9 +219,9 @@ consteval reference unsigned_reference() {
 // A zero scale is a product that vanishes: the zero multivector.
 template <reference R, class V>
 constexpr auto make_quantity(V&& v) {
-    if constexpr (R.U.Scale.Ratio.Num.is_zero())
+    if constexpr (R.U.Scale.Ratio.is_zero())
         return multivector<>{};
-    else if constexpr (R.U.Scale.Ratio.Num.negative()) {
+    else if constexpr (R.U.Scale.Ratio.negative()) {
         constexpr reference P = unsigned_reference<R>();
         if constexpr (is_expected_v<std::remove_cvref_t<V>>)
             return make_quantity<P>(std::forward<V>(v).transform([](const auto& x) { return -x; }));
@@ -367,7 +367,7 @@ using member_holder = std::conditional_t<lower_of<Rep> == upper_of<Rep>, public_
 
 template <reference R, insidable Rep>
 class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
-    static_assert(!R.U.Scale.Ratio.Num.negative() && !R.U.Scale.Ratio.Num.is_zero(),
+    static_assert(!R.U.Scale.Ratio.negative() && !R.U.Scale.Ratio.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
     using holder = detail::member_holder<Rep, Rep, quantity<R, Rep>>;

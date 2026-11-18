@@ -459,7 +459,7 @@ consteval unit_value physical_atoms(const unit_value& u) {
             unit_add(r, u.Atoms[i]);
     return r;
 }
-consteval grid_rational blade_factor(const unit_value& u) {
+consteval grid_number blade_factor(const unit_value& u) {
     return (magnitude_of(u) / magnitude_of(physical_atoms(u))).Ratio;
 }
 template <class P>
@@ -478,7 +478,7 @@ constexpr const auto& number_of_part(const P& p) {
 }
 // p's coefficient times F on the canonical blade B, in p's unit without its
 // blade: no division, so a blade with a null vector moves too.
-template <dimension B, grid_rational F, class P>
+template <dimension B, grid_number F, class P>
 constexpr auto move_to_blade(const P& p) {
     static constexpr unit_value u = unit_of_part<P>();
     constexpr unit_value        r = [] {
@@ -487,7 +487,7 @@ constexpr auto move_to_blade(const P& p) {
             unit_add(t, unit_atom{v->Vector, 0, 1});
         return t;
     }();
-    constexpr grid_rational f = blade_factor(u) * F;
+    constexpr grid_number f = blade_factor(u) * F;
     return as_part(make_quantity<reference_of(r)>(number_of_part(p) * just<f>));
 }
 
@@ -762,7 +762,7 @@ template <multivector_like X, unit_value U>
 [[nodiscard]] constexpr auto part(const X& x, unit_t<U>) {
     return detail::each_part(x, [](const auto& p) {
         if constexpr (detail::blade_equal(detail::part_dim<std::remove_cvref_t<decltype(p)>>(), dimension_of(U)))
-            return detail::move_to_blade<dim_one, grid_rational{1} / magnitude_of(U).Ratio>(p);
+            return detail::move_to_blade<dim_one, grid_number{1} / magnitude_of(U).Ratio>(p);
         else
             return multivector<>{};
     });
@@ -832,7 +832,7 @@ template <multivector_like X, unit_value I>
         constexpr dimension a = detail::part_dim<std::remove_cvref_t<decltype(p)>>();
         static_assert(detail::blade_within(a, dimension_of(I)), "units: complement - a part outside I's blade");
         constexpr dimension rest = detail::blade_rest(dimension_of(I), a);
-        return detail::move_to_blade<rest, magnitude_of(I).Ratio * grid_rational{detail::blade_sign(a, rest)}>(p);
+        return detail::move_to_blade<rest, magnitude_of(I).Ratio * grid_number{detail::blade_sign(a, rest)}>(p);
     });
 }
 // The inverse of complement: uncomplement(complement(x, I), I) == x.
@@ -843,8 +843,9 @@ template <multivector_like X, unit_value I>
         constexpr dimension b = detail::part_dim<std::remove_cvref_t<decltype(p)>>();
         static_assert(detail::blade_within(b, dimension_of(I)), "units: uncomplement - a part outside I's blade");
         constexpr dimension a = detail::blade_rest(dimension_of(I), b);
-        return detail::
-            move_to_blade<a, grid_rational{1} / (magnitude_of(I).Ratio * grid_rational{detail::blade_sign(a, b)})>(p);
+        return detail::move_to_blade<a,
+                                     grid_number{1} / (magnitude_of(I).Ratio * grid_number{detail::blade_sign(a, b)})>(
+            p);
     });
 }
 // The regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA.

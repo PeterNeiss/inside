@@ -83,7 +83,7 @@ concept index_integer =
 // so the result is stored back into x by the same rules as for any inside.
 // (The binary x + n has no such reading: its type would be that range.)
 template <index_integer A>
-using lifted_t = inside<grid{interval_of<A>, grid_rational{1}}>;
+using lifted_t = inside<grid{interval_of<A>, grid_number{1}}>;
 template <class A>
 concept step_integer = index_integer<A> && integer_value_storage<lifted_t<A>>;
 template <step_integer A>
@@ -198,7 +198,7 @@ struct policy_ref {
     template <insidable C>
     static constexpr bool divisor_ok =
         reports_into_errc<P> || has_action<is_error_action, As...> ||
-        !is_checked(policy_of<B> | plain_t<P>::Flags | policy_of<C>) || !grid_of<C>.representable(grid_rational{0});
+        !is_checked(policy_of<B> | plain_t<P>::Flags | policy_of<C>) || !grid_of<C>.representable(grid_number{0});
 
   public:
     //-------------------------------------------------------------------------

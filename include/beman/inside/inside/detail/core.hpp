@@ -66,8 +66,8 @@ inline constexpr bool index_converts = false;
 template <insidable B, index_integer T>
 inline constexpr bool index_converts<B, T> =
     index_shaped<grid_of<B>> && !has_flag(policy_of<B>, cursor_marker) && values_fit_int64<B> &&
-    !(lower_of<B> < grid_rational{std::numeric_limits<T>::min()}) &&
-    !(upper_of<B> > grid_rational{std::numeric_limits<T>::max()});
+    !(lower_of<B> < grid_number{std::numeric_limits<T>::min()}) &&
+    !(upper_of<B> > grid_number{std::numeric_limits<T>::max()});
 
 // The number a type steps over in cursor<T>, values<T> and end(t): an inside
 // itself, or a quantity's number (units specializes it); rebind<N> wraps a
@@ -110,8 +110,8 @@ constexpr std::expected<B, error> try_store(Store store) {
 consteval grid index_grid(const grid& g) {
     const grid_int s = g.step_count();
     if (s == grid_int{0})
-        return grid{grid_rational{0}};
-    return grid{interval{grid_rational{0}, grid_rational{s}}, grid_rational{1}};
+        return grid{grid_number{0}};
+    return grid{interval{grid_number{0}, grid_number{s}}, grid_number{1}};
 }
 
 // numerator_grid / denominator_grid: the parts of g's values in lowest
@@ -121,21 +121,21 @@ consteval grid index_grid(const grid& g) {
 // is g's interval. A point's parts are points.
 consteval grid denominator_grid(const grid& g) {
     if (g.Interval.Lower == g.Interval.Upper)
-        return grid{grid_rational{grid_denominator(g.Interval.Lower)}};
+        return grid{grid_number{grid_denominator(g.Interval.Lower)}};
     const grid_int d = den_bound(g);
     if (d == grid_int{1})
-        return grid{grid_rational{1}};
-    return grid{interval{grid_rational{1}, grid_rational{d}}, grid_rational{1}};
+        return grid{grid_number{1}};
+    return grid{interval{grid_number{1}, grid_number{d}}, grid_number{1}};
 }
 consteval grid numerator_grid(const grid& g) {
-    const grid_rational& lo = g.Interval.Lower;
-    const grid_rational& hi = g.Interval.Upper;
+    const grid_number& lo = g.Interval.Lower;
+    const grid_number& hi = g.Interval.Upper;
     if (lo == hi)
-        return grid{grid_rational{grid_numerator(lo)}};
-    const grid_rational d{den_bound(g)};
-    const grid_rational a = grid_round<round_mode::ceil>(lo >= 0 ? lo : lo * d);
-    const grid_rational b = grid_round<round_mode::floor>(hi <= 0 ? hi : hi * d);
-    return grid{interval{a, b}, grid_rational{1}};
+        return grid{grid_number{grid_numerator(lo)}};
+    const grid_number d{den_bound(g)};
+    const grid_number a = grid_round<round_mode::ceil>(lo >= 0 ? lo : lo * d);
+    const grid_number b = grid_round<round_mode::floor>(hi <= 0 ? hi : hi * d);
+    return grid{interval{a, b}, grid_number{1}};
 }
 
 // Whether I's raw is its value, an integer: a value raw, or an index raw
@@ -370,16 +370,16 @@ struct inside : detail::raw_holder<G, P> {
     // during compilation): checked like any store, since its interval is not
     // part of its type. (Exactly a grid number: templates, so nothing
     // converts to one.)
-    template <std::same_as<detail::grid_rational> V>
+    template <std::same_as<grid_number> V>
     consteval inside(const V& value) : holder{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
     }
-    template <std::same_as<detail::grid_rational> V, class Pol>
+    template <std::same_as<grid_number> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && detail::reports_into_errc<Pol>
     constexpr inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_grid_number_with(value, pol);
     }
-    template <std::same_as<detail::grid_rational> V, class Pol>
+    template <std::same_as<grid_number> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && (!detail::reports_into_errc<Pol>)
     consteval inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_grid_number_with(value, pol);
@@ -388,7 +388,7 @@ struct inside : detail::raw_holder<G, P> {
 
   private:
     template <class Pol>
-    constexpr void store_grid_number_with(const detail::grid_rational& value, Pol& pol) {
+    constexpr void store_grid_number_with(const grid_number& value, Pol& pol) {
         constexpr policy_flag O = detail::override_flags(P, policy_of<Pol>);
         inside<G, O>          twin;
         detail::assign_grid_number(twin, value, detail::with_flags<O>(pol));
@@ -524,8 +524,8 @@ struct inside : detail::raw_holder<G, P> {
     // value is an integer or the call may round.
     template <std::integral T, policy_flag Round>
     static constexpr bool total_to =
-        !(lower_of<inside> < detail::grid_rational{std::numeric_limits<T>::min()}) &&
-        !(upper_of<inside> > detail::grid_rational{std::numeric_limits<T>::max()}) &&
+        !(lower_of<inside> < grid_number{std::numeric_limits<T>::min()}) &&
+        !(upper_of<inside> > grid_number{std::numeric_limits<T>::max()}) &&
         (detail::integer_lattice<inside> || Round != detail::none || has_flag(P, detail::snap));
 
   public:
@@ -542,8 +542,8 @@ struct inside : detail::raw_holder<G, P> {
                  Round == round_floor || Round == round_ceil || Round == round_half_even)
     [[nodiscard]] constexpr std::conditional_t<total_to<T, Round>, T, std::expected<T, error>> to() const {
         using lim                             = std::numeric_limits<T>;
-        constexpr bool               check_lo = lower_of<inside> < detail::grid_rational{lim::min()};
-        constexpr bool               check_hi = upper_of<inside> > detail::grid_rational{lim::max()};
+        constexpr bool               check_lo = lower_of<inside> < grid_number{lim::min()};
+        constexpr bool               check_hi = upper_of<inside> > grid_number{lim::max()};
         constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_int64<inside>)
@@ -713,15 +713,15 @@ struct inside : detail::raw_holder<G, P> {
     // so only index 0 lands on it).
     template <insidable I>
     static constexpr auto step_value(const I& i) {
-        constexpr detail::grid_rational unit_value = G.Notch != 0 ? G.Notch : detail::grid_rational{1};
-        constexpr auto                  lower      = inside<grid{G.Interval.Lower}>::from_raw({}, unsafe);
-        constexpr auto                  step       = inside<grid{unit_value}>::from_raw({}, unsafe);
+        constexpr grid_number unit_value = G.Notch != 0 ? G.Notch : grid_number{1};
+        constexpr auto        lower      = inside<grid{G.Interval.Lower}>::from_raw({}, unsafe);
+        constexpr auto        step       = inside<grid{unit_value}>::from_raw({}, unsafe);
         return lower + i * step;
     }
     // A builtin index as the inside on its type's range.
     template <std::integral T>
     static constexpr auto as_step_inside(T n) {
-        return inside<grid{interval_of<T>, detail::grid_rational{1}}>{n};
+        return inside<grid{interval_of<T>, grid_number{1}}>{n};
     }
 
   public:
@@ -973,7 +973,7 @@ struct inside : detail::raw_holder<G, P> {
     // channel for it (on_error(ec) or an on_error hook), or unsafe on either operand.
     template <insidable R>
     static constexpr bool zero_divisor_possible =
-        detail::is_checked(P | policy_of<R>) && grid_of<R>.representable(detail::grid_rational{0});
+        detail::is_checked(P | policy_of<R>) && grid_of<R>.representable(grid_number{0});
 
     template <insidable R>
     using sum_t = decltype(std::declval<const inside&>() + std::declval<const R&>());
@@ -1268,7 +1268,7 @@ struct inside : detail::raw_holder<G, P> {
     [[nodiscard]] static constexpr std::expected<inside, error> try_make(const std::expected<A, error>& value) {
         return value.and_then([](const A& a) { return try_make<F>(a); });
     }
-    template <policy_flag F = detail::none, std::same_as<detail::grid_rational> V>
+    template <policy_flag F = detail::none, std::same_as<grid_number> V>
     [[nodiscard]] static constexpr std::expected<inside, error> try_make(const V& value) {
         return detail::try_store<inside, P | F>(
             [&](inside& r, auto&& pol) { detail::assign_grid_number(r, value, pol); });
@@ -1403,7 +1403,7 @@ template <auto den>
 consteval bool integer_den() {
     if constexpr (std::integral<decltype(den)>)
         return den >= 1;
-    else if constexpr (std::same_as<decltype(den), grid_rational>)
+    else if constexpr (std::same_as<decltype(den), grid_number>)
         return den >= 1 && grid_denominator(den) == grid_int{1};
     else
         return false;
@@ -1414,7 +1414,7 @@ consteval auto just_point() {
         return inside<grid{value}>::from_raw({}, unsafe);
     else {
         static_assert(integer_den<den>(), "just<N, D>: D is an integer of at least 1");
-        return inside<grid{grid_rational{value} / grid_rational{den}}>::from_raw({}, unsafe);
+        return inside<grid{grid_number{value} / grid_number{den}}>::from_raw({}, unsafe);
     }
 }
 } // namespace detail
@@ -1435,7 +1435,7 @@ using step_t = inside<detail::index_grid(grid_of<T>)>;
 
 template <insidable T>
     requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
-inline constexpr auto step_count_of = just<detail::grid_rational{grid_of<T>.step_count()}>;
+inline constexpr auto step_count_of = just<grid_number{grid_of<T>.step_count()}>;
 
 //---------------------------------------------------------------------------
 // _ins literal — compile-time `inside<{V, V}>` from a numeric literal.

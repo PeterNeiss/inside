@@ -54,8 +54,8 @@ consteval bool values_on_lattice() {
                      grid_denominator(lower_of<R>) * grid_denominator(notch_of<R>));
     } else if constexpr (std::integral<R>) {
         if constexpr (notched<L>)
-            return grid_divides_evenly(grid_rational{1}, notch_of<L>) &&
-                   grid_same_lattice(grid_rational{0}, lower_of<L>, notch_of<L>);
+            return grid_divides_evenly(grid_number{1}, notch_of<L>) &&
+                   grid_same_lattice(grid_number{0}, lower_of<L>, notch_of<L>);
         else
             return true;
     } else
@@ -86,11 +86,11 @@ inline constexpr bool reports_into_errc = std::is_base_of_v<error_ref, std::remo
 
 // R's notch for a diagnostic (0 for a non-inside, which never fails there).
 template <typename R>
-consteval grid_rational notch_or_zero() {
+consteval grid_number notch_or_zero() {
     if constexpr (insidable<R>)
         return notch_of<R>;
     else
-        return grid_rational{0};
+        return grid_number{0};
 }
 } // namespace detail
 

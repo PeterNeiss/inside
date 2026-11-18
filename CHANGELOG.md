@@ -8,6 +8,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Upgrading
 
+- `grid_number` is a class of its own (it was an alias of an internal type),
+  and its members mean something else: `Num` is the numerator's magnitude,
+  `Den` the denominator with the sign, `0` for a value past 64 bits, which
+  `Big` then holds. `numerator()` and `denominator()` give the signed
+  numerator and the denominator in lowest terms.
 - `policy` is gone from inside and quantity. The error channel is the
   `on_error` overload that takes an `error&` (beside the hook `on_error(f)`),
   and the flags for one operation are `with`:
@@ -37,6 +42,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Changed
 
+- Grid numbers are held inline while they fit the 64-bit rational, so every
+  `inside` type spells shorter: `inside<{{0, 1}, per<100>}, round_half_away>`
+  prints in 221 characters instead of 609 and mangles in 145 instead of 203,
+  and a quantity in m prints in 2371 instead of 2856. Compile time drops too
+  (200 `inside` expressions on distinct grids: 6% fewer instructions, 200
+  quantity expressions: 5%). A grid number made from a 64-bit rational not in
+  lowest terms (2/4) is now the same template argument as the reduced one
+  (1/2).
 - `div(a, b, mode)` rounds by its mode on every dividend with a notch: off
   the integer and shared-notch paths it rounds the exact quotient once onto
   the multiples of `a`'s notch (it returned the exact quotient there and

@@ -205,15 +205,15 @@ inline constexpr Out stored = [] {
     return evaluate<Out, start_bits<Out>>(constant_core<Id>{});
 }();
 
-consteval grid_rational pow2(int k) {
-    return k >= 0 ? grid_rational{big_int{1} << k} : grid_rational{1} / grid_rational{big_int{1} << -k};
+consteval grid_number pow2(int k) {
+    return k >= 0 ? grid_number{big_int{1} << k} : grid_number{1} / grid_number{big_int{1} << -k};
 }
 
 // The first convergent p/q of the constant (of its reciprocal when Inverse)
 // within Eps of it. c lies within E/2^B of V/2^B (B twice Eps's bits and
 // 64 more, so a convergent that close exists among V/2^B's).
-template <constant_id Id, grid_rational Eps, bool Inverse = false>
-consteval grid_rational convergent_within() {
+template <constant_id Id, grid_number Eps, bool Inverse = false>
+consteval grid_number convergent_within() {
     static_assert(Eps > 0);
     constexpr int k  = std::max(bit_width_of(grid_denominator(Eps)) - bit_width_of(grid_numerator(Eps)) + 2, 1);
     constexpr int B  = 2 * k + 64;
@@ -234,7 +234,7 @@ consteval grid_rational convergent_within() {
         if (diff.negative())
             diff = -diff;
         if (!(en * q * D < ed * (diff + E * q)))
-            return grid_rational{big_int{h}, big_int{q}};
+            return grid_number{big_int{h}, big_int{q}};
         num = den;
         den = r;
         h2  = h1;
@@ -247,40 +247,40 @@ consteval grid_rational convergent_within() {
 // The resolution of X's values: its notch, 1/MaxDenominator on a continuous
 // grid, 2^-32 of its value for a point. The largest magnitude, at least that.
 template <insidable X>
-consteval grid_rational resolution_of() {
+consteval grid_number resolution_of() {
     if (lower_of<X> == upper_of<X>) {
-        const grid_rational v = abs(lower_of<X>);
-        return (v == 0 ? grid_rational{1} : v) * pow2(-32);
+        const grid_number v = abs(lower_of<X>);
+        return (v == 0 ? grid_number{1} : v) * pow2(-32);
     }
     if (notch_of<X> != 0)
         return notch_of<X>;
-    return grid_rational{1} / grid_rational{den_bound(grid_of<X>)};
+    return grid_number{1} / grid_number{den_bound(grid_of<X>)};
 }
 template <insidable X>
-consteval grid_rational magnitude_of() {
-    const grid_rational m = std::max(abs(lower_of<X>), abs(upper_of<X>));
-    return m == 0 ? grid_rational{1} : m;
+consteval grid_number magnitude_of() {
+    const grid_number m = std::max(abs(lower_of<X>), abs(upper_of<X>));
+    return m == 0 ? grid_number{1} : m;
 }
 // The points for x op c: within 2^-32 of x's resolution, for a product
 // scaled by |x|'s largest value.
 template <constant_id Id, insidable X>
-inline constexpr grid_rational sum_point = convergent_within<Id, resolution_of<X>() * pow2(-32)>();
+inline constexpr grid_number sum_point = convergent_within<Id, resolution_of<X>() * pow2(-32)>();
 template <constant_id Id, insidable X>
-inline constexpr grid_rational product_point =
+inline constexpr grid_number product_point =
     convergent_within<Id, resolution_of<X>() * pow2(-32) / magnitude_of<X>()>();
 template <constant_id Id, insidable X>
-inline constexpr grid_rational quotient_point =
+inline constexpr grid_number quotient_point =
     convergent_within<Id, resolution_of<X>() * pow2(-32) / magnitude_of<X>(), true>();
 // c / x: the constant within 2^-64.
 template <constant_id Id>
-inline constexpr grid_rational dividend_point = convergent_within<Id, pow2(-64)>();
+inline constexpr grid_number dividend_point = convergent_within<Id, pow2(-64)>();
 
 // The least distance from c to a fraction of denominator up to D, from c
 // within 2^-B of r = V/2^B: a convergent h/q of r (q ≤ D) lies at least
 // |r − h/q| − 2^-B away; any other fraction, 1/(2D²) (Legendre). 0 when a
 // convergent is too close to tell at B bits. In fixed-width integers.
 template <constant_id Id, grid_int D, int B>
-consteval grid_rational continuous_gap() {
+consteval grid_number continuous_gap() {
     using W   = fixed_t<5 * B + 2 * bit_width_of(D) + 64>;
     const W V = static_cast<W>(constant_q<Id, B>), P = W{1} << B, Dw = static_cast<W>(D);
     W       bn{1}, bd = W{2} * Dw * Dw; // the bound bn/bd, first 1/(2D²)
@@ -295,7 +295,7 @@ consteval grid_rational continuous_gap() {
             diff = -diff;
         const W gn = diff - q, gd = q * P;
         if (!(W{0} < gn))
-            return grid_rational{0};
+            return grid_number{0};
         if (gn * bd < bn * gd) {
             bn = gn;
             bd = gd;
@@ -307,7 +307,7 @@ consteval grid_rational continuous_gap() {
         q2  = q1;
         q1  = q;
     }
-    return grid_rational{big_int{bn}, big_int{bd}};
+    return grid_number{big_int{bn}, big_int{bd}};
 }
 
 // A lower bound on |v − c| over X's values v, from c within 2^(1−B): the
@@ -316,12 +316,12 @@ consteval grid_rational continuous_gap() {
 // Legendre) or the distance to a convergent of denominator up to D. A
 // bracket that does not separate doubles B.
 template <constant_id Id, insidable X, int B = 128>
-consteval grid_rational separation() {
-    constexpr grid_rational V{big_int{constant_q<Id, B>}};
-    constexpr grid_rational lo = (V - grid_rational{1}) * pow2(-B), hi = (V + grid_rational{1}) * pow2(-B);
-    constexpr bool          point = lower_of<X> == upper_of<X>;
+consteval grid_number separation() {
+    constexpr grid_number V{big_int{constant_q<Id, B>}};
+    constexpr grid_number lo = (V - grid_number{1}) * pow2(-B), hi = (V + grid_number{1}) * pow2(-B);
+    constexpr bool        point = lower_of<X> == upper_of<X>;
     if constexpr (point) {
-        constexpr grid_rational v = lower_of<X>;
+        constexpr grid_number v = lower_of<X>;
         if constexpr (v < lo)
             return lo - v;
         else if constexpr (hi < v)
@@ -329,19 +329,19 @@ consteval grid_rational separation() {
         else
             return separation<Id, X, 2 * B>();
     } else if constexpr (notch_of<X> != 0) {
-        constexpr grid_rational n = notch_of<X>, L = lower_of<X>;
-        constexpr grid_rational j = grid_round<round_mode::floor>((lo - L) / n);
+        constexpr grid_number n = notch_of<X>, L = lower_of<X>;
+        constexpr grid_number j = grid_round<round_mode::floor>((lo - L) / n);
         if constexpr (j != grid_round<round_mode::floor>((hi - L) / n) || L + j * n == lo)
             return separation<Id, X, 2 * B>();
         else
-            return std::min(lo - (L + j * n), L + (j + grid_rational{1}) * n - hi);
+            return std::min(lo - (L + j * n), L + (j + grid_number{1}) * n - hi);
     } else {
         constexpr grid_int D  = grid_numerator(grid_of<X>.MaxDenominator);
         constexpr int      BD = 4 * bit_width_of(D) + 64;
         if constexpr (B < BD)
             return separation<Id, X, BD>();
         else {
-            constexpr grid_rational g = continuous_gap<Id, D, B>();
+            constexpr grid_number g = continuous_gap<Id, D, B>();
             if constexpr (g > 0)
                 return g;
             else
@@ -351,10 +351,10 @@ consteval grid_rational separation() {
 }
 
 template <constant_id Id, insidable X>
-inline constexpr grid_rational separating_point = [] {
-    constexpr grid_rational d = separation<Id, X>();
+inline constexpr grid_number separating_point = [] {
+    constexpr grid_number d = separation<Id, X>();
     static_assert(d > 0, "beman::inside::math: the constant cannot be told from a value of the grid");
-    return convergent_within<Id, d / grid_rational{2}>();
+    return convergent_within<Id, d / grid_number{2}>();
 }();
 } // namespace constants
 } // namespace detail
@@ -370,8 +370,7 @@ struct constant {
     }
     // The point within Eps of the constant: its simplest such fraction.
     template <auto Eps>
-    static constexpr auto within =
-        just<detail::constants::convergent_within<Id, ::beman::inside::detail::grid_rational{Eps}>()>;
+    static constexpr auto within = just<detail::constants::convergent_within<Id, ::beman::inside::grid_number{Eps}>()>;
 };
 
 // x op c: c as the point x's resolution needs (see the top of the file).

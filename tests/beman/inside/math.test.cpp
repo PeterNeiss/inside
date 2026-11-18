@@ -388,7 +388,6 @@ using namespace beman::inside;
 using namespace beman::inside::formats;
 
 using detail::big_int;
-using detail::grid_rational;
 
 namespace {
 int at_run_time(int v) {
@@ -419,7 +418,7 @@ std::uint64_t falling_ref(std::uint64_t n, std::uint64_t k) {
     return p;
 }
 
-consteval grid_rational g(big_int v) { return grid_rational{v}; }
+consteval grid_number g(big_int v) { return grid_number{v}; }
 } // namespace
 
 TEST(MathIntegerTest, result_grids) {
@@ -1074,9 +1073,8 @@ TEST(MathTest, pow_base_past_64_bits) {
 namespace constant_tests {
 using namespace beman::inside;
 using namespace beman::inside::formats;
-using detail::grid_rational;
 using detail::rational;
-constexpr grid_rational two_200 = 1606938044258990275541962092341162602522202993782792835301376_g;
+constexpr grid_number two_200 = 1606938044258990275541962092341162602522202993782792835301376_g;
 
 TEST(MathConstantsTest, stored_correctly_rounded_at_any_precision) {
     using F = inside<{{0, 8}, per<two_200>}, round_half_away>;
@@ -1109,8 +1107,8 @@ TEST(MathConstantsTest, stored_correctly_rounded_at_any_precision) {
 }
 
 TEST(MathConstantsTest, arithmetic_takes_the_point_its_operand_needs) {
-    static_assert(lower_of<decltype(math::pi.within<1e-6_g>)> == grid_rational{rational{355, 113}});
-    static_assert(lower_of<decltype(math::pi.within<1e-2_g>)> == grid_rational{rational{22, 7}});
+    static_assert(lower_of<decltype(math::pi.within<1e-6_g>)> == grid_number{rational{355, 113}});
+    static_assert(lower_of<decltype(math::pi.within<1e-2_g>)> == grid_number{rational{22, 7}});
     using X      = inside<{0, 10}>;
     const auto y = test::at_run_time(2) == 2 ? X{2} * math::pi : X{} * math::pi;
     static_assert(!detail::wide_grid_numbers<std::remove_cvref_t<decltype(y)>>); // a coarse x: 64 bits
@@ -1161,7 +1159,7 @@ inline constexpr bool range_on_notch = [] {
     if constexpr (Rounds)
         return grid_of<S> == grid_of<Fine>;
     else
-        return grid_of<S> == grid_of<math::detail::on_notch_t<D, detail::grid_rational{per<1 << 20>}>>;
+        return grid_of<S> == grid_of<math::detail::on_notch_t<D, grid_number{per<1 << 20>}>>;
 }();
 
 #define BEMAN_INSIDE_CALL_FORMS(fn, X, v, rounds)                                                               \

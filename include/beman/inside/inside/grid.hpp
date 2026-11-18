@@ -25,10 +25,7 @@ namespace beman::inside {
 // Also here: bounds (closed, half_open, open), max_denominator, and raw_for
 // (the storage a grid deduces).
 //---------------------------------------------------------------------------
-// A grid number: an exact rational of any size, and a structural type - the
-// type of a grid's limits, notch and bound, of `_g` and of lower_of /
-// upper_of / notch_of. One past 64 bits exists only at compile time.
-using grid_number = detail::grid_rational;
+// (grid_number, the type of a grid's limits, notch and bound: grid_rational.hpp.)
 
 // A grid corner: a number (int / float / rational / grid number), or
 // anything that converts to the 64-bit rational, such as an inside (the grid
@@ -60,19 +57,19 @@ inline constexpr int max_fraction_bits = 1024;
 // inside<{{0, 1}, max_denominator{1000}}>. The bound makes exact arithmetic
 // predictable — the result type knows how large every fraction can get.
 struct max_denominator {
-    detail::grid_rational Value;
-    constexpr explicit max_denominator(detail::grid_number_like auto v) : Value{detail::grid_rational{v}} {}
-    constexpr explicit max_denominator(const detail::grid_rational& v) : Value{v} {}
+    grid_number Value;
+    constexpr explicit max_denominator(detail::grid_number_like auto v) : Value{grid_number{v}} {}
+    constexpr explicit max_denominator(const grid_number& v) : Value{v} {}
 };
 
 struct grid {
-    interval              Interval;
-    detail::grid_rational Notch;
+    interval    Interval;
+    grid_number Notch;
     // A continuous grid's bound on its values' denominators; 0 is unbounded
     // (any rational in range), which an inside does not take. Always 0 on a
     // notched or point grid, whose lattice already bounds them — so a value
     // set has one grid.
-    detail::grid_rational MaxDenominator{0};
+    grid_number MaxDenominator{0};
 
     grid() = default;
     // Corner ctors accept any type convertible to `rational` — int/float/rational and
@@ -91,8 +88,8 @@ struct grid {
     constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
     constexpr grid(detail::grid_number_like auto lower)
-        : grid{interval{to_number(lower), to_number(lower)}, detail::grid_rational{0}} {}
-    constexpr grid(interval val, detail::grid_rational notch) : Interval{val}, Notch{notch} {}
+        : grid{interval{to_number(lower), to_number(lower)}, grid_number{0}} {}
+    constexpr grid(interval val, grid_number notch) : Interval{val}, Notch{notch} {}
     // The same with open limits: {{0, 64}, per<16>, bounds::half_open} is
     // {{0, 63.9375}, per<16>}, and {0, 360, bounds::half_open} — notch derived
     // from the limits as written — is {0, 359}.
@@ -103,8 +100,7 @@ struct grid {
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch), b} {}
     constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper, bounds b)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper), b} {}
-    constexpr grid(interval val, detail::grid_rational notch, bounds b)
-        : Interval{close_bounds(val, notch, b)}, Notch{notch} {}
+    constexpr grid(interval val, grid_number notch, bounds b) : Interval{close_bounds(val, notch, b)}, Notch{notch} {}
     // A continuous grid with bounded denominators: {{0, 1}, max_denominator{1000}}.
     constexpr grid(interval val, max_denominator d)
         : Interval{val}, Notch{0}, MaxDenominator{check_bound(val, d.Value)} {}
@@ -112,7 +108,7 @@ struct grid {
   private:
     // A bound is a positive integer at least the limits' denominators (each
     // limit is a value).
-    static constexpr detail::grid_rational check_bound(const interval& iv, const detail::grid_rational& d) {
+    static constexpr grid_number check_bound(const interval& iv, const grid_number& d) {
         using detail::grid_denominator;
         if (!(d > 0) || grid_denominator(d) != detail::grid_int{1})
             detail::constexpr_error<"max_denominator: the bound must be a positive integer">();
@@ -124,30 +120,30 @@ struct grid {
 
     // Moves iv's open limits in by one notch. (By name: the ctors are
     // constexpr, and the grid-number operators consteval.)
-    static constexpr interval close_bounds(interval iv, const detail::grid_rational& notch, bounds b) {
+    static constexpr interval close_bounds(interval iv, const grid_number& notch, bounds b) {
         if (b == bounds::closed)
             return iv;
         if (notch == 0)
             detail::constexpr_error<"bounds: an open limit needs a notch - a continuous grid has no next point">();
         if (b == bounds::open)
-            iv.Lower = detail::grid_rational::add(iv.Lower, notch);
-        iv.Upper = detail::grid_rational::sub(iv.Upper, notch);
+            iv.Lower = grid_number::add(iv.Lower, notch);
+        iv.Upper = grid_number::sub(iv.Upper, notch);
         if (iv.Lower > iv.Upper)
             detail::constexpr_error<"bounds: no grid point lies between the limits">();
         return iv;
     }
 
     template <detail::grid_number_like T>
-    static constexpr detail::grid_rational to_number(const T& v) {
-        return detail::grid_rational{v};
+    static constexpr grid_number to_number(const T& v) {
+        return grid_number{v};
     }
 
     // The notch gcd(1, lower, upper).
-    static constexpr detail::grid_rational derive_notch(detail::grid_number_like auto lower,
-                                                        detail::grid_number_like auto upper) {
+    static constexpr grid_number derive_notch(detail::grid_number_like auto lower,
+                                              detail::grid_number_like auto upper) {
         check_short_binary(lower);
         check_short_binary(upper);
-        return gcd(gcd(detail::grid_rational{1}, to_number(lower)), to_number(upper));
+        return gcd(gcd(grid_number{1}, to_number(lower)), to_number(upper));
     }
 
     // A floating-point limit is taken as its exact binary value, so 0.1 would
@@ -156,8 +152,7 @@ struct grid {
     template <detail::grid_number_like T>
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
-            if (std::is_constant_evaluated() &&
-                detail::grid_int{1024} < detail::grid_denominator(detail::grid_rational{v}))
+            if (std::is_constant_evaluated() && detail::grid_int{1024} < detail::grid_denominator(grid_number{v}))
                 detail::constexpr_error<"float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
                                         "grid{lo, hi} derives a notch from a floating-point limit only down to "
                                         "1/1024 (0.1 is not 1/10 in binary)">();
@@ -209,7 +204,7 @@ struct grid {
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
     // single representable value (e.g. `0_ins`) regardless of whole-range mapping.
-    [[nodiscard]] constexpr bool representable(detail::grid_rational v) const noexcept {
+    [[nodiscard]] constexpr bool representable(grid_number v) const noexcept {
         if (!includes(Interval, v))
             return false;
         if (Notch == 0)
@@ -230,17 +225,17 @@ struct grid {
                 if (!detail::is_double_value(d)) { // a long double with bits past the double's
                     bool       exact = false;
                     const auto r     = detail::rational_of_wide_float(d, exact);
-                    return exact && representable(detail::grid_rational{r});
+                    return exact && representable(grid_number{r});
                 }
             if (!detail::abs_fraction_exact(static_cast<double>(d)))
                 return false;
-            return representable(detail::grid_rational{d});
+            return representable(grid_number{d});
         }
         // Big grid numbers: d as a transient fraction, which (unlike a big
         // grid number) also exists at runtime.
         const auto f = detail::big::fraction_of_float(d);
         if (Notch == 0)
-            return MaxDenominator == 0 || detail::big::compare(f.Den, MaxDenominator.Num.magnitude()) <= 0;
+            return MaxDenominator == 0 || detail::big::compare(f.Den, MaxDenominator.numerator().magnitude()) <= 0;
         return detail::big::same_lattice(f, detail::fraction_of(Interval.Lower), detail::fraction_of(Notch));
     }
 
@@ -252,10 +247,10 @@ struct grid {
     // The largest number every value is an integer multiple of: gcd(Notch,
     // Lower) — the notch on an anchored grid, finer on an unanchored one
     // ({{0.5, 10.5}, 1}: 1/2). 0 for a continuous grid.
-    [[nodiscard]] consteval detail::grid_rational value_unit() const {
+    [[nodiscard]] consteval grid_number value_unit() const {
         if (Notch == 0 || anchored())
             return Notch;
-        return detail::gcd(Notch, Interval.Lower);
+        return gcd(Notch, Interval.Lower);
     }
 
     // operator== be default for structural type
@@ -308,7 +303,7 @@ consteval grid_int den_bound(const grid& g) {
 
 // floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.
 consteval grid_int num_bound(const interval& iv, const grid_int& d) {
-    auto           mag = [&](const grid_rational& x) { return abs(grid_numerator(x)) * d / grid_denominator(x); };
+    auto           mag = [&](const grid_number& x) { return abs(grid_numerator(x)) * d / grid_denominator(x); };
     const grid_int a = mag(iv.Lower), b = mag(iv.Upper);
     return a < b ? b : a;
 }
@@ -319,7 +314,7 @@ consteval grid_int num_bound(const grid& g) { return num_bound(g.Interval, den_b
 // fraction within detail::max_fraction_bits — else the grid is
 // unbounded.
 consteval grid bounded_continuous(const interval& iv, grid_int d) {
-    grid g{iv, grid_rational{0}};
+    grid g{iv, grid_number{0}};
     if (d == grid_int{0} || iv.Lower == iv.Upper) // a point has its own denominator
         return g;
     // Each limit is a value of the result, but an operator's interval may be
@@ -328,7 +323,7 @@ consteval grid bounded_continuous(const interval& iv, grid_int d) {
     const grid_int n = num_bound(iv, d);
     if (bit_width_of(n) + bit_width_of(d) > detail::max_fraction_bits)
         return g;
-    g.MaxDenominator = grid_rational{d};
+    g.MaxDenominator = grid_number{d};
     return g;
 }
 
@@ -467,7 +462,7 @@ inline constexpr bool dyadic_grid =
 
 // Bits of |r · 2^f| — an integer on a dyadic grid, where r's denominator is
 // a power of two dividing 2^f (0 for r == 0).
-constexpr int scaled_numerator_bits(const grid_rational& r, int f) noexcept {
+constexpr int scaled_numerator_bits(const grid_number& r, int f) noexcept {
     const grid_int n = grid_numerator(r);
     if (n == grid_int{0})
         return 0;
@@ -502,10 +497,9 @@ inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
 // by multiples of Na·Nb, Na·Lb and Nb·La; on an anchored operand its term is
 // already a multiple of Na·Nb, so only an unanchored operand adds one. A
 // point c (notch 0) scales the other lattice: the notch becomes N·|c|.
-consteval grid_rational product_notch(const grid& a, const grid& b) {
-    const bool    ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
-    grid_rational n =
-        ((ap && !bp) ? abs(a.Interval.Lower) : a.Notch) * ((bp && !ap) ? abs(b.Interval.Lower) : b.Notch);
+consteval grid_number product_notch(const grid& a, const grid& b) {
+    const bool  ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
+    grid_number n = ((ap && !bp) ? abs(a.Interval.Lower) : a.Notch) * ((bp && !ap) ? abs(b.Interval.Lower) : b.Notch);
     if (ap || bp)
         return n;
     if (!b.anchored())
@@ -549,8 +543,8 @@ template <std::same_as<grid> G>
     // becomes N·|c|, so `x * just<c>` keeps integer storage instead of turning
     // continuous. A continuous product bounds its denominators by the
     // product of the operands' bounds.
-    const interval              i = lhs.Interval * rhs.Interval;
-    const detail::grid_rational n = detail::product_notch(lhs, rhs);
+    const interval    i = lhs.Interval * rhs.Interval;
+    const grid_number n = detail::product_notch(lhs, rhs);
     if (n == 0 && i.Lower != i.Upper)
         return detail::bounded_continuous(i, detail::den_bound(lhs) * detail::den_bound(rhs));
     return grid{i, n};
@@ -566,7 +560,7 @@ template <std::same_as<grid> G>
     // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer
     // storage instead of turning continuous.
     if (r.Lower == r.Upper && r.Lower != 0 && lhs.Notch != 0)
-        return grid{*(lhs.Interval / r), lhs.Notch / detail::abs(r.Lower)};
+        return grid{*(lhs.Interval / r), lhs.Notch / abs(r.Lower)};
     // Any other quotient is continuous: x = p/a over y = r/b is p·b/(a·r), so
     // its denominators stay within den_bound(lhs)·num_bound(rhs).
     const detail::grid_int qd         = detail::den_bound(lhs) * detail::num_bound(rhs);
@@ -585,9 +579,9 @@ template <std::same_as<grid> G>
     // divisor comes arbitrarily close to zero: no bounded quotient.
     if (rhs.Notch == 0 && rhs.MaxDenominator == 0)
         return std::unexpected{error::overflow};
-    const detail::grid_rational step = rhs.Notch != 0 ? rhs.value_unit() : 1 / rhs.MaxDenominator;
-    const interval              pos{step, r.Upper}, neg{r.Lower, -step};
-    auto over = [&](const interval& part) { return *(lhs.Interval / part); }; // zero-free: no error
+    const grid_number step = rhs.Notch != 0 ? rhs.value_unit() : 1 / rhs.MaxDenominator;
+    const interval    pos{step, r.Upper}, neg{r.Lower, -step};
+    auto              over = [&](const interval& part) { return *(lhs.Interval / part); }; // zero-free: no error
     if (0 < r.Upper && 0 > r.Lower)
         return continuous(detail::interval_hull(over(pos), over(neg)));
     return continuous(over(0 < r.Upper ? pos : neg));
@@ -622,7 +616,7 @@ consteval bool grid_quotient_fits(const grid& a, const grid& b) {
                                           : a < b                                              ? b
                                                                                                : a);
     }
-    detail::grid_rational n = gcd(lhs.Notch, rhs.Notch);
+    grid_number n = gcd(lhs.Notch, rhs.Notch);
     if (n == 0 || !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, n))
         n = gcd(n, rhs.Interval.Lower - lhs.Interval.Lower);
     return grid{iv, n};
