@@ -43,12 +43,10 @@ BINARY = {"atan2", "hypot", "pow"}  # atan2<Out, Y, X>, hypot<Out, X, Y>, pow<Ou
 EVAL = re.compile(r"ins::math::detail::entry::(\w+?)_fn(?:<(-?\d+)[uUlL]*>)?::eval<")
 PI_TRIG = re.compile(r"ins::detail::pi_trig<")
 NUMBER = r"(-?\d+)[uUlL]*"
-# A grid number: big_rational{big_int{…}, big_int{…}}. A big_int prints its
-# fields with the trailing defaults left out: Small, then the interned limbs
-# (a mangled array, least significant first) and their count, then Negative.
-BIG_INT = r"(?:[\w:]*::)?big_int\{([^{}]*)\}"
-BIG_RATIONAL = re.compile(r"big_rational\{" + BIG_INT + r", " + BIG_INT + r"\}")
-LIMB = re.compile(r"Lm(\d+)E")
+# A grid number: grid_number{Num, Den[, Big]}, the magnitude and the signed
+# denominator, with trailing defaults left out (Den 1, Big null). Den 0 marks
+# a value past 64 bits, held by Big.
+GRID_NUMBER = re.compile(r"grid_number\{(\d+)[uUlL]*(?:, (-?\d+)[uUlL]*)?(?:, [^{}]*)?\}")
 FLAGS = re.compile(r"^\s*" + NUMBER + r"\s*$")
 OBJECT_SUFFIXES = {".o", ".obj", ".a", ".so", ".dylib", ".lib"}
 MAGICS = (b"\x7fELF", b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe",
@@ -115,7 +113,7 @@ def parse_inside(arg):
         if depth == 0:
             break
     literal = arg[open_:close + 1]
-    parts = [rational_field(big_int(n), big_int(d)) for n, d in BIG_RATIONAL.findall(literal)]
+    parts = [grid_number_field(n, d) for n, d in GRID_NUMBER.findall(literal)]
     if len(parts) != 4:
         raise Unsupported(f"unexpected grid {literal!r}")
     rest = arg[close + 1:].lstrip(", ").rstrip(">").strip()
@@ -125,14 +123,12 @@ def parse_inside(arg):
     return {"fields": parts, "flags": int(flags.group(1))}
 
 
-def big_int(body):
-    """The value of a big_int's printed fields."""
-    fields = [f.strip() for f in body.split(",")] if body.strip() else []
-    if len(fields) > 1 and fields[1].startswith("&"):
-        magnitude = sum(int(limb) << (64 * i) for i, limb in enumerate(LIMB.findall(fields[1])))
-    else:
-        magnitude = int(re.match(r"\d+", fields[0]).group()) if fields else 0
-    return -magnitude if len(fields) > 3 and fields[3] == "true" else magnitude
+def grid_number_field(num, den):
+    """A printed grid number's fields: the magnitude and the signed denominator."""
+    d = int(den) if den else 1
+    if d == 0:
+        raise Unsupported("a grid number past the 64-bit rational")
+    return rational_field(-int(num) if d < 0 else int(num), abs(d))
 
 
 def rational_field(n, d):

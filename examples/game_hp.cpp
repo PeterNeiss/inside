@@ -1,18 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Game character HP with fixed-point damage multipliers. Health is a base
-// dimension of its own with the unit HP, so damage and healing are HP and a
-// multiplier stays a plain number: HP never adds to a count of anything else.
-//
-// Demonstrates:
-//   - `mul_all` to chain damage multipliers (crit * vulnerable * armor_pen)
-//   - `mul<Out>` to round the scaled damage once onto whole HP
-//   - Implicit clamping when assigning a wider inside into a clamp-policy
-//     target (level-scaling that may exceed the HP range)
-//   - `on_clamp` callback on HP to fire "full health" and "downed" hooks
-//   - Fixed-point multipliers in [0, 4] with 1/16 resolution
-//
-// See examples/rifle.cpp for magazine / reload mechanics built on the
-// `wrap` policy.
+// A game character's health with fixed-point damage multipliers. Health is a base dimension of its own, in HP,
+// so a multiplier stays a plain number and HP never adds to a count of anything else. (rifle.cpp: wrap.)
 
 #include <iostream>
 
@@ -27,42 +15,30 @@ namespace {
 inline constexpr auto HP = base_unit<"HP", "health">;
 } // namespace
 
-// Health in [0, 100] HP, clamp-saturating.
-using hp_t = quantity<HP, inside<{0, 100}, clamp>>;
-
-// Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
-using mult_t = inside<{{0, 4}, per<16>}, round_half_away>;
-
-// Base damage in [0, 50] HP.
-using damage_t = quantity<HP, inside<{0, 50}>>;
-
-// A widened pool that level-scaling can produce — values may exceed hp_t.
-using big_pool_t = quantity<HP, inside<{0, 1000}>>;
-
 int main() {
-    hp_t hp{75, HP};
+    using hit_points = quantity<HP, inside<{0, 100}, clamp>>; // saturates at 0 and 100
+    hit_points hp{75, HP};
     std::cout << "starting health: " << hp << "\n";
 
-    bool downed = false;
+    // One hit with three multipliers in [0, 4] at 1/16: mul_all folds them, the grid widening at each step,
+    // and mul<dealt_damage> scales the base damage and rounds once to whole HP.
+    using base_damage = quantity<HP, inside<{0, 50}>>;
+    using multiplier = inside<{{0, 4}, per<16>}, round_half_away>;
+    using dealt_damage = quantity<HP, inside<{0, 3200}, round_half_away>>;
 
-    // Single damage event with three multipliers.
-    damage_t base{10, HP};
-    mult_t   crit{2.0};  // 2x on crit
-    mult_t   vuln{1.25}; // 1.25x vulnerable target
-    mult_t   pen{1.5};   // 1.5x armor penetration
-
-    // mul_all folds three multipliers into one — grid widens each step.
-    auto chain = mul_all(crit, vuln, pen);
-    // chain has interval [0, 64] notch 1/4096. mul<dealt_t> scales base by it and
-    // rounds once to the nearest whole HP of damage — no rational, no cast.
-    using dealt_t    = quantity<HP, inside<{0, 3200}, round_half_away>>;
-    const auto dealt = mul<dealt_t>(base, chain);
+    base_damage base{10, HP};
+    multiplier crit{2.0};  // 2x on a crit
+    multiplier vuln{1.25}; // 1.25x on a vulnerable target
+    multiplier pen{1.5};   // 1.5x armor penetration
+    auto chain = mul_all(crit, vuln, pen); // [0, 64] at 1/4096
+    const auto dealt = mul<dealt_damage>(base, chain);
     std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 HP = " << dealt << "\n";
 
     hp -= dealt; // 75 − 38 stays in range: nothing to clamp
     std::cout << "after hit: " << hp << "\n";
 
-    // Pile on more damage to trigger the downed callback.
+    // More damage than is left: on_clamp fires the "downed" hook.
+    bool downed = false;
     hp.on_clamp([&](auto& self, auto overshoot) {
         if (self == just<0> * HP) {
             std::cout << "[downed — overshoot " << overshoot << "]\n"; // a quantity: "-163 HP"
@@ -71,17 +47,15 @@ int main() {
     }) -= just<200> * HP;
     std::cout << "after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
 
-    // Heal via clamp-saturation back to full.
+    // A heal saturates at full health.
     hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; }) += just<250> * HP;
     std::cout << "after heal: " << hp << "\n";
 
-    // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
-    // `clamp` policy, the implicit quantity→quantity conversion already clips at the
-    // boundary: no clamp flag needed when the target type already says
-    // what to do with out-of-range values.
-    big_pool_t bonus{180, HP};
-    hp_t       capped = bonus;
-    std::cout << "\nlevel bonus 180 HP -> hp_t (implicit clamp): " << capped << "\n";
+    // A level-scaled bonus may pass 100 HP: hit_points' clamp policy clips the conversion, no flag needed.
+    using scaled_pool = quantity<HP, inside<{0, 1000}>>;
+    scaled_pool bonus{180, HP};
+    hit_points capped = bonus;
+    std::cout << "\nlevel bonus 180 HP -> hit_points (implicit clamp): " << capped << "\n";
 
     if (to_string(dealt) != "38 HP" || !downed || to_string(hp) != "100 HP" || to_string(capped) != "100 HP")
         return 1;

@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// One-shot stores — explicit "double in, bounded out" conversions whose intent
-// (clamp / wrap / trust, and the rounding direction) reads at the call site:
-// the flag constructor B{v, F}, whose flags replace B's own of the same kind.
-// Their canonical home is inside a `std::ranges::transform` lambda, where a
-// bare `B{v}` would obscure what happens at the boundary.
-//
-// Demonstrates:
-//   - `B{v, clamp | round_floor}` (and round_ceil / round_half_away) — saturate + a
-//     rounding direction, applied across a buffer with std::ranges::transform
-//   - `B{v, wrap}`   — modular reduction into the target interval
-//   - `B{v, clamp}`  — saturate to [Lower, Upper]
-//   - `B{v, unsafe}` — trust the caller (UB if out of range)
-//   - the per-store `x.with<F>()` (here F = round_floor / round_ceil /
-//     round_toward_zero / round_half_even / wrap; any flag works) on a strict
-//     (throwing) inside — the same intents, for one assignment
+// One-shot stores whose intent reads at the call site: the flag constructor B{v, F} (clamp, wrap, unsafe and a
+// rounding direction, replacing B's own flags of that kind), at home in a std::ranges::transform lambda.
 
 #include <algorithm>
 #include <iostream>
@@ -26,22 +13,21 @@
 using namespace ins;
 
 int main() {
-    // Coarse output grid: 0..10 in steps of 2 — the notch makes the three
-    // rounding directions visibly different.
+    // A coarse grid, 0..10 in steps of 2, so the three rounding directions differ visibly.
     using level = inside<{{0, 10}, 2}>;
 
     std::vector<double> raw = {-1.0, 2.4, 3.5, 7.9, 12.0};
-    std::vector<level>  down(raw.size()), up(raw.size()), nearest(raw.size());
+    std::vector<level> down(raw.size()), up(raw.size()), nearest(raw.size());
 
-    // Same inputs, three rounding directions — clamp with a rounding mode, in
-    // transform. A run-time double may be NaN, which no clamp places: the
-    // policy reports it into ec (the store leaves 0).
+    // clamp with a rounding mode, in transform. A run-time double may be NaN, which no clamp places:
+    // the policy reports it into ec (the store leaves 0).
     error ec{};
-    std::ranges::transform(
-        raw, down.begin(), [&](double v) { return level{v, make_policy<clamp | round_floor>(ec)}; });
-    std::ranges::transform(raw, up.begin(), [&](double v) { return level{v, make_policy<clamp | round_ceil>(ec)}; });
-    std::ranges::transform(
-        raw, nearest.begin(), [&](double v) { return level{v, make_policy<clamp | round_half_away>(ec)}; });
+    std::ranges::transform(raw, down.begin(),
+                           [&](double v) { return level{v, make_policy<clamp | round_floor>(ec)}; });
+    std::ranges::transform(raw, up.begin(),
+                           [&](double v) { return level{v, make_policy<clamp | round_ceil>(ec)}; });
+    std::ranges::transform(raw, nearest.begin(),
+                           [&](double v) { return level{v, make_policy<clamp | round_half_away>(ec)}; });
     if (ec != error{}) {
         std::cout << "a raw value is not a number\n";
         return 1;
@@ -52,20 +38,17 @@ int main() {
     for (std::size_t i = 0; i < raw.size(); ++i)
         std::cout << "  " << raw[i] << "\t " << down[i] << "\t " << up[i] << "\t " << nearest[i] << "\n";
 
-    // wrap: modular reduction — a hue angle folded back into [0, 359].
+    // wrap: a hue angle folded back into [0, 359].
     using hue = inside<{0, 359}>;
     std::cout << "\nhue{370, wrap} = " << hue{370, wrap} << "   hue{-30, wrap} = " << hue{-30, wrap} << "\n";
 
-    // clamp: saturate regardless of the target's declared policy.
-    using pct = inside<{0, 100}>;
-    std::cout << "pct{150, clamp} = " << pct{150, clamp} << "   pct{-5, clamp} = " << pct{-5, clamp} << "\n";
+    // clamp saturates whatever the target's own policy; unsafe trusts the caller and checks nothing (UB if out).
+    using percent = inside<{0, 100}>;
+    std::cout << "percent{150, clamp} = " << percent{150, clamp} << "   percent{-5, clamp} = " << percent{-5, clamp}
+              << "\n";
+    std::cout << "percent{42, unsafe} = " << percent{42, unsafe} << "   (trusted — no runtime check)\n";
 
-    // unsafe: caller asserts in-range; skips every check (UB otherwise).
-    std::cout << "pct{42, unsafe} = " << pct{42, unsafe} << "   (trusted — no runtime check)\n";
-
-    // Per-operation overrides on a strict inside: same intents, fluent form. The
-    // base type carries no rounding/clamp policy, so each write opts in for that
-    // one operation.
+    // The same intents for one store on a strict inside: x.with<F>() opts in for that write only.
     std::cout << "\nper-operation overrides on a strict inside<{0,100}>:\n";
     inside<{0, 100}> q{0};
     q.with<round_floor>() = 3.7;
@@ -80,6 +63,5 @@ int main() {
     inside<{0, 359}> angle{0};
     angle.with<wrap>() = 400;
     std::cout << "  with<wrap>()              = 400  -> " << angle << "\n";
-
     return 0;
 }

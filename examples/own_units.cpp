@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Units, kinds, origins and base dimensions of your own. Each is one
-// declaration, and from then on works like the catalog.
-//   1. A unit from existing ones: the fathom (1.8288 m) for a `depth` kind
-//      under length. Conversions are exact, and prefixes apply.
-//   2. A unit with an origin: the Rankine scale (°R, 5/9 K from absolute
-//      zero), defined with unit_options. Its points meet ℃ and ℉ exactly.
-//   3. A new base dimension, currency: EUR and ct. A price per kilogram
-//      times a mass is an amount of money, exactly; money never adds to a
-//      length.
-//   4. A second one, information: bit, byte and KiB. A file size over a
-//      bandwidth is a time, exactly.
+// Units, kinds, origins and base dimensions of your own: each is one declaration, and from then on it works like
+// the catalog.
 
 #include <iostream>
 
@@ -20,65 +11,68 @@
 using namespace ins;
 
 namespace {
-// 1. A kind under length and a unit defined by the metre.
-inline constexpr auto depth  = kind<"depth", isq::length>;
+// 1. A kind under length, and a unit defined by the metre.
+inline constexpr auto depth = kind<"depth", isq::length>;
 inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;
 
-// 2. A temperature unit whose points count from absolute zero: the options
-//    name its ASCII symbol and its origin.
+// 2. A temperature unit whose points count from absolute zero; the options name its ASCII symbol and origin.
 inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
 
 // 3. Currency: a base dimension, its base quantity and two units.
 inline constexpr auto currency = base_dimension<"currency">;
-inline constexpr auto money    = kind<"money", currency>;
-inline constexpr auto euro     = unit<"EUR", money>;
-inline constexpr auto cent     = unit<"ct", 0.01_ins * euro>;
+inline constexpr auto money = kind<"money", currency>;
+inline constexpr auto euro = unit<"EUR", money>;
+inline constexpr auto cent = unit<"ct", 0.01_ins * euro>;
 
 // 4. Information: bit, byte (8 bit), KiB (1024 B).
 inline constexpr auto information = base_dimension<"information">;
-inline constexpr auto amount      = kind<"amount_of_information", information>;
-inline constexpr auto bit         = unit<"bit", amount>;
-inline constexpr auto byte        = unit<"B", just<8> * bit>;
-inline constexpr auto kibibyte    = unit<"KiB", just<1024> * byte>;
+inline constexpr auto amount = kind<"amount_of_information", information>;
+inline constexpr auto bit = unit<"bit", amount>;
+inline constexpr auto byte = unit<"B", just<8> * bit>;
+inline constexpr auto kibibyte = unit<"KiB", just<1024> * byte>;
 
 template <class A, class B>
 concept addable = requires(const A& a, const B& b) { a + b; };
 } // namespace
 
 int main() {
-    // 1. A depth of 12 fathoms is 21.9456 m; a kilofathom is 1828.8 m.
-    const quantity<depth[fathom], inside<{0, 100}>> sounding{12, depth[fathom]};
+    // 1. A depth of 12 fathoms is 21.9456 m, exactly; prefixes apply: a kilofathom is 1828.8 m.
+    using fathoms = quantity<depth[fathom], inside<{0, 100}>>;
+    const fathoms sounding{12, depth[fathom]};
     std::cout << "sounding   " << sounding << " = " << sounding.in(si::metre) << '\n';
-    if (to_string(sounding.in(si::metre)) != "21.9456 m" ||
-        to_string((just<1> * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
+    if (to_string(sounding.in(si::metre)) != "21.9456 m"
+        || to_string((just<1> * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
         return 1;
     static_assert(sounding.kind == depth);
 
     // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.
-    const auto freezing = point<rankine>(inside<{{0, 1000}, per<100>}>{just<49167, 100>});
+    using rankine_degrees = inside<{{0, 1000}, per<100>}>;
+    const auto freezing = point<rankine>(rankine_degrees{just<49167, 100>});
     std::cout << "freezing   " << freezing << " = " << freezing.point_in(si::degree_Celsius) << " = "
               << freezing.point_in(international::degree_Fahrenheit) << '\n';
-    if (!(freezing == point<si::degree_Celsius>(just<0>)) ||
-        to_string(freezing.point_in(international::degree_Fahrenheit)) != "32.00 ℉" ||
-        to_string(freezing, text_encoding::ascii) != "491.67 R")
+    if (!(freezing == point<si::degree_Celsius>(just<0>))
+        || to_string(freezing.point_in(international::degree_Fahrenheit)) != "32.00 ℉"
+        || to_string(freezing, text_encoding::ascii) != "491.67 R")
         return 1;
 
-    // 3. 1.25 kg of coffee at 3.99 EUR/kg is 4.9875 EUR, exactly; with a 50 ct
-    //    tip the sum runs in cents.
-    const quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>> price{just<399, 100> * (euro / si::kilogram)};
-    const quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>        coffee{just<1250, 1000> * si::kilogram};
-    const auto                                                        cost = price * coffee;
-    const auto                                                        paid = cost + just<50> * cent;
+    // 3. 1.25 kg of coffee at 3.99 EUR/kg is 4.9875 EUR exactly; with a 50 ct tip the sum runs in cents.
+    using euros_per_kg = quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>>;
+    using kilograms = quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>;
+    const euros_per_kg price{just<399, 100> * (euro / si::kilogram)};
+    const kilograms coffee{just<1250, 1000> * si::kilogram};
+    const auto cost = price * coffee;
+    const auto paid = cost + just<50> * cent;
     std::cout << "coffee     " << cost << ", with tip " << paid << '\n';
     if (to_string(cost) != "4.98750 EUR" || to_string(paid) != "548.750 ct")
         return 1;
-    // Money and a length do not add: `cost + just<1> * si::metre` does not compile.
-    static_assert(!addable<decltype(cost), decltype(just<1> * si::metre)>);
+    static_assert(!addable<decltype(cost), decltype(just<1> * si::metre)>); // money never adds to a length
 
-    // 4. 64 KiB over 1 Mbit/s takes 64·1024·8 / 10^6 s = 0.524288 s.
-    const quantity<kibibyte, inside<{0, 1024}>>                  file{64, kibibyte};
-    const quantity<si::mega(bit) / si::second, inside<{1, 100}>> link{1, si::mega(bit) / si::second};
-    const auto                                                   time = (file / link).in(si::second);
+    // 4. A file size over a bandwidth is a time: 64 KiB at 1 Mbit/s takes 64·1024·8 / 10^6 s = 0.524288 s.
+    using kibibytes = quantity<kibibyte, inside<{0, 1024}>>;
+    using megabits_per_s = quantity<si::mega(bit) / si::second, inside<{1, 100}>>;
+    const kibibytes file{64, kibibyte};
+    const megabits_per_s link{1, si::mega(bit) / si::second};
+    const auto time = (file / link).in(si::second);
     std::cout << "transfer   " << file << " at " << link << " takes " << time << '\n';
     if (to_string(time) != "0.524288 s" || to_string(file.in(bit)) != "524288 bit")
         return 1;

@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Latency histogram with fixed-point bin edges and outlier rejection.
-//
-// Demonstrates:
-//   - `values<T>` for iterating over bin indices
-//   - `div<Out>` to round the bin quotient once by the index type's policy
-//   - `conversion_overflows` to gate out-of-range samples before insert
-//   - `conversion_loses` to count samples that don't land on a notch
-//   - Fixed-point bin boundaries (latency in ms with 0.1 resolution)
-//   - Latencies as quantities in ms: the bin index is latency / 10 ms, a
-//     plain number, and the bin labels are back in ms
+// A latency histogram in ms with 0.1 ms resolution: conversion_overflows rejects outliers before they are stored,
+// conversion_loses flags samples off the notch, and div<bin> rounds the bin index once.
 
 #include <iostream>
 #include <limits>
@@ -22,81 +14,58 @@
 #include <inside/units/io.hpp>
 
 using namespace ins;
-
 using namespace ins::formats;
 
 constexpr auto ms = si::milli(si::second);
 
-// Latency samples in [0, 100] ms with 0.1 ms resolution.
-using latency_t = quantity<ms, inside<{{0, 100}, per<10>}, round_half_away>>;
-
-// 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
-using bin_count_t = clamp_counter<9>; // saturating per-bin count (caps at bar height 9)
-// bin index: floor; 100 ms → last bin; `bins` takes it as an index, as it is
-using bin_index_t = inside<{0, 9}, clamp | round_floor>;
-
 int main() {
-    std::vector<bin_count_t> bins(10, bin_count_t{0});
+    // Ten bins, 0–9.9, 10–19.9, …, 90–100 ms; a count saturates at a bar height of 9.
+    using bar_height = clamp_counter<9>;
+    std::vector<bar_height> bins(10, bar_height{0});
 
-    // Mixed input in ms: in-range samples, out-of-range outliers, sub-notch values.
+    // In-range samples, outliers, and values off the 0.1 ms notch.
     double samples[] = {
-        2.5,
-        7.0,
-        12.3,
-        18.7,
-        25.0,
-        33.4,
-        47.8,
-        51.5,
-        62.1,
-        71.9,
-        88.0,
-        95.5,
-        150.0,
-        -5.0, // out-of-range → rejected by conversion_overflows
-        3.05, // sub-notch (1/10 grid doesn't include 3.05) → counts as lossy;
-              // so does any double with a decimal fraction (12.3 is 12.300000000000000711)
+        2.5, 7.0, 12.3, 18.7, 25.0, 33.4, 47.8, 51.5, 62.1, 71.9, 88.0, 95.5, 150.0,
+        -5.0, // out of range: rejected
+        3.05, // off the notch: lossy, as is any double with a decimal fraction (12.3 is 12.300000000000000711)
     };
 
+    using milliseconds = quantity<ms, inside<{{0, 100}, per<10>}, round_half_away>>;
+    using bin = inside<{0, 9}, clamp | round_floor>; // 100 ms → the last bin; bins takes it as an index
     clamp_counter<1'000'000> rejected{0};
     clamp_counter<1'000'000> lossy{0};
 
     for (double s : samples) {
-        if (conversion_overflows<latency_t>(s, ms)) {
+        if (conversion_overflows<milliseconds>(s, ms)) {
             ++rejected;
             continue;
         }
-        if (conversion_loses<latency_t>(s, ms))
-            ++lossy; // accept but flag
+        if (conversion_loses<milliseconds>(s, ms))
+            ++lossy; // accepted, but flagged
 
-        // A run-time double is stored with try_make (a NaN would be its error).
-        const auto stored = latency_t::try_make(s, ms);
+        const auto stored = milliseconds::try_make(s, ms); // a NaN would be its error
         if (!stored) {
             ++rejected;
             continue;
         }
-        const latency_t lat = *stored;
-        // bin index = floor(lat / 10 ms), a plain number. div<Out> rounds by
-        // `bin_index_t`'s `round_floor` (9.55 floors to 9 before the range check);
-        // `clamp` folds 100 ms, whose quotient 10 floors to 10, into the last bin.
-        const auto bin = div<bin_index_t>(lat, just<10> * ms);
-        // `clamp_counter` saturates on `++`, so the bar caps at 9 — no manual guard.
-        ++bins[bin];
+        const milliseconds lat = *stored;
+        // floor(lat / 10 ms), by bin's round_floor (9.55 floors to 9); clamp folds 100 ms, quotient 10, into bin 9.
+        const auto b = div<bin>(lat, just<10> * ms);
+        ++bins[b]; // the counter saturates on ++, so the bar caps at 9
     }
 
-    // values<bin_index_t> iterates every bin index, and each indexes `bins`
-    // with no check left: the index type is the proof.
-    using bin_label_t = quantity<ms, inside<{0, 99}>>;
+    // values<bin> iterates every bin, and each indexes bins with no check left: the index type is the proof.
+    using bin_label = quantity<ms, inside<{0, 99}>>;
     std::cout << "bin          count\n";
-    for (bin_index_t b : values<bin_index_t>) {
-        const auto  lo = b * (just<10> * ms); // {0,9}×{10,10} ms → {0,90} ms
-        bin_label_t hi{lo + just<9> * ms};    // {9,99} ms: fits bin_label_t statically
+    for (bin b : values<bin>) {
+        const auto lo = b * (just<10> * ms); // {0,9}×{10,10} ms → {0,90} ms
+        bin_label hi{lo + just<9> * ms};     // {9,99} ms: fits bin_label statically
         std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
     }
 
     std::cout << "\nrejected outliers: " << rejected << "\n";
     std::cout << "lossy (off-notch): " << lossy << "\n";
-    std::cout << "bin capacity (numeric_limits<bin_count_t>::max()): " << std::numeric_limits<bin_count_t>::max()
+    std::cout << "bin capacity (numeric_limits<bar_height>::max()): " << std::numeric_limits<bar_height>::max()
               << "\n";
     if (rejected != 2 || lossy != 7 || bins[9] != 1)
         return 1;

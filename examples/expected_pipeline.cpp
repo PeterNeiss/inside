@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// A calibration pipeline where each step can fail, and the cause matters:
-//   text ──parse──▶ reading ──div<volts>(reading − offset, gain)──▶ volts
-// Every step returns std::expected<…, error>, so the steps chain with
-// and_then, and the first failure — malformed text, a value off the grid or
-// out of range, a zero gain — comes out the end with its cause. Steps whose
-// grids prove them total (a gain that cannot be 0) return plain values, and
-// their error handling disappears at compile time.
-// errors.cpp tours the other reporting mechanisms (throw, policies, callbacks).
-// The reading and the result are quantities in volts; the gain is a plain
-// number, so (reading − offset) / gain is a voltage by its own arithmetic, and
-// parse<Q> reads the number in Q's unit.
+// A calibration pipeline, text → reading → (reading − offset) / gain in volts, where each step can fail and the
+// cause matters. Every step returns std::expected, so the steps chain and the first failure comes out with its
+// cause; a step whose grids prove it total returns a plain value, and its error handling disappears.
 
 #include <expected>
 #include <iostream>
@@ -22,35 +14,32 @@
 
 using namespace ins;
 
-using reading = quantity<si::volt, inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>>; // ±100 mV, 1 µV steps
-using gain    = inside<{{0, 10}, per<100>}>; // 0 is possible: a dead channel
-using volts   = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round_half_away>>; // the result, 1 µV
+using reading_volts = quantity<si::volt, inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>>; // ±100 mV to 1 µV
+using gain = inside<{{0, 10}, per<100>}>; // 0 is possible: a dead channel
+using volts = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round_half_away>>; // the result, to 1 µV
 
-constexpr reading offset{just<1, 4000> * si::volt}; // 0.25 mV
+constexpr reading_volts offset{just<1, 4000> * si::volt}; // 0.25 mV
 
-// One sample: a reading and the channel's gain, both as text.
+// One sample, a reading and the channel's gain as text. k's grid holds 0, so div<volts> (one rounding into
+// volts) is an expected carrying a zero gain or a failed store.
 std::expected<volts, error> calibrate(std::string_view r, std::string_view g) {
-    return parse<reading>(r).and_then([&](reading x) {
-        return parse<gain>(g).and_then([&](gain k) {
-            // (x − offset) / k, rounded once into volts: k's grid holds 0, so the
-            // result is an expected carrying a zero gain or a failed store.
-            return div<volts>(x - offset, k);
-        });
+    return parse<reading_volts>(r).and_then([&](reading_volts x) {
+        return parse<gain>(g).and_then([&](gain k) { return div<volts>(x - offset, k); });
     });
 }
 
 int main() {
     struct sample {
         std::string_view r, g;
-        error            expect; // error{} for success
+        error expect; // error{} for success
     };
     const sample samples[] = {
-        {"0.0125", "2", error{}},                  // (12.5 − 0.25) mV / 2 = 0.006125 V
-        {"0.0125x", "2", error::invalid_format},   // not a number
-        {"0.0000001", "2", error::rounding_error}, // 0.1 µV: off the 1 µV grid
-        {"0.25", "2", error::overflow},            // past ±100 mV
-        {"0.0125", "0", error::division_by_zero},  // a dead channel
-        {"-0.09", "0.01", error::overflow},        // −9.025 V: past ±1 V
+        {"0.0125",    "2",    error{}},                 // (12.5 − 0.25) mV / 2 = 0.006125 V
+        {"0.0125x",   "2",    error::invalid_format},   // not a number
+        {"0.0000001", "2",    error::rounding_error},   // 0.1 µV: off the 1 µV grid
+        {"0.25",      "2",    error::overflow},         // past ±100 mV
+        {"0.0125",    "0",    error::division_by_zero}, // a dead channel
+        {"-0.09",     "0.01", error::overflow},         // −9.025 V: past ±1 V
     };
     for (const auto& s : samples) {
         const auto v = calibrate(s.r, s.g);
@@ -68,17 +57,18 @@ int main() {
     });
     std::cout << "dead channel with fallback -> " << *fallback << "\n";
 
-    // The lift operators chain without and_then: an expected operand makes the
-    // whole expression an expected, and the first error wins.
+    // The lift operators chain without and_then: an expected operand makes the expression an expected, and the
+    // first error wins.
     const auto chained =
-        (reading{0.01_ins * si::volt} - offset) / gain{0} * just<2> + reading{just<1, 1000> * si::volt};
+        (reading_volts{0.01_ins * si::volt} - offset) / gain{0} * just<2> + reading_volts{just<1, 1000> * si::volt};
     std::cout << "chained -> " << error_message(chained.error()) << "\n";
 
     // A gain that cannot be 0 makes the division total: a plain value.
-    using live_gain   = inside<{{0.5, 10}, per<100>}>;
-    const auto always = (reading{0.01_ins * si::volt} - offset) / live_gain{2};
+    using live_gain = inside<{{0.5, 10}, per<100>}>;
+    const auto always = (reading_volts{0.01_ins * si::volt} - offset) / live_gain{2};
     static_assert(quantity_like<decltype(always)>);
     std::cout << "zero-free gain -> " << always << "\n";
-    return fallback && *fallback == volts{0, si::volt} && !chained && chained.error() == error::division_by_zero ? 0
-                                                                                                                 : 1;
+
+    const bool fell_back = fallback && *fallback == volts{0, si::volt};
+    return fell_back && !chained && chained.error() == error::division_by_zero ? 0 : 1;
 }

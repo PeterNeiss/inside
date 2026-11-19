@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// STL and ranges algorithm examples with inside types.
+// STL and ranges algorithms on inside types.
 
 #include <algorithm>
 #include <iostream>
@@ -14,12 +14,6 @@
 namespace rng = std::ranges;
 using namespace ins;
 
-using celsius  = inside<{{-40, 60}, 0.5}, round_half_away>;
-using channel  = inside<{0, 255}, clamp>;
-using pct      = inside<{0, 100}, clamp>;
-using score    = inside<{0, 1000}>;
-using altitude = inside<{-500, 9000}>;
-
 template <typename T>
 void show(std::string_view label, const std::vector<T>& v) {
     std::cout << label << ": ";
@@ -29,7 +23,7 @@ void show(std::string_view label, const std::vector<T>& v) {
 }
 
 int main() {
-    // --- fill / generate ---
+    using channel = inside<{0, 255}, clamp>;
     std::cout << "--- fill / generate ---\n";
     {
         std::vector<channel> v(8);
@@ -40,7 +34,7 @@ int main() {
         show("generate", v);
     }
 
-    // --- sort ---
+    using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;
     std::cout << "\n--- sort ---\n";
     std::vector<celsius> temps = {21.5, -5.0, 37.0, 0.0, 15.5, -20.0, 42.0, 8.5};
     {
@@ -52,7 +46,6 @@ int main() {
         show("descending", temps);
     }
 
-    // --- min / max ---
     std::cout << "\n--- min / max ---\n";
     {
         rng::sort(temps);
@@ -60,11 +53,10 @@ int main() {
         std::cout << "min: " << *lo << "  max: " << *hi << "\n";
     }
 
-    // --- search ---
     std::cout << "\n--- search ---\n";
     {
         std::vector<channel> colors = {10, 50, 128, 200, 50, 255, 50};
-        auto                 it     = rng::find(colors, channel{128});
+        auto it = rng::find(colors, channel{128});
         if (it != colors.end())
             std::cout << "found 128 at index " << (it - colors.begin()) << "\n";
 
@@ -74,31 +66,28 @@ int main() {
         auto bright = rng::count_if(colors, [](channel c) { return c > 128; });
         std::cout << "channels > 128: " << bright << "\n";
 
-        // binary_search on sorted temps
-        bool found = rng::binary_search(temps, celsius{15.5});
+        bool found = rng::binary_search(temps, celsius{15.5}); // temps is sorted
         std::cout << "binary_search 15.5: " << (found ? "yes" : "no") << "\n";
 
         auto lb = rng::lower_bound(temps, celsius{0.0});
         std::cout << "lower_bound 0: " << *lb << "\n";
     }
 
-    // --- predicates ---
+    using percent = inside<{0, 100}, clamp>;
     std::cout << "\n--- predicates ---\n";
     {
-        std::vector<pct> values = {25, 50, 75, 100};
-        std::cout << "all > 0:    " << rng::all_of(values, [](pct p) { return p > 0; }) << "\n";
-        std::cout << "any == 100: " << rng::any_of(values, [](pct p) { return p == 100; }) << "\n";
-        std::cout << "none > 100: " << rng::none_of(values, [](pct p) { return p > 100; }) << "\n";
+        std::vector<percent> values = {25, 50, 75, 100};
+        std::cout << "all > 0:    " << rng::all_of(values, [](percent p) { return p > 0; }) << "\n";
+        std::cout << "any == 100: " << rng::any_of(values, [](percent p) { return p == 100; }) << "\n";
+        std::cout << "none > 100: " << rng::none_of(values, [](percent p) { return p > 100; }) << "\n";
     }
 
-    // --- transform ---
     std::cout << "\n--- transform ---\n";
     {
         std::vector<channel> src = {200, 100, 50, 255, 0};
         std::vector<channel> dst(src.size());
 
-        // darken: subtract 50 from each channel (clamp prevents underflow)
-        rng::transform(src, dst.begin(), [](channel c) {
+        rng::transform(src, dst.begin(), [](channel c) { // darken by 50: clamp stops at 0
             auto d = c;
             d -= 50;
             return d;
@@ -107,31 +96,29 @@ int main() {
         show("darkened", dst);
     }
 
-    // --- reduce ---
+    using score = inside<{0, 1000}>;
     std::cout << "\n--- reduce ---\n";
     {
-        // sum<Target>: an exact total with one range check against Target,
-        // an expected (the count is a run-time number).
-        using wide_score          = inside<{0, 100'000}>;
+        // sum<Target>: an exact total with one range check, an expected (the count is a run-time number).
+        using score_total = inside<{0, 100'000}>;
         std::vector<score> scores = {100, 250, 500, 750, 1000};
-        auto               total  = sum<wide_score>(scores);
+        auto total = sum<score_total>(scores);
         if (!total)
             return 1;
         std::cout << "total: " << *total << "\n";
 
         // A weighted sum: the products, then sum<Target> with its one check.
-        // (std::transform_reduce into an inside accumulator stores every
-        // prefix back into it, a store the grids cannot prove.)
+        // (std::transform_reduce would store every prefix back into an inside, which the grids cannot prove.)
+        using weighted_total = inside<{0, 1'000'000}>;
         std::vector<score> weights = {2, 3, 5};
-        using wide                 = inside<{0, 1'000'000}>;
         auto products = std::views::zip_transform([](score a, score b) { return a * b; }, scores, weights);
-        auto dot      = sum<wide>(products);
+        auto dot = sum<weighted_total>(products);
         if (!dot)
             return 1;
         std::cout << "weighted sum(first 3): " << *dot << "\n";
     }
 
-    // --- filter ---
+    using altitude = inside<{-500, 9000}>;
     std::cout << "\n--- filter ---\n";
     {
         std::vector<altitude> data = {-200, 500, -50, 3000, 0, 8000};
@@ -139,17 +126,15 @@ int main() {
         rng::copy_if(data, std::back_inserter(positive), [](altitude a) { return a > 0; });
         show("positive", positive);
 
-        // erase-remove: remove values below sea level
-        auto [first, last] = rng::remove_if(data, [](altitude a) { return a < 0; });
+        auto [first, last] = rng::remove_if(data, [](altitude a) { return a < 0; }); // below sea level
         data.erase(first, last);
         show("above sea level", data);
     }
 
-    // --- unique / adjacent_find ---
     std::cout << "\n--- unique / adjacent_find ---\n";
     {
-        std::vector<score> v   = {100, 100, 200, 300, 300, 300, 500};
-        auto               adj = rng::adjacent_find(v);
+        std::vector<score> v = {100, 100, 200, 300, 300, 300, 500};
+        auto adj = rng::adjacent_find(v);
         if (adj != v.end())
             std::cout << "first adjacent dup: " << *adj << "\n";
 
@@ -158,73 +143,59 @@ int main() {
         show("unique", v);
     }
 
-    // --- classic STL (iterator-based) ---
     std::cout << "\n--- classic STL ---\n";
     {
-        // std::sort
         std::vector<score> v = {500, 100, 800, 300, 700};
         std::sort(v.begin(), v.end());
         show("sort", v);
 
-        // std::stable_sort descending
         std::stable_sort(v.begin(), v.end(), std::greater<>{});
         show("stable_sort desc", v);
 
-        // std::nth_element — find median
         std::vector<altitude> alt = {3000, -200, 500, 8000, 100, -50, 1500};
-        auto                  mid = alt.begin() + std::ssize(alt) / 2;
-        std::nth_element(alt.begin(), mid, alt.end());
+        auto mid = alt.begin() + std::ssize(alt) / 2;
+        std::nth_element(alt.begin(), mid, alt.end()); // the median
         std::cout << "median: " << *mid << "\n";
 
-        // std::partial_sort — top 3
         std::vector<score> scores = {200, 800, 100, 600, 900, 400, 700};
-        std::partial_sort(scores.begin(), scores.begin() + 3, scores.end(), std::greater<>{});
+        std::partial_sort(scores.begin(), scores.begin() + 3, scores.end(), std::greater<>{}); // the top 3
         std::cout << "top 3: " << scores[0] << " " << scores[1] << " " << scores[2] << "\n";
 
-        // std::accumulate
+        // std::accumulate stores each prefix back into its accumulator, which the grids cannot prove:
+        // the accumulator names what happens past its range (clamp; sum<Target> checks the total once instead).
+        using brightness_total = inside<{0, 100'000}, clamp>;
         std::vector<channel> rgb = {200, 150, 100};
-        // std::accumulate stores each prefix back into its accumulator: a
-        // store the grids cannot prove, so the accumulator names what happens
-        // past its range (clamp; sum<Target> checks the total once instead).
-        using wide_ch   = inside<{0, 100'000}, clamp>;
-        auto brightness = std::accumulate(rgb.begin(), rgb.end(), wide_ch{0}, std::plus<>{});
+        auto brightness = std::accumulate(rgb.begin(), rgb.end(), brightness_total{0}, std::plus<>{});
         std::cout << "accumulate brightness: " << brightness << "\n";
 
-        // std::inner_product
+        using dot_total = inside<{0, 1'000'000}, clamp>; // as accumulate's
         std::vector<score> a = {10, 20, 30};
         std::vector<score> b = {3, 2, 1};
-        using wide_score     = inside<{0, 1'000'000}, clamp>; // (as accumulate's)
-        auto dot             = std::inner_product(
-            a.begin(), a.end(), b.begin(), wide_score{0}, std::plus<>{}, [](score x, score y) { return x * y; });
+        auto dot = std::inner_product(a.begin(), a.end(), b.begin(), dot_total{0}, std::plus<>{},
+                                      [](score x, score y) { return x * y; });
         std::cout << "inner_product: " << dot << "\n";
 
-        // std::adjacent_difference
-        // (A difference of two celsius spans twice the range: its own type.)
-        using celsius_delta                 = decltype(celsius{} - celsius{});
-        std::vector<celsius>       readings = {-5.0, 0.0, 3.5, 8.0, 6.5};
+        using celsius_delta = decltype(celsius{} - celsius{}); // a difference spans twice the range
+        std::vector<celsius> readings = {-5.0, 0.0, 3.5, 8.0, 6.5};
         std::vector<celsius_delta> deltas(readings.size());
-        std::adjacent_difference(
-            readings.begin(), readings.end(), deltas.begin(), [](celsius k, celsius l) { return k - l; });
+        std::adjacent_difference(readings.begin(), readings.end(), deltas.begin(),
+                                 [](celsius k, celsius l) { return k - l; });
         show("adj_diff", deltas);
 
-        // std::for_each with side effect
         std::cout << "for_each: ";
         std::for_each(rgb.begin(), rgb.end(), [](channel c) { std::cout << c << " "; });
         std::cout << "\n";
 
-        // std::reverse
-        std::vector<pct> pcts = {10, 30, 50, 70, 90};
+        std::vector<percent> pcts = {10, 30, 50, 70, 90};
         std::reverse(pcts.begin(), pcts.end());
         show("reverse", pcts);
 
-        // std::rotate
         std::vector<channel> seq = {1, 2, 3, 4, 5};
         std::rotate(seq.begin(), seq.begin() + 2, seq.end());
         show("rotate", seq);
 
-        // std::partition
         std::vector<altitude> mixed = {-100, 500, -30, 2000, 0, -400, 100};
-        auto                  pivot = std::partition(mixed.begin(), mixed.end(), [](altitude x) { return x >= 0; });
+        auto pivot = std::partition(mixed.begin(), mixed.end(), [](altitude x) { return x >= 0; });
         std::cout << "partition (>=0): ";
         for (auto it = mixed.begin(); it != pivot; ++it)
             std::cout << *it << " ";
@@ -233,48 +204,41 @@ int main() {
             std::cout << *it << " ";
         std::cout << "\n";
 
-        // std::equal
         std::vector<channel> x = {10, 20, 30};
         std::vector<channel> y = {10, 20, 30};
         std::cout << "equal: " << std::equal(x.begin(), x.end(), y.begin()) << "\n";
 
-        // std::mismatch
-        y[2]    = 99;
+        y[2] = 99;
         auto mm = std::mismatch(x.begin(), x.end(), y.begin());
         std::cout << "mismatch at: " << *mm.first << " vs " << *mm.second << "\n";
 
-        // std::includes on sorted ranges
-        std::vector<score> all = {100, 200, 300, 400, 500};
+        std::vector<score> all = {100, 200, 300, 400, 500}; // includes needs sorted ranges
         std::vector<score> sub = {200, 400};
         std::cout << "includes: " << std::includes(all.begin(), all.end(), sub.begin(), sub.end()) << "\n";
 
-        // std::iota (from <numeric>)
         std::vector<channel> iota_v(10);
         std::iota(iota_v.begin(), iota_v.end(), channel{0});
         show("iota", iota_v);
     }
 
-    // --- values<T> / inside_range / cursor ---
+    using digit = inside<{0, 9}>;
     std::cout << "\n--- values<T> / inside_range / cursor ---\n";
     {
-        using idx = inside<{0, 9}>;
-        std::cout << "values<idx>:     ";
-        for (idx i : values<idx>)
+        std::cout << "values<digit>:   ";
+        for (digit i : values<digit>)
             std::cout << i << " ";
         std::cout << "\n";
 
-        // wrap-around range starting at 7
         std::cout << "wrap from 7:     ";
-        for (idx i : inside_range<grid_of<idx>>{idx{7}})
+        for (digit i : inside_range<grid_of<digit>>{digit{7}})
             std::cout << i << " ";
         std::cout << "\n";
 
-        // A cursor is an iterator and end(c) its sentinel: every third index.
-        std::vector<idx> thirds;
-        cursor<idx, 3>   c;
+        std::vector<digit> thirds; // a cursor is an iterator and end(c) its sentinel: every third digit
+        cursor<digit, 3> c;
         rng::copy(c, end(c), std::back_inserter(thirds));
-        show("cursor<idx, 3>", thirds);
-        std::cout << "count > 4:       " << rng::count_if(values<idx>, [](idx i) { return i > 4; }) << "\n";
+        show("cursor<digit, 3>", thirds);
+        std::cout << "count > 4:       " << rng::count_if(values<digit>, [](digit i) { return i > 4; }) << "\n";
     }
 
     return 0;

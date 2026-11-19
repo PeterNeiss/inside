@@ -1,5 +1,0 @@
-# Identifiers codespell mistakes for misspellings: InE (the exponent's input
-# type), nd/Nd/ND (n-th digit names), alo (a's low part), unexpect (std::unexpect);
-# disjointness is a word.
-[codespell]
-ignore-words-list = ine,nd,alo,unexpect,disjointness

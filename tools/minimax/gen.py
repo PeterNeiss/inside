@@ -75,8 +75,6 @@ def header(fits: dict, version: str) -> str:
         "#include <array>",
         "#include <cstddef>",
         "",
-        "// Generated: the fits stay one per line.",
-        "// clang-format off",
         "namespace ins::math::detail::fp::minimax {",
         "",
         "template <std::size_t N>",
@@ -97,7 +95,7 @@ def header(fits: dict, version: str) -> str:
             lines.append(f"inline constexpr fit<{n}> {name}_fit<{n}>{{{{{body}}}, {literal(bound)}}};")
         errs = ", ".join(literal(bound) for _, bound, _ in entries)
         lines.append(f"inline constexpr std::array<double, {len(entries)}> {name}_err{{{errs}}}; // index terms − min")
-    lines += ["", "} // namespace ins::math::detail::fp::minimax", "// clang-format on", "",
+    lines += ["", "} // namespace ins::math::detail::fp::minimax", "",
               "#endif // INSIDE_MATH_DETAIL_MINIMAX_HPP", ""]
     return "\n".join(lines)
 

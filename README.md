@@ -1,7 +1,6 @@
 # inside: numbers that cannot go out of range
 
 [![CI](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml)
-[![Lint](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml)
 [![Try it on Compiler Explorer](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://godbolt.org/z/fzczsvPsW)
 
 `inside` is a header-only C++26 library for numbers whose **range and

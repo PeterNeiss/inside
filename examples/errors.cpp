@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Tour of every error-handling mechanism plus the policy alternatives
-// that avoid errors entirely (clamp / wrap). Nothing throws: a store either
-// clamps, wraps, takes an alternative value, reports, or does not compile.
-// See clock.cpp for a fuller on_wrap workflow.
+// Every way to handle an error, and the policies that avoid one (clamp, wrap). Nothing throws: a store clamps,
+// wraps, takes an alternative value, reports, or does not compile. clock.cpp has a fuller on_wrap workflow.
 
 #include <iostream>
 
@@ -11,12 +9,6 @@
 
 using namespace ins;
 
-using checked_100 = inside<{0, 100}, checked>;
-using clamp_100   = inside<{0, 100}, clamp>;
-using wrap_360    = inside<{0, 359}, wrap>;
-using digit       = inside<{0, 9}>;
-using coarse      = inside<{{0, 10}, 2}>; // notch 2: rounding_error demo
-
 // An int read at run time, as from input.
 int read(int v) {
     volatile int x = v;
@@ -24,28 +16,24 @@ int read(int v) {
 }
 
 int main() {
-    // === Section 1: Reporting strategies for an out-of-range value ===
-    // Same logical event (200 outside [0,100]), several reports. A constant
-    // is checked while compiling: `checked_100 x = 200;` does not compile.
-    // A run-time int may not fit [0,100], so `checked_100 x = n;` does not
-    // compile either: the store names its channel. The free-function `error&`
-    // overload is shown in Section 4.
+    // 1. Reporting an out-of-range 200. A constant is checked while compiling (`percent x = 200;` does not
+    // compile), and a run-time int may not fit, so `percent x = n;` does not compile either: name a channel.
+    using percent = inside<{0, 100}, checked>;
     const int n = read(200);
 
-    auto maybe = checked_100::try_make(n);
+    auto maybe = percent::try_make(n);
     std::cout << "expected: " << (maybe ? "has value" : error_message(maybe.error())) << "\n";
 
-    auto ok = checked_100::try_make(50);
+    auto ok = percent::try_make(50);
     std::cout << "in-range: " << *ok << "\n";
 
-    // === Section 2: Per-operation overrides on a default-checked inside ===
-
-    ins::error  ec{};
-    checked_100 z(50);
+    // 2. Per-store overrides on a default-checked inside: an error&, a hook with an alternative value, clamp.
+    ins::error ec{};
+    percent z(50);
     z.on_error(ec) = n;
     std::cout << "policy ec:" << (ec != error{} ? error_message(ec) : "no error") << " (z=" << z << ")" << "\n";
 
-    checked_100 r(50);
+    percent r(50);
     r.on_error([](auto& self, error code, std::string_view msg) {
         std::cout << "on_error: [" << error_message(code) << "] " << msg << " -> recover to 0" << "\n";
         self = 0; // the alternative value
@@ -56,48 +44,42 @@ int main() {
     w.with<clamp>() = 200;
     std::cout << "clamped:  value=" << w << " (this store saturates)" << "\n";
 
-    // === Section 3: Every error value gets a demo ===
-    // overflow (out of range) already shown in Sections 1-2. Now: rounding_error (via
-    // on_error) and division_by_zero (in the expected a division returns).
-
+    // 3. The other error values: rounding_error (in a hook) and division_by_zero (in the expected of a division).
+    using coarse = inside<{{0, 10}, 2}>; // notch 2
     coarse c(0);
     c.on_error([](auto& self, error code, std::string_view msg) {
         std::cout << "rounding: [" << error_message(code) << "] " << msg << " -> recover to 4" << "\n";
         self = 4;
-    }) = 3.0; // 3 doesn't land on the notch-2 grid
+    }) = 3.0; // 3 is not on the notch-2 grid
     std::cout << "          (c=" << c << ")" << "\n";
 
-    const auto quotient = div(checked_100(10), checked_100(0));
+    const auto quotient = div(percent(10), percent(0));
     if (!quotient)
         std::cout << "div/0:    [" << error_message(quotient.error()) << "] -> recover to 0" << "\n";
     const auto q = quotient.value_or(std::remove_cvref_t<decltype(*quotient)>{0});
     std::cout << "          (q=" << q << ")" << "\n";
 
-    // === Section 4: Free-function error& overload ===
-    // add / sub / mul / div / mod accept a ins::error& directly; ec is
-    // set on overflow or division-by-zero, the result holds the error on failure.
-
-    ec      = error{};
-    auto qz = div(checked_100(10), checked_100(0), ec);
+    // 4. add / sub / mul / div / mod take an error& too: ec is set, and the result holds the error.
+    ec = error{};
+    auto qz = div(percent(10), percent(0), ec);
     std::cout << "free-fn:  " << (ec != error{} ? error_message(ec) : "no error")
               << " (q has_value=" << (qz.has_value() ? "true" : "false") << ")" << "\n";
 
-    // === Section 5: Policies that avoid errors entirely ===
-    // clamp saturates, wrap is modular; try_make reports.
+    // 5. Policies that avoid errors: clamp saturates, wrap is modular; try_make reports.
+    using clamped_percent = inside<{0, 100}, clamp>;
+    using compass_degrees = inside<{0, 359}, wrap>;
+    using digit = inside<{0, 9}>;
 
-    clamp_100 cl = 150;
+    clamped_percent cl = 150;
     std::cout << "clamp:    150 -> " << cl << "\n";
 
-    wrap_360 wr = 370;
+    compass_degrees wr = 370;
     std::cout << "wrap:     370 -> " << wr << "\n";
 
     auto tm = digit::try_make(10);
     std::cout << "try_make: 10  -> " << (tm ? "has value" : error_message(tm.error())) << "\n";
 
-    // === Section 6: Inspection callbacks for non-error policies ===
-
-    // on_clamp / on_wrap auto-merge their implied policy bit, so the base
-    // inside need not be a clamp/wrap type.
+    // 6. Watching clamp and wrap: on_clamp and on_wrap add their policy, so the inside need not have it.
     inside<{0, 100}> p(80);
     p.on_clamp([](auto& self, auto overshoot) {
         std::cout << "on_clamp: overshoot=" << overshoot << " (saturated to " << self << ")" << "\n";
@@ -108,11 +90,9 @@ int main() {
         std::cout << "on_wrap:  carry=" << carry << " (wrapped to " << self << ")" << "\n";
     }) = 75;
 
-    // A hook on a compound op: the inside add overshoots [0,100], so the
-    // store back fires on_clamp (the sum itself cannot fail).
-    clamp_100 combo(50);
+    // A hook on a compound op: the sum cannot fail, but storing it back past [0,100] fires on_clamp.
+    clamped_percent combo(50);
     combo.on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; }) += 200;
     std::cout << "          (combo=" << combo << ")" << "\n";
-
     return 0;
 }

@@ -61,17 +61,17 @@ math functions.
 
 ## Before a pull request
 
-1. **Format** with the pinned tools: `pre-commit run --all-files`. It runs
-   clang-format 22, gersemi for CMake and codespell. Use it rather than a
-   system clang-format, whose version formats differently.
-2. **Regenerate the single header** if a header under `include/` changed
-   ([below](#the-single-header)), after formatting, since it copies the text.
-3. **Run the configurations CI runs** (`.github/workflows/ci.yml`): Debug
+Code is formatted by hand: 4-space indentation, lines up to about 119
+columns, laid out for the reader. No formatter or lint hook runs.
+
+1. **Regenerate the single header** if a header under `include/` changed
+   ([below](#the-single-header)).
+2. **Run the configurations CI runs** (`.github/workflows/ci.yml`): Debug
    with sanitizers (`gcc-debug`), Release, `-DINSIDE_MATH_NO_FP=ON`, and
    Debug with `-DINSIDE_WARNINGS_AS_ERRORS=ON`. A weekly CI run adds the
    slow tests (`-DINSIDE_SLOW_TESTS=ON`), `-DINSIDE_CERTIFY_FULL=ON` and
    TSan.
-4. **Update the docs and the changelog.** A user-visible change gets an entry
+3. **Update the docs and the changelog.** A user-visible change gets an entry
    under *Unreleased* in [CHANGELOG.md](CHANGELOG.md), and the pages that
    describe it change with it ([below](#documentation)).
 
@@ -82,7 +82,6 @@ pure-CMake amalgamator (`tools/amalgamate.cmake`) and committed; it is never
 edited by hand.
 
 ```bash
-pre-commit run --all-files                       # clang-format first: the header copies its text
 cmake --build build --target inside.amalgamate   # rewrites single_include/inside/inside.hpp
 ctest --test-dir build -L tooling                # amalgamate_up_to_date fails if it drifted
 ctest --test-dir build -R single_header          # translation units that see only single_include/
