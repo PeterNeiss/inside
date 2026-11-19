@@ -51,7 +51,7 @@ int main()
 
   const auto gain2{value_cast<cts_per_volt>((c2 - c1) / (v2 - v1))};
   if (!gain2)
-    return 1; // a broken calibration
+    return 1; // past [1000, 1500] cts/V (equal readings give 0): a broken calibration
 
   const auto offset2{c1 - *gain2 * v1};
   const auto mv2    {value_cast<millivolts>((raw - offset2) / *gain2)}; // may miss millivolts' range
