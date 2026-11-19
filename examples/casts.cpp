@@ -20,10 +20,10 @@
 #include <ranges>
 #include <vector>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // Coarse output grid: 0..10 in steps of 2 — the notch makes the three

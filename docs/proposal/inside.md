@@ -12,10 +12,6 @@ toc: true
 toc-depth: 2
 ---
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 # Abstract
 
 We propose a class template `inside<grid, policy>` for numbers whose interval
@@ -37,7 +33,7 @@ quantities*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/math
 adds the functions of `<cmath>`.
 
 The reference implementation is
-[beman.inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0). A
+[inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0). A
 long-form motivation with compiled exhibits is [*int considered
 harmful*](https://github.com/PeterNeiss/inside/blob/v0.5.0/docs/int-considered-harmful.pdf)
 (the *paper* below).
@@ -75,7 +71,7 @@ proofs.
 
 # A tour
 
-The listings use the reference implementation's namespace `beman::inside`.
+The listings use the reference implementation's namespace `ins`.
 Each one is a region of a program that compiles and checks its own results.
 
 **The range is part of the type, and arithmetic widens it.**
@@ -634,13 +630,12 @@ The companion papers propose quantities and the math functions.
 # Implementation experience
 
 The reference implementation is header-only C++26 and needs static reflection:
-today GCC 16 with `-freflection`. It ships a single-header amalgamation, a
-CMake package and a vcpkg port, and follows the Beman Standard. Its test suite
-(1108 tests) runs in CI in six configurations on every change (a
-debug preset, release, debug with `-Werror`, coverage, the address, undefined
-and leak sanitizers, no floating point) and in four more every
-week (a release preset, debug, the thread sanitizer, and the full certification
-of the math functions). It
+today GCC 16 with `-freflection`. It ships a single-header amalgamation and
+a CMake package. Its test suite (1108 tests) runs in CI in four
+configurations on every change (debug with the address, undefined and leak
+sanitizers, release, debug with `-Werror`, no floating point) and in three
+more every week (debug with the slow tests, the thread sanitizer, and the full
+certification of the math functions). It
 includes a check that the integer fast paths compile to call-free, vectorising
 code, a property fuzzer, and a differential oracle that recomputes random
 results exactly in Python.

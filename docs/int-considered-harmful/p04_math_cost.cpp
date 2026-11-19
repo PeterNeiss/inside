@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// What correct rounding costs. beman::inside::math returns the correctly
+// What correct rounding costs. ins::math returns the correctly
 // rounded point of its OUTPUT grid, so its cost follows that grid: onto the
 // grid deduced from a 2^-14 input it often keeps pace with <cmath>; onto a
 // grid as fine as a double's own significand it is several times slower.
@@ -14,10 +14,10 @@
 #include <cstdio>
 #include <vector>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/math.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 namespace
 {

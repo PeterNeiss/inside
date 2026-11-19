@@ -1,19 +1,14 @@
 # Units
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
-`<beman/inside/units.hpp>` adds physical quantities: a number (an inside)
+`<inside/units.hpp>` adds physical quantities: a number (an inside)
 with a unit. Units, dimensions and quantity kinds are checked at compile time,
 and you can add your own. The design follows
 [mp-units](https://github.com/mpusz/mp-units), without depending on it.
 
 ```cpp
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>   // printing
-using namespace beman::inside;
-using namespace beman::inside::units;
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>   // printing
+using namespace ins;
 
 constexpr auto km = si::kilo(si::metre);
 quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5, km};   // 12.5 km, to the metre
@@ -58,7 +53,7 @@ the stored integer stays, so the conversion is **exact and free**: km → mm on
 
 A conversion that would not be exact does not compile: degrees to radians
 multiply by π, which no grid holds. Round it once with
-`value_cast<si::radian, Out>(q)` from `<beman/inside/units/math.hpp>`.
+`value_cast<si::radian, Out>(q)` from `<inside/units/math.hpp>`.
 
 ## Sums in the common unit
 
@@ -135,7 +130,7 @@ tax.
 
 A **basis vector** is a unit of your own whose square you state: +1, −1 or 0.
 Two different ones anticommute (e₂ e₁ = −e₁ e₂), and the units track the
-sign. With `<beman/inside/units/geoalg.hpp>`, a sum of different blades is a
+sign. With `<inside/units/geoalg.hpp>`, a sum of different blades is a
 multivector, and complex numbers, quaternions and vectors follow:
 
 ```cpp
@@ -174,11 +169,11 @@ a kind of their own, so read an angle's number with `numerical_value_in(si::radi
 
 ## Text
 
-With `<beman/inside/units/io.hpp>`, `to_string(q)`, `<<` and `std::format`
+With `<inside/units/io.hpp>`, `to_string(q)`, `<<` and `std::format`
 print the number and the unit's symbol: `5 km`, `39.9 km/h`, `20 ℃`, `12 m²`.
 A format spec applies to the number (`{:.2f}`), and
 `unit_symbol(u, text_encoding::ascii)` gives an ASCII spelling (`um`, `ohm`).
-`units::parse<Q>(text)` reads a number in Q's unit.
+`ins::parse<Q>(text)` reads a number in Q's unit.
 
 ## Details
 

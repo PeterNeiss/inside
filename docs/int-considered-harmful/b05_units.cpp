@@ -6,10 +6,10 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 using money   = inside<{{0, 1'000'000}, per<100>}, round_half_away>;
 using dollars = inside<{0, 1000}>;   // whole dollars only

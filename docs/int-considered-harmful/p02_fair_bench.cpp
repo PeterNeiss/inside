@@ -23,9 +23,9 @@
 #include <stdexcept>
 #include <vector>
 
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 // ---------------------------------------------------------------- helpers ---
 template<typename T>

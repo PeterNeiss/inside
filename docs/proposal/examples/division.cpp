@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour 5: division is exact, and fallible only when the divisor may be zero.
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
 #include <expected>
 #include <type_traits>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]

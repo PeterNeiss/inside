@@ -10,8 +10,7 @@
         "CMAKE_CXX_STANDARD": "26",
         "CMAKE_CXX_EXTENSIONS": false,
         "CMAKE_CXX_STANDARD_REQUIRED": true,
-        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
-        "CMAKE_PROJECT_TOP_LEVEL_INCLUDES": "${sourceDir}/infra/cmake/use-fetch-content.cmake"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
       }
     },
     {
@@ -19,7 +18,7 @@
       "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "BEMAN_BUILDSYS_SANITIZER": "MaxSan"
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,leak,pointer-compare,pointer-subtract,undefined -fsanitize-undefined-trap-on-error"
       }
     },
     {
@@ -37,7 +36,7 @@
         "_debug-base"
       ],
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/infra/cmake/gnu-toolchain.cmake"
+        "CMAKE_CXX_COMPILER": "g++"
       }
     },
     {
@@ -48,7 +47,7 @@
         "_release-base"
       ],
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/infra/cmake/gnu-toolchain.cmake"
+        "CMAKE_CXX_COMPILER": "g++"
       }
     },
     {
@@ -59,8 +58,7 @@
         "_debug-base"
       ],
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "g++-16",
-        "CMAKE_C_COMPILER": "gcc-16"
+        "CMAKE_CXX_COMPILER": "g++-16"
       },
       "condition": {
         "type": "equals",
@@ -76,8 +74,7 @@
         "_release-base"
       ],
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "g++-16",
-        "CMAKE_C_COMPILER": "gcc-16"
+        "CMAKE_CXX_COMPILER": "g++-16"
       },
       "condition": {
         "type": "equals",

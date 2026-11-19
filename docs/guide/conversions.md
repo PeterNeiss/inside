@@ -1,9 +1,5 @@
 # Conversions and text
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 How values cross the boundary of an inside: native numbers in and out,
 casts, comparisons, and text.
 
@@ -110,7 +106,7 @@ binary: an inside holding 1/10 would compare unequal to 0.1. Compare with
 
 ## Printing
 
-With `<beman/inside/inside/io.hpp>`, `to_string(x)`, `std::cout << x` and
+With `<inside/inside/io.hpp>`, `to_string(x)`, `std::cout << x` and
 `std::format("{}", x)` print the **exact** value:
 
 | Grid | Prints |

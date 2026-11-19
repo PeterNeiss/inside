@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: a conversion names what it does with a value that does not fit.
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
 #include <expected>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     // [listing]

@@ -6,9 +6,9 @@
 // This is the diagnostic that replaces the silent unit mix-up in
 // h09_units.cpp.
 
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main()
 {

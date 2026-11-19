@@ -1,0 +1,674 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Cross-path consistency: the same value, policy and grid must give the same
+// result whichever code path (storage kind, assignment source, fast path,
+// engine) handles it.
+
+#include <inside/inside.hpp>
+#include <inside/math.hpp>
+#include <inside/inside/detail/rational.hpp>
+#include <inside/inside/predicates.hpp>
+
+#include <gtest/gtest.h>
+
+#include "support.hpp"
+
+#include <bit>
+#include <cstdint>
+#include <limits>
+#include <vector>
+
+using namespace ins;
+using namespace ins::detail;
+
+namespace {
+constexpr rational q(std::int64_t n, std::int64_t d = 1) { return rational{n, d}; }
+} // namespace
+
+//---------------------------------------------------------------------------
+// One tie rule (half away from zero) and honoured rounding modes.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, ties_round_half_away_from_zero) {
+    using F = inside<{{-4, 4}, per<2>}, round_half_away>;
+    EXPECT_EQ(rational{F{q(-1, 4)}}, rational{-0.5});
+    EXPECT_EQ(rational{F{q(1, 4)}}, rational{0.5});
+}
+
+TEST(ConsistencyTest, store_honours_rounding_mode) {
+    using Fl = inside<{{-4, 4}, per<2>}, round_floor>;
+    using Ce = inside<{{-4, 4}, per<2>}, round_ceil>;
+    using He = inside<{{-4, 4}, per<2>}, round_half_even>;
+    EXPECT_EQ(rational{Fl{q(2, 5)}}, rational{0.0});
+    EXPECT_EQ(rational{Fl{q(-1, 10)}}, rational{-0.5});
+    EXPECT_EQ(rational{Ce{q(1, 10)}}, rational{0.5});
+    EXPECT_EQ(rational{He{q(3, 4)}}, rational{1.0}); // 1.5 notches → 2 (even)
+    EXPECT_EQ(rational{He{q(1, 4)}}, rational{0.0}); // 0.5 notches → 0 (even)
+}
+
+// A math result exactly on a tie rounds like the assignment path.
+TEST(ConsistencyTest, math_tie_rule_matches_assignment) {
+    using O   = inside<{-10, 10}, round_half_away>;
+    using In  = inside<{{-1, 1}, per<64>}, round_half_away>;
+    using Pos = inside<{{0, 1}, per<64>}, round_half_away>;
+    EXPECT_EQ(rational{math::sqrt<O>(Pos{q(1, 4)})}, rational{O{q(1, 2)}});  // √(1/4) = 1/2 → 1
+    EXPECT_EQ(rational{math::cbrt<O>(In{q(-1, 8)})}, rational{O{q(-1, 2)}}); // ∛(−1/8) = −1/2 → −1
+    EXPECT_EQ(rational{math::cbrt<O>(In{q(-1, 8)})}, q(-1));
+}
+
+//---------------------------------------------------------------------------
+// An integer source on a grid it is not on rounds (or reports) exactly like the
+// same value given as a rational — never a silent truncation.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source) {
+    using N2  = inside<{{0, 10}, 2}, round_half_away>;
+    using N2f = inside<{{0, 10}, 2}, round_floor>;
+    EXPECT_EQ(rational{N2{3}}, rational{N2{q(3)}});
+    EXPECT_EQ(rational{N2{3}}, q(4)); // 1.5 notches → 2 (half away)
+    EXPECT_EQ(rational{N2f{3}}, q(2));
+    EXPECT_EQ(rational{N2{-0}}, q(0));
+
+    using Strict = inside<{{0, 10}, 2}>; // checked, no rounding mode
+    EXPECT_EQ(Strict::try_make(3).error(), error::rounding_error);
+    EXPECT_EQ(test::store_error<Strict>(test::at_run_time(3)), error::rounding_error);
+}
+
+TEST(ConsistencyTest, integer_source_rounds_on_every_path) {
+    using F = inside<{{0, 10}, 2}, round_half_away>;
+    EXPECT_EQ(rational{F{3}}, q(4));
+    EXPECT_EQ(rational{*F::try_make(3)}, q(4));
+    F b        = F{0.0};
+    b.with<>() = 3;
+    EXPECT_EQ(rational{b}, q(4));
+}
+
+//---------------------------------------------------------------------------
+// wrap folds modulo span + notch whatever the source type.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, integer_wrap_uses_span_plus_notch) {
+    using H = inside<{{0, 10}, per<2>}>; // span 10, notch 1/2 → modulus 10.5
+    EXPECT_EQ(rational{(H{12, wrap})}, rational{(H{q(12), wrap})});
+    EXPECT_EQ(rational{(H{12, wrap})}, q(3, 2));
+    using N2 = inside<{{0, 10}, 2}, wrap>; // modulus 12
+    EXPECT_EQ(rational{N2{22}}, rational{N2{q(22)}});
+    EXPECT_EQ(rational{N2{22}}, q(10));
+    using U = inside<{0, 10}, wrap>; // unit notch: modulus 11
+    EXPECT_EQ(rational{U{12}}, q(1));
+    EXPECT_EQ(rational{U{-1}}, q(10));
+}
+
+//---------------------------------------------------------------------------
+// wrap + rounding never leaves the grid: rounding up to Upper + notch is the
+// same point as Lower on the circle.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, wrap_then_round_stays_on_the_grid) {
+    using W = inside<{0, 8}, wrap | round_half_away>;
+    EXPECT_EQ(rational{W{q(17, 2)}}, q(0));  // 8.5 → 9 ≡ 0
+    EXPECT_EQ(rational{W{q(-3, 10)}}, q(0)); // -0.3 → 0
+    EXPECT_EQ(rational{W{q(-7, 10)}}, q(8)); // -0.7 → -1 ≡ 8
+    EXPECT_EQ(rational{W{q(39, 4)}}, q(1));  // 9.75 → 10 ≡ 1
+    using F = inside<{{0, 8}, 1}, round_half_away | wrap>;
+    EXPECT_EQ(rational{F{8.5}}, rational{0.0});
+    EXPECT_EQ(rational{F{-0.3}}, rational{0.0});
+    EXPECT_EQ(rational{F{-0.7}}, rational{8.0});
+}
+
+// An inside source with off-integer values wraps after rounding by the target's
+// policy, exactly like the same value given as a rational.
+TEST(ConsistencyTest, inside_source_wrap_rounds_first) {
+    using L = inside<{0, 10}, wrap | round_half_away>;
+    using R = inside<{{0, 20}, per<2>}>;
+    L a{0};
+    a = R{q(25, 2)};
+    EXPECT_EQ(rational{a}, rational{L{q(25, 2)}});
+    EXPECT_EQ(rational{a}, q(2)); // 12.5 → 13 ≡ 2
+}
+
+// the unsafe constructor keeps the target's storage layout.
+TEST(ConsistencyTest, unexact_cast_keeps_the_storage_layout) {
+    using D = inside<{5, 100}>;
+    EXPECT_EQ(rational{(D{7, unsafe})}, q(7));
+    using F = inside<{{0, 4}, per<2>}>;
+    EXPECT_EQ(rational{(F{1.5, unsafe})}, rational{1.5});
+}
+
+// Products and quotients deduce their own storage from the result grid.
+TEST(ConsistencyTest, results_deduce_their_storage) {
+    using D  = inside<{0, 10}>;
+    using H  = inside<{{0, 1}, per<2>}>;
+    using IX = inside<{1, 10}>;
+    EXPECT_EQ(rational{D{3} * H{q(1, 2)}}, q(3, 2));
+    auto dd = D{6} / D{3};
+    EXPECT_EQ(rational{*dd}, q(2));
+    auto ii = IX{6} / IX{3};
+    EXPECT_EQ(rational{ii}, q(2)); // zero-free divisor, quotient fits: a plain value
+}
+
+// A math auto-output deduces its own storage from its grid.
+TEST(ConsistencyTest, math_output_deduces_its_storage) {
+    using B8 = inside<{-128, 127}, round_half_away>;
+    EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
+}
+
+// A dyadic inside compared with an inside whose values are not exact in
+// double compares exactly, not after rounding the other side to double.
+TEST(ConsistencyTest, dyadic_vs_exact_comparison_is_exact) {
+    using F = inside<{{0, 2}, per<2>}>;
+    using C = inside<{{0, 2}, max_denominator{std::int64_t{1} << 53}}>; // continuous, rational raw
+    const C c{(q(1) + q(1, std::int64_t{1} << 53))};                    // 1 + 2^-53: rounds to 1.0
+    const F one{1};
+    EXPECT_FALSE(one == c);
+    EXPECT_TRUE(one < c);
+    EXPECT_TRUE(c > one);
+    EXPECT_TRUE(one == C{q(1)}); // equal values still compare equal
+}
+
+// fmod: exact result on the gcd notch, sized by both operands, any divisor sign.
+TEST(ConsistencyTest, fmod_output_grid_is_exact_and_large_enough) {
+    using X  = inside<{-10, 10}, round_half_away>;
+    using Yn = inside<{-10, -1}, round_half_away>; // negative divisor
+    EXPECT_EQ(rational{math::fmod(X{7}, Yn{-8})}, q(7));
+    using Yh = inside<{{1, 4}, per<2>}, round_half_away>;
+    EXPECT_EQ(rational{math::fmod(X{-3}, Yh{q(5, 2)})}, q(-1, 2)); // exact, sign of x
+    EXPECT_EQ(rational{math::fmod(X{3}, Yh{q(5, 2)})}, q(1, 2));
+    using X2 = inside<{{0, 10}, 2}, round_half_away>; // notch 2 vs divisor notch 1
+    using Y3 = inside<{1, 3}, round_half_away>;
+    EXPECT_EQ(rational{math::fmod(X2{8}, Y3{3})}, q(2));
+}
+
+// fmod with a divisor grid that spans 0 reports a zero divisor like `/`.
+TEST(ConsistencyTest, fmod_zero_divisor_is_an_error_value) {
+    using X = inside<{-10, 10}, round_half_away>;
+    auto r  = math::fmod(X{7}, X{0});
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error(), error::division_by_zero);
+    EXPECT_EQ(rational{*math::fmod(X{7}, X{-3})}, q(1));
+}
+
+// Continuous (rational) arithmetic is total: the bounds size the result.
+// A result keeps the checked policy.
+TEST(ConsistencyTest, continuous_arithmetic_is_total) {
+    using E = inside<{{0, 1}, max_denominator{1000}}>;
+    static_assert(!detail::is_expected_v<decltype(E{q(1, 3)} + E{q(1, 7)})>);
+    EXPECT_EQ(rational{E{q(1, 3)} + E{q(1, 7)}}, q(10, 21));
+    using D = inside<{0, 10}, checked>;
+    static_assert(has_flag(policy_of<decltype(D{1} + D{2})>, checked));
+}
+
+//---------------------------------------------------------------------------
+// Compound operators the grids cannot prove name a channel, which reports —
+// never a silent no-op, never std::bad_expected_access.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
+    using E = inside<{{0, 1}, max_denominator{1000}}, checked>;
+    static_assert(!test::can_add<E, E>);
+    E     e{q(1, 1000)};
+    error ec{};
+    e.on_error(ec) += E{q(1, 999)}; // 1999/999000 is off the grid
+    EXPECT_EQ(ec, error::rounding_error);
+    EXPECT_EQ(rational{e}, q(1, 1000)); // left unchanged
+    ec = error{};
+    e.on_error(ec) *= E{q(1, 999)};
+    EXPECT_EQ(ec, error::rounding_error);
+}
+
+// The raw += fast path honours unsafe like plain assignment does.
+TEST(ConsistencyTest, compound_fast_path_honours_unsafe) {
+    using X = inside<{0, 10}, unsafe>;
+    X x{10};
+    EXPECT_NO_THROW(x += 1_ins);
+    X y{10};
+    EXPECT_NO_THROW(y = y + 1_ins);
+}
+
+// unsafe on either operand silences a zero divisor in /= and %=, as in
+// div/mod; policy_ref /= routes a zero divisor through on_error, or skips it
+// under unsafe.
+TEST(ConsistencyTest, zero_divisor_handling_agrees) {
+    using X = inside<{0, 10}, checked | round_toward_zero>;
+    using Z = inside<{0, 10}, unsafe>;
+    X x{6};
+    EXPECT_NO_THROW(x /= Z{0});
+    EXPECT_NO_THROW(x %= Z{0});
+    static_assert(!test::can_div<X, X>); // a divisor that may be 0: a channel
+
+    bool called = false;
+    X    b{6};
+    b.on_error([&](auto&, error e, auto) { called = (e == error::division_by_zero); }) /= X{0};
+    EXPECT_TRUE(called);
+    EXPECT_NO_THROW(b.with<unsafe>() /= X{0});
+}
+
+// unsafe is the one opt-out of the runtime checks, and it wins over checked
+// (the default policy's own bit), so a per-call with<unsafe>() opts a
+// default inside out.
+TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
+    static_assert(detail::is_checked(checked) && detail::is_checked(clamp | round_half_away) &&
+                  !detail::is_checked(unsafe));
+    static_assert(!is_checked(unsafe) && !is_checked(checked | unsafe));
+    static_assert(range_handled(checked) && range_handled(clamp | unsafe) && range_handled(wrap | unsafe));
+    static_assert(!range_handled(unsafe) && !range_handled(checked | unsafe));
+    static_assert(std::numeric_limits<inside<{0, 10}>>::traps);
+    static_assert(!std::numeric_limits<inside<{0, 10}, checked | unsafe>>::traps);
+
+    using D = inside<{0, 10}>;
+    D b{6};
+    EXPECT_NO_THROW(b.with<unsafe>() /= D{0});
+    EXPECT_NO_THROW(b.with<unsafe>() %= D{0});
+    EXPECT_EQ(b, 6);
+    static_assert(!test::can_div<D, D> && !test::can_div<decltype(b.with()), D>);
+    error ec{};
+    b.on_error(ec) /= D{0};
+    EXPECT_EQ(ec, error::division_by_zero);
+}
+
+// Every store, operator and free function that cannot compile is deleted, so
+// traits and requires probes answer false: a raw scalar operand, a disjoint
+// or off-notch store, and a hook passed to free arithmetic.
+template <class A, class B>
+concept adds = requires(A a, B b) { a + b; };
+template <class A, class B>
+concept add_assigns = requires(A& a, B b) { a += b; };
+template <class A, class H>
+concept adds_with = requires(A a, H h) { add(a, a, h); };
+TEST(ConsistencyTest, constraints_are_honest) {
+    using I = inside<{0, 10}>;
+    static_assert(!adds<I, int> && !adds<int, I> && !adds<I, double> && !add_assigns<I, int>);
+    static_assert(adds<I, I> && add_assigns<inside<{0, 20}, clamp>, I>);
+    static_assert(!std::is_constructible_v<I, inside<{20, 30}>>); // disjoint
+    static_assert(!std::is_convertible_v<inside<{20, 30}>, I>);
+    static_assert(!std::is_assignable_v<I&, inside<{{0, 1}, per<2>}>>); // off the notch
+    static_assert(!std::is_constructible_v<I, std::expected<inside<{20, 30}>, error>>);
+    static_assert(std::is_constructible_v<inside<{0, 10}, clamp>, inside<{20, 30}>>);
+    static_assert(std::is_assignable_v<inside<{0, 10}, round_half_away>&, inside<{{0, 1}, per<2>}>>);
+    static_assert(adds_with<I, decltype(make_policy<round_floor>())>);
+    static_assert(!adds_with<I, decltype(on_error([](auto&, auto, auto) {}))>);
+}
+
+// A flag is a template argument, combines with |, and is a call's policy:
+// div(a, b, round_floor), B{v, round_floor}. inside<G, flag> is the same type
+// as inside<G, bits>.
+TEST(ConsistencyTest, flags_are_call_policies) {
+    // checked has no bits: the default policy has one spelling and one type.
+    static_assert(std::is_same_v<inside<{0, 10}, checked>, inside<{0, 10}>>);
+    static_assert(std::is_same_v<inside<{0, 10}, checked>, inside<{0, 10}>>);
+    static_assert(policy_of<inside<{0, 10}>> == 0);
+    static_assert(std::is_same_v<inside<{0, 10}, clamp | round_floor>,
+                                 inside<{0, 10}, (1ull << 32) | (1ull << 6) | (1ull << 4)>>);
+    static_assert(policy_flag{round_toward_zero} == policy_flag{round_toward_zero});
+    using W = inside<{0, 10}>;
+    using D = inside<{1, 4}>;
+    static_assert(div(W{7}, D{2}, round_floor) == 3 && div(W{7}, D{2}, round_ceil) == 4);
+    static_assert(div(W{7}, D{2}, round_floor) == div(W{7}, D{2}, make_policy<round_floor>()));
+    static_assert(divmod(W{7}, D{2}, round_floor).Remainder == 1);
+    using halves = inside<{{0, 10}, per<2>}>;
+    static_assert(W{halves{3.5}, round_floor} == 3 && W{halves{3.5}, round_ceil} == 4);
+    static_assert(inside<{0, 10}, clamp>{20, round_floor} == 10);
+    error ec{};
+    EXPECT_EQ(div(W{7}, inside<{0, 4}>{0}, make_policy<round_floor>(ec)).error(), error::division_by_zero);
+    EXPECT_EQ(ec, error::division_by_zero);
+}
+
+// A result keeps the policy its operands share (a default-policy point is
+// neutral; mixed policies give the default), so a rounding mode survives an
+// intermediate step.
+TEST(ConsistencyTest, results_keep_the_shared_policy) {
+    constexpr inside<{0, 10}, round_floor> a{7};
+    // (`/` is exact whatever the operands round; the mode rounds a store.)
+    static_assert(a / 2_ins == 3.5_ins && decltype(a){a / 2_ins} == 3 && decltype(a){(a + 0_ins) / 2_ins} == 3);
+    static_assert(policy_of<decltype(a + a)> == round_floor && policy_of<decltype(a - a)> == round_floor);
+    static_assert(policy_of<decltype(a + inside<{0, 10}>{1})> == 0); // mixed: the default
+    static_assert(policy_of<decltype(a + inside<{0, 10}, clamp>{1})> == 0);
+    static_assert(policy_of<decltype(cursor<inside<{0, 10}, clamp>>{} + 1_ins)> == clamp); // no cursor marker
+    static_assert(policy_of<std::common_type_t<decltype(a), inside<{0, 20}, round_floor>>> == round_floor);
+}
+
+// An inside with a rational would leave the grid (operator rational() and
+// rational arithmetic): deleted, compound assignment too. A point keeps the
+// grid.
+template <class A, class B>
+concept rational_mix = requires(A a, B b) { a + b; } || requires(A a, B b) { b - a; } ||
+                       requires(A a, B b) { a * b; } || requires(A a, B b) { a / b; } || requires(A a, B b) { a % b; };
+template <class A, class B>
+concept rational_compound = requires(A& a, B b) { a += b; };
+TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
+    using I = inside<{{0, 10}, per<4>}>;
+    static_assert(!rational_mix<I, rational> && !rational_mix<inside<{0, 10}>, rational>);
+    static_assert(!rational_compound<I, rational>);
+    static_assert(I{2} + just<1, 2> == 2.5_r);
+    inside<{{0, 10}, per<4>}, clamp> x{2}; // (x + 0.5 may pass 10: clamp names it)
+    x += 0.5_ins;
+    EXPECT_EQ(x, 2.5_r);
+}
+
+// Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5
+// rounds to 9 and is out of range.
+TEST(ConsistencyTest, store_rounds_before_the_range_check) {
+    using O = inside<{0, 8}, checked | round_half_away>;
+    EXPECT_EQ(rational{O{q(33, 4)}}, q(8));
+    EXPECT_EQ(test::store_error<O>(test::at_run_time(q(17, 2))), error::overflow);
+}
+
+// NaN / ±inf go through the policy like any other bad value: the error-code
+// constructor and try_make report not_finite, clamp saturates an infinity.
+TEST(ConsistencyTest, non_finite_input_goes_through_the_policy) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    using X          = inside<{0, 10}, round_half_away | checked>;
+    EXPECT_EQ(X::try_make(nan).error(), error::not_finite);
+    auto t = X::try_make(inf);
+    ASSERT_FALSE(t.has_value());
+    EXPECT_EQ(t.error(), error::not_finite);
+    EXPECT_EQ(test::store_error<X>(test::at_run_time(nan)), error::not_finite);
+
+    using C = inside<{0, 10}, round_half_away | clamp>;
+    EXPECT_EQ(rational{test::store<C>(test::at_run_time(inf))}, q(10));
+    EXPECT_EQ(rational{test::store<C>(test::at_run_time(-inf))}, q(0));
+    using F = inside<{{0, 10}, per<2>}>;
+    EXPECT_EQ(F::try_make(nan).error(), error::not_finite);
+    using FC = inside<{{0, 10}, per<2>}, clamp>;
+    EXPECT_EQ(rational{test::store<FC>(test::at_run_time(inf))}, rational{10.0});
+}
+
+// pow: a result past Out reports overflow, and saturates under clamp.
+TEST(ConsistencyTest, pow_past_the_output_range) {
+    using B           = inside<{1, 4}, round_half_away>;
+    using E           = inside<{0, 20}, round_half_away>;
+    using small       = inside<{0, 1000}, round_half_away>;
+    using small_clamp = inside<{0, 1000}, round_half_away | clamp>;
+    // Past Out: its store reports overflow (the handler throws).
+    EXPECT_EQ(test::reported([] { return math::pow<small>(B{4}, E{20}); }).error(), error::overflow); // 2^40
+    EXPECT_EQ(rational{math::pow<small_clamp>(B{4}, E{20})}, q(1000));
+    // The deduced output covers every corner: 4^20 fits it.
+    EXPECT_EQ(rational{math::pow(B{4}, E{20})}, rational{std::uint64_t{1} << 40});
+}
+
+// conversion_rounds sees the notch of a non-dyadic notched grid.
+TEST(ConsistencyTest, trunc_predicate_on_thirds_grid) {
+    using E = inside<{{0, 1}, per<3>}>;
+    EXPECT_TRUE(conversion_rounds<E>(0.5));
+    EXPECT_FALSE(conversion_rounds<E>(q(1, 3)));
+}
+
+// numeric_limits reports the rounding mode stores use, and integer-ness of any
+// integer grid.
+TEST(ConsistencyTest, numeric_limits_round_style_and_is_integer) {
+    static_assert(std::numeric_limits<inside<{0, 10}, round_floor>>::round_style == std::round_toward_neg_infinity);
+    static_assert(std::numeric_limits<inside<{0, 10}, round_ceil>>::round_style == std::round_toward_infinity);
+    static_assert(std::numeric_limits<inside<{0, 10}, round_half_away>>::round_style == std::round_to_nearest);
+    static_assert(std::numeric_limits<inside<{0, 10}, round_toward_zero>>::round_style == std::round_toward_zero);
+    static_assert(std::numeric_limits<inside<{{0, 10}, 2}>>::is_integer);
+    static_assert(!std::numeric_limits<inside<{{0, 10}, per<2>}>>::is_integer);
+    SUCCEED();
+}
+
+//---------------------------------------------------------------------------
+// Feature symmetry.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, two_input_math_is_symmetric_in_its_types) {
+    using A = inside<{{-1, 1}, per<16>}, round_half_away>;
+    using B = inside<{{-2, 2}, per<64>}, round_half_away>;
+    auto t  = math::atan2(A{q(1, 2)}, B{q(1, 2)}); // mixed input types
+    EXPECT_EQ(rational{t}, rational{math::atan2(B{q(1, 2)}, B{q(1, 2)})});
+    static_assert(std::same_as<decltype(math::hypot(A{0}, B{0})), decltype(math::hypot(B{0}, A{0}))>);
+}
+
+// No store takes a std::expected (construction, =, compound ops): the
+// expected is checked and unwrapped explicitly.
+template <class X, class E>
+concept compound_takes = requires(X& x, E e) { x += e; } || requires(X& x, E e) { x *= e; };
+TEST(ConsistencyTest, compound_ops_reject_expected_rhs) {
+    using X = inside<{1, 10}, checked | round_toward_zero>;
+    using Y = inside<{0, 10}, checked | round_toward_zero>; // divisor may be 0
+    static_assert(!compound_takes<X, decltype(Y{6} / Y{2})>);
+    static_assert(!std::is_constructible_v<X, decltype(Y{6} / Y{2})>);
+    static_assert(!std::is_assignable_v<X&, decltype(Y{6} / Y{2})>);
+    X    x{2};
+    auto q3 = Y{6} / Y{2};
+    ASSERT_TRUE(q3.has_value());
+    error ec{}; // (x + 3 may pass x's grid: a reported store)
+    x.on_error(ec) += *q3;
+    EXPECT_EQ(rational{x}, q(5));
+    EXPECT_FALSE(X::try_make(Y{6} / Y{0}).has_value()); // try_make passes the error on
+}
+
+TEST(ConsistencyTest, casts_take_inside_sources) {
+    using Src = inside<{{0, 20}, per<2>}>;
+    using Dst = inside<{0, 10}>;
+    EXPECT_EQ(rational{*exact_cast<Dst>(Src{q(4)})}, q(4));
+    EXPECT_EQ(exact_cast<Dst>(Src{q(9, 2)}).error(), error::rounding_error); // off notch
+    EXPECT_EQ(exact_cast<Dst>(Src{q(12)}).error(), error::overflow);         // out of range
+    EXPECT_EQ((rational{Dst{Src{q(4)}, unsafe}}), q(4));
+}
+
+TEST(ConsistencyTest, midpoint_across_grids) {
+    using A = inside<{0, 10}>;
+    using B = inside<{{0, 10}, per<2>}>;
+    EXPECT_EQ(rational{midpoint(A{3}, B{q(4)})}, q(7, 2));
+}
+
+// Round, then range-check: a value just outside the interval that the policy
+// rounds onto an endpoint is stored; one that rounds outside still reports.
+TEST(ConsistencyTest, rounding_runs_before_the_range_check) {
+    using bin = inside<{0, 9}, round_floor>;
+    EXPECT_EQ(rational{bin{9.55}}, q(9));       // double source
+    EXPECT_EQ(rational{bin{q(191, 20)}}, q(9)); // rational source
+    using ms = inside<{{0, 100}, per<10>}, round_half_away>;
+    EXPECT_EQ(rational{test::store<bin>(ms{95.5} / just<10>)}, q(9)); // inside source
+    EXPECT_EQ(bin::try_make(10.0).error(), error::overflow);          // floors to 10: outside
+
+    using db = inside<{{-24, 12}, per<2>}, round_half_away>;
+    EXPECT_EQ(rational{db{-24.1}}, q(-24));
+    EXPECT_EQ(db::try_make(-24.3).error(), error::overflow); // rounds to -24.5
+
+    // Without a rounding mode nothing rounds: out of range is an overflow.
+    using strict = inside<{0, 9}>;
+    EXPECT_EQ(strict::try_make(9.5).error(), error::overflow);
+
+    // A clamp policy sees no overshoot when rounding lands inside.
+    using cl = inside<{0, 9}, clamp | round_floor>;
+    cl  c{0};
+    int fired                                 = 0;
+    c.on_clamp([&](auto&, auto) { ++fired; }) = 9.5;
+    EXPECT_EQ(rational{c}, q(9));
+    EXPECT_EQ(fired, 0);
+}
+
+TEST(ConsistencyTest, double_source_rounds_before_the_range_check) {
+    using F = inside<{{0, 1}, per<4>}, round_half_away>;
+    EXPECT_EQ(rational{F{1.1}}, rational{1.0});
+    EXPECT_EQ(F::try_make(1.2).error(), error::overflow); // rounds to 1.25
+    using Ff = inside<{{0, 1}, per<4>}, round_floor>;
+    EXPECT_EQ(rational{Ff{1.2}}, rational{1.0}); // floors in range
+}
+
+TEST(ConsistencyTest, predicates_round_before_the_range_check) {
+    using bin = inside<{0, 9}, round_floor>;
+    EXPECT_FALSE(conversion_overflows<bin>(9.5));
+    EXPECT_TRUE(conversion_rounds<bin>(9.5));
+    EXPECT_TRUE(conversion_overflows<bin>(10.0));
+    EXPECT_FALSE(conversion_rounds<bin>(10.0));
+    using strict = inside<{0, 9}>;
+    EXPECT_TRUE(conversion_overflows<strict>(9.5));
+    EXPECT_FALSE(conversion_rounds<strict>(9.5));
+}
+
+// A point inside's value is its type: its raw is empty (1 byte standalone, 0 as
+// a [[no_unique_address]] member), and an integer point is integer-stored, so
+// `%` and rounding `/` with a literal take the native integer paths.
+namespace {
+struct with_point {
+    [[no_unique_address]] decltype(just<440>) Pitch;
+    std::uint32_t                             Frames;
+};
+} // namespace
+
+TEST(ConsistencyTest, point_insides_store_nothing) {
+    static_assert(sizeof(5_ins) == 1);
+    static_assert(sizeof(with_point) == sizeof(std::uint32_t));
+    static_assert(std::is_same_v<decltype(5_ins)::raw_type, point_slot>);
+    static_assert(std::is_same_v<decltype(just<1, 3>)::raw_type, point_slot>);
+    static_assert(inside_assignable<inside<{{0, 9}, 3}>, decltype(3_ins)>);
+    static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(1_ins)>);
+
+    using val = inside<{0, 100}, round_toward_zero>;
+    auto r    = val{17} % 5_ins; // divisor excludes 0: plain
+    static_assert(!is_expected_v<decltype(r)>);
+    static_assert(grid_of<decltype(r)> == grid{0, 4});
+    EXPECT_EQ(rational{r}, q(2));
+    auto d = test::rdiv(val{17}, 5_ins);
+    static_assert(!is_expected_v<decltype(d)>);
+    EXPECT_EQ(rational{d}, q(3));
+    EXPECT_EQ(rational{-5_ins}, q(-5));
+    EXPECT_EQ((rational{just<1, 3>}), q(1, 3));
+    EXPECT_EQ((rational{val{17} * just<1, 2>}), q(17, 2));
+}
+
+//---------------------------------------------------------------------------
+// The double fast paths of integer storage (store from a double, decode to a
+// double) agree with the exact rational path on every input.
+//---------------------------------------------------------------------------
+namespace {
+// Grid points, ties, one ulp either side of each, and pseudo-random values.
+template <typename T>
+std::vector<double> probe_doubles() {
+    constexpr double lo  = static_cast<double>(lower64<T>);
+    constexpr double hi  = static_cast<double>(upper64<T>);
+    constexpr double nd  = static_cast<double>(notch64<T>);
+    auto             ulp = [](double v, int s) {
+        return std::bit_cast<double>(std::bit_cast<std::int64_t>(v) + (v < 0 ? -s : s));
+    };
+    std::vector<double> out;
+    for (double v = lo; v <= hi; v += nd * 37)
+        for (double w : {v, v + nd / 2, v - nd / 2})
+            for (double x : {w, ulp(w, 1), ulp(w, -1)})
+                if (x >= lo && x <= hi)
+                    out.push_back(x);
+    std::uint64_t s = 0x9E3779B97F4A7C15;
+    for (int i = 0; i < 2000; ++i) {
+        s = s * 6364136223846793005u + 1442695040888963407u;
+        out.push_back(lo + (hi - lo) * static_cast<double>(s >> 11) * 0x1p-53);
+    }
+    return out;
+}
+
+template <typename T>
+void expect_double_store_exact() {
+    for (double d : probe_doubles<T>())
+        EXPECT_EQ(test::store<T>(d).raw(), test::store<T>(rational{d}).raw()) << "d = " << d;
+}
+
+template <typename T>
+void expect_double_decode_exact() {
+    for (double d : probe_doubles<T>()) {
+        const T t = test::store<T>(rational{d});
+        EXPECT_EQ(static_cast<double>(t), static_cast<double>(rational{t})) << "d = " << d;
+    }
+}
+} // namespace
+
+TEST(ConsistencyTest, double_store_into_integer_storage_matches_rational) {
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_half_away>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_floor>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_ceil>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_half_even>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_toward_zero>>();
+    expect_double_store_exact<inside<{{0, 4}, per<65536>}, round_half_away>>();
+    expect_double_store_exact<inside<{{-4, 4}, per<2>}, round_half_even>>();
+    expect_double_store_exact<inside<{{-100, 100}, per<1000>}, round_half_away>>();           // not dyadic
+    expect_double_store_exact<inside<{{-6, 6}, rational{3, 4}}, round_half_away>>();          // dyadic, notch not 2^k
+    expect_double_store_exact<inside<{{rational{1, 4}, rational{17, 4}}, 1}, round_floor>>(); // unanchored
+}
+
+TEST(ConsistencyTest, double_store_into_integer_storage_reports_off_grid) {
+    using strict = inside<{{-8, 8}, per<16384>}>;
+    EXPECT_EQ(strict::try_make(0.1).error(), error::rounding_error);
+    EXPECT_EQ(rational{strict::try_make(0.25).value()}, q(1, 4));
+    EXPECT_EQ(rational{strict::try_make(-8.0).value()}, q(-8));
+}
+
+TEST(ConsistencyTest, integer_storage_decodes_to_the_nearest_double) {
+    expect_double_decode_exact<inside<{{-8, 8}, per<16384>}, round_half_away>>();
+    expect_double_decode_exact<inside<{{-100, 100}, per<1000>}, round_half_away>>();
+    expect_double_decode_exact<inside<{{-10, 10}, per<3>}, round_half_away>>();
+    expect_double_decode_exact<inside<{{0, 7}, rational{7, 1024}}, round_half_away>>();
+}
+
+// A fine-denominator source whose signed value index overflows int64 rounds in
+// value space too: `round_toward_zero` truncates toward zero, also below zero.
+TEST(ConsistencyTest, round_toward_zero_truncates_fine_negative_rationals) {
+    using T                      = inside<{{-8, 8}, per<16384>}, round_toward_zero>;
+    constexpr std::int64_t k2_61 = std::int64_t{1} << 61;
+    EXPECT_EQ((rational{T{rational{-55 * (std::int64_t{1} << 47) + 1, k2_61}}}), q(-54, 16384));
+    EXPECT_EQ((rational{T{rational{-55 * (std::int64_t{1} << 47) - 1, k2_61}}}), q(-55, 16384));
+    EXPECT_EQ((rational{T{rational{55 * (std::int64_t{1} << 47) + 1, k2_61}}}), q(55, 16384));
+}
+
+//---------------------------------------------------------------------------
+// Continuous grids after the storage change (2026-10-10 sweep).
+//---------------------------------------------------------------------------
+// A continuous quotient is exact: the integer division paths need integer
+// values, which a continuous grid does not have whatever its limits.
+TEST(ConsistencyTest, continuous_division_is_exact) {
+    using C = inside<{{1, 10}, max_denominator{10}}, round_half_away>;
+    EXPECT_EQ(rational{C{q(7, 2)} / C{q(3, 2)}}, q(7, 3));
+}
+
+// Wrapping a continuous source folds its value, not its numerator.
+TEST(ConsistencyTest, continuous_source_wraps_by_value) {
+    using W = inside<{0, 3}, wrap | round_half_away>;
+    W w{0};
+    w = inside<{{0, 10}, max_denominator{2}}>{q(11, 2)}; // 5.5 ≡ 1.5 (mod 4) → 2
+    EXPECT_EQ(rational{w}, q(2));
+}
+
+// hull with a point keeps the lattice: max/min with a constant stay integer.
+TEST(ConsistencyTest, hull_with_a_point_keeps_the_lattice) {
+    const auto m = max(inside<{0, 100}>{3}, just<0>);
+    static_assert(integer_storage<std::remove_cvref_t<decltype(m)>>);
+    EXPECT_EQ(rational{m}, q(3));
+    const auto two = max(just<5>, just<rational{1, 2}>);
+    static_assert(notch_of<std::remove_cvref_t<decltype(two)>> == rational{9, 2});
+    EXPECT_EQ(rational{two}, q(5));
+}
+
+// Clamping an inside into a continuous target stores the exact endpoint.
+TEST(ConsistencyTest, clamp_into_continuous_stores_the_endpoint) {
+    inside<{{rational{1, 2}, rational{21, 2}}, max_denominator{2}}, clamp> c{q(1, 2)};
+    c = inside<{0, 20}>{15};
+    EXPECT_EQ(rational{c}, q(21, 2));
+    c = inside<{-5, 0}>{-3};
+    EXPECT_EQ(rational{c}, q(1, 2));
+}
+
+// Notched → continuous needs no rounding mode; continuous → notched is checked on store.
+TEST(ConsistencyTest, continuous_sides_are_assignable) {
+    inside<{{0, 1}, max_denominator{10}}> c{0};
+    c = inside<{{0, 1}, per<10>}>{q(3, 10)};
+    EXPECT_EQ(rational{c}, q(3, 10));
+    inside<{{0, 10}, 2}> e{0};
+    using evens = inside<{{0, 10}, 2}>;
+    using tenth = inside<{{0, 10}, max_denominator{10}}>;
+    e           = test::store<evens>(tenth{4});
+    EXPECT_EQ(rational{e}, q(4));
+    EXPECT_EQ(test::store_error<evens>(tenth{3}), error::rounding_error);
+}
+
+TEST(ConsistencyTest, hash_covers_every_storage) {
+    EXPECT_EQ(std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>),
+              std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>));
+    using C = inside<{{0, 1}, max_denominator{10}}>;
+    EXPECT_EQ(std::hash<C>{}(C{q(1, 3)}), std::hash<C>{}(C{q(1, 3)}));
+}
+
+// Signed fixed-point division under round_toward_zero stays on the operands' notch, rounded
+// like the exact quotient (signed Q15: -1..1 in steps of 2^-15).
+TEST(ConsistencyTest, signed_qformat_division_stays_on_the_notch) {
+    using q15 = inside<{{-1, 1}, per<32768>}, round_half_away>;
+    auto r    = div(q15{q(1, 2)}, q15{q(3, 4)}, round_half_away).value();
+    static_assert(notch_of<decltype(r)> == rational{1, 32768});
+    static_assert(!rational_storage<decltype(r)>);
+    EXPECT_EQ(rational{r}, q(21845, 32768)); // 2/3 · 2^15 = 21845.33 → 21845
+    EXPECT_EQ(rational{(test::rdiv(q15{q(-1, 2)}, q15{q(3, 4)})).value()}, q(-21845, 32768));
+    using fl = inside<{{-1, 1}, per<32768>}, round_floor>;
+    EXPECT_EQ(rational{(test::rdiv(fl{q(-1, 2)}, fl{q(3, 4)})).value()}, q(-21846, 32768));
+    EXPECT_EQ((test::rdiv(q15{q(1, 2)}, q15{0})).error(), error::division_by_zero);
+}

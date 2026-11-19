@@ -12,16 +12,15 @@
 //   - A sweep in 3 dB steps (a cursor over the level's number grid) showing
 //     dB → linear → dB recovers the input at every step.
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
 #include <print>
 using std::println;
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 namespace {
 // A level: dimensionless, but a kind of its own, so it never turns into a
@@ -45,7 +44,7 @@ static constexpr gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t
 static constexpr db_t linear_to_db(gain_t amp) { return db_t{math::log10<per<40>>(amp) * (just<20> * dB), clamp}; }
 
 int main() {
-    // `std::println` works on inside / rational because `beman/inside/inside/io.hpp`
+    // `std::println` works on inside / rational because `inside/inside/io.hpp`
     // ships `std::formatter` specializations for both. Empty `{}` keeps the
     // exact rational rendering — same string `operator<<` would produce.
     println("dB → linear → dB round-trip:");

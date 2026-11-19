@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Quadrature oscillator: a wrapping phase accumulator + beman::inside::math::sin/cos.
+// Quadrature oscillator: a wrapping phase accumulator + ins::math::sin/cos.
 //
 // Demonstrates:
 //   - A 16-bit phase counter as `quantity<slot, inside<{0, 65535}, wrap>>`:
@@ -14,13 +14,12 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 namespace {
 // One full turn is 65536 slots: a slot is 2π/65536 = π/32768 rad.

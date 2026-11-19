@@ -5,9 +5,9 @@
 // runtime surprise. The equivalent `int` code (h11_narrowing.cpp) is
 // accepted silently.
 
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 int main()
 {

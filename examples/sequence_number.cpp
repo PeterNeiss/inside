@@ -12,16 +12,15 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/inside/formats.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/inside/formats.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
-using namespace beman::inside::formats;
-using namespace beman::inside::units;
+using namespace ins::formats;
 
 namespace {
 inline constexpr auto pkt = base_unit<"pkt", "packets">;

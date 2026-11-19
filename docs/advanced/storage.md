@@ -1,9 +1,5 @@
 # Storage
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 An inside stores one private member, its **raw**. The raw's type follows from
 the grid alone; no flag chooses it. This page gives the rules, grids past 64
 bits, and raw access. [Grids](../guide/grids.md) has the short version;

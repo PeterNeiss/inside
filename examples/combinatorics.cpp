@@ -16,11 +16,11 @@
 #include <iostream>
 #include <string>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/math.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 // The first and last 12 of a number's digits.
 std::string digits(const std::string& s) {

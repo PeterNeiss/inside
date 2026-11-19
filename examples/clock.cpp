@@ -12,13 +12,12 @@
 #include <array>
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 namespace {
 // Calendar units of our own: a 30-day month, a 12-month year, a 7-day week.

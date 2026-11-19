@@ -1,9 +1,5 @@
 # Documentation
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The pages come in three levels. Read [Getting started](getting-started.md)
 first; it introduces every idea the other pages build on.
 
@@ -51,7 +47,7 @@ The details behind the guides, and topics most programs never need.
 | [Roadmap](roadmap.md) | what is not implemented, and why |
 | [Resources](resources.md) | prior art, a feature comparison, talks |
 | [Adopting safe numbers](adoption.md) | why safer number types are hard to adopt |
-| [*int considered harmful*](int-considered-harmful.pdf) | the paper behind the library |
+| [*int considered harmful*](int-considered-harmful.tex) | the paper behind the library (LaTeX: `pdflatex int-considered-harmful.tex`) |
 | [Proposals](proposal/) | three draft WG21 papers: the number, quantities, math |
 
 Generated reports: [performance](performance.md), [math accuracy](accuracy.md)
@@ -61,21 +57,21 @@ and the [certified math pairs](certified.md).
 
 | Header | Holds |
 |---|---|
-| `<beman/inside/inside.hpp>` | the number: `inside`, grids, policies, arithmetic, casts, ranges, `cursor`, `std::hash` and `std::numeric_limits` |
-| `<beman/inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
-| `<beman/inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `uq8_8` …, and the counters |
-| `<beman/inside/inside/random.hpp>` | `uniform<B>(rng)` |
-| `<beman/inside/inside/mdspan.hpp>` | `std::mdspan` support: `extents_of`, `index_for`, `indices`, the accessors, `sum`, `dot`, the matrix products |
-| `<beman/inside/math.hpp>` | `beman::inside::math`: the functions and the constants |
-| `<beman/inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
-| `<beman/inside/units.hpp>` | `beman::inside::units`: the machinery and the SI and ISQ catalog |
-| `<beman/inside/units/core.hpp>` | the machinery alone, enough for units of your own |
-| `<beman/inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |
-| `<beman/inside/units/math.hpp>` | math on quantities: roots of units, angles in degrees, `value_cast` across π |
-| `<beman/inside/units/random.hpp>` | `uniform<Q>(rng)` |
-| `<beman/inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `units::view_in` |
-| `<beman/inside/units/constants.hpp>` | the physical constants as quantities |
-| `<beman/inside/units/geoalg.hpp>` | geometric algebra: `multivector`, `wedge`, the contractions, `reverse`, `grade<K>`, `inverse`, `dual`, `regressive` |
+| `<inside/inside.hpp>` | the number: `inside`, grids, policies, arithmetic, casts, ranges, `cursor`, `std::hash` and `std::numeric_limits` |
+| `<inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
+| `<inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `uq8_8` …, and the counters |
+| `<inside/inside/random.hpp>` | `uniform<B>(rng)` |
+| `<inside/inside/mdspan.hpp>` | `std::mdspan` support: `extents_of`, `index_for`, `indices`, the accessors, `sum`, `dot`, the matrix products |
+| `<inside/math.hpp>` | `ins::math`: the functions and the constants |
+| `<inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
+| `<inside/units.hpp>` | quantities: the machinery and the SI and ISQ catalog |
+| `<inside/units/core.hpp>` | the machinery alone, enough for units of your own |
+| `<inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |
+| `<inside/units/math.hpp>` | math on quantities: roots of units, angles in degrees, `value_cast` across π |
+| `<inside/units/random.hpp>` | `uniform<Q>(rng)` |
+| `<inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `view_in` |
+| `<inside/units/constants.hpp>` | the physical constants as quantities |
+| `<inside/units/geoalg.hpp>` | geometric algebra: `multivector`, `wedge`, the contractions, `reverse`, `grade<K>`, `inverse`, `dual`, `regressive` |
 
 The [single header](advanced/single-header.md) holds all of them.
 

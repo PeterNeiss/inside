@@ -12,14 +12,13 @@
 #include <format>
 #include <iostream>
 
-#include <beman/inside/math.hpp>
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_half_away>; // positive: log10 needs it
 using length        = quantity<si::metre, length_number>;

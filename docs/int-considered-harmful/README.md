@@ -1,6 +1,6 @@
 # Programs for "int considered harmful"
 
-Every listing and every output block in [`../int-considered-harmful.pdf`](../int-considered-harmful.pdf)
+Every listing and every output block in [`../int-considered-harmful.tex`](../int-considered-harmful.tex)
 comes from a program in this directory. Nothing in the paper was written by
 hand; each block was captured by compiling and running the corresponding file.
 
@@ -25,7 +25,7 @@ g++-16 -std=c++26 -freflection -O3 -mfma -DNDEBUG -I ../../include p04_math_cost
 
 The committed single header (`../../single_include`) holds `io.hpp`,
 `math.hpp` and `units.hpp` as well; to build a program against it, keep only the
-`#include <beman/inside/inside.hpp>` line and use `-I ../../single_include`.
+`#include <inside/inside.hpp>` line and use `-I ../../single_include`.
 
 ## Programs that are meant to fail
 
@@ -55,7 +55,7 @@ unchecked native. `p03_check_elision.cpp` shows where `inside`'s compile-time
 range information actually pays: on a chain of operations it emits zero runtime
 checks where the native checked type needs three.
 
-`p04_math_cost.cpp` measures what correct rounding costs: `beman::inside::math`
+`p04_math_cost.cpp` measures what correct rounding costs: `ins::math`
 onto the output grid deduced from a 2^-14 input, and onto grids as fine as a
 `double` (2^-40 to 2^-52), against `<cmath>`.
 
@@ -76,7 +76,7 @@ objdump -d --no-show-raw-insn -C p01.o
 identical instructions, and `to_mm` (a km quantity in mm) is a single `mov`.
 The `inside_loop` element is `unsafe`: a checked `+=` is checked per element
 and keeps the loop scalar. The repository
-enforces the same property in CI via `tests/beman/inside/check_codegen.sh`.
+enforces the same property in CI via `tests/check_codegen.sh`.
 
 ## Rebuilding the paper
 

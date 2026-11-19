@@ -6,10 +6,10 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 using checked_100 = inside<{0, 100}, checked>;
 using clamp_100   = inside<{0, 100}, clamp>;
@@ -40,8 +40,8 @@ int main() {
 
     // === Section 2: Per-operation overrides on a default-checked inside ===
 
-    beman::inside::error ec{};
-    checked_100          z(50);
+    ins::error  ec{};
+    checked_100 z(50);
     z.on_error(ec) = n;
     std::cout << "policy ec:" << (ec != error{} ? error_message(ec) : "no error") << " (z=" << z << ")" << "\n";
 
@@ -74,7 +74,7 @@ int main() {
     std::cout << "          (q=" << q << ")" << "\n";
 
     // === Section 4: Free-function error& overload ===
-    // add / sub / mul / div / mod accept a beman::inside::error& directly; ec is
+    // add / sub / mul / div / mod accept a ins::error& directly; ec is
     // set on overflow or division-by-zero, the result holds the error on failure.
 
     ec      = error{};

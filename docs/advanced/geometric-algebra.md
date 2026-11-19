@@ -1,10 +1,6 @@
 # Geometric algebra
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
-`<beman/inside/units/geoalg.hpp>` adds the geometric algebra of the units: a
+`<inside/units/geoalg.hpp>` adds the geometric algebra of the units: a
 basis vector is a unit of your own, and you state only its square. Sums of
 different blades are multivectors, and the products, involutions, duals and
 inverses of the algebra work on them, with physical units and exact numbers.
@@ -132,7 +128,7 @@ a deleted overload that says so.
 
 ## exp
 
-`math::exp(x)` (from `<beman/inside/units/math.hpp>`) takes a multivector,
+`math::exp(x)` (from `<inside/units/math.hpp>`) takes a multivector,
 or a quantity of one blade, and gives every part of its output (its
 CoDomain) correctly rounded, each onto its own grid by its own mode. Write
 x = a + y,

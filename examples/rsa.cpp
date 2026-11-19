@@ -17,10 +17,10 @@
 #include <string>
 #include <string_view>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 // The test key: two 512-bit primes, made with Python's random module from
 // seed 1024 (not a secret, not for use).
@@ -151,12 +151,12 @@ int main() {
         return 1;
 
     // 4. Sign with d, verify with e.
-    const auto packed_hash = pack("signed by beman.inside");
+    const auto packed_hash = pack("signed by inside");
     if (!packed_hash)
         return 1;
     const residue hash = *packed_hash;
     const residue sig  = powmod<residue, modulus>(hash, d);
     const bool    ok   = powmod<residue, modulus>(sig, exponent{E}) == hash;
     std::cout << "signature  = " << digits(sig) << "\nverified   = " << ok << "\n";
-    return ok && digits(sig) == "147061418896...979242965584 (309 digits)" ? 0 : 1;
+    return ok && digits(sig) == "754586494100...154302961483 (308 digits)" ? 0 : 1;
 }

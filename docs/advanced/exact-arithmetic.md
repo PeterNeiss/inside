@@ -1,9 +1,5 @@
 # Exact arithmetic
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 How each operation forms its result type, which code a division runs, how
 every rounding mode rounds, and how continuous grids keep their fractions
 bounded. The everyday view is in [Arithmetic](../guide/arithmetic.md).

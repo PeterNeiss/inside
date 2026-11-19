@@ -1,9 +1,5 @@
 # Determinism and reproducibility
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 inside is built for results you can reproduce: the same inputs give the same
 bits, across compilers, optimisation levels and machines. That matters for
 fuzzing corpora, record and replay, deterministic simulation, lockstep
@@ -19,7 +15,7 @@ build rules that the other pages link to.
 | units: conversions, mixed-unit sums, points | **always** | none: a conversion is an exact grid rescale |
 | conversions to and from `double` and `float` | **yes** | IEEE-754, round to nearest; fast-math and x87 excess precision are rejected at compile time |
 | conversions to and from `long double` | **per format** | one rounding to the platform's `long double` (x87 80-bit, IEEE quad, or `double`) |
-| `beman::inside::math`, `units/math.hpp`, `value_cast` across π | **yes** | the same build rules as `double`, for the floating-point tiers (none under `BEMAN_INSIDE_MATH_NO_FP`); see [the math engine](#the-math-engine) for what *correctly rounded* covers |
+| `ins::math`, `units/math.hpp`, `value_cast` across π | **yes** | the same build rules as `double`, for the floating-point tiers (none under `INSIDE_MATH_NO_FP`); see [the math engine](#the-math-engine) for what *correctly rounded* covers |
 | compile-time constants and coefficient tables | **always** | `constexpr` series; the minimax coefficients are committed hex literals |
 | text: `to_string`, `parse`, `<<`, `>>`, `std::format` | **always** | none: integer digits, no locale |
 | `uniform<B>(rng)` | **always** | the same generator and seed |
@@ -79,7 +75,7 @@ nearest even (the default), binary64, and no rewrites that change values:
 
 ## The math engine
 
-`beman::inside::math` and the units math return the **correctly rounded point
+`ins::math` and the units math return the **correctly rounded point
 of the output grid**, under the output's rounding mode
 ([the math engine](math-engine.md#how-it-works)), for every result the engine decides (the
 exception is [below](#when-is-a-result-decided)). Such a result depends only
@@ -92,17 +88,17 @@ uses no `<cmath>`, no run-time tables and no generated code.
 The floating-point tiers rely on the build rules above, plus:
 
 - an explicit `std::fma` and a 1.5× margin on every bound, so FMA contraction
-  cannot change a result (`-mfma` is safe; `BEMAN_INSIDE_FMA`, default `ON`,
+  cannot change a result (`-mfma` is safe; `INSIDE_FMA`, default `ON`,
   adds it on x86-64);
 - error-free sums fenced with `__builtin_assoc_barrier`, so
   `-ffp-contract=fast` cannot fuse them.
 
-`BEMAN_INSIDE_MATH_NO_FP` removes both tiers, with the same results as far as
+`INSIDE_MATH_NO_FP` removes both tiers, with the same results as far as
 the tiers' bounds hold. The `double` tier's and the lean double-double
 kernels' bounds are proved; the full double-double kernels' are measured,
 with a margin of about 2⁹ over the worst error seen
 ([internals.md](../internals.md#10-the-math-engine), which lists each place where
-the engine chose correctness over speed). `beman.inside.certify`, below, checks
+the engine chose correctness over speed). `inside.certify`, below, checks
 the tiers against the integer path on every input of its pairs.
 
 ### When is a result decided?
@@ -113,7 +109,7 @@ rational input the rational results are few and known: `exp(0)`, `log(1)`,
 `2^−1`, `log2(8)`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30°, and the
 like. Lindemann–Weierstrass, Niven's theorem and the rational root theorem
 leave no others, and the engine stores each one exactly
-(`tests/beman/inside/math.test.cpp` puts every kind on a tie, under
+(`tests/math.test.cpp` puts every kind on a tie, under
 every rounding mode). Every other result is irrational, so doubling the
 precision decides it at some point.
 
@@ -171,13 +167,13 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
 ## How it is checked
 
 - CI runs the exact-value pins on x86-64 Linux with GCC 16, in Debug,
-  Release and sanitizer builds. It also runs a `BEMAN_INSIDE_MATH_NO_FP=ON`
+  Release and sanitizer builds. It also runs an `INSIDE_MATH_NO_FP=ON`
   cell, where the integer path computes every result alone.
-- The differential oracle (`tests/beman/inside/differential`) recomputes
+- The differential oracle (`tests/differential`) recomputes
   arithmetic, rounding stores, `to<float>`/`to<double>` and π conversions
   exactly in Python. ctest runs a fixed seed, and a scheduled CI run takes a
   random seed and twenty times the cases.
-- `beman.inside.certify` sweeps every input of its math pairs, as
+- `inside.certify` sweeps every input of its math pairs, as
   [above](#when-is-a-result-decided), and checks every result hash against
   [certified.md](../certified.md): the pairs up to 2²⁰ inputs in an optimized
   build, the small ones in a debug build. Each configuration (optimized,
@@ -185,8 +181,8 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
   recomputes every pair, up to 2³² inputs. A debug build also scans the
   examples' symbols and fails if one of their pairs has no row.
 - The FP-free smoke test puts a poisoned `<cmath>`
-  (`tests/beman/inside/nofp_poison`) first on the include path, so a
-  `BEMAN_INSIDE_MATH_NO_FP` build that pulls in floating-point math fails to
+  (`tests/nofp_poison`) first on the include path, so a
+  `INSIDE_MATH_NO_FP` build that pulls in floating-point math fails to
   compile.
 
 ## Value stability across releases
@@ -209,7 +205,7 @@ Constants and series tables (π, ln 2, ln 10, the Taylor coefficients, the
 double-double tier's tables) come from exact integer series in `constexpr`
 code. The one generated file is `math/detail/minimax.hpp`: the double tier's
 minimax polynomials for `exp`, `log`, `atan` and `asin`, fitted offline with
-Sollya (`tests/beman/inside/minimax/gen.py`) and committed as exact hex
+Sollya (`tools/minimax/gen.py`) and committed as exact hex
 literals, each with a certified error bound that the kernel's proof uses.
 Sollya is needed only to regenerate the file, and `math_engine.test.cpp`
 checks every fit against its bound. These kernels only decide when a result
@@ -220,7 +216,7 @@ time one.
 ## Checklist
 
 - Transcendentals need the same rules for their floating-point tiers (or
-  `BEMAN_INSIDE_MATH_NO_FP`). Their results are then the same in every build,
+  `INSIDE_MATH_NO_FP`). Their results are then the same in every build,
   and correctly rounded wherever the engine decides them, which `certify`
   checks for a type pair.
 - For conversions with `double`: round to nearest even, IEEE-754 binary64,
@@ -231,8 +227,8 @@ time one.
   `long double` format, and `std::hash` values only within one standard
   library.
 - Toolchain: GCC 16 in C++26 mode with `-freflection`.
-- To keep floating point out entirely, build with `-DBEMAN_INSIDE_MATH_NO_FP=ON`
-  ([freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp)).
+- To keep floating point out entirely, build with `-DINSIDE_MATH_NO_FP=ON`
+  ([freestanding.md](freestanding.md#math-without-cmath-inside_math_no_fp)).
 
 ## Where to go next
 

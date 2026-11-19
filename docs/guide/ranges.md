@@ -1,9 +1,5 @@
 # Ranges and the STL
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The values of a grid form a range you can loop over, and insides work with
 the standard containers and algorithms.
 
@@ -78,7 +74,7 @@ which checks the total once, rather than `std::accumulate` into a wider type.
 
 For arrays of more than one dimension, `std::mdspan` holds insides too, and
 takes insides as [indices](conversions.md#indices);
-[`<beman/inside/inside/mdspan.hpp>`](../advanced/mdspan.md) adds extents
+[`<inside/inside/mdspan.hpp>`](../advanced/mdspan.md) adds extents
 from index types, views of raw buffers, and exact sums and
 matrix products.
 
@@ -115,7 +111,7 @@ static_assert(std::numeric_limits<inside<{0, 100}>>::max() == 100);
 
 ## Random values: `uniform<T>(rng)`
 
-`<beman/inside/inside/random.hpp>` adds `uniform<T>(rng)`, which draws one
+`<inside/inside/random.hpp>` adds `uniform<T>(rng)`, which draws one
 point of `T`'s grid uniformly from any standard engine:
 
 ```cpp
@@ -126,7 +122,7 @@ auto gain = uniform<inside<{{0, 1}, per<(1 << 8)>}>>(rng);    // one of the 257 
 
 A seed gives the same values on every standard library, because the draw
 does not go through `std::uniform_int_distribution`. A continuous grid has
-no points to draw from, so it does not compile. `<beman/inside/units/random.hpp>`
+no points to draw from, so it does not compile. `<inside/units/random.hpp>`
 adds `uniform<Q>(rng)` for quantities.
 
 ## Details

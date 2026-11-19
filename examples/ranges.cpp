@@ -15,15 +15,14 @@
 #include <ranges>
 #include <vector>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
 namespace rng   = std::ranges;
 namespace views = std::views;
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 template <rng::input_range R>
 void show(std::string_view label, R&& r) {

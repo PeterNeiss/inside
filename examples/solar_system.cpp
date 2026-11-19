@@ -11,14 +11,13 @@
 #include <cstdio>
 #include <iostream>
 
-#include <beman/inside/math.hpp>
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 inline constexpr auto nm = per<1'000'000'000>;
 using metres = quantity<si::metre, inside<{{-10'000'000'000'000, 10'000'000'000'000}, nm}>>; // ±10^13 m to 1 nm

@@ -12,10 +12,6 @@ toc: true
 toc-depth: 2
 ---
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 # Abstract
 
 We propose `std::units::quantity<reference, inside>`: physical quantities whose
@@ -38,7 +34,7 @@ quantities*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/math
 provides.
 
 This paper depends on the number paper. The reference implementation is
-[beman.inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0).
+[inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0).
 
 # Motivation
 
@@ -66,9 +62,9 @@ arithmetic.
 
 # A tour
 
-The listings use the reference implementation's namespaces `beman::inside` and
-`beman::inside::units`. Each one is a region of a program that compiles and
-checks its own results.
+The listings use the reference implementation's namespace `ins`, which
+holds the number and the quantities (this paper's `std::units`). Each one is
+a region of a program that compiles and checks its own results.
 
 **A conversion rescales the grid and keeps the raw; a mixed-unit sum is
 exact.**

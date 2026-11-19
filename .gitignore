@@ -1,27 +1,13 @@
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-/.cache
-/compile_commands.json
-/build
+/build/
 build*/
 Testing/
-tags
-
-# ignore emacs temp files
-*~
-\#*\#
-
-# ignore vscode settings
-.vscode
-
-# ignore vim swap files
-.swp
-
-# ignore merge/patch backup files
-.orig
-
-# local Claude Code state
-claude/
-continue.txt
-.claude/
+/.cache/
+/compile_commands.json
 __pycache__/
+
+# the paper's LaTeX output (pdflatex int-considered-harmful.tex)
+/docs/int-considered-harmful.pdf
+/docs/*.aux
+/docs/*.log
+/docs/*.out
+/docs/*.toc

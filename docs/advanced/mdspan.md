@@ -1,15 +1,11 @@
 # mdspan
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 `std::mdspan` holds insides and quantities as it holds any element. Two
 opt-in headers add what the element type alone cannot give:
 
-- `<beman/inside/inside/mdspan.hpp>`: extents from index types, views of
+- `<inside/inside/mdspan.hpp>`: extents from index types, views of
   existing buffers, and exact sums and products;
-- `<beman/inside/units/mdspan.hpp>`: the same for quantities, and a view of
+- `<inside/units/mdspan.hpp>`: the same for quantities, and a view of
   quantities in another unit.
 
 [`image.cpp`](../../examples/image.cpp) blurs an image and reads a heat map
@@ -147,19 +143,19 @@ where they are static, else `error::domain_error`. `transform_into` is not
 
 ## Quantities
 
-With `<beman/inside/units/mdspan.hpp>` the accessors and algorithms take
+With `<inside/units/mdspan.hpp>` the accessors and algorithms take
 quantities: `raw_accessor<kelvin>` reads deci-kelvin codes as kelvin, `sum`
 keeps the unit, `dot` and the matrix products multiply the units (m·m = m²),
 and a target in another unit gets the total converted once.
 
-`units::view_in(m, u)` reads the same quantities in unit `u`. An element is
+`ins::view_in(m, u)` reads the same quantities in unit `u`. An element is
 `q.in(u)`, which keeps the raw, so the view costs nothing; a store through it
 converts back exactly:
 
 ```cpp
 using km = quantity<si::kilo(si::metre), inside<{0, 10}>>;
 std::array<km, 2> legs{km{1, si::kilo(si::metre)}, km{3, si::kilo(si::metre)}};
-auto mm = units::view_in(std::mdspan{legs.data(), std::extents<std::size_t, 2>{}}, si::milli(si::metre));
+auto mm = ins::view_in(std::mdspan{legs.data(), std::extents<std::size_t, 2>{}}, si::milli(si::metre));
 // mm[0].get() is 1000000 mm; the storage is still one byte per leg
 ```
 
@@ -167,4 +163,4 @@ auto mm = units::view_in(std::mdspan{legs.data(), std::extents<std::size_t, 2>{}
 
 Both headers are opt-in and need a hosted standard library (`<mdspan>`,
 `<ranges>`). In the [single header](single-header.md) they sit behind
-`BEMAN_INSIDE_NO_MDSPAN`.
+`INSIDE_NO_MDSPAN`.

@@ -13,12 +13,11 @@
 
 #include <iostream>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 namespace {
 // 1. A kind under length and a unit defined by the metre.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Polar coordinates, range and bearing — the inverse-trig and hypot corner of
-// beman::inside::math. Every result is the correctly rounded point of its
+// ins::math. Every result is the correctly rounded point of its
 // output grid, the same on every platform and at compile time. atan2 of two
 // lengths is an angle in rad, and a bearing converts to degrees with one
 // rounding.
@@ -12,14 +12,13 @@
 
 #include <iostream>
 
-#include <beman/inside/math.hpp>
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units/io.hpp>
-#include <beman/inside/units/math.hpp>
+#include <inside/math.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 int main() {
     // 1. Polar round trip on a Q.14 unit square; theta onto 2^-14, its range

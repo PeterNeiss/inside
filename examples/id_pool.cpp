@@ -10,11 +10,11 @@
 #include <iostream>
 #include <unordered_set>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/inside/predicates.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/inside/predicates.hpp>
 
-using namespace beman::inside;
+using namespace ins;
 
 using pool_id = inside<{0, 999}>;
 

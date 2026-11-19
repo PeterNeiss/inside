@@ -1,14 +1,10 @@
 # Text in detail
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 Every printed form, the format specs and how they round, and the grammar
 `parse` reads. [Conversions and text](../guide/conversions.md) has the
-everyday view. Text needs `<beman/inside/inside/io.hpp>` (and
-`<beman/inside/units/io.hpp>` for quantities); the single header includes
-both unless `BEMAN_INSIDE_NO_STRING` is defined.
+everyday view. Text needs `<inside/inside/io.hpp>` (and
+`<inside/units/io.hpp>` for quantities); the single header includes
+both unless `INSIDE_NO_STRING` is defined.
 
 ## Printed forms
 
@@ -99,6 +95,6 @@ applies to the number (`{:.2f}`, `{:>8}`), and
 `unit_symbol(u, text_encoding::ascii)` gives the ASCII spelling:
 `kg m^2/s^2`, `um`, `ohm`.
 
-`units::parse<Q, F>(text)` and `units::parse_exact<Q>(text)` read a number in
+`ins::parse<Q, F>(text)` and `ins::parse_exact<Q>(text)` read a number in
 Q's unit; there is no `>>` for quantities. A JSON or wire format holds the
 bare number: write `q.numerical_value_in(u)`, which also documents the unit.

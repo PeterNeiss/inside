@@ -1,21 +1,17 @@
 # Getting started
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
-A short tour of the ideas behind `beman.inside`, each with one example. It
+A short tour of the ideas behind `inside`, each with one example. It
 takes about ten minutes; the [guides](README.md#guides) take each idea further.
 
 ## Your first program
 
 The library needs GCC 16 in C++26 mode with static reflection. With the
-[single header](../single_include/beman/inside/inside.hpp) on the include path:
+[single header](../single_include/inside/inside.hpp) on the include path:
 
 ```cpp
-#include <beman/inside/inside.hpp>
+#include <inside/inside.hpp>
 #include <iostream>
-using namespace beman::inside;
+using namespace ins;
 
 int main() {
     inside<{0, 100}> a{70}, b{58};
@@ -28,9 +24,9 @@ int main() {
 g++-16 -std=c++26 -freflection -I single_include first.cpp && ./a.out
 ```
 
-With CMake, link the `beman::inside` target instead ([README](../README.md#getting-it)).
+With CMake, link the `inside::inside` target instead ([README](../README.md#getting-it)).
 The single header holds everything; with the separate headers, printing needs
-`<beman/inside/inside/io.hpp>`.
+`<inside/inside/io.hpp>`.
 
 ## A number with a grid
 
@@ -122,11 +118,11 @@ it is: `v[x]` ([Conversions](guide/conversions.md#indices)).
 
 ## Units
 
-`<beman/inside/units.hpp>` adds physical quantities. A quantity is an inside
+`<inside/units.hpp>` adds physical quantities. A quantity is an inside
 with a unit:
 
 ```cpp
-using namespace beman::inside::units;
+using namespace ins;
 
 constexpr auto km = si::kilo(si::metre);
 quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5, km};   // 12.5 km, to the metre
@@ -149,7 +145,7 @@ points; see [Units](guide/units.md).
 
 ## Math
 
-`<beman/inside/math.hpp>` has `sin`, `cos`, `sqrt`, `exp`, `log` and the rest
+`<inside/math.hpp>` has `sin`, `cos`, `sqrt`, `exp`, `log` and the rest
 of `<cmath>`, on insides. Each result is the **correctly rounded** point of
 its output grid, and it is the same on every platform, at compile time and
 without an FPU. A result is rounded, so the input or the output must allow it:
@@ -161,7 +157,7 @@ using out = inside<{{0, 2}, per<100>}, round_half_away>;
 math::sqrt<out>(inside<{0, 4}>{2});            // 1.41: you name the output grid
 ```
 
-With `<beman/inside/units/math.hpp>`, angles can be in degrees, and the
+With `<inside/units/math.hpp>`, angles can be in degrees, and the
 reduction is exact: the sine of 30° is exactly 1/2.
 
 ```cpp

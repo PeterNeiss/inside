@@ -15,13 +15,12 @@
 #include <iostream>
 #include <string>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 namespace {
 inline constexpr auto ETH  = base_unit<"ETH", "ether">;
@@ -70,7 +69,7 @@ int main() {
     // 3. A thousand accounts near the top of the grid.
     std::array<eth, 1000> accounts;
     accounts.fill(*parse<eth>("999999999.999999999999999999"));
-    const auto sum = units::sum<total>(accounts); // the count is run time: an expected
+    const auto sum = ins::sum<total>(accounts); // the count is run time: an expected
     if (!sum)
         return 1;
     std::cout << "sum      " << *sum << "\n";

@@ -1,10 +1,6 @@
 # The units model
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
-How `<beman/inside/units.hpp>` represents units, dimensions, kinds and
+How `<inside/units.hpp>` represents units, dimensions, kinds and
 origins, the full list of operations on quantities, the catalog, and what the
 header costs to compile. [Units](../guide/units.md) has the everyday view.
 
@@ -231,7 +227,7 @@ you state its square, +1, −1 or 0. Its exponent is 0 or 1, and two different
 basis vectors anticommute, so a unit's magnitude carries a sign
 (`e2 * e1` is −1 times e₁ e₂), and a product of quantities moves that sign to
 the number. Sums of different blades are multivectors, in
-`<beman/inside/units/geoalg.hpp>`;
+`<inside/units/geoalg.hpp>`;
 [geometric algebra](geometric-algebra.md) has the model and the operations.
 
 ```cpp
@@ -269,10 +265,10 @@ the numbers, so it still rounds once and checks once.
 | `add(a, b, args…)`, `sub`, `mod`, `mul`, `div` | inside's free arithmetic with a per-call flag or `error&`: sums in the common unit, products and quotients with the units multiplied |
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
 | `lerp` | on quantities in their common unit; `lerp`'s t is a number |
-| `units::parse<Q, F>(text)`, `units::parse_exact<Q>(text)` | the number, read in Q's unit |
+| `ins::parse<Q, F>(text)`, `ins::parse_exact<Q>(text)` | the number, read in Q's unit |
 | `conversion_overflows<Q>(v, u)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number `v` in unit `u` against Q's grid |
 | `values<Q>`, `cursor<Q, Step>` | the number's grid, as quantities; `Step` is a number in Q's unit |
-| `units::uniform<Q>(rng)` | units/random.hpp: a number drawn from Q's grid, in Q's unit |
+| `ins::uniform<Q>(rng)` | units/random.hpp: a number drawn from Q's grid, in Q's unit |
 | `std::hash<Q>`, `std::numeric_limits<Q>` | the number's, with the limits as quantities |
 
 ```cpp
@@ -291,7 +287,7 @@ through `+ - * / %` as an `expected` inside does; the first error wins.
 | `si` | the base units, the 22 named derived units, the prefixes quecto … quetta, the accepted non-SI units min, h, d, au, °, ′, ″, a, ha, L, t; the eV and the Da; the origins `absolute_zero` and `ice_point` |
 | `si2019` | the defining constants as units (Δν_Cs, c, K_cd, h, e, k, N_A) and g₀: `just<1> * si2019::speed_of_light_in_vacuum` is c exactly |
 | `international` | yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉ |
-| `units` | `percent` (%) and `per_mille` (‰): dimensionless; `one`, the unit of a number |
+| `ins` | `percent` (%) and `per_mille` (‰): dimensionless; `one`, the unit of a number |
 
 [Constants](constants.md) adds the constants that follow from the SI ones
 (ħ, R, F, K_J, R_K, G₀, Φ₀, σ, c₁, c₂), the standard atmosphere and the
@@ -311,13 +307,13 @@ the products of geometric algebra. They are separate headers so that
 `units.hpp` needs no text support; `units/io.hpp` includes `inside/io.hpp`,
 `<ostream>` and `<string>`, so printing needs a hosted standard library
 ([freestanding](freestanding.md)). `units/random.hpp` needs a hosted build
-without `BEMAN_INSIDE_MATH_NO_FP`, as `inside/random.hpp` does. Under
-`BEMAN_INSIDE_MATH_NO_FP` on a hosted build everything else works: no units
+without `INSIDE_MATH_NO_FP`, as `inside/random.hpp` does. Under
+`INSIDE_MATH_NO_FP` on a hosted build everything else works: no units
 header uses floating point.
 
 ## Compile time
 
-`tests/beman/inside/units_compile_time.sh <cxx> include [<std>]` times four
+`tools/units_compile_time.sh <cxx> include [<std>]` times four
 translation units (best of three). On the maintainer's machine:
 
 | Compiler | inside | units.hpp | 200 inside expressions | as quantities |

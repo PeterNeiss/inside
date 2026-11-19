@@ -1,4 +1,3 @@
-% SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 % "int considered harmful"
 %
 % Build:  pdflatex -interaction=nonstopmode int-considered-harmful.tex   (x3)
@@ -635,7 +634,7 @@ and its edge policy:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/beman/inside/inside/detail/core.hpp:160
+struct inside;                        // include/inside/inside/detail/core.hpp:160
 \end{lstlisting}
 
 \noindent
@@ -656,9 +655,9 @@ The number is always an \code{inside}:
 
 \begin{lstlisting}
 template<reference R, insidable Rep>
-class quantity;                       // include/beman/inside/units/detail/quantity.hpp:314
+class quantity;                       // include/inside/units/detail/quantity.hpp:314
 template<reference R, origin_ref O, insidable Rep>
-class quantity_point;                 // include/beman/inside/units/detail/point.hpp:66
+class quantity_point;                 // include/inside/units/detail/point.hpp:66
 \end{lstlisting}
 
 \noindent
@@ -672,7 +671,7 @@ samples per second. The catalogue supplies the per cent, the degree, the
 radian, the kilometre and the height kind. A number goes into a quantity with
 its unit named:
 
-\lstinputlisting[firstline=16,lastline=46]{int-considered-harmful/b00_declarations.cpp}
+\lstinputlisting[firstline=15,lastline=45]{int-considered-harmful/b00_declarations.cpp}
 \begin{lstlisting}[style=term]
 pct          = 42 %
 money        = 19.99 EUR = 1999 ct
@@ -767,7 +766,7 @@ round_toward_zero = -3
 mode is honoured for negative operands, where truncation and flooring differ.
 A property test pins $(a/b) \cdot b + a \bmod b = a$ across whole grids, in
 every mode and with negative divisors
-(\file{tests/beman/inside/division.test.cpp:151}).
+(\file{tests/division.test.cpp:151}).
 \end{sloppypar}
 
 \subsection{The edge is a policy you declare}
@@ -841,7 +840,7 @@ Scale is not the same as dimension. A quantity carries its unit, so the Mars
 Climate Orbiter mismatch of \S2.11 converts exactly, and adding an impulse to a
 length does not compile:
 
-\lstinputlisting[firstline=16,lastline=34]{int-considered-harmful/b12_impulse.cpp}
+\lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b12_impulse.cpp}
 \begin{lstlisting}[style=term]
 100 N·s + 10 lbf·s = 144.4822161526050 N s
 N·s + m            : does not compile
@@ -857,7 +856,7 @@ Units do more than dimensions. A conversion multiplies the grid, not the
 number. Temperatures are points with origins. Kinds separate quantities that
 share a dimension:
 
-\lstinputlisting[firstline=21,lastline=48]{int-considered-harmful/b13_quantities.cpp}
+\lstinputlisting[firstline=20,lastline=47]{int-considered-harmful/b13_quantities.cpp}
 \begin{lstlisting}[style=term]
 12.5 km in m       = 12500 m   (raw 12500 -> 12500)
 20 C in K          = 293.15 K
@@ -936,7 +935,7 @@ them as a quantity of its kind: $h$ is an action and $e$ an electric charge.
 It also holds the constants that follow from them, the CODATA 2022 measured
 values, and the common mathematical constants (\file{docs/constants.md}):
 
-\lstinputlisting[firstline=22,lastline=41]{int-considered-harmful/b14_constants.cpp}
+\lstinputlisting[firstline=21,lastline=40]{int-considered-harmful/b14_constants.cpp}
 \begin{lstlisting}[style=term]
 $ g++-16 -std=c++26 -freflection -O2 -I ../../include b14_constants.cpp
 h    = 6.62607015e-34 J s
@@ -1021,7 +1020,7 @@ The gain was rounded to whole counts per volt, the division truncated, and the
 over-voltage check compares 2048 counts with 2000 millivolts. With quantities,
 counts get a base dimension of their own, as in \file{examples/adc\_calibration.cpp}:
 
-\lstinputlisting[firstline=15,lastline=40]{int-considered-harmful/m2_after.cpp}
+\lstinputlisting[firstline=14,lastline=39]{int-considered-harmful/m2_after.cpp}
 \begin{lstlisting}[style=term]
 reading            = 1641 mV
 over-voltage?      = no
@@ -1050,7 +1049,7 @@ outright:
 \begin{lstlisting}[style=term]
 $ g++-16 -std=c++26 -freflection -I ../../include x02_range_rejected.cpp
 x02_range_rejected.cpp:14:37: error: uncaught exception of type
-       'beman::inside::inside_error'; 'what()': 'inside: a checked store in a
+       'ins::detail::inside_error'; 'what()': 'inside: a checked store in a
        constant expression is outside the grid's interval - widen the interval,
        or store with clamp or wrap'
 \end{lstlisting}
@@ -1062,7 +1061,7 @@ the store is rejected too: a constant the grids cannot prove is checked while
 compiling, and a run-time value names how a failure is reported. Dimension and kind mismatches are
 caught the same way, as constraint failures with a stated reason
 (\S\ref{sec:units}). The library's
-\file{tests/beman/inside/constexpr.test.cpp} relies on this: 155
+\file{tests/constexpr.test.cpp} relies on this: 155
 \code{static\_assert}s that run inside the compiler.
 
 \subsection{The error vocabulary}
@@ -1138,7 +1137,7 @@ For integer and rational storage, \code{+ - * /} reproduce unconditionally,
 because no floating point is involved. Conversion from \code{double} decodes
 the IEEE-754 bits and needs no FPU.
 
-\code{beman::inside::math} returns the \emph{correctly rounded} point of its
+\code{ins::math} returns the \emph{correctly rounded} point of its
 output grid, under the output's rounding mode. That result depends only on the
 input and the grid, so it is the same at compile time, at runtime, and with or
 without an FPU. Each result is computed with a proved error bound and escalated
@@ -1219,7 +1218,7 @@ the grid and keeps the raw. An in-place \code{+=} can leave its range, so on
 a \code{checked} element it names a channel: \code{x.on\_error(ec) += 1\_ins}
 checks every pass and the loop stays scalar, as in the accumulate table below. With \code{unsafe} it vectorises, on 16-bit lanes
 (its storage for $[0,1000]$) where native uses 32-bit lanes.
-\file{tests/beman/inside/check\_codegen.sh} runs in CI. It disassembles named
+\file{tests/check\_codegen.sh} runs in CI. It disassembles named
 kernels and fails on any \code{call} other than the cold error report, and on
 a unit conversion that does arithmetic. Whether the loop vectorises is
 reported, not gated.
@@ -1230,7 +1229,7 @@ The fastest row in every table is plain, unchecked native code. It is fastest
 because it does not do the job: it is the code of \S\ref{sec:indictment}.
 The honest baselines are native code that enforces the same range, written as
 a competent programmer would write it
-(\file{tests/beman/inside/bench.test.cpp:66}):
+(\file{tests/bench.test.cpp:66}):
 \begin{itemize}
 \item \code{native clamped}: \code{std::clamp(v, 0, 200)};
 \item \code{native checked}: a hand-rolled bounded struct that throws on
@@ -1352,7 +1351,7 @@ run.
   100.0\% & 0.05 & 1.03 & \texttt{native loop} \\
   97.7\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
   24.2\% & 0.21 & 8.01 & \texttt{inside<checked> loop} \\
-  87.4\% & 0.06 & 1.24 & \texttt{beman::inside::sum<checked> (bulk check)} \\
+  87.4\% & 0.06 & 1.24 & \texttt{ins::sum<checked> (bulk check)} \\
   100.0\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
   98.7\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
 \end{benchtable}
@@ -1360,7 +1359,7 @@ run.
 \noindent
 A checked element-wise loop reports each element's store into an \code{error}
 (\code{acc.on\_error(ec) += v}) and so cannot vectorise.
-\code{beman::inside::sum} checks the total instead and is 3.6$\times$ faster.
+\code{ins::sum} checks the total instead and is 3.6$\times$ faster.
 Without the check, both loops vectorise like native code.
 
 \begin{benchtable}{comparison ==}
@@ -1389,7 +1388,7 @@ stores an integer index. Sort and \code{std::transform} run at 90.6\% and
 
 \subsection{What correct rounding costs}\label{sec:mathcost}
 
-The cost of \code{beman::inside::math} follows the output grid. The report
+The cost of \code{ins::math} follows the output grid. The report
 measures it onto the grid deduced from a $2^{-14}$ input:
 
 \begin{center}
@@ -1449,11 +1448,10 @@ hardware.
 \section{When not to use this}\label{sec:limits}
 
 \begin{itemize}
-\item \textbf{It is not yet ready for production.} Version 0.5 is at the Beman
-      ``under development'' maturity level, and the API may change.
-\item \textbf{It requires C++23}: GCC 14+, Clang 19+ (Clang 18 with libc++),
-      or MSVC 19.51+. Grids past 64 bits need C++26 static reflection, which
-      today means GCC~16 with \code{-freflection}.
+\item \textbf{It is not yet ready for production.} The library is under
+      development, and the API may change between versions.
+\item \textbf{It requires C++26 static reflection}, which today means
+      GCC~16 with \code{-freflection}.
 \item \textbf{Compile times increase.} Arithmetic on grids is compile-time
       work, and it happens in your build. Units add about 7\,ms per
       expression on top (\file{docs/units.md}).

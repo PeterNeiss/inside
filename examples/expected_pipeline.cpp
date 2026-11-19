@@ -15,13 +15,12 @@
 #include <iostream>
 #include <string_view>
 
-#include <beman/inside/inside.hpp>
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 using reading = quantity<si::volt, inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>>; // ±100 mV, 1 µV steps
 using gain    = inside<{{0, 10}, per<100>}>; // 0 is possible: a dead channel

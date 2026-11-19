@@ -12,10 +12,6 @@ toc: true
 toc-depth: 2
 ---
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 # Abstract
 
 We propose the functions of `<cmath>` for `inside`, the bounded number with an
@@ -37,7 +33,7 @@ reduced exactly, so `cos` of 120° is exactly −1/2.
 
 This paper depends on the number paper; its section on quantities depends on
 the quantity paper. The reference implementation is
-[beman.inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0).
+[inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0).
 
 # Motivation
 
@@ -63,9 +59,9 @@ formats ([@N3220]); this paper asks the same of every grid.
 
 # A tour
 
-The listings use the reference implementation's namespaces `beman::inside` and
-`beman::inside::units`. Each one is a region of a program that compiles and
-checks its own results.
+The listings use the reference implementation's namespace `ins`, which
+holds the number and the quantities, and `ins::math`. Each one is a region
+of a program that compiles and checks its own results.
 
 **A function rounds once, onto the grid it returns.**
 
@@ -344,7 +340,7 @@ alone, with no difference and no result left undecided at the precision cap.
 A SHA-256 of each pair's results is committed (`docs/certified.md`), CI
 reproduces every pair up to 2²⁰ inputs in every configuration and all of them
 weekly, and the tool certifies any other pair the same way. A build without
-floating point (`BEMAN_INSIDE_MATH_NO_FP`, one of the CI configurations)
+floating point (`INSIDE_MATH_NO_FP`, one of the CI configurations)
 computes every result on the integer path, and the results do not change.
 
 Onto the grid deduced from the input, the functions run from about 2× slower to

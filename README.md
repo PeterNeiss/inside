@@ -1,17 +1,10 @@
-# beman.inside: numbers that cannot go out of range
+# inside: numbers that cannot go out of range
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
-<!-- markdownlint-disable line-length -->
-[![Continuous Integration Tests](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml)
-[![Lint Check (pre-commit)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml)
-[![Coverage](https://coveralls.io/repos/github/PeterNeiss/inside/badge.svg?branch=main)](https://coveralls.io/github/PeterNeiss/inside?branch=main)
+[![CI](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml)
+[![Lint](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml)
 [![Try it on Compiler Explorer](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://godbolt.org/z/EEqWMPvj7)
-<!-- markdownlint-restore -->
 
-`beman.inside` is a header-only C++26 library for numbers whose **range and
+`inside` is a header-only C++26 library for numbers whose **range and
 step size are part of the type**. Arithmetic widens its result type, so it
 cannot overflow; when a value is stored into a narrower type, a policy you
 pick decides what happens. On top of that number sit physical units, where a
@@ -19,12 +12,11 @@ conversion is an exact rescale of the grid, and math functions that return
 the correctly rounded point of any output grid.
 
 ```cpp
-#include <beman/inside/inside.hpp>       // the number
-#include <beman/inside/math.hpp>         // sin, sqrt, exp, …
-#include <beman/inside/units.hpp>        // quantities
-#include <beman/inside/units/math.hpp>   // math on quantities
-using namespace beman::inside;
-using namespace beman::inside::units;
+#include <inside/inside.hpp>       // the number
+#include <inside/math.hpp>         // sin, sqrt, exp, …
+#include <inside/units.hpp>        // quantities
+#include <inside/units/math.hpp>   // math on quantities
+using namespace ins;
 
 inside<{0, 100}> a{70}, b{58};
 auto sum = a + b;                           // inside<{0, 200}>: 128, cannot overflow
@@ -67,13 +59,13 @@ The library needs **GCC 16** in C++26 mode with static reflection
 (`-std=c++26 -freflection`). It has no other dependencies.
 
 **One header.** Copy
-[`single_include/beman/inside/inside.hpp`](single_include/beman/inside/inside.hpp),
+[`single_include/inside/inside.hpp`](single_include/inside/inside.hpp),
 which holds the whole library, and compile with
 `g++-16 -std=c++26 -freflection -I single_include app.cpp`. On Compiler
 Explorer, include it by URL; see
 [advanced/single-header.md](docs/advanced/single-header.md).
 
-**CMake.** Install the library and link the `beman::inside` target, which
+**CMake.** Install the library and link the `inside::inside` target, which
 adds `-freflection` for you:
 
 ```bash
@@ -82,8 +74,8 @@ cmake --install build/gcc-release --prefix /opt/inside
 ```
 
 ```cmake
-find_package(beman.inside REQUIRED)             # with -DCMAKE_PREFIX_PATH=/opt/inside
-target_link_libraries(app PRIVATE beman::inside)
+find_package(inside REQUIRED)             # with -DCMAKE_PREFIX_PATH=/opt/inside
+target_link_libraries(app PRIVATE inside::inside)
 ```
 
 `add_subdirectory` or `FetchContent` on this repository gives the same
@@ -91,12 +83,13 @@ target, without the tests and examples.
 
 | Header | Holds |
 |---|---|
-| `<beman/inside/inside.hpp>` | the number `inside`, its arithmetic, policies, ranges |
-| `<beman/inside/math.hpp>` | `beman::inside::math`: correctly rounded functions and constants |
-| `<beman/inside/units.hpp>` | `beman::inside::units`: quantities, the SI and ISQ catalog |
-| `<beman/inside/units/math.hpp>` | the math functions on quantities: degrees, roots of units, … |
+| `<inside/inside.hpp>` | the number `inside`, its arithmetic, policies, ranges |
+| `<inside/math.hpp>` | `ins::math`: correctly rounded functions and constants |
+| `<inside/units.hpp>` | quantities, the SI and ISQ catalog |
+| `<inside/units/math.hpp>` | the math functions on quantities: degrees, roots of units, … |
 | `…/inside/io.hpp`, `…/units/io.hpp` | text: `to_string`, `<<`, `std::format`, `parse` (opt-in) |
 
+Everything is in namespace `ins`, the math functions in `ins::math`.
 The other opt-in headers are listed in
 [docs/README.md](docs/README.md#headers).
 

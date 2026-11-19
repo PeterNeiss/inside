@@ -1,9 +1,5 @@
 # Policies
 
-<!--
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
-
 The second template argument of `inside<G, P>` is its **policy**: what
 happens when a value does not fit the grid, because it is out of range or
 between two notches.

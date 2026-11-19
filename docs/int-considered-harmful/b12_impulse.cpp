@@ -6,12 +6,11 @@
 
 #include <iostream>
 
-#include <beman/inside/inside/io.hpp>
-#include <beman/inside/units.hpp>
-#include <beman/inside/units/io.hpp>
+#include <inside/inside/io.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
-using namespace beman::inside;
-using namespace beman::inside::units;
+using namespace ins;
 
 constexpr auto lbf_s = international::pound_force * si::second;
 constexpr auto n_s   = si::newton * si::second;
