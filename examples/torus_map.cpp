@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 2-D playfield on a torus: sprite position wraps at the edges, with an
-// on_wrap callback firing the "crossed edge" game event. Screen distance is a
-// base dimension of its own with the unit px, so a position never mixes with
-// a metre or a plain number; the viewport cells are indices and stay plain.
-//
-// Demonstrates:
-//   - `wrap` policy on two fractional-notch axes (sub-pixel positions)
-//   - `on_wrap` callback to drive a side-effect on edge crossing
-//   - `values<T>` for iterating over whole-pixel viewport cells
+// A playfield on a torus: a sprite's sub-pixel position wraps at the edges, and on_wrap fires the "crossed edge"
+// event. Screen distance is in px, a base dimension of its own; the viewport cells are indices and stay plain.
 
 #include <iostream>
 #include <ranges>
@@ -19,32 +12,24 @@
 #include <inside/units/io.hpp>
 
 using namespace ins;
-
 using namespace ins::formats;
 
 namespace {
 inline constexpr auto px = base_unit<"px", "screen">;
 } // namespace
 
-// Position grid: [0, 64) px in 1/16-pixel steps, so wrap's period is 64 px.
-using pos_t = quantity<px, inside<{{0, 64}, per<16>, bounds::half_open}, wrap | round_half_away>>;
-
-// A signed per-tick movement delta, same 1/16 notch family as pos_t. A runtime
-// step has a range — name it — so `x += d` stays quantity += quantity.
-using pos_delta_t = quantity<px, inside<{{-64, 64}, per<16>}, round_half_away>>;
-
-// Whole-pixel cells for the viewport.
-using cell_t = inside<{0, 63}>;
+// [0, 64) px in 1/16-pixel steps, so wrap's period is 64 px.
+using pixels = quantity<px, inside<{{0, 64}, per<16>, bounds::half_open}, wrap | round_half_away>>;
+// A run-time step has a range too: name it, so x += d stays quantity += quantity.
+using pixel_delta = quantity<px, inside<{{-64, 64}, per<16>}, round_half_away>>;
 
 struct sprite {
-    pos_t                    x{0, px}, y{0, px};
+    pixels x{0, px}, y{0, px};
     clamp_counter<1'000'000> edge_x_crossings{0};
     clamp_counter<1'000'000> edge_y_crossings{0};
 
-    void step(pos_delta_t dx, pos_delta_t dy) {
-        // The move delta is a quantity (same notch family as the position), so the
-        // update stays quantity += quantity and routes through the round-nearest
-        // assignment — the on_wrap callback still fires on each edge crossing.
+    // The move rounds to the nearest 1/16 px on the store, and on_wrap fires on each edge crossing.
+    void step(pixel_delta dx, pixel_delta dy) {
         x.on_wrap([&](auto&, auto) { ++edge_x_crossings; }) += dx;
         y.on_wrap([&](auto&, auto) { ++edge_y_crossings; }) += dy;
     }
@@ -52,22 +37,21 @@ struct sprite {
 
 int main() {
     sprite s{};
-    s.x = pos_t{60.5, px};
-    s.y = pos_t{2.0, px};
+    s.x = pixels{60.5, px};
+    s.y = pixels{2.0, px};
 
-    // Five movement ticks: enough to wrap once in x, twice in y.
+    // Five moves: enough to wrap once in x and three times in y.
     double moves[][2] = {
-        {1.5, 5.0},
-        {4.0, 30.0},
-        {1.5, 40.0},
+        {1.5,  5.0},
+        {4.0,  30.0},
+        {1.5,  40.0},
         {8.25, -20.0},
         {-3.0, 12.0},
     };
 
     std::cout << "step   x        y      crossings (x, y)\n";
     for (auto& m : moves) {
-        // Run-time doubles: try_make (a NaN would be its error).
-        const auto dx = pos_delta_t::try_make(m[0], px), dy = pos_delta_t::try_make(m[1], px);
+        const auto dx = pixel_delta::try_make(m[0], px), dy = pixel_delta::try_make(m[1], px); // NaN: its error
         if (!dx || !dy)
             return 1;
         s.step(*dx, *dy);
@@ -76,12 +60,14 @@ int main() {
     }
 
     // Every cell of the viewport, as for a tilemap pass; the first 8 here.
-    std::cout << "\nviewport columns (values<cell_t>) — first 8:\n  ";
-    for (cell_t c : values<cell_t> | std::views::take(8))
+    using cell = inside<{0, 63}>; // whole pixels
+    std::cout << "\nviewport columns (values<cell>) — first 8:\n  ";
+    for (cell c : values<cell> | std::views::take(8))
         std::cout << c << " ";
     std::cout << "...\n";
 
-    if (to_string(s.x) != "8.75 px" || to_string(s.y) != "5 px" || s.edge_x_crossings != 1 || s.edge_y_crossings != 3)
+    if (to_string(s.x) != "8.75 px" || to_string(s.y) != "5 px" || s.edge_x_crossings != 1
+        || s.edge_y_crossings != 3)
         return 1;
     return 0;
 }
