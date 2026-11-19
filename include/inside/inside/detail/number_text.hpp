@@ -12,37 +12,39 @@
 #include <expected>
 #include <utility>
 
-namespace ins::detail {
-//---------------------------------------------------------------------------
-// _ins / _r literal parser — shared between inside/detail/core.hpp's `_ins` and `_r` below.
-// Accepts:
-//   integer:           5, 1'000
-//   decimal:           1.25, .5
-//   decimal scientific 1.5e2, 2.5e-1
-//   hex integer:       0xff
-//   binary integer:    0b1010
-//   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
-// Exact (no double round-trip). A malformed or overflowing literal fails
-// constant evaluation via `constexpr_error<Msg>()`; parse_text (below) is the
-// runtime form behind parse.
-//---------------------------------------------------------------------------
-constexpr int parse_digit(char c, int base) {
-    if (c >= '0' && c <= '9') {
-        int d = c - '0';
-        return d < base ? d : -1;
+namespace ins::detail
+{
+  // The number parser of the _ins and _r literals (inside/detail/core.hpp's _ins, _r below). It accepts:
+  //   integer             5, 1'000
+  //   decimal             1.25, .5
+  //   decimal scientific  1.5e2, 2.5e-1
+  //   hex integer         0xff
+  //   binary integer      0b1010
+  //   hex float (Q-fmt)   0x1p15, 0x1p-15, 0x1.8p3
+  // Exact, with no double round trip.
+  // A malformed or overflowing literal fails constant evaluation through constexpr_error<Msg>();
+  // parse_text (below) is the run-time form behind parse.
+  constexpr int parse_digit(char c, int base)
+  {
+    if (c >= '0' && c <= '9')
+    {
+      int d{c - '0'};
+      return d < base ? d : -1;
     }
-    if (base == 16) {
-        if (c >= 'a' && c <= 'f')
-            return 10 + (c - 'a');
-        if (c >= 'A' && c <= 'F')
-            return 10 + (c - 'A');
+    if (base == 16)
+    {
+      if (c >= 'a' && c <= 'f')
+        return 10 + (c - 'a');
+      if (c >= 'A' && c <= 'F')
+        return 10 + (c - 'A');
     }
     return -1;
-}
+  }
 
-// Failure kinds of the number parser. The literals turn each into a named
-// compile-time diagnostic; runtime parsing maps them onto error.
-enum class parse_fail : unsigned char {
+  // The parser's failure kinds:
+  // the literals turn each into a named compile-time diagnostic, and run-time parsing maps them onto error.
+  enum class parse_fail : unsigned char
+  {
     none,
     empty,
     invalid_exponent,
@@ -56,323 +58,353 @@ enum class parse_fail : unsigned char {
     p_exponent_denominator_overflow,
     e_exponent_numerator_overflow,
     e_exponent_denominator_overflow, // the overflow kinds last (parse_text)
-};
+  };
 
-struct parsed_number {
+  struct parsed_number
+  {
     rational   Value;
     parse_fail Fail;
-};
+  };
 
-// An unsigned number in the grammar of the _ins / _r / _g literals, scanned in
-// one pass: the radix and the exponent come back, and each mantissa digit
-// goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
-// overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp),
-// parse_grid_literal (the _g literal) and stand_in build from it, so all
-// read one grammar.
-struct scanned_number {
+  // An unsigned number in the grammar of the _ins, _r and _g literals, scanned in one pass:
+  // the radix and the exponent come back,
+  // and each mantissa digit goes to on_digit(d, in_frac, base) (false stops the scan: the builder's overflow).
+  // parse_number (64-bit), parse_exact (wide, wide_value.hpp), parse_grid_literal (the _g literal) and stand_in
+  // build from it, so all read one grammar.
+  struct scanned_number
+  {
     int        Base    = 10;
-    int        Exp     = 0; // capped at 100000: past it any value overflows
+    int        Exp     = 0;     // capped at 100000: past it any value overflows
     bool       ExpNeg  = false;
     bool       HasP    = false; // 2^Exp (hex floats)
     bool       HasE    = false; // 10^Exp (decimal scientific)
     bool       Stopped = false; // on_digit returned false
     parse_fail Fail    = parse_fail::none;
-};
+  };
 
-template <typename OnDigit>
-[[gnu::always_inline]] constexpr scanned_number scan_number(const char* first, const char* last, OnDigit&& on_digit) {
+  template <typename OnDigit>
+  [[gnu::always_inline]] constexpr scanned_number scan_number(const char* first, const char* last, OnDigit&& on_digit)
+  {
     scanned_number r;
-    auto           fail = [&](parse_fail f) {
-        r.Fail = f;
-        return r;
+    auto fail = [&](parse_fail f)
+    {
+      r.Fail = f;
+      return r;
     };
-    if (last - first >= 2 && first[0] == '0') { // radix prefix
-        if (first[1] == 'x' || first[1] == 'X') {
-            r.Base = 16;
-            first += 2;
-        } else if (first[1] == 'b' || first[1] == 'B') {
-            r.Base = 2;
-            first += 2;
-        }
+    if (last - first >= 2 && first[0] == '0') // a radix prefix
+    {
+      if (first[1] == 'x' || first[1] == 'X')
+      {
+        r.Base = 16;
+        first += 2;
+      }
+      else if (first[1] == 'b' || first[1] == 'B')
+      {
+        r.Base = 2;
+        first += 2;
+      }
     }
-    bool in_frac = false, seen_digit = false;
-    for (; first != last; ++first) {
-        const char c = *first;
-        if (c == '\'')
-            continue;
-        if (c == '.') {
-            if (in_frac)
-                return fail(parse_fail::multiple_dots);
-            if (r.Base == 2)
-                return fail(parse_fail::dot_in_binary);
-            in_frac = true;
-            continue;
-        }
-        if (((c == 'p' || c == 'P') && r.Base == 16) || ((c == 'e' || c == 'E') && r.Base == 10))
-            break;
-        const int d = parse_digit(c, r.Base);
-        if (d < 0)
-            return fail(parse_fail::invalid_digit);
-        seen_digit = true;
-        if (!r.Stopped && !on_digit(d, in_frac, r.Base))
-            r.Stopped = true; // keep scanning: malformed text still reports invalid_format
+    bool in_frac{false}, seen_digit{false};
+    for (; first != last; ++first)
+    {
+      const char c{*first};
+      if (c == '\'')
+        continue;
+      if (c == '.')
+      {
+        if (in_frac)
+          return fail(parse_fail::multiple_dots);
+        if (r.Base == 2)
+          return fail(parse_fail::dot_in_binary);
+        in_frac = true;
+        continue;
+      }
+      if (((c == 'p' || c == 'P') && r.Base == 16) || ((c == 'e' || c == 'E') && r.Base == 10))
+        break;
+      const int d{parse_digit(c, r.Base)};
+      if (d < 0)
+        return fail(parse_fail::invalid_digit);
+      seen_digit = true;
+      if (!r.Stopped && !on_digit(d, in_frac, r.Base))
+        r.Stopped = true; // keep scanning: malformed text still reports invalid_format
     }
     if (!seen_digit)
-        return fail(parse_fail::empty);
+      return fail(parse_fail::empty);
     if (first == last)
-        return r;
+      return r;
     (r.Base == 16 ? r.HasP : r.HasE) = true;
-    bool exp_seen_digit = false, exp_seen_sign = false; // one sign, right after e/p
-    for (++first; first != last; ++first) {
-        const char c = *first;
-        if (c == '\'')
-            continue;
-        if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
-            r.ExpNeg      = (c == '-');
-            exp_seen_sign = true;
-            continue;
-        }
-        if (c < '0' || c > '9')
-            return fail(parse_fail::invalid_exponent);
-        if (r.Exp < 100000)
-            r.Exp = r.Exp * 10 + (c - '0');
-        exp_seen_digit = true;
+    bool exp_seen_digit{false}, exp_seen_sign{false}; // one sign, right after e or p
+    for (++first; first != last; ++first)
+    {
+      const char c{*first};
+      if (c == '\'')
+        continue;
+      if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-'))
+      {
+        r.ExpNeg = (c == '-');
+        exp_seen_sign = true;
+        continue;
+      }
+      if (c < '0' || c > '9')
+        return fail(parse_fail::invalid_exponent);
+      if (r.Exp < 100000)
+        r.Exp = r.Exp * 10 + (c - '0');
+      exp_seen_digit = true;
     }
     if (!exp_seen_digit)
-        return fail(parse_fail::invalid_exponent);
+      return fail(parse_fail::invalid_exponent);
     return r;
-}
+  }
 
-// Unsigned number in [first, last): the grammar of the _ins / _r literals.
-constexpr parsed_number parse_number(const char* first, const char* last) {
-    auto          fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
-    std::uint64_t num        = 0;
-    int           frac_len   = 0;
-    int           frac_zeros = 0; // deferred fractional zeros
-    // A fractional zero only matters if a non-zero digit follows: defer it,
-    // so trailing zeros ("1.000…0") cannot overflow num / den.
-    const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int base) {
-        const std::uint64_t base_u = static_cast<std::uint64_t>(base);
-        if (in_frac && d == 0) {
-            ++frac_zeros;
-            return true;
+  // An unsigned number in [first, last), in the grammar of the _ins and _r literals.
+  constexpr parsed_number parse_number(const char* first, const char* last)
+  {
+    auto fail = [](parse_fail f) { return parsed_number{rational{}, f}; };
+    std::uint64_t num       {0};
+    int           frac_len  {0};
+    int           frac_zeros{0}; // deferred fractional zeros
+    // A fractional zero only matters if a nonzero digit follows:
+    // deferred, trailing zeros ("1.000…0") cannot overflow num or den.
+    const scanned_number sc{scan_number(
+      first, last,
+      [&](int d, bool in_frac, int base)
+      {
+        const std::uint64_t base_u{static_cast<std::uint64_t>(base)};
+        if (in_frac && d == 0)
+        {
+          ++frac_zeros;
+          return true;
         }
         for (; frac_zeros > 0; --frac_zeros, ++frac_len)
-            if (mul_overflow(num, base_u, &num))
-                return false;
-        if (mul_overflow(num, base_u, &num) || add_overflow(num, static_cast<std::uint64_t>(d), &num))
+          if (mul_overflow(num, base_u, &num))
             return false;
+        if (mul_overflow(num, base_u, &num) || add_overflow(num, static_cast<std::uint64_t>(d), &num))
+          return false;
         if (in_frac)
-            ++frac_len;
+          ++frac_len;
         return true;
-    });
+      })};
     if (sc.Fail != parse_fail::none)
-        return fail(sc.Fail);
+      return fail(sc.Fail);
     if (sc.Stopped)
-        return fail(parse_fail::numerator_overflow);
+      return fail(parse_fail::numerator_overflow);
 
-    // Build denominator from fractional part.
-    // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
-    std::uint64_t den = 1;
-    if (sc.Base == 10) {
-        for (int k = 0; k < frac_len; ++k)
-            if (mul_overflow(den, std::uint64_t{10}, &den))
-                return fail(parse_fail::denominator_overflow);
-    } else if (sc.Base == 16) {
-        const int shift = 4 * frac_len;
-        if (shift >= 64)
-            return fail(parse_fail::hex_fraction_too_long);
-        den <<= shift;
+    // The denominator from the fractional part: 10^frac_len for decimal, 2^(4·frac_len) for hex.
+    std::uint64_t den{1};
+    if (sc.Base == 10)
+    {
+      for (int k = 0; k < frac_len; ++k)
+        if (mul_overflow(den, std::uint64_t{10}, &den))
+          return fail(parse_fail::denominator_overflow);
+    }
+    else if (sc.Base == 16)
+    {
+      const int shift{4 * frac_len};
+      if (shift >= 64)
+        return fail(parse_fail::hex_fraction_too_long);
+      den <<= shift;
     }
 
-    // Zero stays zero whatever the exponent: skip the scaling (which could
-    // only overflow).
+    // Zero stays zero whatever the exponent: skip the scaling, which could only overflow.
     if (num == 0)
-        return parsed_number{rational{std::uint64_t{0}}, parse_fail::none};
+      return parsed_number{rational{std::uint64_t{0}}, parse_fail::none};
 
     // The exponent scales the numerator, or the denominator when negative.
-    std::uint64_t& side = sc.ExpNeg ? den : num;
-    // Binary exponent (hex floats, `p`). The factors of two cancel first
-    // (0x0.1p4 is 1, 0x10p-66 is 2^-62), so only a value past the 64-bit
-    // rationals fails; 2^63 itself fits.
-    if (sc.HasP) {
-        std::uint64_t& other  = sc.ExpNeg ? num : den; // the side the shift cancels against
-        const int      cancel = std::min(std::countr_zero(other), sc.Exp);
-        other >>= cancel;
-        const int e = sc.Exp - cancel;
-        if (e >= 64)
-            return fail(parse_fail::p_exponent_too_large);
-        if (side > ~std::uint64_t{0} >> e)
-            return fail(sc.ExpNeg ? parse_fail::p_exponent_denominator_overflow : parse_fail::numerator_overflow);
-        side <<= e;
+    std::uint64_t& side{sc.ExpNeg ? den : num};
+    // A binary exponent (hex floats, p).
+    // The factors of two cancel first (0x0.1p4 is 1, 0x10p-66 is 2^-62),
+    // so only a value past the 64-bit rationals fails; 2^63 itself fits.
+    if (sc.HasP)
+    {
+      std::uint64_t& other {sc.ExpNeg ? num : den}; // the side the shift cancels against
+      const int      cancel{std::min(std::countr_zero(other), sc.Exp)};
+      other >>= cancel;
+      const int e{sc.Exp - cancel};
+      if (e >= 64)
+        return fail(parse_fail::p_exponent_too_large);
+      if (side > ~std::uint64_t{0} >> e)
+        return fail(sc.ExpNeg ? parse_fail::p_exponent_denominator_overflow : parse_fail::numerator_overflow);
+      side <<= e;
     }
-    // Decimal exponent (decimal scientific, `e`).
+    // A decimal exponent (decimal scientific, e).
     if (sc.HasE)
-        for (int k = 0; k < sc.Exp; ++k)
-            if (mul_overflow(side, std::uint64_t{10}, &side))
-                return fail(sc.ExpNeg ? parse_fail::e_exponent_denominator_overflow
-                                      : parse_fail::e_exponent_numerator_overflow);
+      for (int k = 0; k < sc.Exp; ++k)
+        if (mul_overflow(side, std::uint64_t{10}, &side))
+          return fail(sc.ExpNeg ? parse_fail::e_exponent_denominator_overflow
+                                : parse_fail::e_exponent_numerator_overflow);
 
-    // In lowest terms before the signed-denominator check (0.5e-18 is
-    // 1/(2·10^18), though 10^19 itself is past int64).
+    // In lowest terms before the signed-denominator check
+    // (0.5e-18 is 1/(2·10^18), though 10^19 itself is past int64).
     cancel_gcd(num, den);
     if (!std::in_range<std::int64_t>(den))
-        return fail(parse_fail::denominator_overflow);
+      return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};
-}
+  }
 
-// Whether a numeric literal's characters are an octal integer to C++: a
-// leading 0, then only digits (and ' separators). The literal grammar reads
-// decimal, so 010 would silently be ten, not eight: such literals are refused.
-template <char... Chars>
-consteval bool octal_literal() {
+  // Whether a numeric literal's characters are an octal integer to C++:
+  // a leading 0, then only digits (and ' separators).
+  // The literal grammar reads decimal, so 010 would silently be ten, not eight: such literals are refused.
+  template <char... Chars>
+  consteval bool octal_literal()
+  {
     return sizeof...(Chars) >= 2 && Chars...[0] == '0' && ((Chars == '\'' || (Chars >= '0' && Chars <= '9')) && ...);
-}
+  }
 
-template <char... Chars>
-consteval rational parse_rational_literal() {
+  template <char... Chars>
+  consteval rational parse_rational_literal()
+  {
     constexpr char          src[] = {Chars..., '\0'};
-    constexpr parsed_number r     = parse_number(src, src + sizeof...(Chars));
+    constexpr parsed_number r{parse_number(src, src + sizeof...(Chars))};
     if constexpr (octal_literal<Chars...>())
-        constexpr_error<"_r literal: a leading 0 makes an octal literal; write the number without it">();
+      constexpr_error<"_r literal: a leading 0 makes an octal literal; write the number without it">();
     // (A malformed number is no literal token: only a value can fail.)
     else if constexpr (r.Fail == parse_fail::numerator_overflow)
-        constexpr_error<"_r literal: numerator overflow">();
+      constexpr_error<"_r literal: numerator overflow">();
     else if constexpr (r.Fail == parse_fail::denominator_overflow)
-        constexpr_error<"_r literal: denominator overflow">();
+      constexpr_error<"_r literal: denominator overflow">();
     else if constexpr (r.Fail == parse_fail::hex_fraction_too_long)
-        constexpr_error<"_r literal: hex fraction too long">();
+      constexpr_error<"_r literal: hex fraction too long">();
     else if constexpr (r.Fail == parse_fail::p_exponent_too_large)
-        constexpr_error<"_r literal: p exponent too large">();
+      constexpr_error<"_r literal: p exponent too large">();
     else if constexpr (r.Fail == parse_fail::p_exponent_denominator_overflow)
-        constexpr_error<"_r literal: p exponent denominator overflow">();
+      constexpr_error<"_r literal: p exponent denominator overflow">();
     else if constexpr (r.Fail == parse_fail::e_exponent_numerator_overflow)
-        constexpr_error<"_r literal: e exponent numerator overflow">();
+      constexpr_error<"_r literal: e exponent numerator overflow">();
     else if constexpr (r.Fail == parse_fail::e_exponent_denominator_overflow)
-        constexpr_error<"_r literal: e exponent denominator overflow">();
+      constexpr_error<"_r literal: e exponent denominator overflow">();
     return r.Value;
-}
+  }
 
-// Text as an optional sign and the number's [First, Slash), with the
-// denominator after Slash when Slash != last.
-struct signed_fraction_text {
+  // Text as an optional sign and the number's [First, Slash), with the denominator after Slash when Slash != last.
+  struct signed_fraction_text
+  {
     bool        Neg;
     const char* First;
     const char* Slash;
-};
-constexpr signed_fraction_text split_fraction(const char* first, const char* last) noexcept {
-    const bool neg = first != last && *first == '-';
+  };
+  constexpr signed_fraction_text split_fraction(const char* first, const char* last) noexcept
+  {
+    const bool neg{first != last && *first == '-'};
     if (first != last && (*first == '+' || *first == '-'))
-        ++first;
+      ++first;
     return {neg, first, std::find(first, last, '/')};
-}
+  }
 
-// The sign and N/D around `one` (text → an expected value): N/0 is
-// division_by_zero.
-template <class One, class IsZero>
-constexpr auto parse_fraction(const char* first, const char* last, One one, IsZero is_zero) {
+  // The sign and N/D around one (text → an expected value); N/0 is division_by_zero.
+  template <class One, class IsZero>
+  constexpr auto parse_fraction(const char* first, const char* last, One one, IsZero is_zero)
+  {
     const auto [neg, f, slash] = split_fraction(first, last);
-    auto v                     = one(f, slash);
-    if (v && slash != last) {
-        const auto d = one(slash + 1, last);
-        if (!d)
-            return d;
-        if (is_zero(*d))
-            return decltype(v){std::unexpect, error::division_by_zero};
-        v = *v / *d;
+    auto v{one(f, slash)};
+    if (v && slash != last)
+    {
+      const auto d{one(slash + 1, last)};
+      if (!d)
+        return d;
+      if (is_zero(*d))
+        return decltype(v){std::unexpect, error::division_by_zero};
+      v = *v / *d;
     }
     if (v && neg)
-        v = -*v;
+      v = -*v;
     return v;
-}
+  }
 
-// Whether text is a fraction N/D (the form to_string prints for a
-// non-terminating value): parse reads one with the exact parser
-// (wide_value.hpp), as the quotient has no 64-bit step.
-constexpr bool fraction_text(const char* first, const char* last) noexcept {
+  // Whether text is a fraction N/D, the form to_string prints for a non-terminating value:
+  // parse reads it with the exact parser (wide_value.hpp), as the quotient has no 64-bit step.
+  constexpr bool fraction_text(const char* first, const char* last) noexcept
+  {
     return std::find(first, last, '/') != last;
-}
+  }
 
-// [-+]digits[.digits]: at most 18 digits in all, nothing else (no
-// separators, exponent or base prefix: the full grammar reads those).
-struct plain_decimal_t {
+  // [-+]digits[.digits] with at most 18 digits in all, and nothing else
+  // (no separators, exponent or base prefix: the full grammar reads those).
+  struct plain_decimal_t
+  {
     std::int64_t Value;
     int          Decimals;
     bool         Ok;
-};
-constexpr plain_decimal_t plain_decimal(const char* first, const char* last) noexcept {
+  };
+  constexpr plain_decimal_t plain_decimal(const char* first, const char* last) noexcept
+  {
     constexpr plain_decimal_t no{0, 0, false};
-    bool                      neg = false;
+    bool neg{false};
     if (first != last && (*first == '-' || *first == '+'))
-        neg = *first++ == '-';
-    std::int64_t v      = 0;
-    int          digits = 0, decimals = -1;
-    for (; first != last; ++first) {
-        const char c = *first;
-        if (c >= '0' && c <= '9') {
-            if (++digits > 18)
-                return no;
-            v = v * 10 + (c - '0');
-            if (decimals >= 0)
-                ++decimals;
-        } else if (c == '.' && decimals < 0)
-            decimals = 0;
-        else
-            return no;
+      neg = *first++ == '-';
+    std::int64_t v{0};
+    int          digits{0}, decimals{-1};
+    for (; first != last; ++first)
+    {
+      const char c{*first};
+      if (c >= '0' && c <= '9')
+      {
+        if (++digits > 18)
+          return no;
+        v = v * 10 + (c - '0');
+        if (decimals >= 0)
+          ++decimals;
+      }
+      else if (c == '.' && decimals < 0)
+        decimals = 0;
+      else
+        return no;
     }
     if (digits == 0 || decimals == 0) // "", "-", "1." and "." take the full grammar
-        return no;
+      return no;
     return {neg ? -v : v, decimals < 0 ? 0 : decimals, true};
-}
-constexpr std::int64_t power_of_ten(int n) noexcept {
-    std::int64_t p = 1;
+  }
+  constexpr std::int64_t power_of_ten(int n) noexcept
+  {
+    std::int64_t p{1};
     for (int i = 0; i < n; ++i)
-        p *= 10;
+      p *= 10;
     return p;
-}
-// v/10^d (|v| < 10^18, d ≤ 18) in lowest terms without a gcd: 10^d's only
-// primes are 2 and 5, so the trailing zero bits and the factors 5 of v are
-// what cancel.
-constexpr rational decimal_rational(std::int64_t v, int d) noexcept {
-    std::uint64_t m = v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v) : static_cast<std::uint64_t>(v);
+  }
+  // v/10^d (|v| < 10^18, d ≤ 18) in lowest terms without a gcd:
+  // 10^d's only primes are 2 and 5, so v's trailing zero bits and factors 5 are what cancel.
+  constexpr rational decimal_rational(std::int64_t v, int d) noexcept
+  {
+    std::uint64_t m{v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v) : static_cast<std::uint64_t>(v)};
     if (m == 0)
-        return rational_from_parts(0, 1);
-    const int twos = std::countr_zero(m) < d ? std::countr_zero(m) : d;
+      return rational_from_parts(0, 1);
+    const int twos{std::countr_zero(m) < d ? std::countr_zero(m) : d};
     m >>= twos;
-    int fives = 0;
-    while (fives < d && m % 5 == 0) {
-        m /= 5;
-        ++fives;
+    int fives{0};
+    while (fives < d && m % 5 == 0)
+    {
+      m /= 5;
+      ++fives;
     }
-    std::int64_t den = std::int64_t{1} << (d - twos);
+    std::int64_t den{std::int64_t{1} << (d - twos)};
     for (int i = fives; i < d; ++i)
-        den *= 5;
+      den *= 5;
     return rational_from_parts(m, v < 0 ? -den : den);
-}
+  }
 
-// Runtime text → exact value, the 64-bit fast path for a number (not a
-// fraction): an optional sign, then the literal grammar. Malformed text is
-// error::invalid_format; a value past the 64-bit fields is error::overflow,
-// which sends parse to the exact parser too.
-constexpr std::expected<rational, error> parse_text(const char* first, const char* last) {
+  // Run-time text → an exact value, the 64-bit fast path for a number (not a fraction):
+  // an optional sign, then the literal grammar.
+  // Malformed text is error::invalid_format;
+  // a value past the 64-bit fields is error::overflow, which sends parse to the exact parser too.
+  constexpr std::expected<rational, error> parse_text(const char* first, const char* last)
+  {
     const auto [neg, f, slash] = split_fraction(first, last);
-    const parsed_number r      = parse_number(f, slash);
+    const parsed_number r{parse_number(f, slash)};
     if (r.Fail != parse_fail::none || slash != last)
-        return std::unexpected{r.Fail >= parse_fail::numerator_overflow ? error::overflow : error::invalid_format};
+      return std::unexpected{r.Fail >= parse_fail::numerator_overflow ? error::overflow : error::invalid_format};
     return neg ? -r.Value : r.Value;
-}
+  }
 
-template <char... Chars>
-constexpr rational operator""_r() {
+  template <char... Chars>
+  constexpr rational operator""_r()
+  {
     return parse_rational_literal<Chars...>();
-}
+  }
 } // namespace ins::detail
 
-namespace ins {
-// The literals (_ins, _g) live in the inline namespace literals:
-// `using namespace ins::literals;` brings only them.
-// (detail::operator""_r, an exact decimal as a detail::rational, is the
-// library's own.)
+namespace ins
+{
+  // The literals (_ins, _g) live in the inline namespace literals: using namespace ins::literals brings only them.
+  // (detail::operator""_r, an exact decimal as a detail::rational, is the library's own.)
 } // namespace ins
 
 #endif // INSIDE_INSIDE_DETAIL_NUMBER_TEXT_HPP

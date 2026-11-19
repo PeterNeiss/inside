@@ -11,157 +11,151 @@
 #include <expected>
 #include <type_traits>
 
-//---------------------------------------------------------------------------
-// policy — the runtime policy carrier.
-//   detail::call_policy<F, E> — compile-time flags F plus an optional error_ref E holding a
-//                   ins::error& (EBO so the no-error-code form is zero-sized).
-//   make_policy<F>(), and with_flags<O>(pol), a call's policy (a flag or a
-//                   call_policy) under the flags O, keeping its error&.
-// The proxies that b.with<F>(), b.on_error(ec) and on_*() return are in
-// inside/detail/policy_ref.hpp.
-//---------------------------------------------------------------------------
-namespace ins {
-//---------------------------------------------------------------------------
-// call_policy — the policy of one call or store, what make_policy returns.
-// Derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
-// `call_policy(ec)` makes E == error_ref carrying a `ins::error&`. No
-// virtuals, resolved at compile time. (The error-code channel reports `error`
-// directly — there is no <system_error> dependency.) Users spell it through
-// make_policy<F>() / make_policy<F>(ec), or pass a flag.
-//---------------------------------------------------------------------------
-namespace detail {
-struct empty_ref {};
-struct error_ref {
-    constexpr error_ref(error& ec) : Code{ec} {}
-    error& Code;
-};
-template <policy_flag F = none, typename E = empty_ref>
-struct call_policy : E {
-    constexpr call_policy() = default;
-    constexpr call_policy(error& ec)
+// The run-time policy of a call or store:
+// detail::call_policy<F, E>, compile-time flags F plus an optional E holding an ins::error& (empty by EBO otherwise);
+// make_policy<F>(); and with_flags<O>(pol), a call's policy under the flags O, keeping its error&.
+// The proxies of b.with<F>(), b.on_error(ec) and on_*() are in inside/detail/policy_ref.hpp.
+namespace ins
+{
+  // call_policy derives from E for EBO: the reporting form (E == empty_ref) is zero-sized,
+  // call_policy(ec) carries an ins::error& (E == error_ref).
+  // No virtuals; the error channel reports `error` directly, with no <system_error>.
+  // Users spell it make_policy<F>() or make_policy<F>(ec), or pass a flag.
+  namespace detail
+  {
+    struct empty_ref {};
+    struct error_ref
+    {
+      constexpr error_ref(error& ec) : Code{ec} {}
+      error& Code;
+    };
+    template <policy_flag F = none, typename E = empty_ref>
+    struct call_policy : E
+    {
+      constexpr call_policy() = default;
+      constexpr call_policy(error& ec)
         requires std::same_as<E, error_ref>
         : E(ec) {}
 
-    static constexpr policy_flag Flags = F;
+      static constexpr policy_flag Flags = F;
 
-    static constexpr bool test(policy_flag flag) { return has_flag(F, flag); }
+      static constexpr bool test(policy_flag flag) { return has_flag(F, flag); }
 
-    static constexpr bool checks_range() {
-        if consteval {
-            return true;
+      static constexpr bool checks_range()
+      {
+        if consteval
+        {
+          return true;
         }
         return is_checked(F);
-    }
+      }
 
-    static constexpr bool checks_rounding() {
-        if consteval {
-            return true;
+      static constexpr bool checks_rounding()
+      {
+        if consteval
+        {
+          return true;
         }
         return is_checked(F) && not test(snap);
-    }
+      }
 
-    // Cheap default report: no message construction. error_ref mode records the
-    // code (sticky: keeps the first error) — also during constant evaluation, so
-    // try_make / parse / tan<Out> return error values in constexpr code.
-    // Without an error&, a failure is reached only in a constant expression
-    // (a run-time store the grids cannot prove needs a channel, so it does
-    // not compile): the build fails with a text that names the code and the
-    // fix. At run time it is a precondition (a cursor past its end) or a
-    // library bug, reported to the installed handler.
-    constexpr void report(error code) const {
-        if constexpr (std::is_same_v<E, error_ref>) {
-            // Inline, so a caller's local `error` stays in a register: an
-            // out-of-line record would take its address (a stack frame and
-            // protector in the caller). The first error is kept.
-            if (E::Code == error{})
-                E::Code = code;
-        } else {
-            if consteval {
-#if INSIDE_HAS_EXCEPTIONS
-                raise(code, store_failure_message(code));
-#else
-                store_constexpr_error(code);
-#endif
-            }
-            raise(code);
+      // A cheap report, with no message built.
+      // With an error& it records the code (sticky: the first error is kept), also during constant evaluation,
+      // so try_make, parse and tan<Out> return error values in constexpr code.
+      // Without one, a failure is reached only in a constant expression
+      // (a run-time store the grids cannot prove needs a channel, so it does not compile),
+      // and the build fails with a text that names the code and the fix;
+      // at run time it is a precondition (a cursor past its end) or a library bug, sent to the handler.
+      constexpr void report(error code) const
+      {
+        if constexpr (std::is_same_v<E, error_ref>)
+        {
+          // Inline, so a caller's local error stays in a register:
+          // an out-of-line record would take its address (a stack frame and protector in the caller).
+          if (E::Code == error{})
+            E::Code = code;
         }
-    }
-};
+        else
+        {
+          if consteval
+          {
+#if INSIDE_HAS_EXCEPTIONS
+            raise(code, store_failure_message(code));
+#else
+            store_constexpr_error(code);
+#endif
+          }
+          raise(code);
+        }
+      }
+    };
 
-call_policy(error&) -> call_policy<none, error_ref>;
-} // namespace detail
+    call_policy(error&) -> call_policy<none, error_ref>;
+  } // namespace detail
 
-//---------------------------------------------------------------------------
-// is_policy_v — true for call_policy<F,E> specializations, false otherwise.
-// Used to gate free-fn overloads so they don't accidentally bind P = action tag.
-//---------------------------------------------------------------------------
-namespace detail {
-template <typename T>
-inline constexpr bool is_policy_v = false;
-template <policy_flag F, typename E>
-inline constexpr bool is_policy_v<call_policy<F, E>> = true;
+  namespace detail
+  {
+    // Whether T is a call_policy: the free functions use it so P never binds an action tag.
+    template <typename T>
+    inline constexpr bool is_policy_v = false;
+    template <policy_flag F, typename E>
+    inline constexpr bool is_policy_v<call_policy<F, E>> = true;
 
-// Concept form of is_policy_v — pulls cvref off so the constraint matches
-// forwarded `call_policy<F,E>` references in template parameters.
-template <typename T>
-concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
+    // The concept form, without cvref, so it matches a forwarded call_policy<F, E> reference.
+    template <typename T>
+    concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
 
-// policy_of<call_policy<F, E>> is F. Lets the value+policy constructor and
-// policy_ref's conversion fold the per-call flags into their
-// `inside_assignable` check, so a one-shot clamp/round actually relaxes the
-// constraint it enables.
-template <policy_flag F, typename E>
-inline constexpr policy_flag policy_of_impl<call_policy<F, E>> = F;
+    // policy_of<call_policy<F, E>> is F,
+    // so the value+policy constructor and policy_ref's conversion fold the call's flags into their
+    // inside_assignable check: a one-shot clamp or rounding relaxes the constraint it enables.
+    template <policy_flag F, typename E>
+    inline constexpr policy_flag policy_of_impl<call_policy<F, E>> = F;
 
-// True for policy specializations that carry a ins::error& reference.
-// Free-fn arithmetic uses this to decide whether to call policy.report on
-// failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
-template <typename T>
-inline constexpr bool uses_error_ref = false;
-template <policy_flag F>
-inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
-} // namespace detail
+    // Whether a policy carries an ins::error&:
+    // the free functions then report a failure into it as well as returning the std::unexpected.
+    template <typename T>
+    inline constexpr bool uses_error_ref = false;
+    template <policy_flag F>
+    inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
+  } // namespace detail
 
-//---------------------------------------------------------------------------
-// make_policy
-//---------------------------------------------------------------------------
-template <policy_flag F = detail::none>
-[[nodiscard]] constexpr auto make_policy() {
+  template <policy_flag F = detail::none>
+  [[nodiscard]] constexpr auto make_policy()
+  {
     return detail::call_policy<F, detail::empty_ref>{};
-}
+  }
 
-template <policy_flag F = detail::none>
-[[nodiscard]] constexpr auto make_policy(error& ec) {
+  template <policy_flag F = detail::none>
+  [[nodiscard]] constexpr auto make_policy(error& ec)
+  {
     return detail::call_policy<F, detail::error_ref>{ec};
-}
+  }
 
-//---------------------------------------------------------------------------
-// report_or_unexpected — the zero-divisor result of division and modulo:
-// an error& policy (uses_error_ref<P>) is set too; the error is returned.
-//---------------------------------------------------------------------------
-namespace detail {
-template <insidable Result, typename P>
-constexpr std::expected<Result, error> report_or_unexpected(P&& policy, error code) {
-    if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
+  namespace detail
+  {
+    // The zero-divisor result of division and modulo: the error, also set in an error& policy.
+    template <insidable Result, typename P>
+    constexpr std::expected<Result, error> report_or_unexpected(P&& policy, error code)
+    {
+      if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
         policy.report(code);
-    return std::unexpected{code};
-}
-} // namespace detail
+      return std::unexpected{code};
+    }
+  } // namespace detail
 
-//---------------------------------------------------------------------------
-// with_flags<O>(pol) — a call's one-shot policy (a named flag, or a
-// call_policy from make_policy<F>() / make_policy<F>(ec)) as a call_policy
-// with the flags O, keeping its error& if it has one.
-//---------------------------------------------------------------------------
-namespace detail {
-template <policy_flag O, class Pol>
-constexpr auto with_flags(Pol&& pol) {
-    if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
+  namespace detail
+  {
+    // A call's one-shot policy (a named flag, or a call_policy from make_policy) as a call_policy with the flags O,
+    // keeping its error& if it has one.
+    template <policy_flag O, class Pol>
+    constexpr auto with_flags(Pol&& pol)
+    {
+      if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
         return call_policy<O, error_ref>{pol.Code};
-    else
+      else
         return call_policy<O, empty_ref>{};
-}
-} // namespace detail
+    }
+  } // namespace detail
 } // namespace ins
 
 #endif // INSIDE_INSIDE_DETAIL_CALL_POLICY_HPP
