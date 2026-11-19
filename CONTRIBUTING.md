@@ -61,8 +61,18 @@ math functions.
 
 ## Before a pull request
 
-Code is formatted by hand: 4-space indentation, lines up to about 119
-columns, laid out for the reader. No formatter or lint hook runs.
+Code is formatted by hand, laid out for the reader; no formatter or lint hook
+runs:
+
+- Allman braces: every block brace on its own line (a one-line body such as
+  `{ return Raw; }` stays on one line).
+- Two-space indentation, namespace bodies included; lines up to about 119
+  columns.
+- Lines that form a table (aliases, declarations, initializers, calls) are
+  aligned in columns.
+- Locals are brace-initialized where the initializer already has their type
+  (`const auto total{a + b};`); `=` stays where a value converts.
+- Comments break at clause and sentence boundaries.
 
 1. **Regenerate the single header** if a header under `include/` changed
    ([below](#the-single-header)).
