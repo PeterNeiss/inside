@@ -32,7 +32,7 @@ every configuration.
 
 ## On Compiler Explorer
 
-**[This example](https://godbolt.org/z/EEqWMPvj7)** uses the number, the math
+**[This example](https://godbolt.org/z/fzczsvPsW)** uses the number, the math
 and the units together. Compiler Explorer resolves an include by URL for a
 single-header library; use GCC 16 (`x86-64 gcc 16.2`) with
 `-std=c++26 -freflection -O2`:

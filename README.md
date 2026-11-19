@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci.yml)
 [![Lint](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/lint.yml)
-[![Try it on Compiler Explorer](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://godbolt.org/z/EEqWMPvj7)
+[![Try it on Compiler Explorer](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://godbolt.org/z/fzczsvPsW)
 
 `inside` is a header-only C++26 library for numbers whose **range and
 step size are part of the type**. Arithmetic widens its result type, so it
@@ -32,7 +32,7 @@ math::sin<amplitude>(just<30> * si::degree);                       // exactly 0.
 math::sqrt(inside<{{0, 10}, per<1000>}, round_half_away>{2});              // 1.414, correctly rounded
 ```
 
-**[Try it on Compiler Explorer](https://godbolt.org/z/EEqWMPvj7).**
+**[Try it on Compiler Explorer](https://godbolt.org/z/fzczsvPsW).**
 
 ## What you get
 
