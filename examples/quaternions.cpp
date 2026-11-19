@@ -45,7 +45,7 @@ int main() {
         return 1;
 
     // 3. q turns a vector in metres a third of a turn about (1, 1, 1): e₁ → e₃ → e₂ → e₁, exactly, and the grade-3
-    //    part of q v q⁻¹ is 0.
+    // part of q v q⁻¹ is 0.
     const auto v = just<1> * si::metre * e1 + just<2> * si::metre * e2 + just<3> * si::metre * e3;
     const auto r = q * v * inverse(q);
     std::cout << "q⁻¹ = " << inverse(q) << '\n';
@@ -59,7 +59,7 @@ int main() {
         return 1;
 
     // 5. q from its angle, exp(θ/2 · n) with θ/2 = π/3 about n = (i + j + k)/√3: each bivector coefficient is
-    //    π/(3√3) = 0.6045997880780726… on 2^-20, and exp rounds each part once onto 2^-16, exactly ½: it is q.
+    // π/(3√3) = 0.6045997880780726… on 2^-20, and exp rounds each part once onto 2^-16, exactly ½: it is q.
     using coefficient = inside<{{-1, 1}, per<(1 << 20)>}, round_half_away>;
     using rotor_part = inside<{{-1, 1}, per<(1 << 16)>}, round_half_away>;
     using rotor = multivector<rotor_part, quantity<i, rotor_part>, quantity<j, rotor_part>, quantity<k, rotor_part>>;

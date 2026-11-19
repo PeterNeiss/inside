@@ -31,7 +31,7 @@ int main() {
         return 1;
 
     // 3. 350 ℉ is the point (350 − 32)·5/9 = 530/3 ℃ exactly, and a whole-degree dial rounds it once; 25 ℉
-    //    more is a difference. The dial's [0, 300] ℃ may not hold the oven, so value_cast is an expected.
+    // more is a difference. The dial's [0, 300] ℃ may not hold the oven, so value_cast is an expected.
     using oven_dial = inside<{0, 300}, round_half_away>;
     const auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
     const auto oven_c = oven.point_in(si::degree_Celsius);
@@ -59,7 +59,7 @@ int main() {
         return 1;
 
     // 5. A flour jar that holds 2 kg, to the gram, starting at 1.5 kg: a pound fits (rounded to the gram), and its
-    //    clamp policy stops the second pound at 2 kg.
+    // clamp policy stops the second pound at 2 kg.
     using jar_kilograms = quantity<si::kilogram, inside<{{0, 2}, per<1000>}, clamp | round_half_away>>;
     jar_kilograms jar{just<3, 2> * si::kilogram};
     jar += just<1> * international::pound;

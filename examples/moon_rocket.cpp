@@ -31,7 +31,7 @@ int main() {
         return 1;
 
     // 2. The rocket equation, Δv = v_e·ln(m0/mf): m0/mf is a plain number, exactly 209/39 (a denominator up to
-    //    60000, mf in kg). Over the masses' grids it can pass 300, so it is checked into the ratio's range.
+    // 60000, mf in kg). Over the masses' grids it can pass 300, so it is checked into the ratio's range.
     using mass_ratio = inside<{{1, 300}, max_denominator{60'000}}>;
     using km_per_s = quantity<km_s, inside<{{1, 5}, per<10>}>>;
     const auto checked_ratio = mass_ratio::try_make((m0 / m_final).numerical_value_in(one));
@@ -46,7 +46,7 @@ int main() {
         return 1;
 
     // 3. A parking orbit at 185 km: altitude + radius is a length, and √(μ/r) takes the unit's root
-    //    (km²/s² → km/s), rounded once onto 1e-6 km/s. μ of the Earth is exact.
+    // (km²/s² → km/s), rounded once onto 1e-6 km/s. μ of the Earth is exact.
     using altitude_km = quantity<isq::altitude[km], inside<{100, 1000}>>;
     using radius_km = quantity<isq::radius[km], inside<{6300, 6400}>>;
     const altitude_km altitude{185, isq::altitude[km]};
@@ -60,7 +60,7 @@ int main() {
         return 1;
 
     // 4. Trans-lunar injection: a = (r + 384400 km)/2 exactly, and vis-viva v² = 2μ/r − μ/a at perigee. The grids
-    //    prove v² positive, so its sqrt is a plain value (sqrt takes no grid that reaches below 0).
+    // prove v² positive, so its sqrt is a plain value (sqrt takes no grid that reaches below 0).
     const auto a = (r + just<384'400> * km) / just<2>;
     const auto v_peri = math::sqrt<per<1'000'000>>(just<2> * mu / r - mu / a);
     const auto dv_tli = v_peri - v_park;
@@ -80,9 +80,9 @@ int main() {
         return 1;
 
     // 5. Kinetic energy after the burn, m·v² with v to 1 m/s: mass·speed² is a kinetic energy by its recipe, so it
-    //    converts implicitly (in GJ). A torque has the same dimension but another recipe:
+    // converts implicitly (in GJ). A torque has the same dimension but another recipe:
     //      quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v;   // does not compile
-    //    (A value_cast into a grid that may not hold the value is an expected.)
+    // (A value_cast into a grid that may not hold the value is an expected.)
     using speed_km_s = inside<{{0, 20}, per<1000>}, round_half_away>;
     using gigajoules = inside<{{0, 10'000}, per<1000>}, round_half_away>;
     const auto v = value_cast<km_s, speed_km_s>(kind_cast<isq::speed>(v_peri));

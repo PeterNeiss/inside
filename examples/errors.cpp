@@ -17,7 +17,7 @@ int read(int v) {
 
 int main() {
     // 1. Reporting an out-of-range 200. A constant is checked while compiling (`percent x = 200;` does not
-    //    compile), and a run-time int may not fit, so `percent x = n;` does not compile either: name a channel.
+    // compile), and a run-time int may not fit, so `percent x = n;` does not compile either: name a channel.
     using percent = inside<{0, 100}, checked>;
     const int n = read(200);
 

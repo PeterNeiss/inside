@@ -55,7 +55,7 @@ int main() {
         return 1;
 
     // 3. A thousand accounts near the top of the grid: sum adds the wide raws exactly (an expected: the count is a
-    //    run-time number).
+    // run-time number).
     using total_eth = quantity<ETH, inside<{{0, 1'000'000'000'000}, to_the_wei}>>;
     std::array<account_eth, 1000> accounts;
     accounts.fill(*parse<account_eth>("999999999.999999999999999999"));
@@ -67,7 +67,7 @@ int main() {
         return 1;
 
     // 4. In dollars at 3141.59 USD/ETH: balance × rate has a 10^-20 notch, past 64-bit numbers, so the exact
-    //    product rounds straight onto the cents. ETH·USD/ETH is USD.
+    // product rounds straight onto the cents. ETH·USD/ETH is USD.
     using usd_per_eth = quantity<USD / ETH, inside<{{0, 1'000'000}, per<100>}>>; // to the cent
     using dollars = quantity<USD, inside<{{0, 1'000'000'000'000'000}, per<100>}, round_half_away>>;
     const dollars value = mul<dollars>(balance, *parse<usd_per_eth>("3141.59"));

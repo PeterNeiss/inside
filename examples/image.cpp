@@ -68,7 +68,7 @@ int main() {
         return 1;
 
     // 2. Interior pixels need no clamp: 1 … 6 plus or minus 1 is on 0 … 7, proven by the grids.
-    //    The largest step between a pixel's left and right neighbours:
+    // The largest step between a pixel's left and right neighbours:
     using inner_index = inside<{1, 6}>;
     using image_index = inside<{0, 7}>;
     pixel edge = 0;

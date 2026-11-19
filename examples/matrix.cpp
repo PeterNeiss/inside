@@ -73,8 +73,8 @@ int main() {
             return 1;
 
     // 4. Fibonacci: [[1, 1], [1, 0]]^n = [[F(n+1), F(n)], [F(n), F(n−1)]], 64-bit entries whose products are held
-    //    exactly in 128 bits. No product of two such matrices is proven to fit, so matrix_product returns an
-    //    expected<void, error>: the first entry that does not fit.
+    // exactly in 128 bits. No product of two such matrices is proven to fit, so matrix_product returns an
+    // expected<void, error>: the first entry that does not fit.
     using fibonacci = inside<{0, 12'200'160'415'121'876'738u}>; // F(93), the largest below 2^64
     const std::array<fibonacci, 4> step{1, 1, 1, 0};
     std::array<fibonacci, 4> power{1, 0, 0, 1};

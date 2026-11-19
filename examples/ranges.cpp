@@ -27,7 +27,7 @@ void show(std::string_view label, R&& r) {
 
 int main() {
     // 1. values<T>: every value of T as a random-access sized view, so views compose on it and [i], size(), back()
-    //    cost nothing.
+    // cost nothing.
     using digit = inside<{0, 9}>; // an index: a container takes it as it is
     static_assert(rng::random_access_range<decltype(values<digit>)>);
     static_assert(rng::sized_range<decltype(values<digit>)>);
@@ -48,7 +48,7 @@ int main() {
     show("initials:    ", values<digit> | views::transform([&](digit d) { return names[d]; }));
 
     // 2. partition_point bisects the grid itself: the first tenth of a ℃ past 212 ℉ in 11 exact comparisons out of
-    //    2001 values (a ℃ point's ℉ point is an exact shift and scale of the grid).
+    // 2001 values (a ℃ point's ℉ point is an exact shift and scale of the grid).
     using celsius = inside<{{-50, 150}, per<10>}>;
     auto fahrenheit = [](celsius c) {
         return point<si::degree_Celsius>(c).point_in(international::degree_Fahrenheit);
@@ -73,7 +73,7 @@ int main() {
     show("oldest first:", inside_range<grid_of<slot>>{head} | views::transform([&](slot s) { return ring[s]; }));
 
     // 4. A cursor and its end as a subrange, which pipes too: the quarter hours of a day (0 … 1440, both ends) and
-    //    the ones in office hours.
+    // the ones in office hours.
     using minute_of_day = inside<{0, 24 * 60}>;
     cursor<minute_of_day, 15> c;
     rng::subrange quarters{c, end(c)};

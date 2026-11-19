@@ -70,7 +70,7 @@ int main() {
         return 1;
 
     // 3. Arrangements: a podium of 3 from 8 runners, P(8, 3); 3 scoops from 5 flavours with repeats, C(7, 3);
-    //    the letters of MISSISSIPPI, 11! / (1!·4!·4!·2!).
+    // the letters of MISSISSIPPI, 11! / (1!·4!·4!·2!).
     using runner_count = inside<{0, 8}>;
     const auto runners = read<runner_count>(8), places = read<runner_count>(3);
     if (!runners || !places)
@@ -109,7 +109,7 @@ int main() {
         return 1;
 
     // 5. gcd and lcm: buses every 12 and 18 minutes meet again after lcm minutes; a 42 × 56 board cuts into
-    //    squares of side gcd.
+    // squares of side gcd.
     using minutes = inside<{1, 60}>;
     using centimetres = inside<{1, 100}>;
     const auto every12 = read<minutes>(12), every18 = read<minutes>(18);

@@ -24,8 +24,8 @@ int main() {
 
     // 1. A fixed calibration from the data sheet: (2048 − 12) / 1240.909 V = 1.64073… V, rounded once to 1641 mV.
     using offset_counts = quantity<cts, inside<{-64, 64}>>;
-    using cts_per_volt  = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
-    using millivolts    = quantity<si::milli(si::volt), inside<{-5000, 5000}, round_half_away>>;
+    using cts_per_volt = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
+    using millivolts = quantity<si::milli(si::volt), inside<{-5000, 5000}, round_half_away>>;
 
     const offset_counts offset{12, cts};
     const cts_per_volt gain{just<1240909, 1000> * (cts / si::volt)};
@@ -36,8 +36,8 @@ int main() {
         return 1;
 
     // 2. A two-point calibration: 0.5 V reads 632 cts, 2.5 V reads 3114 cts, so the gain is 1241 cts/V and
-    //    the offset 11.5 cts. The references lie in disjoint ranges, so ΔV is never 0.
-    using low_volts  = quantity<si::volt, inside<{{0, 1}, per<1000>}>>;
+    // the offset 11.5 cts. The references lie in disjoint ranges, so ΔV is never 0.
+    using low_volts = quantity<si::volt, inside<{{0, 1}, per<1000>}>>;
     using high_volts = quantity<si::volt, inside<{{2, 5}, per<1000>}>>;
 
     const low_volts v1{just<1, 2> * si::volt};

@@ -32,7 +32,7 @@ int main() {
     }
 
     // 2. Range and compass bearing (from north, clockwise) on a local east/north plane in metres. The bearing
-    //    atan2(east, north) is on 2^-20 rad; degrees are a factor of π away, so value_cast rounds once onto 0.1°.
+    // atan2(east, north) is on 2^-20 rad; degrees are a factor of π away, so value_cast rounds once onto 0.1°.
     using metres = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_half_away>>;
     using compass_degrees = inside<{{-180, 180}, per<10>}, round_half_away>;
     std::cout << "\ntarget (east, north)   range       bearing\n";

@@ -58,7 +58,7 @@ int main() {
         return 1;
 
     // 4. A bearing of 30° from north rounds once into radians; the east and north components of a 1.5 km leg are
-    //    1.5 km · sin and · cos, each on a 1e-6 grid.
+    // 1.5 km · sin and · cos, each on a 1e-6 grid.
     using degrees = quantity<si::degree, inside<{0, 360}>>;
     using radians = inside<{{0, 7}, per<1'000'000>}, round_half_away>;
     const auto bearing = value_cast<si::radian, radians>(degrees{30, si::degree});
