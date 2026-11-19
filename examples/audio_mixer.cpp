@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 4-channel audio mixer with per-channel dB gain and master-bus peak detection.
-//
-// Demonstrates:
-//   - Signed Q1.14 sample storage (1/16384 notch)
-//   - Q-format gain inside; per-frame mix runs entirely in integer notch math
-//   - an `on_clamp` hook for peak metering
-//   - `sample_t{v, clamp}` to push the mixed value back into the sample grid
-//   - `math::pow_base<10, Out>` / `mul<Out>`: one rounding straight into the
-//     target type, never a wide product narrowed afterwards
-//   - Units: channel gains in dB (a level unit of our own, as in
-//     decibels.cpp), frame times in s, the tone in Hz, and its phase in turns
-//     (tr = 2π rad), so the phase offsets 1/8, −1/6 and −1/4 tr are exact and
-//     `math::sin<per<(1 << 14)>>` reduces them exactly — no approximation of
-//     π, no `<cmath>`
-//   - `values<T>` for the frame loops
+// A 4-channel audio mixer on Q1.14 samples: gains in dB, a mix in integer notch math, peak metering with
+// on_clamp, and tones whose phases in turns are exact, so sin rounds once with no <cmath>.
 
 #include <iostream>
 
@@ -23,103 +10,82 @@
 #include <inside/units/math.hpp>
 
 using namespace ins;
-
 using namespace ins::formats;
 
 namespace {
 inline constexpr auto level_kind = kind<"level", isq::dimensionless, {.distinct = true}>;
-inline constexpr auto dB         = unit<"dB", one, {.kind = level_kind}>;
-inline constexpr auto turn       = unit<"tr", just<2> * pi * si::radian>;
+inline constexpr auto dB = unit<"dB", one, {.kind = level_kind}>;
+inline constexpr auto turn = unit<"tr", just<2> * pi * si::radian>; // 1 tr = 2π rad
 } // namespace
 
-// Q1.14 signed samples in [-1, 1].
-using sample_t = inside<{{-1, 1}, per<(1 << 14)>}, round_half_away | clamp>;
-static_assert(sizeof(sample_t) == 2);
+using sample = inside<{{-1, 1}, per<(1 << 14)>}, round_half_away | clamp>; // Q1.14
+static_assert(sizeof(sample) == 2);
 
-// dB gain bounded to [-24, 12] dB with 0.5 dB step — fits in a uint8.
-using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_half_away>>;
+using decibels = quantity<dB, inside<{{-24, 12}, per<2>}, round_half_away>>; // 0.5 dB steps, one byte
+using linear_gain = inside<{{0, 4}, per<(1 << 16)>}, round_half_away>;       // covers 10^(dB/20) ≈ [0.063, 3.98]
 
-// Linear gain on a notch grid wide enough to cover 10^(dB/20) for dB∈[-24,12]
-// (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
-using gain_t = inside<{{0, 4}, per<(1 << 16)>}, round_half_away>;
-
-// Decibels → linear amplitude via 10^(L / 20 dB). The ratio is exact (a 1/40
-// grid), and pow_base rounds 10^x once onto gain_t: the correctly rounded
-// point, the same on every platform, no std::pow.
-static gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t>(db / (just<20> * dB)); }
+// 10^(L / 20 dB): the ratio is exact (a 1/40 grid), and pow_base rounds once onto linear_gain.
+static linear_gain db_to_linear(decibels db) { return math::pow_base<10, linear_gain>(db / (just<20> * dB)); }
 
 int main() {
-    // Four channels — pre-gain levels: vocals hot, drums normal, bass quiet,
-    // pad ducked.
-    db_t level[4] = {db_t{2.5, dB}, db_t{0.0, dB}, db_t{-6.0, dB}, db_t{-12.0, dB}};
+    // Pre-gain levels: vocals hot, drums normal, bass quiet, pad ducked; the linear gains are computed once.
+    decibels level[4] = {decibels{2.5, dB}, decibels{0.0, dB}, decibels{-6.0, dB}, decibels{-12.0, dB}};
+    linear_gain gain[4] = {db_to_linear(level[0]), db_to_linear(level[1]), db_to_linear(level[2]),
+                           db_to_linear(level[3])};
 
-    // Hoist the per-channel gain computation out of the per-sample loop: the
-    // linear gain (pow_base<10>) is constant across the buffer.
-    gain_t gain[4] = {db_to_linear(level[0]), db_to_linear(level[1]), db_to_linear(level[2]), db_to_linear(level[3])};
-
-    // 16 sample frames of synthetic audio (sine waves at different phases).
-    // The phase is exact arithmetic on quantities up to sin, which rounds once
-    // onto 2^-14; mul<sample_t> rounds the scaled sample once more.
+    // 16 frames of four sines: the phase is exact up to sin (onto 2^-14); mul<sample> rounds the scaled sample.
     constexpr std::size_t N = 16;
-    using frame_t           = inside<{0, N - 1}>;
+    using frame = inside<{0, N - 1}>;
+    using seconds = quantity<si::second, inside<{{0, 1}, per<N>}>>;
+    using cycles = inside<{{0, 1}, per<N>}>;
+    using turns = quantity<turn, inside<{{-1, 1}, per<24>}>>;
+    using amplitude = inside<{{0, 1}, per<(1 << 10)>}, round_half_away>;
 
-    using seconds_t   = quantity<si::second, inside<{{0, 1}, per<N>}>>;
-    using cycles_t    = inside<{{0, 1}, per<N>}>;
-    using offset_t    = quantity<turn, inside<{{-1, 1}, per<24>}>>;
-    using amplitude_t = inside<{{0, 1}, per<(1 << 10)>}, round_half_away>;
-
-    constexpr auto     tone       = just<1> * si::hertz; // one cycle over the 1 s buffer
-    constexpr offset_t offsets[4] = {
-        offset_t{0, turn},
+    constexpr auto tone = just<1> * si::hertz; // one cycle over the 1 s buffer
+    constexpr turns offsets[4] = {
+        turns{0, turn},
         just<1, 8> * turn,  // +π/4
         just<-1, 6> * turn, // -π/3
-        just<-1, 4> * turn  // -π/2
+        just<-1, 4> * turn, // -π/2
     };
-    constexpr amplitude_t amplitudes[4] = {0.9_ins, 0.7_ins, 0.6_ins, 0.4_ins};
+    constexpr amplitude amplitudes[4] = {0.9_ins, 0.7_ins, 0.6_ins, 0.4_ins};
 
-    sample_t channels[4][N];
-    for (frame_t i : values<frame_t>) {
-        const seconds_t t = (i / just<N>)*si::second; // exact: N is a nonzero point
-        const cycles_t  c = tone * t;                 // Hz · s is a plain number of cycles
+    sample channels[4][N];
+    for (frame i : values<frame>) {
+        const seconds t = (i / just<N>) * si::second; // exact: N is a nonzero point
+        const cycles c = tone * t;                    // Hz · s is a plain number of cycles
         for (int ch = 0; ch < 4; ++ch) {
-            const auto a    = c * turn + offsets[ch]; // in turns, exact
-            channels[ch][i] = mul<sample_t>(amplitudes[ch], math::sin<per<(1 << 14)>>(a));
+            const auto a = c * turn + offsets[ch]; // in turns, exact
+            channels[ch][i] = mul<sample>(amplitudes[ch], math::sin<per<(1 << 14)>>(a));
         }
     }
 
+    // The mix: each gain × sample widens to its product grid and the sum widens further, all in int64 notch
+    // math. Storing it onto the bus clips, and on_clamp counts the clips.
     clamp_counter<1'000'000> clip_events{0};
-
     std::cout << "frame  c0      c1      c2      c3      mix    \n";
-    for (frame_t i : values<frame_t>) {
-        // Each (gain × sample) widens to an inside on the product grid; the four-
-        // way `+` chain widens further. Everything stays in int64 notch math —
-        // no rational cross-multiply, no float in the hot loop.
-        auto mix = (gain[0] * channels[0][i]) + (gain[1] * channels[1][i]) + (gain[2] * channels[2][i]) +
-                   (gain[3] * channels[3][i]);
-
-        // on_clamp fires when the value lands outside [-1, 1] and is clipped.
-        sample_t bus{0};
+    for (frame i : values<frame>) {
+        auto mix = (gain[0] * channels[0][i]) + (gain[1] * channels[1][i]) + (gain[2] * channels[2][i])
+                 + (gain[3] * channels[3][i]);
+        sample bus{0};
         bus.on_clamp([&](auto&, auto) { ++clip_events; }) = mix;
 
-        std::cout << channels[0][i] << "   " << channels[1][i] << "   " << channels[2][i] << "   " << channels[3][i]
-                  << "   " << bus << "\n";
+        std::cout << channels[0][i] << "   " << channels[1][i] << "   " << channels[2][i] << "   "
+                  << channels[3][i] << "   " << bus << "\n";
     }
-
     std::cout << "\nclip events:     " << clip_events << "\n";
 
-    // Standalone: the clamp flag pushes a wider-grid inside into sample_t.
-    // Common idiom inside std::transform over a sum bus.
-    using mixbus_t = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>;
-    mixbus_t hot;
+    // The clamp flag pushes a wider-grid inside into a sample, as in a std::transform over a sum bus.
+    using mix_bus = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>;
+    mix_bus hot;
     hot.with<clamp>() = 2.5;
-    std::cout << "\nsample_t{mixbus 2.5, clamp} = " << sample_t{hot, clamp} << "\n";
+    std::cout << "\nsample{mix_bus 2.5, clamp} = " << sample{hot, clamp} << "\n";
 
-    // `add_all` folds N inputs exactly (the grid widens); the clamp flag clips the
-    // sum back into the bus — the audio-mix pipeline in one expression.
-    using bus_t     = inside<{-3, 3}, clamp>;
-    using channel_t = inside<{-1, 1}>;
-    std::cout << "bus_t{add_all(1,-1,1,1), clamp} = "
-              << bus_t{add_all(channel_t{1}, channel_t{-1}, channel_t{1}, channel_t{1}), clamp} << "\n";
+    // add_all folds the inputs exactly (the grid widens); the clamp flag clips the sum onto the bus.
+    using clipped_bus = inside<{-3, 3}, clamp>;
+    using channel = inside<{-1, 1}>;
+    std::cout << "clipped_bus{add_all(1,-1,1,1), clamp} = "
+              << clipped_bus{add_all(channel{1}, channel{-1}, channel{1}, channel{1}), clamp} << "\n";
 
     if (clip_events != 10 || db_to_linear(level[2]) != just<32846, (1 << 16)>)
         return 1;
