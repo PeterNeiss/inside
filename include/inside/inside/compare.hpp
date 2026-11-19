@@ -10,167 +10,175 @@
 #include <limits>
 #include <utility>
 
-//---------------------------------------------------------------------------
-// Comparisons of insides: across grids (by value index when both fit int64,
-// else exactly) and against integers and rationals. A floating point is a
-// deleted overload (0.1 is not 1/10 in binary). The inside type itself comes
-// with it, so this is the smallest public header that declares an inside.
-//---------------------------------------------------------------------------
-namespace ins {
-//---------------------------------------------------------------------------
-// comparison
-//---------------------------------------------------------------------------
-namespace detail {
-// Integer value-index comparison eligibility: an integer-backed anchored
-// inside whose value indices (value/Notch, integers) fit int64, so it
-// compares with a scalar as `bias + raw` without a rational decode.
-template <insidable B>
-inline constexpr bool index_cmp_fits = [] {
-    if constexpr (!notched<B> || !anchored<B> || !values_fit_int64<B> || !value_indices_fit64<B>)
+// Comparisons of insides: across grids (by value index when both fit int64, else exactly)
+// and against integers and rationals.
+// A floating point is a deleted overload (0.1 is not 1/10 in binary).
+// The inside type itself comes with it, so this is the smallest public header that declares an inside.
+namespace ins
+{
+  namespace detail
+  {
+    // Integer value-index comparison eligibility:
+    // an integer-backed anchored inside whose value indices (value/Notch, integers) fit int64,
+    // so it compares with a scalar as `bias + raw` without a rational decode.
+    template <insidable B>
+    inline constexpr bool index_cmp_fits = []
+    {
+      if constexpr (!notched<B> || !anchored<B> || !values_fit_int64<B> || !value_indices_fit64<B>)
         return false;
-    else
+      else
         return std::in_range<std::int64_t>(lower_index64<B>.Num) && std::in_range<std::int64_t>(upper_index64<B>.Num);
-}();
+    }();
 
-// Inside values are finite and exact, so they are always ordered: <=> of two
-// insides, or of an inside and an integer or rational, is a strong_ordering
-// whatever the storage.
-// Integers of mixed signedness compare by value (std::cmp_*), not by the
-// usual arithmetic conversions; same-signed pairs keep the plain operator.
-template <typename A, typename B>
-concept mixed_sign_integers     = std::integral<std::remove_cvref_t<A>> && std::integral<std::remove_cvref_t<B>> &&
-                                  std::is_signed_v<std::remove_cvref_t<A>> != std::is_signed_v<std::remove_cvref_t<B>>;
-inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
-    if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
-        return std::cmp_less(a, b)    ? std::strong_ordering::less
-               : std::cmp_equal(a, b) ? std::strong_ordering::equal
-                                      : std::strong_ordering::greater;
-    else
+    // Inside values are finite and exact, so they are always ordered:
+    // <=> of two insides, or of an inside and an integer or rational, is a strong_ordering whatever the storage.
+    // Integers of mixed signedness compare by value (std::cmp_*), not by the usual arithmetic conversions;
+    // same-signed pairs keep the plain operator.
+    template <typename A, typename B>
+    concept mixed_sign_integers =
+      std::integral<std::remove_cvref_t<A>> && std::integral<std::remove_cvref_t<B>>
+      && std::is_signed_v<std::remove_cvref_t<A>> != std::is_signed_v<std::remove_cvref_t<B>>;
+    inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering
+    {
+      if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
+        return std::cmp_less(a, b)  ? std::strong_ordering::less
+             : std::cmp_equal(a, b) ? std::strong_ordering::equal
+                                    : std::strong_ordering::greater;
+      else
         return a <=> b;
-};
-inline constexpr auto equal_to = [](const auto& a, const auto& b) {
-    if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
+    };
+    inline constexpr auto equal_to = [](const auto& a, const auto& b)
+    {
+      if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
         return std::cmp_equal(a, b);
-    else
+      else
         return a == b;
-};
+    };
 
-// A point P that is one of X's slots, with X storing a builtin index: X's
-// raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot
-// (`t != end(t)`, `x <= 4_ins`).
-template <insidable X, insidable P>
-inline constexpr bool point_is_slot =
-    integer_index_storage<X> && !point_grid<X> && point_grid<P> && grid_of<X>.representable(lower_of<P>);
-template <insidable X, insidable P>
-inline constexpr raw_t<X> point_slot_of =
-    static_cast<raw_t<X>>(exact_quotient(lower_of<P> - lower_of<X>, notch_of<X>));
+    // A point P that is one of X's slots, with X storing a builtin index:
+    // X's raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot (`t != end(t)`, `x <= 4_ins`).
+    template <insidable X, insidable P>
+    inline constexpr bool point_is_slot =
+      integer_index_storage<X> && !point_grid<X> && point_grid<P> && grid_of<X>.representable(lower_of<P>);
+    template <insidable X, insidable P>
+    inline constexpr raw_t<X> point_slot_of =
+      static_cast<raw_t<X>>(exact_quotient(lower_of<P> - lower_of<X>, notch_of<X>));
 
-// inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
-// storage shapes allow.
-template <insidable L, insidable R, class Cmp>
-constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
-    // same grid, so the same encoding: Raw is monotonically ordered and comparable
-    if constexpr (grid_of<L> == grid_of<R>)
+    // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two storage shapes allow.
+    template <insidable L, insidable R, class Cmp>
+    constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp)
+    {
+      // same grid, so the same encoding: Raw is monotonically ordered and comparable
+      if constexpr (grid_of<L> == grid_of<R>)
         return cmp(lhs.raw(), rhs.raw());
-    else if constexpr (point_is_slot<L, R>)
+      else if constexpr (point_is_slot<L, R>)
         return cmp(lhs.raw(), point_slot_of<L, R>);
-    else if constexpr (point_is_slot<R, L>)
+      else if constexpr (point_is_slot<R, L>)
         return cmp(point_slot_of<R, L>, rhs.raw());
-    // a wide-valued operand (wide index, big grid numbers, fraction raws): exact wide fractions
-    else if constexpr (wide_valued<L> || wide_valued<R>)
+      // a wide-valued operand (wide index, big grid numbers, fraction raws): exact wide fractions
+      else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
-    // integer raws: both values as exact counts of a unit dividing them both
-    // (the gcd of their value units), one integer compare — any notches and
-    // offsets, without the rational decode.
-    else if constexpr (units_cmp_fits<L, R>) {
-        constexpr grid_number U = gcd(unit_of<L>, unit_of<R>);
+      // integer raws: both values as exact counts of a unit dividing them both (the gcd of their value units),
+      // one integer compare, for any notches and offsets, without the rational decode.
+      else if constexpr (units_cmp_fits<L, R>)
+      {
+        constexpr grid_number U{gcd(unit_of<L>, unit_of<R>)};
         return cmp(value_in_units<std::int64_t, U>(lhs), value_in_units<std::int64_t, U>(rhs));
-    } else
+      }
+      else
         return cmp(as_rational(lhs), as_rational(rhs));
-}
-} // namespace detail
-
-template <insidable L, insidable R>
-[[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs) {
-    return detail::compare(lhs, rhs, detail::three_way);
-}
-
-template <insidable L, insidable R>
-[[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs) {
-    return detail::compare(lhs, rhs, detail::equal_to);
-}
-
-namespace detail {
-// inside ⋈ integral scalar without the rational decode: with the positive
-// notch n/d, value ⋈ c ⟺ (bias + raw)·n ⋈ c·d — both sides exact
-// integers (bias + raw is the signed value index, exact ordering AND
-// equality since c·d is exact too). Eligible when both cross terms
-// provably fit int64 for every representable c of type A.
-template <insidable B, typename A>
-inline constexpr bool scalar_index_cmp_fits = [] {
-    if constexpr (!std::integral<A> || wide_builtin<A> || value_storage<B> || !index_cmp_fits<B>)
-        return false;
-    else {
-        constexpr std::uint64_t notch_num = notch64<B>.Num;
-        constexpr std::uint64_t notch_den = static_cast<std::uint64_t>(notch64<B>.Den); // Notch > 0
-        constexpr std::uint64_t index_mag =
-            lower_index64<B>.Num > upper_index64<B>.Num ? lower_index64<B>.Num : upper_index64<B>.Num;
-        // The largest |c| of A: |min| = max + 1 for a signed type.
-        constexpr std::uint64_t scalar_mag =
-            static_cast<std::uint64_t>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
-        std::uint64_t product;
-        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<std::int64_t>(product) &&
-               !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<std::int64_t>(product);
     }
-}();
+  } // namespace detail
 
-// inside ⋈ integer or rational. Integer storage compares as integers when
-// the scalar's type fits int64; a wide inside or an integer past 64 bits
-// (__int128) compares exactly; everything else goes through rational.
-template <insidable B, class A, class Cmp>
-    requires(std::integral<A> || std::same_as<A, rational>)
-constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
-    constexpr bool int64_scalar =
-        std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(std::int64_t));
-    if constexpr (wide_builtin<A>)
+  template <insidable L, insidable R>
+  [[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs)
+  {
+    return detail::compare(lhs, rhs, detail::three_way);
+  }
+
+  template <insidable L, insidable R>
+  [[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs)
+  {
+    return detail::compare(lhs, rhs, detail::equal_to);
+  }
+
+  namespace detail
+  {
+    // inside ⋈ integral scalar without the rational decode:
+    // with the positive notch n/d, value ⋈ c ⟺ (bias + raw)·n ⋈ c·d, both sides exact integers
+    // (bias + raw is the signed value index, exact ordering AND equality since c·d is exact too).
+    // Eligible when both cross terms provably fit int64 for every representable c of type A.
+    template <insidable B, typename A>
+    inline constexpr bool scalar_index_cmp_fits = []
+    {
+      if constexpr (!std::integral<A> || wide_builtin<A> || value_storage<B> || !index_cmp_fits<B>)
+        return false;
+      else
+      {
+        constexpr std::uint64_t notch_num{notch64<B>.Num};
+        constexpr std::uint64_t notch_den{static_cast<std::uint64_t>(notch64<B>.Den)}; // Notch > 0
+        constexpr std::uint64_t index_mag{lower_index64<B>.Num > upper_index64<B>.Num ? lower_index64<B>.Num
+                                                                                    : upper_index64<B>.Num};
+        // The largest |c| of A: |min| = max + 1 for a signed type.
+        constexpr std::uint64_t scalar_mag{static_cast<std::uint64_t>(std::numeric_limits<A>::max())
+                                           + std::signed_integral<A>};
+        std::uint64_t product;
+        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<std::int64_t>(product)
+            && !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<std::int64_t>(product);
+      }
+    }();
+
+    // inside ⋈ integer or rational.
+    // Integer storage compares as integers when the scalar's type fits int64;
+    // a wide inside or an integer past 64 bits (__int128) compares exactly; everything else goes through rational.
+    template <insidable B, class A, class Cmp>
+      requires(std::integral<A> || std::same_as<A, rational>)
+    constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp)
+    {
+      constexpr bool int64_scalar{std::signed_integral<A>
+                                  || (std::unsigned_integral<A> && sizeof(A) < sizeof(std::int64_t))};
+      if constexpr (wide_builtin<A>)
         return cmp(exact_of(lhs), exact_of(rhs));
-    else if constexpr (wide_valued<B>)
+      else if constexpr (wide_valued<B>)
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
-    else if constexpr (integer_value_storage<B> && values_fit_int64<B> && int64_scalar)
+      else if constexpr (integer_value_storage<B> && values_fit_int64<B> && int64_scalar)
         return cmp(raw_int64(lhs), static_cast<std::int64_t>(rhs));
-    else if constexpr (integer_value_storage<B> && values_fit_int64<B> && std::unsigned_integral<A>)
+      else if constexpr (integer_value_storage<B> && values_fit_int64<B> && std::unsigned_integral<A>)
         return cmp(raw_int64(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
-    else if constexpr (scalar_index_cmp_fits<B, A>)
+      else if constexpr (scalar_index_cmp_fits<B, A>)
         // (An index raw: the value index is raw + Lower/Notch.)
-        return cmp((signed_numerator(lower_index64<B>) + raw_int64(lhs)) * static_cast<std::int64_t>(notch64<B>.Num),
-                   static_cast<std::int64_t>(rhs) * notch64<B>.Den);
-    else
+        return cmp(
+          (signed_numerator(lower_index64<B>) + raw_int64(lhs)) * static_cast<std::int64_t>(notch64<B>.Num),
+          static_cast<std::int64_t>(rhs) * notch64<B>.Den);
+      else
         return cmp(as_rational(lhs), rational{rhs});
-}
-} // namespace detail
+    }
+  } // namespace detail
 
-template <insidable B, class A>
+  template <insidable B, class A>
     requires(std::integral<A> || std::same_as<A, detail::rational>)
-[[nodiscard]] constexpr auto operator<=>(const B& lhs, A rhs) {
+  [[nodiscard]] constexpr auto operator<=>(const B& lhs, A rhs)
+  {
     return detail::compare_scalar(lhs, rhs, detail::three_way);
-}
+  }
 
-template <insidable B, class A>
+  template <insidable B, class A>
     requires(std::integral<A> || std::same_as<A, detail::rational>)
-[[nodiscard]] constexpr bool operator==(const B& lhs, A rhs) {
+  [[nodiscard]] constexpr bool operator==(const B& lhs, A rhs)
+  {
     return detail::compare_scalar(lhs, rhs, detail::equal_to);
-}
+  }
 
-// No comparison with a floating-point value: 0.1 is not 1/10 in binary, so
-// an inside holding 1/10 would compare unequal to 0.1. Compare with a
-// rational (0.1_r), a point (just<1, 10>) or an inside.
-#define INSIDE_WHY_float_compare                                                                          \
-    "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
-    "just<1, 10> or an inside"
-template <insidable B, std::floating_point A>
-auto operator<=>(const B&, A) = delete (INSIDE_WHY_float_compare);
-template <insidable B, std::floating_point A>
-bool operator==(const B&, A) = delete (INSIDE_WHY_float_compare);
+  // No comparison with a floating-point value:
+  // 0.1 is not 1/10 in binary, so an inside holding 1/10 would compare unequal to 0.1.
+  // Compare with a rational (0.1_r), a point (just<1, 10>) or an inside.
+#define INSIDE_WHY_float_compare                                                                        \
+  "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
+  "just<1, 10> or an inside"
+  template <insidable B, std::floating_point A>
+  auto operator<=>(const B&, A) = delete (INSIDE_WHY_float_compare);
+  template <insidable B, std::floating_point A>
+  bool operator==(const B&, A) = delete (INSIDE_WHY_float_compare);
 #undef INSIDE_WHY_float_compare
 } // namespace ins
 
