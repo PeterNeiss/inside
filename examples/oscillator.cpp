@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Quadrature oscillator: a wrapping phase accumulator + ins::math::sin/cos.
-//
-// Demonstrates:
-//   - A 16-bit phase counter as `quantity<slot, inside<{0, 65535}, wrap>>`:
-//     `+=` wraps at a full turn, and `on_wrap` counts the completed cycles.
-//   - The counter is an angle in a unit of our own, the slot (2π/65536 rad).
-//     A unit with a factor of π reduces exactly: `math::sin<per<(1 << 14)>>`
-//     and `math::cos` take the slots as they are and round once onto 2^-14,
-//     the notch named, the range deduced — no rational approximation of 2π
-//     anywhere.
-//   - A frequency-swept variant where the per-sample increment changes
-//     each step — exactly the pattern a chirp generator or vibrato LFO uses.
+// A quadrature oscillator: a 16-bit phase counter that wraps at a full turn, in slots of 2π/65536 rad, a unit of
+// our own. A unit with a factor of π reduces exactly, so sin and cos round once onto 2^-14, no 2π approximated.
 
 #include <iostream>
 
@@ -22,20 +12,19 @@
 using namespace ins;
 
 namespace {
-// One full turn is 65536 slots: a slot is 2π/65536 = π/32768 rad.
-inline constexpr auto slot = unit<"slot", just<1, 32768> * pi * si::radian>;
+inline constexpr auto slot = unit<"slot", just<1, 32768> * pi * si::radian>; // 65536 slots are a full turn
 } // namespace
 
 int main() {
-    // One full turn of phase in 65536 slots; wrap is the periodicity.
-    using phase_t = quantity<slot, inside<{0, 65535}, wrap>>;
+    using phase_slots = quantity<slot, inside<{0, 65535}, wrap>>; // wrap is the periodicity
 
+    // A fixed frequency, 1/8 turn per sample: on_wrap counts the completed cycles.
     std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
     std::cout << "  i   sin              cos\n";
     {
-        phase_t           phase{0, slot};
-        constexpr phase_t increment{65536 / 8, slot}; // 1/8 turn per sample
-        int               cycles = 0;
+        phase_slots phase{0, slot};
+        constexpr phase_slots increment{65536 / 8, slot};
+        int cycles = 0;
         for (int i = 0; i < 8; ++i) {
             std::cout << "  " << i << "   " << math::sin<per<(1 << 14)>>(phase) << "   "
                       << math::cos<per<(1 << 14)>>(phase) << "\n";
@@ -45,26 +34,26 @@ int main() {
         if (cycles != 1 || phase != just<0> * slot)
             return 1;
         // 1/8 turn is 45°: sin and cos both round to 11585/16384.
-        if (math::sin<per<(1 << 14)>>(increment) != just<11585, (1 << 14)> ||
-            math::cos<per<(1 << 14)>>(phase_t{65536 / 4, slot}) != 0)
+        if (math::sin<per<(1 << 14)>>(increment) != just<11585, (1 << 14)>
+            || math::cos<per<(1 << 14)>>(phase_slots{65536 / 4, slot}) != 0)
             return 1;
     }
 
+    // A swept frequency, the increment growing each step, as in a chirp generator or a vibrato LFO.
     std::cout << "\nSwept-frequency oscillator (increment grows each step):\n";
     std::cout << "  i   inc        phase        sin\n";
     {
-        // snap: increment / 4 truncates; clamp: the growth stays within 65535
-        // (×1.25 twelve times from 256 reaches 3725, which the grid cannot show).
-        using increment_t = quantity<slot, inside<{1, 65535}, round_toward_zero | clamp>>;
-        phase_t     phase{0, slot};
-        increment_t increment{256, slot}; // start at 1/256 turn
+        // increment / 4 truncates; clamp keeps the growth within 65535 (×1.25 twelve times from 256 reaches 3725,
+        // which the grid cannot show).
+        using increment_slots = quantity<slot, inside<{1, 65535}, round_toward_zero | clamp>>;
+        phase_slots phase{0, slot};
+        increment_slots increment{256, slot}; // 1/256 turn
         for (int i = 0; i < 12; ++i) {
             std::cout << "  " << i << "   " << increment << "    " << phase << "    "
                       << math::sin<per<(1 << 14)>>(phase) << "\n";
             phase += increment;               // wraps at a full turn
-            increment += increment / just<4>; // ×1.25 each step
+            increment += increment / just<4>; // ×1.25
         }
     }
-
     return 0;
 }

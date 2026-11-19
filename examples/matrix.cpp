@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Exact linear algebra on std::mdspan (inside/mdspan.hpp).
-//   1. dot of two static vectors: the result type holds every possible total,
-//      worked out at compile time from the extent and the element grid.
-//   2. A rotation by 30° in Q1.14: cos and sin correctly rounded from an
-//      angle in degrees, applied to points by matrix_vector_product, each
-//      coordinate the exact sum of products, rounded once. Compared with
-//      double.
-//   3. The rotation squared by matrix_product is the rotation by 60°, within
-//      a notch of the directly rounded one.
-//   4. Fibonacci numbers as powers of [[1, 1], [1, 0]]: 64-bit entries whose
-//      products are held exactly in 128 bits; F(94) does not fit the entry
-//      type and is reported, not wrapped.
+// Exact linear algebra on std::mdspan: result types that hold every possible total, rotations in Q1.14 with each
+// coordinate an exact sum rounded once, and Fibonacci matrices whose overflow is reported, not wrapped.
 
 #include <array>
 #include <cmath>
@@ -26,52 +16,54 @@
 
 using namespace ins;
 
-using q14     = inside<{{-2, 2}, per<(1 << 14)>}, round_half_away>; // Q1.14
-using coord   = inside<{{-100, 100}, per<(1 << 8)>}, round_half_away>;
-using matrix  = std::extents<std::size_t, 2, 2>;
-using vector2 = std::extents<std::size_t, 2>;
+using q1_14 = inside<{{-2, 2}, per<(1 << 14)>}, round_half_away>;
 using degrees = quantity<si::degree, inside<{0, 360}>>;
+using rotation_2x2 = std::array<q1_14, 4>;
 
 // [[cos a, −sin a], [sin a, cos a]], each entry correctly rounded to Q1.14.
-std::array<q14, 4> rotation(degrees a) {
-    const q14 c = math::cos<q14>(a), s = math::sin<q14>(a);
-    return {c, q14{-s}, s, c};
+rotation_2x2 rotation(degrees a) {
+    const q1_14 c = math::cos<q1_14>(a), s = math::sin<q1_14>(a);
+    return {c, q1_14{-s}, s, c};
 }
 
 int main() {
-    // 1. dot: 4 products of [−100, 100] lie in [−40000, 40000].
-    using small = inside<{-100, 100}>;
-    std::array<small, 4> a{3, -7, 100, 25}, b{12, 9, -4, 30};
-    const auto           d = dot(std::mdspan{a.data(), std::extents<std::size_t, 4>{}},
-                                 std::mdspan{b.data(), std::extents<std::size_t, 4>{}});
+    // 1. dot of two static vectors: 4 products of [−100, 100] lie in [−40000, 40000], worked out at compile time.
+    using element = inside<{-100, 100}>;
+    std::array<element, 4> a{3, -7, 100, 25}, b{12, 9, -4, 30};
+    const auto d = dot(std::mdspan{a.data(), std::extents<std::size_t, 4>{}},
+                       std::mdspan{b.data(), std::extents<std::size_t, 4>{}});
     static_assert(grid_of<decltype(d)> == grid{-40000, 40000});
     std::cout << "dot         " << d << "\n";
     if (d != 323)
         return 1;
 
-    // 2. Rotate three points by 30°.
-    const auto        r30 = rotation(degrees{30, si::degree});
-    const std::mdspan rot{r30.data(), matrix{}};
-    double            worst = 0;
-    for (const auto& p : {std::array<coord, 2>{10, 0}, std::array<coord, 2>{0, 10}, std::array<coord, 2>{3, 4}}) {
-        std::array<coord, 2> q{};
-        if (!matrix_vector_product(rot, std::mdspan{p.data(), vector2{}}, std::mdspan{q.data(), vector2{}}))
+    // 2. Three points rotated by 30° with matrix_vector_product, compared with double.
+    using coord = inside<{{-100, 100}, per<(1 << 8)>}, round_half_away>;
+    using point = std::array<coord, 2>;
+    using matrix_2x2 = std::extents<std::size_t, 2, 2>;
+    using vector_2 = std::extents<std::size_t, 2>;
+
+    const auto r30 = rotation(degrees{30, si::degree});
+    const std::mdspan rot{r30.data(), matrix_2x2{}};
+    double worst = 0;
+    for (const point& p : {point{10, 0}, point{0, 10}, point{3, 4}}) {
+        point q{};
+        if (!matrix_vector_product(rot, std::mdspan{p.data(), vector_2{}}, std::mdspan{q.data(), vector_2{}}))
             return 1; // a coordinate past its range
         const double x = p[0].to<double>(), y = p[1].to<double>();
         const double c = std::cos(std::numbers::pi / 6), s = std::sin(std::numbers::pi / 6);
         const double ex = c * x - s * y, ey = s * x + c * y;
         worst = std::max({worst, std::abs(q[0].to<double>() - ex), std::abs(q[1].to<double>() - ey)});
-        std::cout << "(" << p[0] << ", " << p[1] << ") -> (" << q[0] << ", " << q[1] << ")  double (" << ex << ", "
-                  << ey << ")\n";
+        std::cout << "(" << p[0] << ", " << p[1] << ") -> (" << q[0] << ", " << q[1] << ")  double (" << ex
+                  << ", " << ey << ")\n";
     }
     std::cout << "worst error " << worst << " (a coordinate notch is " << 1.0 / (1 << 8) << ")\n";
     if (!(worst <= 1.0 / (1 << 8)))
         return 1;
 
-    // 3. Two 30° turns make one of 60°: every entry is the exact sum of two
-    // Q1.14 products, rounded once into Q1.14.
-    std::array<q14, 4> r60{};
-    if (!matrix_product(rot, rot, std::mdspan{r60.data(), matrix{}}))
+    // 3. Two 30° turns make one of 60°, within a notch: each entry is an exact sum of two products, rounded once.
+    rotation_2x2 r60{};
+    if (!matrix_product(rot, rot, std::mdspan{r60.data(), matrix_2x2{}}))
         return 1; // an entry past Q1.14
     const auto direct = rotation(degrees{60, si::degree});
     std::cout << "R30·R30     [" << r60[0] << ", " << r60[1] << "; " << r60[2] << ", " << r60[3] << "]\n"
@@ -80,25 +72,24 @@ int main() {
         if (r60[k] - direct[k] > just<1, (1 << 14)> || direct[k] - r60[k] > just<1, (1 << 14)>)
             return 1;
 
-    // 4. Fibonacci: [[1, 1], [1, 0]]^n = [[F(n+1), F(n)], [F(n), F(n−1)]].
-    using fib = inside<{0, 12'200'160'415'121'876'738u}>; // F(93), the largest below 2^64
-    const std::array<fib, 4> step{1, 1, 1, 0};
-    std::array<fib, 4>       power{1, 0, 0, 1};
-    std::array<fib, 4>       next{};
-    // fib's range holds no product of two fib matrices: matrix_product
-    // returns an expected<void, error>, the first element that does not fit.
+    // 4. Fibonacci: [[1, 1], [1, 0]]^n = [[F(n+1), F(n)], [F(n), F(n−1)]], 64-bit entries whose products are held
+    //    exactly in 128 bits. No product of two such matrices is proven to fit, so matrix_product returns an
+    //    expected<void, error>: the first entry that does not fit.
+    using fibonacci = inside<{0, 12'200'160'415'121'876'738u}>; // F(93), the largest below 2^64
+    const std::array<fibonacci, 4> step{1, 1, 1, 0};
+    std::array<fibonacci, 4> power{1, 0, 0, 1};
+    std::array<fibonacci, 4> next{};
     for (int n = 1; n <= 92; ++n) {
-        if (!matrix_product(std::mdspan{power.data(), matrix{}},
-                            std::mdspan{step.data(), matrix{}},
-                            std::mdspan{next.data(), matrix{}}))
+        if (!matrix_product(std::mdspan{power.data(), matrix_2x2{}}, std::mdspan{step.data(), matrix_2x2{}},
+                            std::mdspan{next.data(), matrix_2x2{}}))
             return 1;
         power = next;
     }
     std::cout << "F(93)       " << power[0] << "\n";
     if (to_string(power[0]) != "12200160415121876738")
         return 1;
-    const auto f94 = matrix_product(
-        std::mdspan{power.data(), matrix{}}, std::mdspan{step.data(), matrix{}}, std::mdspan{next.data(), matrix{}});
+    const auto f94 = matrix_product(std::mdspan{power.data(), matrix_2x2{}}, std::mdspan{step.data(), matrix_2x2{}},
+                                    std::mdspan{next.data(), matrix_2x2{}});
     if (f94)
         return 1; // F(94) must not fit
     std::cout << "F(94)       " << error_message(f94.error()) << "\n";
