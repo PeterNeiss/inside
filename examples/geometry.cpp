@@ -1,20 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Inside-space 2-D geometry with `dot`, `cross`, and `lerp`.
-//
-// The three vector helpers keep planar geometry inside the bounded world — no
-// dropping to a raw scalar to form a dot product, a 2-D cross (the z-component,
-// the classic "which side of a line" test), or a linear interpolation. Each
-// widens its result grid like the underlying `+`/`*`, so the result is a plain
-// `inside` that provably can't overflow.
-//
-// Demonstrates:
-//   - `dot`   — projection magnitude and a perpendicularity test (dot == 0)
-//   - `cross` — signed area / left-vs-right side of a directed segment
-//   - `lerp`  — interpolating a point along a path, t a [0, 1] fixed-point inside
-//
-// The coordinates are in px, a unit of our own on a screen dimension: dot and
-// cross come out in px² (an area, compared with 0 px²), lerp in px, and t is
-// a plain number.
+// 2-D geometry with dot, cross and lerp on pixel coordinates, px being a unit of our own: each result widens its
+// grid like + and *, so it provably cannot overflow, and dot and cross come out in px².
 
 #include <iostream>
 #include <string>
@@ -27,56 +13,47 @@
 using namespace ins;
 
 namespace {
-inline constexpr auto px        = base_unit<"px", "screen">;
+inline constexpr auto px = base_unit<"px", "screen">;
 inline constexpr auto zero_area = just<0> * square(px);
 } // namespace
 
 int main() {
-    // Screen coordinates, integer pixels in [-100, 100] px.
-    using coord = quantity<px, inside<{-100, 100}>>;
+    using pixels = quantity<px, inside<{-100, 100}>>; // screen coordinates, whole pixels
 
-    // Two vectors a = (3, 4), b = (4, -3) — chosen to be perpendicular.
-    coord ax{3, px}, ay{4, px};
-    coord bx{4, px}, by{-3, px};
-
+    // a = (3, 4) and b = (4, -3), chosen perpendicular.
+    pixels ax{3, px}, ay{4, px};
+    pixels bx{4, px}, by{-3, px};
     std::cout << "a = (" << ax << ", " << ay << ")   b = (" << bx << ", " << by << ")\n\n";
 
-    // dot(a, b) = ax*bx + ay*by. Zero ⇒ perpendicular.
+    // dot(a, b) = 0: perpendicular. dot(a, a) = |a|² is exact, with no sqrt needed to compare lengths.
     auto ab = ax * bx + ay * by;
     std::cout << "dot(a, b)      = " << ab << (ab == zero_area ? "   (perpendicular)\n" : "\n");
-
-    // |a|^2 via dot(a, a) — stays exact in inside-space, no sqrt needed for a
-    // length comparison.
     std::cout << "dot(a, a)=|a|^2 = " << (ax * ax + ay * ay) << "   (= (5 px)^2)\n";
 
-    // cross(a, b) = ax*by - ay*bx — the z-component of a×b. Its sign answers
-    // "is b to the left (+) or right (-) of a?". Also twice the signed area of
-    // the triangle (0, a, b).
+    // cross(a, b), the z of a×b: its sign says whether b is left (+) or right (-) of a.
     std::cout << "cross(a, b)    = " << (ax * by - ay * bx) << "   (sign = side of a)\n";
 
-    // Side test for three points P, Q, R: cross(Q-P, R-P).
-    auto side = [](coord p_x, coord p_y, coord q_x, coord q_y, coord r_x, coord r_y) {
-        // Edge vectors widen to a signed grid; cross widens further. No overflow.
+    // R's side of the segment P→Q is the sign of cross(Q − P, R − P); every grid widens, nothing overflows.
+    auto side = [](pixels p_x, pixels p_y, pixels q_x, pixels q_y, pixels r_x, pixels r_y) {
         auto c = (q_x - p_x) * (r_y - p_y) - (q_y - p_y) * (r_x - p_x);
         return c > zero_area ? "left" : c < zero_area ? "right" : "collinear";
     };
     std::cout << "\nside of segment (0,0)->(10,0):\n";
-    const coord o{0, px}, ten{10, px}, five{5, px}, up{3, px}, down{-3, px};
+    const pixels o{0, px}, ten{10, px}, five{5, px}, up{3, px}, down{-3, px};
     std::cout << "  point (5, 3)   is " << side(o, o, ten, o, five, up) << "\n";
     std::cout << "  point (5,-3)   is " << side(o, o, ten, o, five, down) << "\n";
     std::cout << "  point (5, 0)   is " << side(o, o, ten, o, five, o) << "\n";
 
-    // lerp(a, b, t) = a + (b - a) * t. `t` is a [0, 1] fixed-point inside, so the
-    // interpolation never leaves inside-space; dyadic t values are exact.
-    using axis    = quantity<px, inside<{0, 100}>>;
-    using param_t = inside<{{0, 1}, per<16>}, round_half_away>;
-    axis x0{20, px}, x1{80, px};
+    // lerp(a, b, t) = a + (b − a) t with t on a [0, 1] grid: it stays inside, and dyadic t is exact.
+    using screen_x = quantity<px, inside<{0, 100}>>;
+    using fraction = inside<{{0, 1}, per<16>}, round_half_away>;
+    screen_x x0{20, px}, x1{80, px};
     std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
-    for (cursor<param_t, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1
+    for (cursor<fraction, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1
         std::cout << "  t = " << t << "  ->  " << lerp(x0, x1, *t) << "\n";
 
-    if (ab != zero_area || to_string(ax * by - ay * bx) != "-25 px²" ||
-        to_string(lerp(x0, x1, param_t{0.25})) != "35 px" || std::string{side(o, o, ten, o, five, up)} != "left")
+    if (ab != zero_area || to_string(ax * by - ay * bx) != "-25 px²"
+        || to_string(lerp(x0, x1, fraction{0.25})) != "35 px" || std::string{side(o, o, ten, o, five, up)} != "left")
         return 1;
     return 0;
 }
