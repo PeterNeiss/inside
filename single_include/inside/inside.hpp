@@ -18755,8 +18755,6 @@ auto lcm(const A&, const B&) = delete (INSIDE_WHY_too_large(lcm));
 //---------------------------------------------------------------------------
 
 
-// Generated: the fits stay one per line.
-// clang-format off
 namespace ins::math::detail::fp::minimax {
 
 template <std::size_t N>
@@ -18876,7 +18874,6 @@ inline constexpr fit<11> atan_fit<11>{{0x1.109f856507578p-5, -0x1.9c1021880a1f6p
 inline constexpr std::array<double, 10> atan_err{0x1.fc83bf5b0de45p-14, 0x1.93cef3120b229p-20, 0x1.5d05f803725d3p-26, 0x1.3d4562f308be7p-32, 0x1.2a3a873c06871p-38, 0x1.1f1b97aa401b7p-44, 0x1.20022dffbfff9p-50, 0x1.3b7a990068329p-56, 0x1.372588bf28f75p-62, 0x1.a029c383109dp-67}; // index terms − min
 
 } // namespace ins::math::detail::fp::minimax
-// clang-format on
 
 
 #ifndef INSIDE_MATH_NO_FP // ===== FP engine present (needs <cmath> + an FPU) =====

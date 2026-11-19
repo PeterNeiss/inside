@@ -72,6 +72,9 @@
 
 ### Changed
 
+- No formatter or lint hook runs any more: `.clang-format`, the pre-commit
+  configuration (clang-format, gersemi, codespell, whitespace fixers),
+  `.codespellrc` and the Lint workflow are gone. Code is formatted by hand.
 - Grid numbers are held inline while they fit the 64-bit rational, so every
   `inside` type spells shorter: `inside<{{0, 1}, per<100>}, round_half_away>`
   prints in 221 characters instead of 609 and mangles in 145 instead of 203,
