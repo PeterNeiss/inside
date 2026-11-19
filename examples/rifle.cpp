@@ -1,28 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Rifle / magazine / reserve simulation built on the inside policy system.
-// Ammunition is a base dimension with the unit `rd` (rounds): magazine,
-// reserve and dropped rounds are quantities of it, while trigger pulls,
-// reloads and dry clicks stay plain event counts — the two never mix.
-//
-// Three classes, each leaning on a different policy:
-//
-//   - `magazine` holds the rounds as rd on `inside<{0, capacity}, wrap>` —
-//     31 distinct states, and the wrap from 0 back up to capacity is
-//     exactly the magazine-swap event.
-//   - `rifle` owns a magazine, the per-weapon trigger-event counters
-//     (`pulled_trigger`, `missed_shots`, `reloads`) and the rounds it
-//     dropped (`rounds_dropped`, in rd).
-//   - `player` owns a rifle plus a reserve pool of rd on
-//     `inside<{0, 200}, clamp>`: withdrawals saturate at 0 so we never
-//     underflow, and the on_clamp overshoot tells us how short the reserve
-//     was without an explicit `std::min` or extraction cast.
-//
-// Demonstrates:
-//   - `wrap` policy on the magazine — firing past empty triggers on_wrap
-//   - `clamp` policy on the reserve — over-withdrawal surfaces via on_clamp
-//   - Partial reloads when the reserve is short of a full mag
-//   - Per-shot counters: pulled_trigger, missed_shots, dry_clicks
-//   - Combat-reload that drops the partial mag (rounds_dropped)
+// A rifle, its magazine and a reserve, built on policies. Ammunition is a base dimension in rounds (rd), while
+// trigger pulls, reloads and dry clicks stay plain event counts, so the two never mix.
+// The magazine wraps (firing past empty is the reload event, on_wrap), and the reserve clamps (a withdrawal past
+// empty saturates, and on_clamp's overshoot says how short it was).
 
 #include <iostream>
 #include <string_view>
@@ -34,7 +14,6 @@
 #include <inside/units/io.hpp>
 
 using namespace ins;
-
 using namespace ins::formats;
 
 namespace {
@@ -44,40 +23,39 @@ inline constexpr auto rd = base_unit<"rd", "ammunition">;
 class magazine {
   public:
     static constexpr auto capacity = just<30> * rd;
-    using count_t                  = quantity<rd, inside<{0, 30}, wrap>>; // 31 states; wraps at empty
+    using rounds_t = quantity<rd, inside<{0, 30}, wrap>>; // 31 states; wraps at empty
 
-    count_t rounds{capacity}; // start full
+    rounds_t rounds{capacity}; // starts full
 
     bool empty() const { return rounds == just<0> * rd; }
 };
 
 class rifle {
   public:
-    magazine                                    mag;
-    clamp_counter<1'000'000>                    pulled_trigger{0}; // saturating event tallies
-    clamp_counter<1'000'000>                    missed_shots{0};
-    clamp_counter<1'000'000>                    reloads{0};
-    quantity<rd, inside<{0, 1'000'000}, clamp>> rounds_dropped{0, rd}; // accumulates count_t values
+    using dropped_rounds = quantity<rd, inside<{0, 1'000'000}, clamp>>;
+
+    magazine mag;
+    clamp_counter<1'000'000> pulled_trigger{0}; // saturating event tallies
+    clamp_counter<1'000'000> missed_shots{0};
+    clamp_counter<1'000'000> reloads{0};
+    dropped_rounds rounds_dropped{0, rd}; // accumulates the magazine's rounds
 };
 
 class player {
   public:
     using reserve_t = quantity<rd, inside<{0, 200}, clamp>>;
-    reserve_t                reserve{60, rd}; // two spare mags' worth
-    rifle                    weapon;
-    clamp_counter<1'000'000> dry_clicks{0}; // mag empty AND reserve empty
 
-    // Pull the trigger once. Four outcomes:
-    //   (a) mag empty AND reserve empty  -> dry click, no decrement.
-    //   (b) mag empty, reserve has rounds -> missed shot; the same trigger
-    //       pull drives the wrap, which auto-reloads from the reserve.
-    //   (c) mag has rounds                -> normal hit; mag decrements.
-    //   (d) reserve was short of a full mag -> the new mag is partial.
+    reserve_t reserve{60, rd}; // two spare magazines' worth
+    rifle weapon;
+    clamp_counter<1'000'000> dry_clicks{0}; // the magazine and the reserve both empty
+
+    // Pull the trigger once:
+    //   magazine and reserve empty  → a dry click;
+    //   magazine empty, reserve not → a missed shot, whose wrap reloads from the reserve (partly, if it is short);
+    //   magazine not empty          → a hit, one round less.
     void pull_trigger();
 
-    // Manual combat reload — drops the partial mag on the ground (those
-    // rounds are gone) and pulls a fresh mag from the reserve. If the
-    // reserve is short, the new mag is partial.
+    // A combat reload drops the partial magazine (those rounds are gone) and pulls a fresh one from the reserve.
     void combat_reload();
 };
 
@@ -92,10 +70,9 @@ void player::pull_trigger() {
         ++weapon.missed_shots;
 
     weapon.mag.rounds.on_wrap([&](auto& m, auto) {
-        // The wrap put `m` at capacity. Withdraw a full mag from the reserve;
-        // on_clamp's overshoot tells us how much we were short of capacity.
-        magazine::count_t shortfall{0, rd};
-        reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::count_t{-over}; }) -= magazine::capacity;
+        // The wrap put m at capacity: withdraw a full magazine; on_clamp's overshoot is how short the reserve was.
+        magazine::rounds_t shortfall{0, rd};
+        reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::rounds_t{-over}; }) -= magazine::capacity;
         ++weapon.reloads;
         if (shortfall > just<0> * rd)
             m = magazine::capacity - shortfall;
@@ -103,12 +80,10 @@ void player::pull_trigger() {
 }
 
 void player::combat_reload() {
-    // The partial mag is dropped; accumulate its rounds. `rounds_dropped`
-    // saturates, so this stays a plain += of two round counts.
-    weapon.rounds_dropped += weapon.mag.rounds;
+    weapon.rounds_dropped += weapon.mag.rounds; // saturates, so this stays a plain += of two round counts
 
-    magazine::count_t shortfall{0, rd};
-    reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::count_t{-over}; }) -= magazine::capacity;
+    magazine::rounds_t shortfall{0, rd};
+    reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::rounds_t{-over}; }) -= magazine::capacity;
     ++weapon.reloads;
     weapon.mag.rounds = magazine::capacity - shortfall;
 }
@@ -125,26 +100,25 @@ int main() {
 
     status("start:                              ");
 
-    // Phase 1 — burn 2/3 of the mag, then combat-reload (10 dropped).
+    // 1. Burn 2/3 of the magazine, then a combat reload (10 rounds dropped).
     for (int i = 0; i < 20; ++i)
         p.pull_trigger();
     status("after 20 shots:                     ");
     p.combat_reload();
     status("after combat reload (10 dropped):   ");
 
-    // Phase 2 — sustained fire across the empty threshold. The 31st shot
-    // pulls a fresh mag from the reserve via on_wrap.
+    // 2. Sustained fire across empty: the 31st shot pulls a fresh magazine from the reserve, via on_wrap.
     for (int i = 0; i < 31; ++i)
         p.pull_trigger();
     status("after 31 more (1 wrap-reload):      ");
 
-    // Phase 3 — fire past the reserve into dry-click territory.
+    // 3. Fire past the reserve into dry clicks.
     for (int i = 0; i < 40; ++i)
         p.pull_trigger();
     status("after 40 more (reserve dries up):   ");
 
-    if (to_string(p.weapon.rounds_dropped) != "10 rd" || p.weapon.reloads != 2 || p.dry_clicks != 10 ||
-        !p.weapon.mag.empty())
+    if (to_string(p.weapon.rounds_dropped) != "10 rd" || p.weapon.reloads != 2 || p.dry_clicks != 10
+        || !p.weapon.mag.empty())
         return 1;
     return 0;
 }

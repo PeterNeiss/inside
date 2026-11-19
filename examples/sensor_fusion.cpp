@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Weighted average across three temperature sensors with disparate ranges.
-//
-// Demonstrates:
-//   - Per-sensor fixed-point grids (different lower/upper/notch each)
-//   - `conversion_overflows` predicate as a soft outlier filter
-//   - A fixed-point weighted sum that stays exact until the one rounding
-//   - `div<Out>` with `clamp | round_half_away` on the output type: the average
-//     saturates and rounds once (no explicit `B{v, clamp | round_half_away}`)
-//   - Readings as ℃ points: a point has no sum and no product, so the
-//     weighted mean is the affine one, ref + Σ w·(p − ref) / Σ w, with each
-//     p − ref a temperature difference in ℃
+// A weighted mean of three temperature sensors with different ranges and notches: try_make rejects an outlier, the
+// fixed-point weighted sum stays exact until the one rounding, and the readings are ℃ points, which have no sum,
+// so the mean is the affine one, ref + Σ w·(p − ref) / Σ w.
 
 #include <iostream>
 #include <type_traits>
@@ -24,46 +16,33 @@ using namespace ins;
 
 constexpr auto deg_C = si::degree_Celsius;
 
-// Three sensors covering overlapping but distinct ranges, in ℃.
-// Each has a different precision matched to its hardware.
-using outdoor_t = inside<{{-40, 60}, per<2>}, round_half_away>; // 0.5  °C
-using indoor_t  = inside<{{0, 50}, per<10>}, round_half_away>;  // 0.1  °C
-using ground_t  = inside<{{-10, 30}, per<4>}, round_half_away>; // 0.25 °C
-
-// Output: a coarse fused grid, whole ℃ above the reference. `clamp |
-// round_half_away` lets `div<fused_t>` saturate AND round the quotient in
-// one step — no explicit `fused_t{..., clamp | round_half_away}` cast needed.
-using fused_t = quantity<deg_C, inside<{-40, 60}, clamp | round_half_away>>;
-
 int main() {
-    // Five readings — one outdoor reading is a clear outlier (-50, below
-    // grid). conversion_overflows rejects it before construction.
-    double raw[] = {22.5, 21.7, -50.0, 22.0, 23.25};
+    // Three sensors in ℃, each with the precision of its hardware.
+    using outdoor_reading = inside<{{-40, 60}, per<2>}, round_half_away>; // 0.5 ℃
+    using indoor_reading = inside<{{0, 50}, per<10>}, round_half_away>;   // 0.1 ℃
+    using ground_reading = inside<{{-10, 30}, per<4>}, round_half_away>;  // 0.25 ℃
 
-    // Weights per sensor, in 1/8 step — could be tuned by confidence.
-    using weight_t = inside<{{0, 1}, per<8>}, round_half_away>;
-    weight_t w_outdoor{0.5};
-    weight_t w_indoor{0.375};
-    weight_t w_ground{0.125};
+    double raw[] = {22.5, 21.7, -50.0, 22.0, 23.25}; // -50 is an outlier, below the outdoor grid
+
+    using weight = inside<{{0, 1}, per<8>}, round_half_away>; // tuned by confidence
+    weight w_outdoor{0.5};
+    weight w_indoor{0.375};
+    weight w_ground{0.125};
 
     std::cout << "raw   accepted?   notes\n";
 
-    // Accumulate the weighted sum and total weight in fixed-point bounds — no
-    // rational. The 1/160 accumulator notch holds every sensor·weight product
-    // (outdoor 1/16, indoor 1/80, ground 1/32) exactly, so the running sum stays
-    // lossless; the weight accumulator keeps the weights' 1/8 notch.
-    // The reference point is 0 ℃; each reading counts from it.
-    const auto ref       = point<deg_C>(just<0>);
-    using weighted_sum_t = quantity<deg_C, inside<{{-200, 200}, per<160>}, round_half_away>>;
-    using weight_sum_t   = inside<{{0, 8}, per<8>}, round_half_away>;
-    weighted_sum_t weighted_sum{0, deg_C};
-    weight_sum_t   weight_sum{0};
+    // The accumulators, counted from the reference point 0 ℃. The 1/160 notch holds every reading·weight product
+    // (outdoor 1/16, indoor 1/80, ground 1/32) exactly, so the running sum is lossless.
+    const auto ref = point<deg_C>(just<0>);
+    using weighted_celsius = quantity<deg_C, inside<{{-200, 200}, per<160>}, round_half_away>>;
+    using weight_total = inside<{{0, 8}, per<8>}, round_half_away>;
+    weighted_celsius weighted_sum{0, deg_C};
+    weight_total weight_sum{0};
 
-    // The accumulators' ranges hold any five readings, which their types
-    // cannot show: each += reports into one sticky error, checked after the
-    // loop (the first error is kept).
+    // The accumulators hold any five readings, which their types cannot show: each += reports into one sticky
+    // error, checked after the loop (the first error is kept).
     error accumulated{};
-    auto  accept = [&]<typename B>(std::type_identity<B>, double r, weight_t w, const char* tag) {
+    auto accept = [&]<typename B>(std::type_identity<B>, double r, weight w, const char* tag) {
         const auto stored = B::try_make(r); // a run-time double: out of range, or NaN
         std::cout << r << "  " << (stored ? "yes" : "no ") << "  " << tag << "\n";
         if (!stored)
@@ -73,20 +52,21 @@ int main() {
         weight_sum.on_error(accumulated) += w;
     };
 
-    accept(std::type_identity<outdoor_t>{}, raw[0], w_outdoor, "outdoor");
-    accept(std::type_identity<indoor_t>{}, raw[1], w_indoor, "indoor ");
-    accept(std::type_identity<outdoor_t>{}, raw[2], w_outdoor, "outdoor");
-    accept(std::type_identity<ground_t>{}, raw[3], w_ground, "ground ");
-    accept(std::type_identity<indoor_t>{}, raw[4], w_indoor, "indoor ");
+    accept(std::type_identity<outdoor_reading>{}, raw[0], w_outdoor, "outdoor");
+    accept(std::type_identity<indoor_reading>{}, raw[1], w_indoor, "indoor ");
+    accept(std::type_identity<outdoor_reading>{}, raw[2], w_outdoor, "outdoor");
+    accept(std::type_identity<ground_reading>{}, raw[3], w_ground, "ground ");
+    accept(std::type_identity<indoor_reading>{}, raw[4], w_indoor, "indoor ");
     if (accumulated != error{})
         return 1;
 
-    // The weight grid includes 0, so div<fused_t> returns expected<fused_t, error>:
-    // no accepted reading is a division by zero, reported, not a crash.
-    const auto fused = ref + div<fused_t>(weighted_sum, weight_sum).value_or(fused_t{0, deg_C});
+    // The fused value, whole ℃: its clamp and rounding policy saturates and rounds the quotient in one step.
+    // The weight grid holds 0, so div is an expected: no accepted reading is reported, not a crash.
+    using fused_celsius = quantity<deg_C, inside<{-40, 60}, clamp | round_half_away>>;
+    const auto fused = ref + div<fused_celsius>(weighted_sum, weight_sum).value_or(fused_celsius{0, deg_C});
 
     std::cout << "\nweighted sum: " << weighted_sum << ",  total weight: " << weight_sum << "\n";
-    std::cout << "fused (clamp+round into fused_t): " << fused << "\n";
+    std::cout << "fused (clamp+round into fused_celsius): " << fused << "\n";
 
     if (to_string(fused) != "22 ℃" || to_string(weighted_sum) != "30.87500 ℃")
         return 1;
