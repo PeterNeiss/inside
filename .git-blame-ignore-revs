@@ -1,3 +1,5 @@
 # Commits that only reformat code; skip them in git blame:
 #   git config blame.ignoreRevsFile .git-blame-ignore-revs
 d60a2618d3e1a9640cbe4a5242edf8c8666f72cd
+# Mechanical rename beman::inside -> ins, <beman/inside/...> -> <inside/...> (PR #63)
+75b014ff6fa64f1c4d888b62583d9f27f621e716
