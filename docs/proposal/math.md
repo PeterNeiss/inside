@@ -17,9 +17,9 @@ toc-depth: 2
 We propose the functions of `<cmath>` for `inside`, the bounded number with an
 exact rational step proposed in [*`inside`: numbers whose range and step size
 are part of the
-type*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/inside.md)
+type*](https://github.com/PeterNeiss/inside/blob/v0.10.0/docs/proposal/inside.md)
 (*the number paper* below), and for the quantities of [*Quantities on
-`inside`*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/quantity.md)
+`inside`*](https://github.com/PeterNeiss/inside/blob/v0.10.0/docs/proposal/quantity.md)
 (*the quantity paper*).
 
 Each function returns the *correctly rounded* point of its output grid: the
@@ -33,7 +33,11 @@ reduced exactly, so `cos` of 120° is exactly −1/2.
 
 This paper depends on the number paper; its section on quantities depends on
 the quantity paper. The reference implementation is
-[inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0).
+[inside v0.10.0](https://github.com/PeterNeiss/inside/tree/v0.10.0).
+
+# Revision history {- .unlisted}
+
+R0: first revision.
 
 # Motivation
 
@@ -55,7 +59,27 @@ An `inside` carries the precision a program needs in its type: the output's
 notch. So the function can round once, directly onto that grid, and the
 contract can be the one that leaves no freedom: the correctly rounded point.
 C23 reserves the `cr_` names for correctly rounded functions on the binary
-formats ([@N3220]); this paper asks the same of every grid.
+formats [@WG14N3220]; this paper asks the same of every grid.
+
+::: cmptable
+### Today
+```cpp
+// a Q1.14 sine table entry: two roundings, and the
+// result depends on the C library and on the compiler
+std::int16_t wave(std::int16_t a) {
+  return static_cast<std::int16_t>(
+      std::lround(std::sin(a / 16384.0) * 16384));
+}
+```
+
+### With `inside`
+```cpp
+using angle = inside<{{-2, 2}, per<(1 << 14)>}, round_half_away>;
+auto wave(angle a) {
+  return math::sin(a);  // the nearest 1/16384 to sin a: one rounding,
+}                       // the same at compile time and everywhere
+```
+:::
 
 # A tour
 
@@ -151,9 +175,10 @@ unit following the function.
 
 A transcendental result is never on a grid by accident, so it rounds once:
 by the call's (`fn<round_floor>(x)`); by `Out`'s mode, which a named `Out`
-must have, as a store that rounds must in the number paper; or else by the
-input type's mode, else to nearest, which the deduced output carries. A result past `Out`'s interval goes through `Out`'s policy:
-`clamp` saturates, `wrap` folds the true value, and the default reports.
+must permit, as a store that rounds must in the number paper; or else by the
+input type's mode, else to nearest, which the deduced output carries. A result
+past `Out`'s interval goes through `Out`'s policy: `clamp` saturates, `wrap`
+folds the true value, and a checked `Out` makes the result an `expected`.
 
 ## Errors follow the number paper
 
@@ -219,6 +244,23 @@ proven correct. A tool certifies a type pair by exhaustion instead, computing
 every input and requiring that none is undecided ([Implementation
 experience](#implementation-experience)).
 
+## Alternatives considered
+
+- **A faithful result.** Allowing either neighbour of the true value would let
+  an implementation stop earlier, but results would again differ between
+  platforms and between compile time and run time, which is the problem this
+  paper sets out to solve.
+- **Compute in `double`, then store.** The result is rounded twice, its
+  precision stops at 53 bits, and it needs an FPU and a correctly rounded
+  `double` function underneath.
+- **Correctly rounded functions on the binary formats only** (the C23 `cr_`
+  names, [@P3864R1]). They fix the result for `float` and `double`. A grid
+  type would still round a second time onto its notch.
+- **Overloads of `std::sin`.** Overloading on `inside` works for the deduced
+  form, but `sin<Out>(x)` and `sin<per<K>>(x)` need template arguments that
+  `std::sin` does not have; a namespace keeps the forms together (open
+  question 1).
+
 # Proposed interface
 
 Each declaration `fn(args)` below stands for two templates:
@@ -229,15 +271,18 @@ template<class Out, class... D> constexpr auto fn(const D&... args);       // on
 ```
 
 A `Spec` is a notch (`per<K>`, or any rational) or policy flags, in any
-order, at most one notch. The second form returns `Out` (or `expected<Out,
-error>` where the deduced form returns an `expected`); except for the grid
-operations, `Out` must be an `inside` whose policy names a rounding mode.
+order, at most one notch. The second form returns `Out`, or `expected<Out,
+error>` where the result can miss `Out`: where the deduced form returns an
+`expected`, and where a checked `Out`'s range does not hold the function's
+range over the input's grid. Except for the grid operations, `Out` must be an
+`inside` whose policy permits rounding (a rounding mode, or `unsafe`), or a
+continuous grid.
 `pow_base` and `pown` take their compile-time argument first:
 `pow_base<10, per<(1 << 10)>>(x)`, `pown<3, Out>(x)`.
 
 ```cpp
 namespace std::math {
-  template<uint64_t K>                                        // [-1, 1] at resolution 1/K
+  template<auto K>                                            // [-1, 1] at resolution 1/K; K an integer
     using unit_amplitude = inside<{{-1, 1}, per<K>}, round_half_away>;
 
   // grid operations: exact
@@ -246,7 +291,7 @@ namespace std::math {
   template<class M, class S> constexpr auto copysign(M mag, S sgn);
   template<class In> constexpr auto floor(In x);             // also ceil, round, trunc: notch 1
   template<class X, class Y> constexpr auto fmod(X x, Y y);  // expected iff y's grid holds 0
-  template<intmax_t E, class In> constexpr auto pown(In x);  // E >= 0: widened at every multiply; even E >= 0
+  template<int64_t E, class In> constexpr auto pown(In x);  // E >= 0: widened at every multiply; even E >= 0
 
   // counting and number theory: exact, on integer grids
   template<class N> constexpr auto factorial(N n);                       // [lo!, hi!]
@@ -277,7 +322,7 @@ namespace std::math {
   // exponential and logarithmic
   template<class In> constexpr auto exp(In x);               // also exp2
   template<class In> constexpr auto log(In x);               // also log2, log10; x's grid > 0
-  template<intmax_t B, class In> constexpr auto pow_base(In x); // B^x, B >= 2
+  template<auto B, class In> constexpr auto pow_base(In x);   // B^x; B an integer >= 2
   template<class B, class E> constexpr auto pow(B base, E e);  // deduced: base's grid > 0
 }
 
@@ -289,8 +334,8 @@ namespace std::math {
 //   the common unit:       hypot
 //   a dimensionless input: exp, exp2, log, log2, log10, the hyperbolic functions, pow_base, pow
 namespace std::units {
-  template<auto U, class Out, reference R, class V>          // across a factor of pi: one rounding
-    constexpr auto value_cast(const quantity<R, V>&);
+  template<auto U, insidable Out, reference R, class V>      // across a factor of pi: one rounding
+    constexpr quantity<U, Out> value_cast(const quantity<R, V>&);
 }
 ```
 
@@ -298,7 +343,7 @@ namespace std::units {
 
 | Expression | Result | Errors |
 |---|---|---|
-| `fn<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode: `Out` where `Out`'s range holds `fn`'s range over `x`'s grid or `Out` clamps or wraps, else `expected<Out, error>` (`overflow` past `Out`) | ill-formed without a rounding mode in `Out`, except for a grid operation; ill-formed for a checked `Out` where no range of `fn` is bounded |
+| `fn<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode: `Out` where `Out`'s range holds `fn`'s range over `x`'s grid or `Out` clamps or wraps, else `expected<Out, error>` (`overflow` past `Out`) | ill-formed unless `Out` permits rounding (a rounding mode or `unsafe`) or is continuous, except for a grid operation; ill-formed for a checked `Out` where no range of `fn` is bounded |
 | `fn(x)` | `fn<Out>(x)`, `Out` deduced from `x`'s grid and policy, rounding to nearest unless the policy names a mode | none beyond the function's |
 | `fn<Spec...>(x)` | as `fn(x)`, the range computed on the notch named, and the policy flags named replacing the deduced ones (a rounding mode its mode) | ill-formed for a `Spec` that is neither a notch nor a flag, or for two notches |
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
@@ -312,7 +357,7 @@ namespace std::units {
 | `math::sqrt(q)` | `sqrt` of the number, in the unit's root | ill-formed when the unit has no such root |
 | `math::sin<Out>(q)` | `q` reduced exactly by quarter turns when its unit has a factor of π | as `sin<Out>(x)` |
 | `math::sqrt<L>(q)` | a quantity in the result's unit on the number `L`; `math::sqrt<Q>(q)` names the whole quantity | ill-formed unless `Q`'s unit is the result's |
-| `value_cast<U, Out>(q)` | the exact `x·r·π^±1`, rounded once onto `Out` | ill-formed without a rounding mode in `Out` |
+| `value_cast<U, Out>(q)` | the exact `x·r·π^±1`, rounded once onto `Out` | ill-formed unless `Out` permits rounding |
 
 # Future work
 
@@ -348,40 +393,66 @@ Onto the grid deduced from the input, the functions run from about 2× slower to
 call, at about 0.13 s of compile time per table. Onto grids as fine as a
 `double`, correct rounding costs 1.2–7× `<cmath>`: `sin` onto 2⁻⁵² in about
 14 ns, `exp` onto 2⁻⁴⁰ in about 6 ns, `log` onto 2⁻⁴⁸ in about 17 ns (x86-64,
-`-O3 -mfma`; the repository's `docs/advanced/math-engine.md`, "Speed"). 13 of the repository's 44 examples
-use the functions, among them an oscillator, range and bearing from `hypot` and
+`-O3 -mfma`; the repository's `docs/advanced/math-engine.md`, "Speed"). 15 of
+the repository's 44 examples call the functions (13 of them the rounding
+ones), among them an oscillator, range and bearing from `hypot` and
 `atan2`, audio gain in decibels and a rocket equation.
 
-# Prior art
+# Impact on the standard
 
-- **CRlibm** and **[CORE-MATH](https://core-math.gitlabpages.inria.fr/)**:
-  correctly rounded functions for the IEEE binary formats, which IEEE 754-2019
-  recommends. C23 reserves the `cr_` prefix for such functions ([@N3220]). The
-  functions here round correctly onto any grid, at the precision the grid
-  needs, instead of onto a binary format.
-- **MPFR**: correctly rounded functions at any precision, on a dynamic
-  floating-point type.
-- **Ziv's strategy** of increasing precision until the rounding is decided,
-  and the table-maker's dilemma that bounds it, are the basis of all three and
-  of the reference implementation.
-- `constexpr` `<cmath>` [@P0533R9], [@P1383R2]: the functions at compile time,
-  with the run-time library's accuracy, which is unspecified.
+A pure library addition on top of the number paper: the functions above in a
+namespace (`std::math` in the reference implementation; open question 1), and
+their quantity forms on top of the quantity paper. No existing function
+changes.
 
+- **Freestanding.** The integer path computes every result without floating
+  point; an implementation may use the FPU where it has one, with the same
+  results.
+- **Recommended practice.** How a result is found is not specified, so an
+  implementation can pick tables, fixed-point series or floating-point
+  kernels per grid.
+- **Feature-test macro.** `__cpp_lib_inside_math`.
+
+# Wording
+
+Wording will follow once SG6 and LEWG have agreed on the design. Until then
+the contract and the semantics table above state the intended behaviour.
+
+# Relation to other proposals and prior art
+
+| Paper | Group | Relation |
+|---|---|---|
+| [@P3864R1], [@P4231R0] | SG6 | Correctly rounded `cr_` functions and a unified rounding-mode interface for the binary formats. This paper asks the same contract of every grid, at the grid's precision. |
+| [@P2746R7] | SG6 | Replaces the floating-point environment's rounding modes with explicit ones; here the mode is part of the output type or of the call. |
+| [@P3375R3] | SG6 | Reproducible floating-point results. Correct rounding makes them reproducible by specification. |
+| [@P4188R1] | SG6, LEWG | Extensible math functions in a namespace `std::math`; the same namespace name as here, so the two should agree on it. |
+| [@P3935R3] | LEWG | `<cmath>` rebased on C23. |
+| [@P0533R9], [@P1383R2] | C++23, C++26 | `constexpr` `<cmath>`: the functions at compile time, with the run-time library's accuracy, which is unspecified. |
+| [@WG14N3220] | WG14 | C23 reserves the `cr_` prefix for correctly rounded functions. |
+
+Libraries: **CRlibm** and **CORE-MATH** [@COREMATH] give correctly rounded
+functions for the IEEE binary formats, which IEEE 754-2019 recommends; the
+functions here round correctly onto any grid, at the precision the grid
+needs. **MPFR** gives correctly rounded functions at any precision on a
+dynamic floating-point type. **Ziv's strategy** [@ZIV1991] of raising the
+precision until the rounding is decided, and the table-maker's dilemma that
+bounds it, are the basis of all three and of the reference implementation.
 The repository's `docs/resources.md` compares fixed-point libraries and their
 math functions.
 
 # Open questions
 
-1. **Naming.** A namespace `std::math`, as in the implementation, or overloads
-   of `std::sin` and the others, with `sin<Out>` beside them?
+1. **Naming.** A namespace `std::math`, as in the implementation and in
+   [@P4188R1], or overloads of `std::sin` and the others, with `sin<Out>`
+   beside them?
 2. **Correct rounding as a requirement.** The proposal requires the correctly
-   rounded point. The cost is small onto coarse grids and 4–9× at a `double`'s
-   resolution. Should implementations be allowed a faithful result (one of the
-   two neighbouring points) instead, at the price of results that differ
-   between platforms? And since no bound on the precision a result needs is
-   known for an arbitrary grid, may an implementation stop at a precision cap,
-   as the reference implementation does, provided the result it then returns
-   is the same on every platform?
+   rounded point. The cost is small onto coarse grids and 1.2–7× `<cmath>` at a
+   `double`'s resolution. Should implementations be allowed a faithful result
+   (one of the two neighbouring points) instead, at the price of results that
+   differ between platforms? And since no bound on the precision a result
+   needs is known for an arbitrary grid, may an implementation stop at a
+   precision cap, as the reference implementation does, provided the result
+   it then returns is the same on every platform?
 3. **Deduced outputs.** The deduced output's grid follows the input's notch,
    with fixed ranges for `sin`, `cos` and `atan2`. `tan`'s range over the
    input's branch grows without bound as the branch nears a pole; should it
@@ -389,3 +460,46 @@ math functions.
 4. **The grid operations.** `abs`, `floor`, `round`, `fmod` and `pown` are
    exact and need no rounding. Should they move to the number paper, leaving
    this one to the functions that round?
+
+# Proposed polls
+
+1. SG6 wants correctly rounded mathematical functions for a number type whose
+   step is part of its type, rounding once onto the output's grid.
+2. Correct rounding should be required, not only recommended.
+3. An implementation may stop at a precision cap, provided that its result is
+   the same on every platform.
+4. The functions should live in a namespace (`std::math`) rather than overload
+   the `<cmath>` names.
+5. SG6 encourages further work on this paper.
+
+# Acknowledgements
+
+The functions build on Ziv's strategy and on the correctly rounded libraries
+CRlibm, CORE-MATH (Paul Zimmermann and its co-authors) and MPFR. The paper is
+built with Michael Park's mpark/wg21.
+
+---
+references:
+  - id: WG14N3220
+    citation-label: N3220
+    title: "Working Draft, Programming Languages — C (ISO/IEC 9899:2024 + C2y)"
+    author:
+      - literal: WG14
+    URL: https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3220.pdf
+  - id: COREMATH
+    citation-label: CORE-MATH
+    title: "The CORE-MATH project: correctly rounded mathematical functions"
+    author:
+      - family: Zimmermann
+        given: Paul
+    URL: https://core-math.gitlabpages.inria.fr/
+  - id: ZIV1991
+    citation-label: Ziv1991
+    title: "Fast evaluation of elementary mathematical functions with correctly rounded last bit"
+    author:
+      - family: Ziv
+        given: Abraham
+    container-title: "ACM Transactions on Mathematical Software 17(3)"
+    issued:
+      year: 1991
+---

@@ -18,8 +18,9 @@ We propose `std::units::quantity<reference, inside>`: physical quantities whose
 number is always an `inside`, the bounded number with an exact rational step
 proposed in the companion paper [*`inside`: numbers whose range and step size
 are part of the
-type*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/inside.md)
-(*the number paper* below). The model is that of mp-units [@P3045R9]:
+type*](https://github.com/PeterNeiss/inside/blob/v0.10.0/docs/proposal/inside.md)
+(*the number paper* below). The model is that of mp-units, proposed as
+[@P3045R10]{.title}:
 dimensions, units with exact magnitudes, the ISQ tree of quantity kinds, and
 quantity points with origins.
 
@@ -30,11 +31,11 @@ common unit, exactly, and cannot overflow. A conversion with a factor of π
 (degree to radian) has no exact rescale; it is ill-formed until it is rounded
 once onto a declared grid, which the third companion paper, [*Correctly
 rounded math for `inside` and
-quantities*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/math.md),
+quantities*](https://github.com/PeterNeiss/inside/blob/v0.10.0/docs/proposal/math.md),
 provides.
 
 This paper depends on the number paper. The reference implementation is
-[inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0).
+[inside v0.10.0](https://github.com/PeterNeiss/inside/tree/v0.10.0).
 
 # Motivation
 
@@ -131,7 +132,7 @@ static_assert(!addable<decltype(cost), mass>);                                  
 
 `quantity<R, Rep>` is a number `Rep`, always an `inside`, of a *reference*
 `R`: a unit, optionally with a quantity kind (`isq::height[si::metre]`). As in
-mp-units [@P3045R9]:
+mp-units [@P3045R10]:
 
 - a *dimension* is a product of powers of base dimensions: the seven ISQ
   ones and any a program declares, all declared alike;
@@ -152,8 +153,10 @@ to one `mov`. A conversion to a unit of another dimension is ill-formed.
 
 A conversion into a quantity of a given `Rep` (`quantity<m, inside<…>>{q}`) is
 the conversion followed by a store, which `Rep`'s policy checks, clamps, wraps
-or rounds as in the number paper. It is implicit when the kinds allow it and
-the converted number converts implicitly into `Rep`.
+or rounds as in the number paper. It exists when the source's kind converts to
+the target's by an exact factor (otherwise `kind_cast` or `value_cast` names
+the step), and it is implicit when the converted number converts implicitly
+into `Rep`.
 
 ## A sum runs in the common unit
 
@@ -204,7 +207,7 @@ without its unit named where it happens. A quantity is made from a number and
 its unit, `quantity<si::metre, inside<{0, 100}>>{42, si::metre}`, or from an
 `inside` times a unit, `just<42> * si::metre`; its number is read in a unit,
 `q.numerical_value_in(si::metre)`. `quantity<R, Rep>{42}` and
-`q.numerical_value()` are ill-formed. That is [@P3045R9]'s rule, without its
+`q.numerical_value()` are ill-formed. That is [@P3045R10]'s rule, without its
 exception for a dimensionless quantity in unit one: `{42, one}` names the unit
 too. A number in another unit of the same quantity is scaled
 (`minutes{120, si::second}` is 2 min): an `inside` converts exactly first, and
@@ -243,8 +246,9 @@ construction from a number and its unit apply `Rep`'s policy, and
 actions. `q.with<F>()` and `q.on_error(ec)` store under `Rep`'s policy plus
 `F`. `Q::try_make(v, u)`, the flag constructors `Q{q, clamp}` and
 `Q{v, u, clamp}` (a flag or `make_policy<F>(ec)` for one store, `q` a quantity
-converted exactly), `exact_cast<Q>(q)`, `value_cast` and `value_cast`
-convert into a quantity type, and `conversion_overflows<Q>(v, u)` and its
+converted exactly), `exact_cast<Q>(q)` and `value_cast` convert into a
+quantity type, each returning `std::expected` exactly where the grids do not
+prove the store, and `conversion_overflows<Q>(v, u)` and its
 siblings answer for a number `v` in unit `u`. `min`, `max` and `midpoint` run in the common unit,
 as `+` does, and the free arithmetic takes a per-call policy as in the number
 paper (`div(d, t, round_floor)`). Every function of the number paper has a
@@ -252,95 +256,160 @@ quantity form.
 
 # Proposed interface
 
-The names are the reference implementation's. `@*unit*@`, `@*kind*@` and
-`@*origin*@` are exposition-only tag types: empty objects whose type carries a
-unit, a kind or an origin as a value. `@*text*@` is a string held by value, a
-template argument. `grid_number` is
-the number paper's.
+The names are the reference implementation's, except for the few types it
+keeps internal, which this paper names ([Implementation
+experience](#implementation-experience) lists them). Dimensions, units, kinds,
+origins and references are structural values; the names a program writes
+(`si::metre`, `isq::height`, `si::absolute_zero`) are empty tag objects
+(`unit_t`, `kind_t`, `origin_t`) whose type carries the value. `grid_number`,
+`policy_flag`, `checked`, `call_policy`, `policy_ref` and `insidable` are the
+number paper's.
 
 ```cpp
 namespace std::units {
+  // names: a string held by value, so it is a template argument
+  struct symbol_text {                                        // at most 63 bytes of UTF-8
+    constexpr symbol_text() = default;
+    template<size_t N> consteval symbol_text(const char (&s)[N]);
+    constexpr string_view view() const;
+    constexpr bool empty() const;
+    friend constexpr bool operator==(const symbol_text&, const symbol_text&) = default;
+  };
+
   // dimensions
   struct dimension;                                           // base dimensions to integer powers
-  template<@*text*@ Name> constexpr dimension base_dimension;      // a base dimension: "length", "currency"
+  template<symbol_text Name> constexpr dimension base_dimension;  // "length", "currency"
 
   // units
-  struct unit_options { @*text*@ ascii; @*kind*@ kind; @*origin*@ origin; bool space_before = true; };
-  template<@*text*@ Symbol, auto Definition, unit_options = {}>
-    constexpr @*unit*@ unit;                                      // m, N, °C: by the quantity it equals
+  struct unit_value;                                          // named units to integer powers, prefixes, and an
+                                                              // exact magnitude (a rational times a power of pi)
+  template<unit_value U> struct unit_t {                      // si::metre, si::kilo(si::metre) / si::hour
+    static constexpr unit_value value = U;
+  };
+  consteval dimension dimension_of(const unit_value&);
+  struct kind_ref;                                            // a named kind, or none
+  struct origin_ref;                                          // an origin, or none
+  struct unit_options {
+    symbol_text ascii;                                        // the ASCII symbol ("ohm" for the ohm)
+    kind_ref    kind;                                         // the kind it measures, else its definition's
+    origin_ref  origin;                                       // the default origin of its points
+    bool        space_before = true;                          // false for 90°
+  };
+  template<symbol_text Symbol, auto Definition, unit_options = {}>
+    constexpr auto unit;                                      // a unit_t: m, N, °C, by the quantity it equals
                                                               // (1.8288_ins * si::metre), a unit, or a kind
-  template<@*text*@ Symbol, @*text*@ Dimension, unit_options = {}>
-    constexpr @*unit*@ base_unit;                                 // a new dimension, its kind, and its unit
-  inline constexpr @*unit*@ one;                                  // the unit 1
-  inline constexpr @*unit*@ pi;                                   // the number π, exactly
-  // @*unit*@ * @*unit*@, @*unit*@ / @*unit*@, pow<N>(u), square(u), cubic(u), inverse(u)
-  // prefixes: kilo(u), milli(u), ... on a named unit
+  template<symbol_text Symbol, symbol_text Dimension, unit_options = {}>
+    constexpr auto base_unit;                                 // a unit_t: a new dimension, its kind, its unit
+  inline constexpr unit_t<unit_value{}> one;                  // the unit 1
+  inline constexpr auto pi;                                   // a unit_t: the number pi, exactly
+  template<unit_value A, unit_value B>
+    consteval auto operator*(unit_t<A>, unit_t<B>);           // also /; pow<N>(u), square(u), cubic(u), inverse(u)
+  template<int P> struct prefix_t {                           // si::kilo, si::milli: 10^P, once, on a named unit
+    template<unit_value U> consteval auto operator()(unit_t<U>) const;
+  };
 
   // quantity kinds
-  struct kind_options { bool distinct = false; @*kind-expression*@ recipe; };
-  template<@*text*@ Name, auto Parent, kind_options = {}>
-    constexpr @*kind*@ kind;                                      // isq::length, isq::height: under a kind, a
-                                                              // product of kinds, or a dimension
-  // @*kind*@ * @*kind*@, @*kind*@ / @*kind*@ (recipes); k[u] names a reference
+  struct kind_expr;                                           // kinds to integer powers: a recipe
+  struct kind_options {
+    bool      distinct = false;                               // never mixes with its siblings (frequency, activity)
+    kind_expr recipe;                                         // what it is made of (velocity: displacement / duration)
+  };
+  template<symbol_text Name, auto Parent, kind_options = {}>
+    constexpr auto kind;                                      // a kind_t: isq::length, isq::height; under a kind,
+                                                              // a product of kinds, or a dimension
+  template<kind_ref K> struct kind_t {                        // k * k, k / k: a kind_expr
+    template<unit_value U> consteval auto operator[](unit_t<U>) const;  // isq::height[si::metre]: a reference
+  };
 
   // references and quantities
-  struct reference;                                           // a unit, a kind or recipe; a unit converts to one
-  template<reference R, class Rep>                            // Rep: an inside
+  struct reference {                                          // structural: a unit, and its kind or recipe
+    unit_value U;
+    template<unit_value V> constexpr reference(unit_t<V>);    // the unit, of the kind it measures
+  };
+
+  template<reference R, insidable Rep>
   class quantity {
   public:
     using rep = Rep;
     static constexpr units::reference reference = R;
+    static constexpr unit_value       unit      = R.U;
+    static constexpr units::dimension dimension = dimension_of(R.U);
+    static constexpr auto             kind;                   // a named kind's kind_t, else its kind_expr
+
     constexpr quantity() = default;
-    template<class V, class U> constexpr quantity(V&& number, U unit); // a number in unit U of R's quantity
-    template<reference R2, class V2>                               // implicit when R2's kind converts and
-      constexpr explicit(@*see below*@) quantity(const quantity<R2, V2>&); // the rescaled number does
-    template<@*unit*@ U> constexpr auto in(U) const;                 // Rep's grid rescaled; same raw
-    template<@*unit*@ U> constexpr auto numerical_value_in(U) const; // the number in unit U
-    template<class T> constexpr explicit(@*see below*@) operator T() const; // dimension one: its number
-    template<class T, policy_flag Round = checked> constexpr T as() const;     // dimension one; also to<T>()
-    template<policy_flag F = checked, class V, class U> static constexpr auto try_make(const V&, U);
-    template<class Q2, class Pol> constexpr quantity(const Q2& q, Pol p);   // q converted exactly
-    template<class V, class U, class Pol> constexpr quantity(V&& number, U unit, Pol p);
-    template<policy_flag F = checked> constexpr auto with();         // also on_error(error&)
-    template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
-    // ++, --, compound assignment: a store by Rep's policy
+    template<class V, class U> constexpr quantity(V&& number, U unit);  // number in unit U of R's quantity
+    template<class V, class U, class Pol> constexpr quantity(V&& number, U unit, Pol p);  // p: a flag or a
+                                                                                          // call_policy
+    template<class Q2, class Pol> constexpr quantity(const Q2& q, Pol p);  // q a quantity, converted exactly
+    template<reference R2, insidable V2>                      // R2's kind converts to R's, by an exact factor
+      constexpr explicit(!convertible_to<rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q);
+    template<unit_value U> constexpr auto in(unit_t<U>) const;               // Rep's grid rescaled; same raw
+    template<unit_value U> constexpr auto numerical_value_in(unit_t<U>) const;  // the number in unit U
+    template<insidable T>                                     // dimension one, an exact factor to one
+      constexpr explicit(!convertible_to<rescaled_t<R, one, Rep>, T>) operator T() const;
+    template<class T, policy_flag Round = checked>
+      constexpr auto to() const;                              // dimension one: T, or expected<T, error>
+    template<policy_flag F = checked, class V, class U>
+      static constexpr auto try_make(const V& number, U unit);  // expected<quantity, error>
+
+    // a policy or an action for one store into the number
+    template<policy_flag F = checked>
+      constexpr quantity_policy_ref<quantity, policy_ref<Rep, call_policy<policy_of<Rep> | F>>> with() &;
+    template<policy_flag F = checked>
+      constexpr quantity_policy_ref<quantity,
+                                    policy_ref<Rep, call_policy<policy_of<Rep> | F, error_ref>>>
+        on_error(error& ec);
+    template<class F> constexpr auto on_clamp(F f);           // also on_wrap, on_error: a quantity_policy_ref
+    // ++, --, +=, -=, *=, /=: a store by Rep's policy
   };
+  template<class Q, class Ref> struct quantity_policy_ref;    // the number paper's policy_ref on Q's number;
+                                                              // its stores take quantities
+  template<reference From, reference To, insidable V>         // V's number in To's unit: its grid rescaled
+    using rescaled_t = typename decltype(declval<const quantity<From, V>&>().template in<To.U>())::rep;
+
   // quantity + - % <=> == quantity, min, max, midpoint: in the common unit
-  // quantity * / quantity, inside * @*unit*@, quantity * @*unit*@: units and kinds multiply
-  // quantity * / inside: the number scales
-  template<class Spec, reference R, class V> constexpr auto kind_cast(const quantity<R, V>&);
-  template<class Rep2, reference R, class V> constexpr quantity<R, Rep2> value_cast(const quantity<R, V>&);
-  template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
-  template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
-  // value_cast<...>(q): the same through Rep2::try_make, an expected
-  template<class Q, class X> constexpr Q exact_cast(const X& x);  // x in Q's unit, or a quantity
-  template<class Q, class N> constexpr bool conversion_overflows(N v) noexcept; // v in Q's unit; also
-                                                                // conversion_rounds, conversion_loses
+  // quantity * / quantity, insidable * unit_t, insidable / unit_t, quantity * unit_t: units and kinds multiply
+  // quantity * / insidable: the number scales; pi * quantity, quantity / pi; pow<N>(q)
+  template<auto Kind, reference R, class V> constexpr auto kind_cast(const quantity<R, V>&);  // a named kind
+  template<insidable Rep2, reference R, class V>
+    constexpr auto value_cast(const quantity<R, V>&);         // quantity<R, Rep2>, or expected of it
+  template<auto U, insidable Rep2, reference R, class V>
+    constexpr auto value_cast(const quantity<R, V>&);         // in unit U (an exact factor), on Rep2
+  template<class Q, reference R, class V>
+    constexpr auto value_cast(const quantity<R, V>&);         // Q, or expected<Q, error>
+  template<class Q, class X> constexpr auto exact_cast(const X& q);  // q a quantity: Q, or expected<Q, error>
+  template<class Q, class A, class U>
+    constexpr bool conversion_overflows(A v, U unit) noexcept;  // v in unit; also conversion_rounds,
+                                                                // conversion_loses
   template<reference A, class VA, reference B, class VB, class... Args>
-    constexpr auto divmod(const quantity<A, VA>&, const quantity<B, VB>&, Args&&...); // in the common unit
+    constexpr auto divmod(const quantity<A, VA>&, const quantity<B, VB>&, Args&&...);  // in the common unit
   // add, sub, mod (common unit), mul, div (units multiply; or a quantity and a number):
-  // the number paper's free arithmetic, Args a flag, a policy or an error&
+  // the number paper's free arithmetic, Args a flag, a call_policy or an error&
 
   // points
-  template<@*text*@ Name, auto Where>
-    constexpr @*origin*@ origin;                                  // absolute (a kind or a dimension), or at a point
-                                                              // of another: si::absolute_zero + 273.15_ins * si::kelvin
-  template<reference R, @*origin*@ O, class Rep>
+  template<origin_ref O> struct origin_t {};                  // si::absolute_zero, si::ice_point
+  template<symbol_text Name, auto Where>
+    constexpr auto origin;                                    // an origin_t: absolute (a kind or a dimension),
+                                                              // or at a point of another:
+                                                              // si::absolute_zero + 273.15_ins * si::kelvin
+  template<reference R, origin_ref O, insidable Rep>
   class quantity_point {
   public:
     constexpr explicit quantity_point(const quantity<R, Rep>&);
     constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept;
-    constexpr auto quantity_from(@*origin*@) const;
-    constexpr auto quantity_from_zero() const;                     // from the absolute origin
-    constexpr auto point_for(@*origin*@) const;                     // the same point from another origin
-    template<@*unit*@ U> constexpr auto in(U) const;                 // keeps the origin
-    template<@*unit*@ U> constexpr auto point_in(U) const;           // from U's origin
+    template<origin_ref O2> constexpr auto quantity_from(origin_t<O2>) const;
+    constexpr auto quantity_from_zero() const;                // from the absolute origin
+    template<origin_ref O2> constexpr auto point_for(origin_t<O2>) const;  // the same point, another origin
+    template<unit_value U> constexpr auto in(unit_t<U>) const;        // keeps the origin
+    template<unit_value U> constexpr auto point_in(unit_t<U>) const;  // from U's origin
+    // += and -= a quantity: a store by Rep's policy
   };
-  template<auto U, class V> constexpr auto point(const V&);      // a point from U's origin
-  template<auto U, class V> constexpr auto delta(const V&);      // a difference in U
-  // point ± quantity: a point; point − point: a quantity; origin + quantity: a point
+  template<auto U, insidable V> constexpr auto point(const V&);  // a point from U's origin
+  template<auto U, insidable V> constexpr auto delta(const V&);  // a difference in U
+  // point ± quantity: a point; point − point: a quantity; origin + quantity: a point;
+  // value_cast<Rep2>(p), value_cast<U, Rep2>(p): as for quantities
 
-  // the catalog: namespaces isq, si, international (contents in R1)
+  // the catalog: namespaces isq, si (with the prefixes), international (contents in R1)
 }
 namespace std {
   template<units::reference R, class Rep> struct hash<units::quantity<R, Rep>>;           // the number's
@@ -352,15 +421,16 @@ namespace std {
 
 | Expression | Result | Notes |
 |---|---|---|
-| `quantity<R, Rep>{v, u}` | `v` stored in `Rep`, `v` in unit `u` | `u` R's unit, or another of its quantity for an inside `v` (converted exactly); `{v}` alone is ill-formed |
+| `quantity<R, Rep>{v, u}` | `v` stored in `Rep`, `v` in unit `u` | `u` R's unit, or another unit of its quantity: an inside `v` converts exactly, a plain number is stored once onto `Rep`'s grid in unit `u`; `{v}` alone is ill-formed |
 | `n * u` (`n` an inside) | `quantity<u, decltype(n)>` | `42 * u` is ill-formed |
 | `q.in(u)` | `q` in `u`: `Rep`'s interval and notch times the conversion factor | the same raw; ill-formed for another dimension or a factor of π |
-| `quantity<R2, Rep2>{q}` | `q` in `R2`'s unit, stored by `Rep2` | implicit when `R`'s kind converts to `R2`'s and the rescaled number converts implicitly |
+| `quantity<R2, Rep2>{q}` | `q` in `R2`'s unit, stored by `Rep2` | exists when `R`'s kind converts to `R2`'s by an exact factor; implicit when the rescaled number converts implicitly into `Rep2` |
 | `a + b`, `a - b`, `a % b`, `a <=> b` | in the common unit (the gcd of the magnitudes); kind: the nearest common ancestor | ill-formed for different dimensions or kinds |
 | `a * b`, `a / b` | units, kinds and numbers multiply or divide | `expected` iff `b`'s grid holds 0; a result of dimension one converts to its `inside` |
-| `kind_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across a distinct kind's boundary |
-| `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `value_cast` reports through `expected` |
-| `Q{q, clamp}`, `Q{v, u, wrap}` | `q` or `v` in `Q`'s unit, saturated or folded into `Q`'s number | `q` a quantity of `Q`'s dimension, `v` a number in unit `u` |
+| `kind_cast<K>(q)` | the same number, kind `K` (a named kind) | down or sideways within one kind; never across a distinct kind's boundary |
+| `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)`, `value_cast<Q>(q)` | the exact value, stored by `Rep2` (in unit `u`) | an `expected` where the grids do not prove the store; `u` by an exact factor |
+| `exact_cast<Q>(q)` | `q` in `Q`'s unit, stored exactly | `Q`, or `expected<Q, error>` where it can fail; a bare number is ill-formed |
+| `Q{q, clamp}`, `Q{v, u, wrap}` | `q` or `v` in `Q`'s unit, saturated or folded into `Q`'s number | `q` a quantity whose kind converts to `Q`'s by an exact factor, `v` a number in unit `u` |
 | `q.numerical_value_in(u)` | `q`'s number in unit `u` | exact; `q.numerical_value()` is ill-formed |
 | `Q::try_make<F>(v, u)`, `q.on_wrap(f) += r` etc. | as for `Q::rep` | the number paper's policies and actions |
 | `divmod(a, b, …)` | `{q, r}` in the common unit | as the number paper's `divmod` |
@@ -377,28 +447,29 @@ below is a candidate for a later paper or revision:
    number, then the unit symbol (`unit_symbol`: "kg m²/s²", "km/h"), in UTF-8 or
    ASCII; `parse<Q>` reads a number in `Q`'s unit.
 2. **Algorithms on quantities**: `sum<Q>`, `add_all`, `mul_all`,
-   `mul<Out>` / `div<Out>`, `min`, `max` and `lerp`,
-   as for `inside`.
+   `mul<Out>` / `div<Out>` and `lerp`, as for `inside`.
 3. **The catalog**: about 80 ISQ kinds, the SI units and prefixes (quecto …
    quetta, exact past 64 bits), the international units, and `percent` and
    `per_mille`.
 4. **Physical constants** as quantities of their kind: the SI 2019 defining
    constants and what follows from them exactly, and the CODATA 2022 values.
-5. **Logarithmic units** and **vector and tensor characters**, which
-   mp-units has and this layer does not.
+5. **Vectors as multivectors.** The reference implementation has geometric
+   algebra on quantities: basis vectors of your own (`basis_vector<"e1", 1>`),
+   sums of quantities on them, the geometric product and the exponential of a
+   multivector. It takes the place of mp-units' vector and tensor characters.
+6. **Logarithmic units**, which mp-units has and this layer does not; a level
+   such as the decibel is a dimensionless kind of your own.
 
 # Implementation experience
 
-The layer is `units.hpp` and its folder, about 2400 lines: the machinery
-(`units/core.hpp`, about 2100 lines) and the ISQ and SI catalog
-(`units/systems.hpp`, about 280), with its text in a separate `units/io.hpp`
-(about 180 lines). A translation unit that includes it parses in
-0.72 s with GCC 16, against 0.53 s for `inside` alone, and 200 distinct
-quantity expressions add about 7 ms each (the repository's
-`docs/advanced/units-model.md`, "Compile time"). Measured on v0.5.0's C++23 build, the layer parses in about a
-third of the time of mp-units' `si` and `isq` headers (0.61 s against 1.90 s on
-GCC 15, 0.92 s against 3.39 s on Clang 20), and per expression the two are
-about the same on GCC.
+The layer is `units.hpp` and the `units/` folder. Its machinery
+(`units/core.hpp` and `units/detail/`, without the multivector `exp` of
+`geoalg_exp.hpp`) is about 3500 lines, 2900 without blank lines and comments;
+the ISQ and SI catalog (`units/systems.hpp`) is about 290, and the text
+(`units/io.hpp`) about 240. A translation unit that includes `units.hpp` parses
+in 1.08 s with GCC 16, against 0.56 s for `inside` alone, and units add about
+17 ms to each of 200 distinct quantity expressions (the repository's
+`docs/advanced/units-model.md`, "Compile time").
 
 A unit conversion compiles to one `mov`. 36 of the repository's 44 examples use
 quantities, among them a clock whose seconds carry into minutes through
@@ -408,7 +479,7 @@ amounts as base dimensions of their own.
 
 # Prior art
 
-- **mp-units** (Mateusz Pusz) and its proposal [@P3045R9]: the model of this
+- **mp-units** (Mateusz Pusz) and its proposal [@P3045R10]: the model of this
   layer. References, the ISQ tree of quantity kinds, quantity points with
   origins, magnitudes with powers of π and `consteval` unit arithmetic all
   follow mp-units. This layer differs in that the representation is always an
@@ -425,7 +496,7 @@ The repository's `docs/resources.md` compares them.
 # Open questions
 
 1. **This layer and P3045.** There are two ways to standardize quantities on
-   `inside`: (a) the `std::quantity` of [@P3045R9], with `inside` as one more
+   `inside`: (a) the `std::quantity` of [@P3045R10], with `inside` as one more
    representation, or (b) this quantity, whose representation is always an
    `inside`. Exact, free conversions need the conversion to compute a new
    representation *type* (the rescaled grid), which a generic representation
