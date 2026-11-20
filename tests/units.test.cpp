@@ -324,6 +324,16 @@ TEST(UnitsTest, points_from_a_number_and_their_unit) {
     EXPECT_TRUE(t[1] < t[0]);
     const celsius hot{80, si::degree_Celsius, clamp}; // a one-shot policy, as for a quantity
     EXPECT_EQ(to_string(hot), "60 ℃");
+    // Run-time numbers, as an inside takes them: an int under clamp, a double (maybe NaN) with a channel.
+    volatile int    whole   = 90;
+    volatile double reading = 70.2;
+    error           ec{};
+    const celsius   gauge {static_cast<int>(whole), si::degree_Celsius, clamp};
+    const celsius   sensor{static_cast<double>(reading), si::degree_Celsius, make_policy<clamp>(ec)};
+    EXPECT_EQ(to_string(gauge), "60 ℃");
+    EXPECT_EQ(to_string(sensor), "60 ℃");
+    EXPECT_EQ(ec, error{});
+    static_assert(celsius{21.5, si::degree_Celsius} > celsius{-5, si::degree_Celsius});
     // Only the point's own unit: a number in K names no origin, a number alone no unit.
     static_assert(!std::constructible_from<celsius, int, decltype(si::kelvin)>);
     static_assert(!std::constructible_from<celsius, int, decltype(si::metre)>);
