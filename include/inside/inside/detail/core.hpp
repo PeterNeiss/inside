@@ -586,7 +586,7 @@ namespace ins
       {
         // Notch 1/K over an integer Lower: the value is n/K with n in int64 and K a constant,
         // so one division by a constant rounds it (no fraction to reduce).
-        constexpr std::int64_t K = detail::abs_den(detail::notch64<inside>.Den);
+        constexpr std::int64_t K{detail::notch_int64<inside>.Q};
         const std::int64_t     n{detail::raw_int64(*this) + detail::lower_int64<inside> * K};
         std::int64_t           t{n / K};
         if (const std::int64_t r{n % K}; r != 0)
@@ -825,18 +825,18 @@ namespace ins
       if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
         return {detail::to_value(*this), 1};
       else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>
-                         && std::has_single_bit(detail::abs_den(detail::notch64<inside>.Den)))
+                         && detail::notch_int64<inside>.QShift >= 0)
       {
-        constexpr std::int64_t nd = detail::abs_den(detail::notch64<inside>.Den);
+        constexpr std::int64_t nd {detail::notch_int64<inside>.Q};
         const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<inside> * nd};
         const int s{std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(nd))}; // 0 → 0/1
         return {num >> s, nd >> s};
       }
       else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>)
       {
-        constexpr std::int64_t nd = detail::abs_den(detail::notch64<inside>.Den);
+        constexpr std::int64_t nd {detail::notch_int64<inside>.Q};
         const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<inside> * nd};
-        const std::int64_t     g{std::gcd(num, nd)};
+        const std::int64_t     g  {std::gcd(num, nd)};
         return {num / g, nd / g};
       }
       else if constexpr (detail::lattice_codec<inside>.Ok)

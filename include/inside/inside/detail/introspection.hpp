@@ -8,6 +8,10 @@
 #include <inside/inside/grid.hpp>
 #include <inside/inside/policy_flag.hpp>
 
+#include <bit>
+#include <cstdint>
+#include <limits>
+
 // An inside's template parameters as values (grid_of<B>, policy_of<B>, lower_of<B>, notch_of<B>, …
 // and their 64-bit forms), the insidable and numeric concepts,
 // and the plumbing every layer uses (plain_t, as_rational, raw_t).
@@ -106,6 +110,24 @@ namespace ins
     inline constexpr rational upper64 = to_rational(upper_of<B>);
     template <insidable B>
     inline constexpr rational notch64 = to_rational(notch_of<B>);
+
+    // B's notch as P/Q in the int64 the integer fast paths compute in (Q > 0), and Q's shift when Q = 2^QShift
+    // (else -1). Fits: P below 2^63 (Q always is); a fast path that reads P asserts it.
+    struct notch_int64_t
+    {
+      std::int64_t P{0};
+      std::int64_t Q{1};
+      int          QShift{-1};
+      bool         Fits{false};
+    };
+    template <insidable B>
+    inline constexpr notch_int64_t notch_int64 = []
+    {
+      constexpr std::uint64_t p{notch64<B>.Num}, q{abs_den(notch64<B>.Den)};
+      constexpr bool          fits{p <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())};
+      return notch_int64_t{fits ? static_cast<std::int64_t>(p) : 0, static_cast<std::int64_t>(q),
+                           std::has_single_bit(q) ? std::countr_zero(q) : -1, fits};
+    }();
 
     // An inside or a plain number (integer, floating point, rational).
     template <typename N>

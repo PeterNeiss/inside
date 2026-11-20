@@ -32,7 +32,7 @@ namespace ins::detail
     {
       std::int64_t p;
       return max_index_of<L> < (std::uint64_t{1} << 62)
-          && !mul_overflow(slot_period<L>, static_cast<std::int64_t>(abs_den(notch64<L>.Den)), &p);
+          && !mul_overflow(slot_period<L>, notch_int64<L>.Q, &p);
     }
   }();
   template <insidable L>
@@ -122,7 +122,7 @@ namespace ins::detail
         // Index storage on a notch 1/K grid over an integer Lower:
         // the offset (rhs − Lower)·K of an in-range rhs is below 2^64,
         // so uint64 steps, exact modulo 2^64, give it exactly.
-        constexpr std::uint64_t K{static_cast<std::uint64_t>(abs_den(notch64<L>.Den))};
+        constexpr std::uint64_t K{abs_den(notch64<L>.Den)};
         constexpr std::uint64_t lo{lower64<L>.Den < 0 ? std::uint64_t{0} - lower64<L>.Num
                                                       : lower64<L>.Num}; // Lower mod 2^64
         lhs = L::from_raw(raw_from_offset<L>((static_cast<std::uint64_t>(rhs) - lo) * K), unsafe);
@@ -251,7 +251,7 @@ namespace ins::detail
                     lhs = L::from_raw(endpoint_raw<L>(std::cmp_less(rhs, lower_int64<L>)), unsafe);
                   else
                   {
-                    constexpr std::int64_t k = abs_den(notch64<L>.Den);
+                    constexpr std::int64_t k{notch_int64<L>.Q};
                     const std::int64_t     t{static_cast<std::int64_t>(fold_slot<L>(
                       static_cast<std::int64_t>(static_cast<std::uint64_t>(rhs)
                                                 - static_cast<std::uint64_t>(lower_int64<L>))))};
@@ -293,7 +293,7 @@ namespace ins::detail
       return std::uint64_t{0};
     else
     {
-      constexpr std::int64_t  K = abs_den(notch64<L>.Den);
+      constexpr std::int64_t  K{notch_int64<L>.Q};
       constexpr std::uint64_t two_km = []
       {
         // 2·K·M with saturation (M bounds |value| and the offset span),
@@ -630,8 +630,8 @@ namespace ins::detail
         // Oversized denominators fall through (the max_den guard keeps every product inside int64).
         if constexpr (q_format_fits<L> && notched<L>)
         {
-          constexpr std::int64_t  K = abs_den(notch64<L>.Den);
-          constexpr std::int64_t  Lo{lower_int64<L>};
+          constexpr std::int64_t  K      {notch_int64<L>.Q};
+          constexpr std::int64_t  Lo     {lower_int64<L>};
           constexpr std::uint64_t max_den{q_format_max_den<L>};
 
           const std::uint64_t aden{abs_den(rv.Den)};

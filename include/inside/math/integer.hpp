@@ -404,7 +404,7 @@ namespace ins::math
       }
       else
         return R::from_raw(raw_cast<R>((static_cast<std::uint64_t>(v) - static_cast<std::uint64_t>(lower_int64<R>))
-                                       / static_cast<std::uint64_t>(notch64<R>.Num)),
+                                       / notch64<R>.Num),
                            unsafe);
     }
 

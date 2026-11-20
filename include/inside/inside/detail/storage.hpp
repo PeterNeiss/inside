@@ -360,7 +360,7 @@ namespace ins::detail
     requires q_format_fits<B>
   constexpr raw_t<B> q_format_encode(std::int64_t value) noexcept
   {
-    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
+    constexpr std::int64_t nd{notch_int64<B>.Q};
     return raw_cast<B>((value - lower_int64<B>) * nd);
   }
 
@@ -369,9 +369,9 @@ namespace ins::detail
     requires q_format_fits<B>
   constexpr rational q_format_decode(B b) noexcept
   {
-    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
-    const std::int64_t     n{raw_int64(b) + lower_int64<B> * nd};
-    if constexpr (std::has_single_bit(static_cast<std::uint64_t>(nd)))
+    constexpr std::int64_t nd{notch_int64<B>.Q};
+    const std::int64_t     n {raw_int64(b) + lower_int64<B> * nd};
+    if constexpr (notch_int64<B>.QShift >= 0)
     {
       // A power-of-two denominator reduces by the common trailing zeros (0 reduces to 0/1).
       const std::uint64_t m{safe_abs(n)};
@@ -602,7 +602,7 @@ namespace ins::detail
       std::int64_t k, sv, m;
       if constexpr (q_format_fits<L>)
       {
-        k  = static_cast<std::int64_t>(abs_den(notch64<L>.Den));
+        k  = notch_int64<L>.Q;
         sv = 1;
         m  = lower_int64<L> * k;
       }
