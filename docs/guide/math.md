@@ -156,7 +156,7 @@ in every form above:
 | `sqrt`, `cbrt` | a unit with that root | the root of the unit: m² → m |
 | `sin`, `cos`, `tan` | an angle in rad (`sin`, `cos`: or degrees, or any unit with a factor of π, reduced exactly) | a plain inside |
 | `asin`, `acos`, `atan` | a dimensionless quantity | rad |
-| `atan2(y, x)`, `hypot(x, y)` | two quantities of one dimension | rad; their common unit |
+| `atan2(y, x)`, `hypot(x, y)`, `gcd(x, y)`, `lcm(x, y)` | two quantities of one dimension | rad; their common unit |
 | `exp`, `exp2`, `log`, …, `atanh`, `pow_base<B>`, `pow` | dimensionless quantities | a plain inside |
 | `exp` | a multivector, or a quantity of one blade, whose non-scalar parts anticommute | a multivector: each part rounded once |
 | `value_cast<si::radian, Out>(q)` | an angle in degrees or turns | rad, rounded once |
