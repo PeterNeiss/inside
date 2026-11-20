@@ -83,6 +83,20 @@ namespace ins
     constexpr quantity_point() = default;
     constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
 
+    // From a number in the point's own unit, counted from its origin, stored as quantity<R, Rep>{v, u} stores it:
+    // celsius{21.5, si::degree_Celsius}, celsius{v, si::degree_Celsius, clamp}.
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+    constexpr quantity_point(V&& v, Tag u, Pol&&... pol)
+      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && (!detail::own_unit_v<quantity<R, Rep>, Tag>)
+    quantity_point(V&&, Tag, Pol&&...) = delete ("units: a point from a number takes the point's own unit - write "
+                                                 "point<u>(v) and convert it with point_in or point_for");
+
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
     template <ins::reference R2, origin_ref O2, class V2>

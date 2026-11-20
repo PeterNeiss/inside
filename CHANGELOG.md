@@ -21,6 +21,10 @@ own can be declared the same way with `defined_by`.
 
 ### Added
 
+- A point type takes a number in its own unit, as a quantity does:
+  `celsius{21.5, si::degree_Celsius}`, `celsius{v, si::degree_Celsius, clamp}`,
+  so `std::vector<celsius> t = {{21.5, si::degree_Celsius}, …}`. A number in
+  another unit does not compile (from which origin?).
 - A unit compares as one of itself, under the rule of two quantities:
   `len > si::metre` is `len > 1 m`, `p == percent` is `p == 1 %`; a plain
   inside or a point takes no unit. `-u` is the quantity −1 u.

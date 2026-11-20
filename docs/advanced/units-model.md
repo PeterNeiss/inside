@@ -141,6 +141,7 @@ bool same = k == room;                                          // true: one abs
 | Spelling | Gives |
 |---|---|
 | `point<U>(v)` | a point counted from U's origin (K, ℃ and ℉ have one), else the dimension's zero |
+| `P{v, u}`, `P{v, u, clamp}` | a point of type P = `quantity_point<R, O, Rep>` from a number in its own unit, counted from O |
 | `delta<U>(v)` | a difference in U, to add to a point |
 | `p.point_in(u)` | the same point in `u`, counted from `u`'s origin: 350 ℉ → 530/3 ℃ |
 | `p.in(u)` | the same point in `u`, keeping the origin |

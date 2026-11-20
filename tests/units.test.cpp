@@ -315,6 +315,21 @@ TEST(UnitsTest, points_shift_their_grid_between_origins) {
     EXPECT_EQ(rational{kp.quantity_from_origin().numerical_value_in(si::kelvin)}, rational(29315, 100));
 }
 
+TEST(UnitsTest, points_from_a_number_and_their_unit) {
+    using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-40, 60}, per<2>}, round_half_away>>;
+    const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding
+    EXPECT_EQ(to_string(room), "21.5 ℃");
+    EXPECT_TRUE(room == point<si::degree_Celsius>(just<43, 2>));
+    const std::vector<celsius> t = {{21.5, si::degree_Celsius}, {-5, si::degree_Celsius}};
+    EXPECT_TRUE(t[1] < t[0]);
+    const celsius hot{80, si::degree_Celsius, clamp}; // a one-shot policy, as for a quantity
+    EXPECT_EQ(to_string(hot), "60 ℃");
+    // Only the point's own unit: a number in K names no origin, a number alone no unit.
+    static_assert(!std::constructible_from<celsius, int, decltype(si::kelvin)>);
+    static_assert(!std::constructible_from<celsius, int, decltype(si::metre)>);
+    static_assert(!std::constructible_from<celsius, int>);
+}
+
 TEST(UnitsTest, point_arithmetic) {
     auto       t  = point<si::degree_Celsius>(inside<{-40, 60}>{20});
     const auto t2 = t + delta<si::kelvin>(just<5>);
