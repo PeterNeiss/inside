@@ -21,6 +21,8 @@ own can be declared the same way with `defined_by`.
 
 ### Added
 
+- `math::gcd` and `math::lcm` take two quantities that add, in their common
+  unit, exactly: `lcm(12 min, 18 min)` is 36 min, `gcd(3 cm, 4 mm)` 2 mm.
 - A point type takes a number in its own unit, as a quantity does:
   `celsius{21.5, si::degree_Celsius}`, `celsius{v, si::degree_Celsius, clamp}`,
   so `std::vector<celsius> t = {{21.5, si::degree_Celsius}, …}`. A number in

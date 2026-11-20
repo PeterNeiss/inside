@@ -94,7 +94,9 @@ auto big = math::factorial(inside<{0, 100}>{100});         // 100!, on a wide ra
 fractional, and follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)`
 and `lcm(0, b)` are 0. Their result types keep the lattice the operands share
 (the gcd of two even grids is even; of halves and thirds a multiple of 1/6:
-`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). `fn<Out>(…)` stores a
+`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). Two quantities that add
+take them in their common unit: buses every 12 min and 18 min meet every
+`lcm` = 36 min, and `gcd(3 cm, 4 mm)` is 2 mm. `fn<Out>(…)` stores a
 result into `Out`;
 [`combinatorics.cpp`](../../examples/combinatorics.cpp) uses them for
 odds as exact fractions.

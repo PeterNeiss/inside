@@ -922,6 +922,11 @@ using namespace ins;
 namespace {
 using rad_t = inside<{{-4, 4}, per<1'000'000>}, round_half_away>;
 using deg_t = inside<{{-360, 360}, per<1'000'000>}, round_half_away>;
+
+template <class A, class B>
+concept can_gcd = requires(const A& a, const B& b) { math::gcd(a, b); } || requires(const A& a, const B& b) {
+    math::lcm(a, b);
+};
 } // namespace
 
 TEST(UnitsMathTest, degree_to_radian_rounds_once) {
@@ -967,6 +972,20 @@ TEST(UnitsMathTest, trigonometry_in_radians) {
                                                                                                 si::kilo(si::metre)};
     EXPECT_EQ(rational{math::atan2(y, x).numerical_value_in(si::radian)}, rational(644, 1000)); // atan(3/4) = 0.6435…
     EXPECT_EQ(to_string(math::hypot(y, x)), "5.000 m");
+}
+
+TEST(UnitsMathTest, gcd_and_lcm_in_the_common_unit) {
+    using minutes = quantity<si::minute, inside<{1, 60}>>;
+    const minutes a{12, si::minute}, b{18, si::minute};
+    EXPECT_TRUE(math::gcd(a, b) == just<6> * si::minute);
+    EXPECT_TRUE(math::lcm(a, b) == just<36> * si::minute);
+    EXPECT_EQ(to_string(math::lcm(a, b)), "36 min");
+    // Mixed units: the common unit (3 cm and 4 mm are 30 mm and 4 mm).
+    const quantity<si::centi(si::metre), inside<{0, 10}>> c{3, si::centi(si::metre)};
+    const quantity<si::milli(si::metre), inside<{0, 100}>> m{4, si::milli(si::metre)};
+    EXPECT_EQ(to_string(math::gcd(c, m)), "2 mm");
+    EXPECT_TRUE(math::lcm(c, m) == just<6> * si::centi(si::metre));
+    static_assert(!can_gcd<minutes, decltype(just<1> * si::metre)> && can_gcd<minutes, decltype(just<1> * si::hour)>);
 }
 
 TEST(UnitsMathTest, number_functions_keep_the_unit) {

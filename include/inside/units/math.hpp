@@ -9,7 +9,7 @@
 //                                      with a factor of π (°, a turn), reduced exactly by quarter turns,
 //                                      exact at Niven's values (name the notch then: sin<per<K>>(q))
 //   asin, acos, atan(x), atan2(y, x)   an angle in radians (x a dimensionless quantity; atan2 of two that add)
-//   hypot(x, y)                        in the common unit
+//   hypot(x, y), gcd(x, y), lcm(x, y)  in the common unit (gcd and lcm exact)
 //   exp … atanh, pow_base<B>, pow      of numbers: dimensionless quantities (and insides): a number
 //   math::exp(x) of a multivector      units/detail/geoalg_exp.hpp
 //   value_cast<si::radian, Out>(q)     degree → radian (a pi factor): the exact x·π/180, rounded once onto Out
@@ -392,7 +392,7 @@ namespace ins
       tan,    // tan: of an angle in radians; a number
       arc,    // asin, acos, atan: of a number; an angle in radians
       arc2,   // atan2: of two quantities that add; an angle in radians
-      common, // hypot: of two quantities that add; in their common unit
+      common, // hypot, gcd, lcm: of two quantities that add; in their common unit
       number, // exp … atanh, pow_base, pow: of numbers; a number
     };
     template <class F>
@@ -427,6 +427,10 @@ namespace ins
     inline constexpr math_rule rule_of<m::entry::atan2_fn> = math_rule::arc2;
     template <>
     inline constexpr math_rule rule_of<m::entry::hypot_fn> = math_rule::common;
+    template <>
+    inline constexpr math_rule rule_of<m::gcd_fn> = math_rule::common;
+    template <>
+    inline constexpr math_rule rule_of<m::lcm_fn> = math_rule::common;
 #define INSIDE_UNITS_NUMBER_RULE(fn) \
   template <>                        \
   inline constexpr math_rule rule_of<m::entry::fn##_fn> = math_rule::number;
@@ -678,7 +682,7 @@ namespace ins::math::detail
 
 namespace ins::math
 {
-  // atan2 and hypot of two quantities that do not add (another dimension or kind, no common unit).
+  // atan2, hypot, gcd and lcm of two quantities that do not add (another dimension or kind, no common unit).
   template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
     requires(ins::detail::sum_diagnosed<A, B>())
   void atan2(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
@@ -687,6 +691,14 @@ namespace ins::math
     requires(ins::detail::sum_diagnosed<A, B>())
   void hypot(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
     "units: hypot takes two quantities that add - one dimension and kind, a common unit");
+  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+    requires(ins::detail::sum_diagnosed<A, B>())
+  void gcd(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+    "units: gcd takes two quantities that add - one dimension and kind, a common unit");
+  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+    requires(ins::detail::sum_diagnosed<A, B>())
+  void lcm(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+    "units: lcm takes two quantities that add - one dimension and kind, a common unit");
 } // namespace ins::math
 
 // exp of multivectors (units/detail/geoalg_exp.hpp).
