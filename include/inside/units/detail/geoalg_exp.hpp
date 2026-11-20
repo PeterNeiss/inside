@@ -938,7 +938,7 @@ namespace ins::detail::gaexp
           {
             const bool same{((notch_of<ypart<J>> == notch_of<Y0>) && ...) && eng::notch_p<Y0> == 1};
             const int  bits{std::max({eng::index_bits<ypart<J>>...})};
-            return same && 2 * bits + static_cast<int>(std::bit_width(F::N)) <= 53;
+            return same && 2 * bits + std::bit_width(F::N) <= 53;
           }
         }(std::make_index_sequence<F::N>{});
     }();
@@ -1188,7 +1188,7 @@ namespace ins::detail::gaexp
     {
       return std::max({1, eng::in_mag<num_t<std::tuple_element_t<F::yidx[J], DP>>>...});
     }(std::make_index_sequence<N>{});
-    constexpr int MagL{MagY + static_cast<int>(std::bit_width(N)) + 1};
+    constexpr int MagL{MagY + std::bit_width(N) + 1};
     constexpr int KE = []
     {
       if constexpr (HasA)

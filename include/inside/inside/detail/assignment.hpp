@@ -1172,7 +1172,7 @@ namespace ins::detail
           return;
         }
         const rational rat{*mapped};
-        std::uint64_t  ad{static_cast<std::uint64_t>(abs_den(rat.Den))};
+        std::uint64_t  ad{abs_den(rat.Den)};
         // Round the L offset to a notch index in value space through round_quotient (as the scalar path does),
         // honouring every rounding mode.
         std::uint64_t q{round_quotient<L, P>(rat.Num, ad)};
