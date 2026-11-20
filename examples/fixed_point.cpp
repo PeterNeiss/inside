@@ -52,9 +52,9 @@ int main()
 
   // A 0.5 ℃ grid with its unit: a reading is a point on the ℃ scale,
   // and body − room is a difference, 15.5 ℃.
-  using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;
-  const auto room{point<si::degree_Celsius>(celsius{21.4})}; // stored by the type's rounding: 21.5
-  const auto body{point<si::degree_Celsius>(celsius{37})};
+  using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-40, 60}, 0.5}, round_half_away>>;
+  const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding: 21.5
+  const celsius body{37, si::degree_Celsius};
   std::cout << "room " << room << ", body - room " << body - room << " = " << (body - room).in(si::kelvin) << "\n";
   if (to_string(room) != "21.5 ℃" || body - room != just<31, 2> * si::kelvin)
     return 1;
