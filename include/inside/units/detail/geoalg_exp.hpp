@@ -369,8 +369,8 @@ namespace ins::detail::gaexp
       else if (zq > half) // λ = √z ≥ 0.7: sin and cos of λ, reduced by quarter turns
       {
         const I    lam{eng::sqrt_exact_q<T, K, 64 * static_cast<int>(EZ)>(zr)};
-        const I    hp {eng::pi_as<I, T - 1>};
-        const I    k  {eng::round_shift(eng::mul_q(lam, eng::two_over_pi_as<I, T>, T), T)};
+        const I    hp {static_cast<I>(eng::pi_q<T - 1>)};
+        const I    k  {eng::round_shift(eng::mul_q(lam, static_cast<I>(eng::two_over_pi_q<T>), T), T)};
         const I    r  {eng::round_shift(lam - k * hp, T - S)}; // |r| ≤ π/4 + a hair, within 2
         const auto qd {static_cast<unsigned>(k.Word[0] & 3u)};
         auto quad = [&](unsigned p)

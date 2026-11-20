@@ -203,7 +203,9 @@ namespace ins::detail
     template <std::integral T>
       requires(std::numeric_limits<T>::digits <= 64)
     constexpr big_int(T v) noexcept
-      : Small{safe_abs(v)}, Negative{std::is_signed_v<T> && v < 0} {}
+      : Small{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
+                                           : static_cast<std::uint64_t>(v)},
+        Negative{std::is_signed_v<T> && v < 0} {}
 
     // A builtin wider than 64 bits (__int128): its limbs.
     // One past a limb exists only at compile time (from_mag), as every big grid number does.
@@ -214,7 +216,7 @@ namespace ins::detail
       using U = std::make_unsigned_t<T>;
       const bool neg{std::is_signed_v<T> && v < 0};
       big::mag   m;
-      for (U u = safe_abs(v); u != 0; u >>= 64)
+      for (U u = neg ? U{0} - static_cast<U>(v) : static_cast<U>(v); u != 0; u >>= 64)
         m.push_back(static_cast<std::uint64_t>(u));
       *this = from_mag(std::move(m), neg);
     }

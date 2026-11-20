@@ -375,7 +375,8 @@ namespace ins::math
           // The same lattice through 0: |x| is the value index's magnitude.
           // In uint64: |INT64_MIN| = 2^63 is past int64 (Out then reaches it).
           const std::int64_t j{value_index<std::int64_t>(x)};
-          return from_value_index<Out>(safe_abs(j));
+          return from_value_index<Out>(j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
+                                             : static_cast<std::uint64_t>(j));
         }
         else
           return store_value<Out>(ins::detail::abs(rational{x}));
@@ -413,7 +414,8 @@ namespace ins::math
           // The same lattice through 0: ±|value index|, in uint64 (|INT64_MIN| = 2^63 when sgn is never negative);
           // the raw follows modulo 2^64.
           const std::int64_t  j{value_index<std::int64_t>(mag)};
-          const std::uint64_t a{safe_abs(j)};
+          const std::uint64_t a{j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
+                                      : static_cast<std::uint64_t>(j)};
           return from_value_index<Out>(sgn < 0 ? std::uint64_t{0} - a : a);
         }
         else

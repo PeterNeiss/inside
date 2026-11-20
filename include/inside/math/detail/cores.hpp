@@ -89,13 +89,13 @@ namespace ins::math::detail::engine
     constexpr std::size_t KI{limbs_for_bits(2 * Bits + S + 2)};
     int                   e {floor_log2(x)};
     I                     m {to_q_at<K, KI>(x, S - e)};
-    if (m > sqrt2_as<I, S>)
+    if (m > static_cast<I>(sqrt2_q<S>))
     {
       ++e;
       m = to_q_at<K, KI>(x, S - e);
     }
     const fixed_approx<K> l  {log_series<S>(m, 1)};
-    const I               ln2{ln2_as<I, S>};
+    const I               ln2{static_cast<I>(ln2_q<S>)};
     return {l.Value + I{e} * ln2, l.Error + static_cast<std::uint64_t>(e < 0 ? -e : e) + 1};
   }
 
@@ -175,7 +175,7 @@ namespace ins::math::detail::engine
       const wide_rational<E> f{X.Num - k * X.Den, X.Den}; // in [0, 1)
       if (is_zero(f))
         return approx<K>{I{1}, -kk, 0};
-      const I ln2{ln2_as<I, S>};
+      const I ln2{static_cast<I>(ln2_q<S>)};
       I       r  {mul_q(to_q<S, K>(f), ln2, S)}; // within 2
       if (r > (ln2 >> 1))
       {
@@ -242,7 +242,7 @@ namespace ins::math::detail::engine
       constexpr std::size_t K{limbs_of<I>};
       const fixed_approx<K> l{log_exact<S, K, Bits>(X)};
       // log x · (1/ln B): within 1.45·error + 2 (the constant is within 1).
-      const I inv{B == 2 ? log2e_as<I, S> : log10e_as<I, S>};
+      const I inv{B == 2 ? static_cast<I>(log2e_q<S>) : static_cast<I>(log10e_q<S>)};
       return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<std::uint64_t>(Bits)};
     }
   };
@@ -356,8 +356,8 @@ namespace ins::math::detail::engine
       using R = fixed_t<T + Mag + 8>;
       constexpr std::size_t K{limbs_of<I>};
       const R               xq{to_q<T, limbs_of<R>>(X)};
-      const R               hp{pi_as<R, T - 1>};                                    // π/2 within 1
-      const R               k {round_shift(mul_q(xq, two_over_pi_as<R, T>, T), T)}; // round(x·2/π)
+      const R               hp{static_cast<R>(pi_q<T - 1>)};                                    // π/2 within 1
+      const R               k {round_shift(mul_q(xq, static_cast<R>(two_over_pi_q<T>), T), T)}; // round(x·2/π)
       const I               r {static_cast<I>(round_shift(xq - k * hp, T - S))}; // |r| ≤ π/4 + a hair, within 2
       const unsigned        q {static_cast<unsigned>(k.Word[0] & 3u)};
       // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
@@ -415,7 +415,7 @@ namespace ins::math::detail::engine
     if (!(exact_of<E>(1) < abs(x)))
       return atan_fixed<S>(to_q<S, K>(x), 1);
     const fixed_approx<K> a {atan_fixed<S>(to_q<S, K>(inverse(x)), 1)};
-    const I               hp{pi_as<I, S - 1>};
+    const I               hp{static_cast<I>(pi_q<S - 1>)};
     return {(x.Num.negative() ? -hp : hp) - a.Value, a.Error + 1};
   }
 
@@ -455,7 +455,7 @@ namespace ins::math::detail::engine
       constexpr std::size_t K{limbs_of<I>};
       using F = wide_rational<2 * E + 1>;
       const F y{Y}, x{X};
-      const I pi_fixed{pi_as<I, S>};
+      const I pi_fixed{static_cast<I>(pi_q<S>)};
       if (!(abs(x) < abs(y)))
       {
         const fixed_approx<K> a{atan_exact<S, K>(y / x)};
@@ -464,7 +464,7 @@ namespace ins::math::detail::engine
         return approx<K>{a.Value + (y.Num.negative() ? -pi_fixed : pi_fixed), S, a.Error + 1};
       }
       const fixed_approx<K> a {atan_exact<S, K>(x / y)};
-      const I               hp{pi_as<I, S - 1>};
+      const I               hp{static_cast<I>(pi_q<S - 1>)};
       return approx<K>{(y.Num.negative() ? -hp : hp) - a.Value, S, a.Error + 1};
     }
   };
@@ -491,7 +491,7 @@ namespace ins::math::detail::engine
       constexpr int S{W + 12};
       using I = fixed_t<S + 8>;
       constexpr std::size_t  K{limbs_of<I>};
-      const I                hp{pi_as<I, S - 1>}; // π/2
+      const I                hp{static_cast<I>(pi_q<S - 1>)}; // π/2
       const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
       if (!(half < abs(X)))
       {
@@ -509,7 +509,7 @@ namespace ins::math::detail::engine
       {
         if (!neg)
           return approx<K>{a.Value << 1, S, 2 * a.Error};
-        return approx<K>{pi_as<I, S> - (a.Value << 1), S, 2 * a.Error + 1};
+        return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
       }
       else
       {
@@ -563,11 +563,11 @@ namespace ins::math::detail::engine
       else
       {
         // One reduction |x| = k·ln 2 + r: e^r = E + O and e^−r = E − O from the even and odd halves of the series.
-        const I k{round_shift(mul_q(ax, log2e_as<I, S>, S), S)};
+        const I k{round_shift(mul_q(ax, static_cast<I>(log2e_q<S>), S), S)};
         if (I{KM} < k) // e^|x| past 2^KM: past Out
           return approx<K>::beyond(Fn == hyp::sinh && neg, KMax);
         const int           kk{static_cast<int>(static_cast<std::int64_t>(k))};
-        const I             r {ax - k * ln2_as<I, S>}; // within ½ + k
+        const I             r {ax - k * static_cast<I>(ln2_q<S>)}; // within ½ + k
         const I             z {mul_q(r, r, S)};
         const I             ev{horner<series::cosh, S, false>(z)};
         const I             od{mul_q(r, horner<series::sinh, S, false>(z), S)};
@@ -628,7 +628,7 @@ namespace ins::math::detail::engine
         const I               m {c >> (2 * h)};                           // within 3
         const I               v {(aq >> h) + mul_q(m, rsqrt_q<S>(m), S)}; // in [1, 3), within 30
         const fixed_approx<K> l {log_fixed<S>(v, 30)};
-        const I               lv{l.Value + I{h} * ln2_as<I, S>};
+        const I               lv{l.Value + I{h} * static_cast<I>(ln2_q<S>)};
         return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<std::uint64_t>(h) + 1};
       }
       else

@@ -364,7 +364,7 @@ namespace ins::detail
   // 10^d's only primes are 2 and 5, so v's trailing zero bits and factors 5 are what cancel.
   constexpr rational decimal_rational(std::int64_t v, int d) noexcept
   {
-    std::uint64_t m{safe_abs(v)};
+    std::uint64_t m{v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v) : static_cast<std::uint64_t>(v)};
     if (m == 0)
       return rational_from_parts(0, 1);
     const int twos{std::countr_zero(m) < d ? std::countr_zero(m) : d};

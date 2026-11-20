@@ -65,21 +65,10 @@ namespace ins
         return true;
     }
 
-    // |v| as a uint64, exact for the most negative value too (it does not fit V), for an integer of at most 64 bits.
-    template <std::integral V>
-      requires(std::numeric_limits<V>::digits <= 64)
+    template <std::signed_integral V>
     [[nodiscard]] constexpr std::uint64_t safe_abs(V value) noexcept
     {
-      return std::is_signed_v<V> && value < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(value)
-                                              : static_cast<std::uint64_t>(value);
-    }
-    // |v| in V's unsigned twin for a wider builtin (__int128).
-    template <std::integral V>
-      requires(std::numeric_limits<V>::digits > 64)
-    [[nodiscard]] constexpr std::make_unsigned_t<V> safe_abs(V value) noexcept
-    {
-      using U = std::make_unsigned_t<V>;
-      return std::is_signed_v<V> && value < 0 ? U{0} - static_cast<U>(value) : static_cast<U>(value);
+      return (value >= 0) ? static_cast<std::uint64_t>(value) : std::uint64_t{0} - static_cast<std::uint64_t>(value);
     }
     // The int64 of a sign and a magnitude (at most 2^63, and 2^63 only when negative): taken modulo 2^64,
     // so -2^63 needs no special case.

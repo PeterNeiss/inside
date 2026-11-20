@@ -167,7 +167,7 @@ namespace ins::math::detail::dd
   template <int S>
   constexpr std::array<dd, 64> exp2_table(int shift) noexcept
   {
-    const auto         a   {engine::exp_fixed<S>(engine::ln2_as<fixed, S> >> shift, 1, 4)};
+    const auto         a   {engine::exp_fixed<S>(static_cast<fixed>(engine::ln2_q<S>) >> shift, 1, 4)};
     const fixed        root{a.Scale == S ? a.Value : a.Value << (S - a.Scale)};
     std::array<dd, 64> t{};
     fixed              p{fixed{1} << S};

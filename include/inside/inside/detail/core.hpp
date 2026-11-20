@@ -1405,7 +1405,8 @@ namespace ins
           {
             // n/10^d unreduced:
             // a Q format's store rounds it as the reduced fraction would (one division of the offset).
-            const std::uint64_t mag{detail::safe_abs(d.Value)};
+            const std::uint64_t mag{d.Value < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(d.Value)
+                                                : static_cast<std::uint64_t>(d.Value)};
             const std::int64_t  den{detail::power_of_ten(d.Decimals)};
             return B::template try_make<F>(detail::rational_from_parts(mag, d.Value < 0 ? -den : den));
           }

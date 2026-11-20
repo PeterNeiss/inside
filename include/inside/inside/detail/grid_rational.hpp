@@ -65,7 +65,9 @@ namespace ins
     template <std::integral T>
       requires(std::numeric_limits<T>::digits <= 64)
     constexpr grid_number(T v) noexcept
-      : Num{detail::safe_abs(v)}, Den{std::is_signed_v<T> && v < 0 ? -1 : 1} {}
+      : Num{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
+                                         : static_cast<std::uint64_t>(v)},
+        Den{std::is_signed_v<T> && v < 0 ? -1 : 1} {}
     template <std::integral T>
       requires(std::numeric_limits<T>::digits > 64)
     constexpr grid_number(T v) : grid_number(detail::big_rational{v}) {}
