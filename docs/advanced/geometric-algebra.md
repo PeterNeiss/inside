@@ -109,7 +109,7 @@ auto v = just<2> * si::metre * e1 + just<1> * si::metre * e2;      // 2 m e₁ +
 | `dual(x, I)` | x I⁻¹, for a pseudoscalar unit I that squares to ±1: `dual(u ∧ v, e1 * e2 * e3)` is u × v |
 | `complement(x, I)`, `uncomplement(x, I)` | the right complement within I's blade, A ∧ c(A) = I, without the metric, and its inverse |
 | `regressive(a, b, I)` | the regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA |
-| `==` | per blade; a missing part compares as 0 |
+| `==` | per blade; a missing part compares as 0. With multivectors and quantities only, never a number: `q * inverse(q) == one`, `i * i == -one`, `z * reverse(z) == just<25> * one` |
 | `to_string`, `<<`, `std::format` | units/io.hpp: `3 - 4 i`, `2 m e₁ + 1 m e₂`, `0` |
 
 A division by a grid that holds 0 gives an `std::expected`, as `/` does

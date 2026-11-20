@@ -216,7 +216,7 @@ TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
     using dom = multivector<I, quantity<i, I>>;
     using cod = multivector<O, quantity<i, O>>;
     // exp(0) = 1 exactly, under floor: no neighbour below.
-    static_assert(math::exp<cod>(dom{}) == just<1>);
+    static_assert(math::exp<cod>(dom{}) == one);
     // A light-like boost plus rotation: z = 0, exp(y) = 1 + y exactly.
     using mdom = multivector<quantity<g0 * g1, I>, quantity<g1 * g2, I>>;
     using mcod = multivector<O, quantity<g0 * g1, O>, quantity<g1 * g2, O>>;

@@ -697,8 +697,10 @@ namespace ins
   {
     return detail::mv_add(a, detail::mv_negate(b));
   }
+  // Equality: a multivector with a multivector or a quantity, never with a plain number
+  // (only plain insides compare with numbers; a scalar part is a quantity: z * conj(z) == just<25> * one).
   template <class A, class B>
-    requires detail::mv_operands<A, B> && detail::mv_addable<A, B>
+    requires detail::mv_operands<A, B> && detail::mv_addable<A, B> && (!insidable<A>) && (!insidable<B>)
   [[nodiscard]] constexpr bool operator==(const A& a, const B& b)
   {
     return detail::mv_equal(a, b);
@@ -712,23 +714,6 @@ namespace ins
     requires detail::mv_operands<A, B> && (!detail::mv_addable<A, B>)
   void operator-(const A&, const B&) = delete ("units: subtracting multivectors of different dimensions (outside "
                                                "their blades), or parts of one blade that do not add");
-
-  // A number and a quantity, as elements: i·i == just<-1>, (2 e₁)² == just<4>.
-  template <insidable V, reference A, class VA>
-    requires detail::mv_addable<V, quantity<A, VA>>
-  [[nodiscard]] constexpr bool operator==(const V& v, const quantity<A, VA>& q)
-  {
-    return detail::mv_equal(v, q);
-  }
-
-  // A builtin integer compares as a number does: squared_norm(z) == 25, i * i == -1.
-  template <class A, ins::detail::step_integer N>
-    requires(!insidable<A>) && (multivector_like<A> || quantity_like<A>)
-         && requires(const A& a, const ins::detail::lifted_t<N>& v) { a == v; }
-  [[nodiscard]] constexpr bool operator==(const A& a, N n)
-  {
-    return a == ins::detail::lift_integer(n);
-  }
 
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
   template <reference A, class VA, reference B, class VB>

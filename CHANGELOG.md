@@ -12,9 +12,18 @@ own can be declared the same way with `defined_by`.
 - A unit or kind that re-declares a catalog entry by its content
   (`base_unit<"m", "length">` for `si::metre`) still compares equal to it and
   converts, but is now another type. A sum of the two may run in either unit.
+- A quantity or a multivector never compares with a number, whatever is
+  included: only plain insides compare with numbers. `<inside/units/geoalg.hpp>`
+  (also pulled in by `<inside/units/math.hpp>`) let `==` take a number on
+  either side, so `quantity<percent, …>{5, percent} == 5` compiled with it and
+  not without. Compare with a quantity, or with a unit as one of itself:
+  `i * i == -one`, `q * inverse(q) == one`, `u * u == just<5> * one`.
 
 ### Added
 
+- A unit compares as one of itself, under the rule of two quantities:
+  `len > si::metre` is `len > 1 m`, `p == percent` is `p == 1 %`; a plain
+  inside or a point takes no unit. `-u` is the quantity −1 u.
 - `defined_by<d>`: the unit, kind or origin that a named definition object
   defines. `unit_def`, `kind_def`, `origin_def` and `basis_vector_def` take
   the arguments of `unit<…>`, `kind<…>`, `origin<…>` and `basis_vector<…>`

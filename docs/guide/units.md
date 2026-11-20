@@ -62,10 +62,16 @@ and then add: km + m runs in metres, EUR + ct in cents. A valid mixed-unit sum
 cannot overflow, and its result is exact. `*` and `/` multiply the units:
 metres over minutes is m/min, and `.in(km / si::hour)` turns it into km/h.
 
+A quantity compares only with a quantity it could be added to, and a unit
+compares as one of itself (`len > si::metre` is `len > 1 m`, `-si::metre` is
+−1 m). Only a plain inside compares with a number: not even a percentage or a
+quantity of unit `one` takes `== 5`; write `p == just<5> * percent`.
+
 Quantities of different dimensions never mix:
 
 ```cpp
 // total + just<1> * si::second;   // does not compile: a length and a duration
+// total > 1000;                   // does not compile: a length is no number
 ```
 
 ## Kinds
