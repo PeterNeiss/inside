@@ -437,14 +437,16 @@ namespace ins
     dimension Dim{};
   };
 
-  namespace detail
+  // A kind's options, all optional:
+  //   .distinct  true for a kind that never mixes with its siblings, although
+  //              they share a dimension (activity and frequency are both 1/s)
+  //   .recipe    the quantities it is made of, for a child that has a recipe of
+  //              its own (velocity: displacement / duration, under speed)
+  struct kind_options
   {
-    struct distinct_t
-    {
-      explicit distinct_t() = default;
-    };
-    inline constexpr distinct_t distinct{};
-  } // namespace detail
+    bool      distinct{false};
+    kind_expr recipe{};
+  };
 
   template <const kind_def* S>
   struct kind_t;
@@ -462,26 +464,22 @@ namespace ins
     // A child of a named kind.
     template <const kind_def* P>
     constexpr kind_def(std::string_view name, kind_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
-    template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>, detail::distinct_t)
-      : Name{name}, Dim{P->Dim}, Parent{P}, Distinct{true} {}
     // A derived root: named by its recipe.
     constexpr kind_def(std::string_view name, const kind_expr& e) : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
-    constexpr kind_def(std::string_view name, const kind_expr& e, detail::distinct_t)
-      : Name{name}, Dim{e.Dim}, Recipe{e.Recipe}, Distinct{true} {}
-    // A child with a recipe of its own (velocity: speed, displacement / duration).
-    template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>, const kind_expr& e)
-      : Name{name}, Dim{P->Dim}, Parent{P}, Recipe{e.Recipe}
+    // Any of these with options, as kind<"name", parent, options> takes them:
+    // kind_def{"velocity", isq::speed, {.recipe = isq::displacement / isq::duration}}.
+    template <class P>
+    constexpr kind_def(std::string_view name, const P& parent, const kind_options& o) : kind_def{name, parent}
     {
-      if (!(e.Dim == P->Dim))
+      Distinct = o.distinct;
+      if (o.recipe.Recipe.Size == 0)
+        return;
+      if (!Parent)
+        ins::detail::constexpr_error<"units: a recipe of its own is for a child of a named kind - "
+                                     "kind<\"velocity\", isq::speed, {.recipe = …}>">();
+      if (!(o.recipe.Dim == Dim))
         ins::detail::constexpr_error<"units: a kind's recipe must have its parent's dimension">();
-    }
-    template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>, const kind_expr& e, detail::distinct_t)
-      : kind_def{name, kind_t<P>{}, e}
-    {
-      Distinct = true;
+      Recipe = o.recipe.Recipe;
     }
   };
 
@@ -676,6 +674,16 @@ namespace ins
     dimension               Dim{};
     ref_or_none<origin_def> Absolute{}; // none for an absolute origin
     grid_number             Offset{0};  // from Absolute, in the coherent unit
+
+    // An absolute origin: the zero of a dimension, or of a kind's (absolute zero).
+    constexpr origin_def(std::string_view name, dimension d) : Name{name}, Dim{d} {}
+    template <const kind_def* K>
+    constexpr origin_def(std::string_view name, kind_t<K>) : Name{name}, Dim{K->Dim} {}
+    // One at a constant point of another origin: origin_def{"ice point", si::absolute_zero + 273.15_ins * si::kelvin}
+    // (defined in units/detail/define.hpp).
+    template <class P>
+      requires requires(const P& p) { p.quantity_from_origin(); }
+    constexpr origin_def(std::string_view name, const P&);
   };
 
   using origin_ref = ref_or_none<origin_def>; // none: the implicit zero of a dimension
@@ -771,6 +779,13 @@ namespace ins
     static constexpr unit_value value = U;
   };
 
+  namespace detail
+  {
+    // Whether T is a quantity (specialized in units/detail/quantity.hpp).
+    template <class T>
+    inline constexpr bool is_quantity_v = false;
+  } // namespace detail
+
   // unit_def: the definition of a unit with a symbol (m, s, N, Ω, °C), a static object that unit<"sym", …> makes.
   // Its magnitude is relative to the coherent unit of its dimension;
   // Kind (if any) is the quantity kind it measures (Hz: frequency, Bq: activity).
@@ -797,6 +812,11 @@ namespace ins
     constexpr unit_def(std::string_view sym, unit_t<U>, unit_options o = {});
     template <unit_value U, const kind_def* K>
     constexpr unit_def(std::string_view sym, unit_t<U>, kind_t<K>, unit_options o = {});
+    // A unit defined by the constant quantity it equals: unit_def{"ftm", 1.8288_ins * si::metre}
+    // (defined in units/detail/define.hpp).
+    template <class Q>
+      requires detail::is_quantity_v<Q>
+    constexpr unit_def(std::string_view sym, const Q&, unit_options o = {});
 
     [[nodiscard]] constexpr std::string_view ascii() const { return Ascii.empty() ? Utf8 : Ascii.view(); }
 

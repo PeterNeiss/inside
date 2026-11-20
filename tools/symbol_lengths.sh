@@ -27,11 +27,23 @@ TYPES=(
   'S|quantity<si::siemens, inside<{0, 100}>>'
   'velocity|quantity<isq::velocity[si::metre / si::second], inside<{0, 100}>>'
   'point in C|decltype(point<si::degree_Celsius>(inside<{-50, 50}>{20}))'
+  'ftm, unit<>|quantity<ftm_line, inside<{0, 100}>>'
+  'ftm, defined_by|quantity<ftm, inside<{0, 100}>>'
+  'cts, base_unit<>|quantity<cts_line, inside<{0, 100}>>'
+  'cts, defined_by|quantity<cts, inside<{0, 100}>>'
 )
 
+# Units of your own: one-line (content-keyed) and named (defined_by).
 prologue() {
   printf '#include <inside/units.hpp>\n'
   printf 'using namespace ins;\n'
+  printf 'inline constexpr auto     ftm_line = unit<"ftm", just<18288, 10000> * si::metre>;\n'
+  printf 'inline constexpr unit_def ftm_def{"ftm", just<18288, 10000> * si::metre};\n'
+  printf 'inline constexpr auto     ftm = defined_by<ftm_def>;\n'
+  printf 'inline constexpr auto     cts_line = base_unit<"cts", "count">;\n'
+  printf 'inline constexpr kind_def count_def{"count", base_dimension<"count">};\n'
+  printf 'inline constexpr unit_def cts_def{"cts", defined_by<count_def>};\n'
+  printf 'inline constexpr auto     cts = defined_by<cts_def>;\n'
 }
 
 printf '%-24s %8s %8s\n' "type" "mangled" "printed"

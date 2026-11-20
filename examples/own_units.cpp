@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Units, kinds, origins and base dimensions of your own:
-// each is one declaration, and from then on it works like the catalog.
+// each is one declaration, or a named definition and its name for short type names,
+// and from then on it works like the catalog.
 
 #include <iostream>
 
@@ -19,11 +20,15 @@ namespace
   // 2. A temperature unit whose points count from absolute zero; the options name its ASCII symbol and origin.
   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
 
-  // 3. Currency: a base dimension, its base quantity and two units.
-  inline constexpr auto currency = base_dimension<"currency">;
-  inline constexpr auto money    = kind<"money", currency>;
-  inline constexpr auto euro     = unit<"EUR", money>;
-  inline constexpr auto cent     = unit<"ct" , 0.01_ins * euro>;
+  // 3. Currency: a base dimension, its base quantity and two units, as named definitions:
+  //    diagnostics and symbols spell them money_def, euro_def and cent_def, not their content.
+  inline constexpr auto     currency = base_dimension<"currency">;
+  inline constexpr kind_def money_def{"money", currency};
+  inline constexpr auto     money = defined_by<money_def>;
+  inline constexpr unit_def euro_def{"EUR", money};
+  inline constexpr auto     euro = defined_by<euro_def>;
+  inline constexpr unit_def cent_def{"ct", 0.01_ins * euro};
+  inline constexpr auto     cent = defined_by<cent_def>;
 
   // 4. Information: bit, byte (8 bit), KiB (1024 B).
   inline constexpr auto information = base_dimension<"information">;

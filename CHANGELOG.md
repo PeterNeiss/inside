@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased
+
+Short type names: the catalog's units, kinds and origins are named definition
+objects, so diagnostics and symbols spell `si::volt` as
+`(& ins::si::volt_def)` instead of its whole definition, and units of your
+own can be declared the same way with `defined_by`.
+
+### Upgrading from 0.10.0
+
+- A unit or kind that re-declares a catalog entry by its content
+  (`base_unit<"m", "length">` for `si::metre`) still compares equal to it and
+  converts, but is now another type. A sum of the two may run in either unit.
+
+### Added
+
+- `defined_by<d>`: the unit, kind or origin that a named definition object
+  defines. `unit_def`, `kind_def`, `origin_def` and `basis_vector_def` take
+  the arguments of `unit<…>`, `kind<…>`, `origin<…>` and `basis_vector<…>`
+  (`unit_def` a constant quantity, `kind_def` the `{.distinct, .recipe}`
+  options, `origin_def` a kind, a dimension or a constant point):
+
+  ```cpp
+  inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+  inline constexpr auto     fathom = defined_by<fathom_def>;   // printed as (& fathom_def)
+  ```
+
+  It compares equal to the one-liner `unit<"ftm", 1.8288_ins * si::metre>`
+  and converts, but is another type. In a header, declare the definition
+  `inline constexpr`. `examples/own_units.cpp` declares its currency this way.
+
+### Changed
+
+- The catalog (`units/systems.hpp`, `units/constants.hpp`) declares each entry
+  as a named definition and its name. Type names (`tools/symbol_lengths.sh`,
+  GCC 16, characters):
+
+  | Type | Mangled before → now | Printed before → now |
+  |---|---|---|
+  | `quantity<si::metre, …>` | 837 → 373 | 1312 → 404 |
+  | km/h | 1508 → 377 | 2118 → 429 |
+  | J | 3006 → 373 | 8735 → 404 |
+  | S | 6239 → 380 | 28636 → 410 |
+  | a point in ℃ | 1751 → 469 | 7344 → 508 |
+  | ftm: `unit<…>` → `defined_by` | 616 → 363 | 705 → 393 |
+  | cts: `base_unit<…>` → `defined_by` | 834 → 352 | 1310 → 382 |
+
+  A wrong-dimension sum's diagnostic shrinks from 14.8 KB to 1.9 KB, and the
+  27 unit examples' symbols at -O0 by 32 % (objects by 23 %). Compile time
+  (`perf stat`, instructions): `units.hpp` −6.9 %, 200 quantity expressions
+  −11.5 %, `units.test.cpp` −4.5 %; one-line units defined by a quantity
+  −4.5 %, one-line kinds +6 %.
+- The definition holders build through the same constructors: `kind_holder`
+  is one template, `origin_holder` has no lambda, and the positional
+  `distinct`/recipe constructors of `kind_def` are gone.
+
 ## 0.10.0 — 2026-11-20
 
 The library stands on its own: `ins` instead of `beman::inside`, its own build

@@ -566,10 +566,16 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
 }
 
 // The SI base dimensions are declared as one of your own is, and a base
-// dimension is its name: base_unit<"m", "length"> is si::metre.
+// dimension is its name: base_unit<"m", "length"> equals si::metre. The
+// catalog's metre is a named definition, so the re-declared one is another
+// type, which converts.
 TEST(UnitsApiTest, si_base_dimensions_are_base_dimensions) {
     static_assert(dimension_of(si::metre.value) == base_dimension<"length">);
     static_assert(base_unit<"m", "length"> == si::metre);
+    using I = inside<{0, 100}>;
+    static_assert(!std::is_same_v<quantity<base_unit<"m", "length">, I>, quantity<si::metre, I>>);
+    constexpr quantity<si::metre, I> m = quantity<base_unit<"m", "length">, I>{3, base_unit<"m", "length">};
+    static_assert(m == quantity<si::metre, I>{3, si::metre});
     static_assert(dimension_of(si::newton.value).Size == 3);
     static_assert(dimension_of(si::kelvin.value) == isq::thermodynamic_temperature.value->Dim);
     constexpr dimension price = dimension_of((unit<"EUR", money_kind> / si::kilogram).value);
@@ -578,6 +584,60 @@ TEST(UnitsApiTest, si_base_dimensions_are_base_dimensions) {
     static_assert(price.Size == 2 && price.Base[0]->Name == "currency" && price.Base[1]->Name == "mass");
     static_assert(price * base_dimension<"mass"> == currency_dim);
     static_assert(dimension_of((si::metre / si::metre).value) == dim_one);
+}
+
+// Named definitions: each definition type takes its one-liner's arguments, and
+// defined_by<d> is what the one-liner gives, spelled by d's name. It compares
+// equal to the one-liner's and converts both ways, but is another type.
+namespace {
+inline constexpr auto             line_fathom = unit<"ftm", 1.8288_ins * si::metre>;
+inline constexpr unit_def         named_fathom_def{"ftm", 1.8288_ins * si::metre};
+inline constexpr auto             named_fathom = defined_by<named_fathom_def>;
+inline constexpr kind_def         named_count_def{"count", base_dimension<"count">};
+inline constexpr unit_def         named_cts_def{"cts", defined_by<named_count_def>};
+inline constexpr auto             named_cts = defined_by<named_cts_def>;
+inline constexpr unit_def         named_watt_def{"W", si::joule / si::second};
+inline constexpr kind_def         named_velocity_def{"velocity", isq::speed,
+                                                     {.recipe = isq::displacement / isq::duration}};
+inline constexpr kind_def         named_angle_def{"angular_measure", isq::dimensionless,
+                                                  {.distinct = true, .recipe = isq::arc_length / isq::radius}};
+inline constexpr origin_def       named_ice_def{"ice", si::absolute_zero + just<27315, 100> * si::kelvin};
+inline constexpr origin_def       named_zero_def{"zero", base_dimension<"thermodynamic_temperature">};
+inline constexpr basis_vector_def named_e1_def{"e1", +1};
+} // namespace
+
+TEST(UnitsApiTest, named_definitions) {
+    using I = inside<{0, 100}>;
+    static_assert(named_fathom == line_fathom);
+    static_assert(named_cts == base_unit<"cts", "count">);
+    static_assert(defined_by<named_watt_def> == si::watt);
+    static_assert(defined_by<named_velocity_def> == isq::velocity);
+    static_assert(defined_by<named_angle_def> == isq::angular_measure);
+    static_assert(defined_by<named_e1_def> == basis_vector<"e1", +1>);
+    static_assert(ins::detail::same(origin_ref{defined_by<named_ice_def>},
+                                    origin_ref{origin<"ice", si::absolute_zero + just<27315, 100> * si::kelvin>}));
+    static_assert(ins::detail::same(origin_ref{defined_by<named_zero_def>},
+                                    origin_ref{origin<"zero", base_dimension<"thermodynamic_temperature">>}));
+
+    // The tag of the definition's type, holding the definition's address.
+    static_assert(std::is_same_v<decltype(named_fathom), const unit_t<unit_value{named_fathom_def}>>);
+    static_assert(std::is_same_v<decltype(defined_by<named_count_def>), const kind_t<&named_count_def>>);
+    static_assert(std::is_same_v<decltype(defined_by<named_ice_def>), const origin_t<origin_ref{&named_ice_def}>>);
+
+    // Another type than the one-liner's, which converts both ways.
+    static_assert(!std::is_same_v<quantity<named_fathom, I>, quantity<line_fathom, I>>);
+    constexpr quantity<line_fathom, I>  a = quantity<named_fathom, I>{12, named_fathom};
+    constexpr quantity<named_fathom, I> b = a;
+    static_assert(a == b);
+
+    // Prefixes, conversions, products, points and text, as for any unit.
+    EXPECT_EQ(to_string(quantity<si::kilo(named_fathom), I>{2, si::kilo(named_fathom)}), "2 kftm");
+    EXPECT_EQ(to_string(b.in(si::metre)), "21.9456 m");
+    EXPECT_EQ(to_string(quantity<named_cts, I>{7, named_cts} / (just<1> * si::second)), "7 cts/s");
+    constexpr auto ice = defined_by<named_ice_def>;
+    EXPECT_EQ(to_string(point<si::degree_Celsius>(inside<{-5, 5}>{1}).point_for(ice).quantity_from_origin()), "1 ℃");
+    constexpr auto e1 = defined_by<named_e1_def>;
+    static_assert(dimension_of((e1 * e1).value) == dim_one);
 }
 
 TEST(UnitsApiTest, adc_counts) {

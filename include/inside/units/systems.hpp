@@ -12,7 +12,8 @@ namespace ins
 {
 
   // The catalog: ISQ kinds, SI units and prefixes, international units.
-  // Each entry is declared as a unit of your own is (units/detail/define.hpp).
+  // Each entry is a named definition and its name, as one of your own can be (units/detail/define.hpp):
+  // diagnostics and symbols spell si::volt as (& ins::si::volt_def).
   // A scaled unit is spelled detail::mag<N> * u here, not the quantity N * u:
   // a quantity type costs about thirty times as much to compile, and the catalog has thirty of them.
 
@@ -20,131 +21,209 @@ namespace ins
   // The seven base dimensions are declared as one of your own is.
   namespace isq
   {
-    inline constexpr auto dimensionless             = kind<"dimensionless", dim_one>;
-    inline constexpr auto length                    = kind<"length", base_dimension<"length">>;
-    inline constexpr auto mass                      = kind<"mass", base_dimension<"mass">>;
-    inline constexpr auto duration                  = kind<"duration", base_dimension<"time">>;
-    inline constexpr auto electric_current          = kind<"electric_current", base_dimension<"electric_current">>;
-    inline constexpr auto thermodynamic_temperature = kind<"thermodynamic_temperature",
-                                                           base_dimension<"thermodynamic_temperature">>;
-    inline constexpr auto amount_of_substance       = kind<"amount_of_substance",
-                                                           base_dimension<"amount_of_substance">>;
-    inline constexpr auto luminous_intensity        = kind<"luminous_intensity", base_dimension<"luminous_intensity">>;
-    inline constexpr auto time                      = duration;
+    inline constexpr kind_def dimensionless_def{"dimensionless", dim_one};
+    inline constexpr auto     dimensionless = defined_by<dimensionless_def>;
+    inline constexpr kind_def length_def{"length", base_dimension<"length">};
+    inline constexpr auto     length = defined_by<length_def>;
+    inline constexpr kind_def mass_def{"mass", base_dimension<"mass">};
+    inline constexpr auto     mass = defined_by<mass_def>;
+    inline constexpr kind_def duration_def{"duration", base_dimension<"time">};
+    inline constexpr auto     duration = defined_by<duration_def>;
+    inline constexpr kind_def electric_current_def{"electric_current", base_dimension<"electric_current">};
+    inline constexpr auto     electric_current = defined_by<electric_current_def>;
+    inline constexpr kind_def thermodynamic_temperature_def{"thermodynamic_temperature",
+                                                            base_dimension<"thermodynamic_temperature">};
+    inline constexpr auto     thermodynamic_temperature = defined_by<thermodynamic_temperature_def>;
+    inline constexpr kind_def amount_of_substance_def{"amount_of_substance", base_dimension<"amount_of_substance">};
+    inline constexpr auto     amount_of_substance = defined_by<amount_of_substance_def>;
+    inline constexpr kind_def luminous_intensity_def{"luminous_intensity", base_dimension<"luminous_intensity">};
+    inline constexpr auto     luminous_intensity = defined_by<luminous_intensity_def>;
+    inline constexpr auto time = duration;
   } // namespace isq
 
   // Space and time (ISO 80000-3).
   namespace isq
   {
-    inline constexpr auto width           = kind<"width", isq::length>;
-    inline constexpr auto thickness       = kind<"thickness", isq::width>;
-    inline constexpr auto diameter        = kind<"diameter", isq::width>;
-    inline constexpr auto radius          = kind<"radius", isq::width>;
-    inline constexpr auto altitude        = kind<"altitude", isq::length>;
-    inline constexpr auto height          = kind<"height", isq::altitude>;
-    inline constexpr auto path_length     = kind<"path_length", isq::length>;
-    inline constexpr auto arc_length      = kind<"arc_length", isq::path_length>;
-    inline constexpr auto distance        = kind<"distance", isq::path_length>;
-    inline constexpr auto radial_distance = kind<"radial_distance", isq::distance>;
-    inline constexpr auto wavelength      = kind<"wavelength", isq::length>;
-    inline constexpr auto displacement    = kind<"displacement", isq::length>;
-    inline constexpr auto position_vector = kind<"position_vector", isq::displacement>;
-    inline constexpr auto area            = kind<"area", pow<2>(isq::length)>;
-    inline constexpr auto volume          = kind<"volume", pow<3>(isq::length)>;
+    inline constexpr kind_def width_def{"width", isq::length};
+    inline constexpr auto     width = defined_by<width_def>;
+    inline constexpr kind_def thickness_def{"thickness", isq::width};
+    inline constexpr auto     thickness = defined_by<thickness_def>;
+    inline constexpr kind_def diameter_def{"diameter", isq::width};
+    inline constexpr auto     diameter = defined_by<diameter_def>;
+    inline constexpr kind_def radius_def{"radius", isq::width};
+    inline constexpr auto     radius = defined_by<radius_def>;
+    inline constexpr kind_def altitude_def{"altitude", isq::length};
+    inline constexpr auto     altitude = defined_by<altitude_def>;
+    inline constexpr kind_def height_def{"height", isq::altitude};
+    inline constexpr auto     height = defined_by<height_def>;
+    inline constexpr kind_def path_length_def{"path_length", isq::length};
+    inline constexpr auto     path_length = defined_by<path_length_def>;
+    inline constexpr kind_def arc_length_def{"arc_length", isq::path_length};
+    inline constexpr auto     arc_length = defined_by<arc_length_def>;
+    inline constexpr kind_def distance_def{"distance", isq::path_length};
+    inline constexpr auto     distance = defined_by<distance_def>;
+    inline constexpr kind_def radial_distance_def{"radial_distance", isq::distance};
+    inline constexpr auto     radial_distance = defined_by<radial_distance_def>;
+    inline constexpr kind_def wavelength_def{"wavelength", isq::length};
+    inline constexpr auto     wavelength = defined_by<wavelength_def>;
+    inline constexpr kind_def displacement_def{"displacement", isq::length};
+    inline constexpr auto     displacement = defined_by<displacement_def>;
+    inline constexpr kind_def position_vector_def{"position_vector", isq::displacement};
+    inline constexpr auto     position_vector = defined_by<position_vector_def>;
+    inline constexpr kind_def area_def{"area", pow<2>(isq::length)};
+    inline constexpr auto     area = defined_by<area_def>;
+    inline constexpr kind_def volume_def{"volume", pow<3>(isq::length)};
+    inline constexpr auto     volume = defined_by<volume_def>;
 
-    inline constexpr auto angular_measure         = kind<"angular_measure", isq::dimensionless,
-                                                         {.distinct = true, .recipe = isq::arc_length / isq::radius}>;
-    inline constexpr auto rotational_displacement = kind<"rotational_displacement", isq::angular_measure,
-                                                         {.recipe = isq::path_length / isq::radius}>;
-    inline constexpr auto phase_angle             = kind<"phase_angle", isq::angular_measure, {.distinct = true}>;
-    inline constexpr auto solid_angular_measure = kind<"solid_angular_measure", isq::dimensionless,
-                                                       {.distinct = true, .recipe = isq::area / pow<2>(isq::radius)}>;
+    inline constexpr kind_def angular_measure_def{"angular_measure", isq::dimensionless,
+                                                  {.distinct = true, .recipe = isq::arc_length / isq::radius}};
+    inline constexpr auto     angular_measure = defined_by<angular_measure_def>;
+    inline constexpr kind_def rotational_displacement_def{"rotational_displacement", isq::angular_measure,
+                                                          {.recipe = isq::path_length / isq::radius}};
+    inline constexpr auto     rotational_displacement = defined_by<rotational_displacement_def>;
+    inline constexpr kind_def phase_angle_def{"phase_angle", isq::angular_measure, {.distinct = true}};
+    inline constexpr auto     phase_angle = defined_by<phase_angle_def>;
+    inline constexpr kind_def solid_angular_measure_def{"solid_angular_measure", isq::dimensionless,
+                                                        {.distinct = true, .recipe = isq::area / pow<2>(isq::radius)}};
+    inline constexpr auto     solid_angular_measure = defined_by<solid_angular_measure_def>;
 
-    inline constexpr auto period_duration           = kind<"period_duration", isq::duration>;
-    inline constexpr auto time_constant             = kind<"time_constant", isq::duration>;
-    inline constexpr auto speed                     = kind<"speed", isq::length / isq::duration>;
-    inline constexpr auto velocity                  = kind<"velocity", isq::speed,
-                                                           {.recipe = isq::displacement / isq::duration}>;
-    inline constexpr auto acceleration              = kind<"acceleration", isq::velocity / isq::duration>;
-    inline constexpr auto acceleration_of_free_fall = kind<"acceleration_of_free_fall", isq::acceleration>;
-    inline constexpr auto angular_velocity          = kind<"angular_velocity",
-                                                           isq::rotational_displacement / isq::duration>;
-    inline constexpr auto angular_acceleration      = kind<"angular_acceleration",
-                                                           isq::angular_velocity / isq::duration>;
-    inline constexpr auto frequency                 = kind<"frequency", inverse(isq::period_duration)>;
-    inline constexpr auto rotation                  = kind<"rotation", isq::dimensionless>;
-    inline constexpr auto rotational_frequency      = kind<"rotational_frequency", isq::rotation / isq::duration>;
-    inline constexpr auto angular_frequency         = kind<"angular_frequency", isq::phase_angle / isq::duration>;
+    inline constexpr kind_def period_duration_def{"period_duration", isq::duration};
+    inline constexpr auto     period_duration = defined_by<period_duration_def>;
+    inline constexpr kind_def time_constant_def{"time_constant", isq::duration};
+    inline constexpr auto     time_constant = defined_by<time_constant_def>;
+    inline constexpr kind_def speed_def{"speed", isq::length / isq::duration};
+    inline constexpr auto     speed = defined_by<speed_def>;
+    inline constexpr kind_def velocity_def{"velocity", isq::speed, {.recipe = isq::displacement / isq::duration}};
+    inline constexpr auto     velocity = defined_by<velocity_def>;
+    inline constexpr kind_def acceleration_def{"acceleration", isq::velocity / isq::duration};
+    inline constexpr auto     acceleration = defined_by<acceleration_def>;
+    inline constexpr kind_def acceleration_of_free_fall_def{"acceleration_of_free_fall", isq::acceleration};
+    inline constexpr auto     acceleration_of_free_fall = defined_by<acceleration_of_free_fall_def>;
+    inline constexpr kind_def angular_velocity_def{"angular_velocity", isq::rotational_displacement / isq::duration};
+    inline constexpr auto     angular_velocity = defined_by<angular_velocity_def>;
+    inline constexpr kind_def angular_acceleration_def{"angular_acceleration", isq::angular_velocity / isq::duration};
+    inline constexpr auto     angular_acceleration = defined_by<angular_acceleration_def>;
+    inline constexpr kind_def frequency_def{"frequency", inverse(isq::period_duration)};
+    inline constexpr auto     frequency = defined_by<frequency_def>;
+    inline constexpr kind_def rotation_def{"rotation", isq::dimensionless};
+    inline constexpr auto     rotation = defined_by<rotation_def>;
+    inline constexpr kind_def rotational_frequency_def{"rotational_frequency", isq::rotation / isq::duration};
+    inline constexpr auto     rotational_frequency = defined_by<rotational_frequency_def>;
+    inline constexpr kind_def angular_frequency_def{"angular_frequency", isq::phase_angle / isq::duration};
+    inline constexpr auto     angular_frequency = defined_by<angular_frequency_def>;
 
     // Mechanics (ISO 80000-4).
-    inline constexpr auto mass_density      = kind<"mass_density", isq::mass / isq::volume>;
-    inline constexpr auto momentum          = kind<"momentum", isq::mass * isq::velocity>;
-    inline constexpr auto force             = kind<"force", isq::mass * isq::length / pow<2>(isq::duration)>;
-    inline constexpr auto weight            = kind<"weight", isq::force,
-                                                   {.recipe = isq::mass * isq::acceleration_of_free_fall}>;
-    inline constexpr auto impulse           = kind<"impulse", isq::momentum, {.recipe = isq::force * isq::duration}>;
-    inline constexpr auto moment_of_force   = kind<"moment_of_force", isq::position_vector * isq::force>;
-    inline constexpr auto torque            = kind<"torque", isq::moment_of_force>;
-    inline constexpr auto pressure          = kind<"pressure", isq::force / isq::area>;
-    inline constexpr auto gauge_pressure    = kind<"gauge_pressure", isq::pressure>;
-    inline constexpr auto energy            = kind<"energy", isq::mass * pow<2>(isq::length) / pow<2>(isq::duration)>;
-    inline constexpr auto mechanical_work   = kind<"mechanical_work", isq::energy,
-                                                   {.recipe = isq::force * isq::displacement}>;
-    inline constexpr auto mechanical_energy = kind<"mechanical_energy", isq::mechanical_work>;
-    inline constexpr auto potential_energy  = kind<"potential_energy", isq::mechanical_energy>;
-    inline constexpr auto kinetic_energy    = kind<"kinetic_energy", isq::mechanical_energy,
-                                                   {.recipe = isq::mass * pow<2>(isq::speed)}>;
-    inline constexpr auto power             = kind<"power", isq::mass * pow<2>(isq::length) / pow<3>(isq::duration)>;
-    inline constexpr auto mechanical_power  = kind<"mechanical_power", isq::power,
-                                                   {.recipe = isq::force * isq::velocity}>;
-    inline constexpr auto action            = kind<"action", isq::energy * isq::duration>;
-    inline constexpr auto mass_flow_rate    = kind<"mass_flow_rate", isq::mass / isq::duration>;
-    inline constexpr auto volume_flow_rate  = kind<"volume_flow_rate", isq::volume / isq::duration>;
-    inline constexpr auto work              = mechanical_work;
+    inline constexpr kind_def mass_density_def{"mass_density", isq::mass / isq::volume};
+    inline constexpr auto     mass_density = defined_by<mass_density_def>;
+    inline constexpr kind_def momentum_def{"momentum", isq::mass * isq::velocity};
+    inline constexpr auto     momentum = defined_by<momentum_def>;
+    inline constexpr kind_def force_def{"force", isq::mass * isq::length / pow<2>(isq::duration)};
+    inline constexpr auto     force = defined_by<force_def>;
+    inline constexpr kind_def weight_def{"weight", isq::force, {.recipe = isq::mass * isq::acceleration_of_free_fall}};
+    inline constexpr auto     weight = defined_by<weight_def>;
+    inline constexpr kind_def impulse_def{"impulse", isq::momentum, {.recipe = isq::force * isq::duration}};
+    inline constexpr auto     impulse = defined_by<impulse_def>;
+    inline constexpr kind_def moment_of_force_def{"moment_of_force", isq::position_vector * isq::force};
+    inline constexpr auto     moment_of_force = defined_by<moment_of_force_def>;
+    inline constexpr kind_def torque_def{"torque", isq::moment_of_force};
+    inline constexpr auto     torque = defined_by<torque_def>;
+    inline constexpr kind_def pressure_def{"pressure", isq::force / isq::area};
+    inline constexpr auto     pressure = defined_by<pressure_def>;
+    inline constexpr kind_def gauge_pressure_def{"gauge_pressure", isq::pressure};
+    inline constexpr auto     gauge_pressure = defined_by<gauge_pressure_def>;
+    inline constexpr kind_def energy_def{"energy", isq::mass * pow<2>(isq::length) / pow<2>(isq::duration)};
+    inline constexpr auto     energy = defined_by<energy_def>;
+    inline constexpr kind_def mechanical_work_def{"mechanical_work", isq::energy,
+                                                  {.recipe = isq::force * isq::displacement}};
+    inline constexpr auto     mechanical_work = defined_by<mechanical_work_def>;
+    inline constexpr kind_def mechanical_energy_def{"mechanical_energy", isq::mechanical_work};
+    inline constexpr auto     mechanical_energy = defined_by<mechanical_energy_def>;
+    inline constexpr kind_def potential_energy_def{"potential_energy", isq::mechanical_energy};
+    inline constexpr auto     potential_energy = defined_by<potential_energy_def>;
+    inline constexpr kind_def kinetic_energy_def{"kinetic_energy", isq::mechanical_energy,
+                                                 {.recipe = isq::mass * pow<2>(isq::speed)}};
+    inline constexpr auto     kinetic_energy = defined_by<kinetic_energy_def>;
+    inline constexpr kind_def power_def{"power", isq::mass * pow<2>(isq::length) / pow<3>(isq::duration)};
+    inline constexpr auto     power = defined_by<power_def>;
+    inline constexpr kind_def mechanical_power_def{"mechanical_power", isq::power,
+                                                   {.recipe = isq::force * isq::velocity}};
+    inline constexpr auto     mechanical_power = defined_by<mechanical_power_def>;
+    inline constexpr kind_def action_def{"action", isq::energy * isq::duration};
+    inline constexpr auto     action = defined_by<action_def>;
+    inline constexpr kind_def mass_flow_rate_def{"mass_flow_rate", isq::mass / isq::duration};
+    inline constexpr auto     mass_flow_rate = defined_by<mass_flow_rate_def>;
+    inline constexpr kind_def volume_flow_rate_def{"volume_flow_rate", isq::volume / isq::duration};
+    inline constexpr auto     volume_flow_rate = defined_by<volume_flow_rate_def>;
+    inline constexpr auto work = mechanical_work;
   } // namespace isq
 
   // Thermodynamics (ISO 80000-5).
   namespace isq
   {
-    inline constexpr auto internal_energy = kind<"internal_energy", isq::energy>;
-    inline constexpr auto heat            = kind<"heat", isq::internal_energy>;
-    inline constexpr auto enthalpy        = kind<"enthalpy", isq::internal_energy>;
-    inline constexpr auto heat_capacity   = kind<"heat_capacity", isq::heat / isq::thermodynamic_temperature>;
-    inline constexpr auto entropy         = kind<"entropy", isq::heat / isq::thermodynamic_temperature>;
-    inline constexpr auto heat_flow_rate  = kind<"heat_flow_rate", isq::heat / isq::duration>;
+    inline constexpr kind_def internal_energy_def{"internal_energy", isq::energy};
+    inline constexpr auto     internal_energy = defined_by<internal_energy_def>;
+    inline constexpr kind_def heat_def{"heat", isq::internal_energy};
+    inline constexpr auto     heat = defined_by<heat_def>;
+    inline constexpr kind_def enthalpy_def{"enthalpy", isq::internal_energy};
+    inline constexpr auto     enthalpy = defined_by<enthalpy_def>;
+    inline constexpr kind_def heat_capacity_def{"heat_capacity", isq::heat / isq::thermodynamic_temperature};
+    inline constexpr auto     heat_capacity = defined_by<heat_capacity_def>;
+    inline constexpr kind_def entropy_def{"entropy", isq::heat / isq::thermodynamic_temperature};
+    inline constexpr auto     entropy = defined_by<entropy_def>;
+    inline constexpr kind_def heat_flow_rate_def{"heat_flow_rate", isq::heat / isq::duration};
+    inline constexpr auto     heat_flow_rate = defined_by<heat_flow_rate_def>;
 
     // Electromagnetism (IEC 80000-6).
-    inline constexpr auto electric_charge    = kind<"electric_charge", isq::electric_current * isq::duration>;
-    inline constexpr auto electric_potential = kind<"electric_potential",
-                                                    isq::energy / (isq::electric_current * isq::duration)>;
-    inline constexpr auto voltage            = kind<"voltage", isq::electric_potential>;
-    inline constexpr auto capacitance        = kind<"capacitance",
-                                                    isq::electric_current * isq::duration / isq::electric_potential>;
+    inline constexpr kind_def electric_charge_def{"electric_charge", isq::electric_current * isq::duration};
+    inline constexpr auto     electric_charge = defined_by<electric_charge_def>;
+    inline constexpr kind_def electric_potential_def{"electric_potential",
+                                                     isq::energy / (isq::electric_current * isq::duration)};
+    inline constexpr auto     electric_potential = defined_by<electric_potential_def>;
+    inline constexpr kind_def voltage_def{"voltage", isq::electric_potential};
+    inline constexpr auto     voltage = defined_by<voltage_def>;
+    inline constexpr kind_def capacitance_def{"capacitance",
+                                              isq::electric_current * isq::duration / isq::electric_potential};
+    inline constexpr auto     capacitance = defined_by<capacitance_def>;
 
-    inline constexpr auto impedance   = kind<"impedance", isq::electric_potential / isq::electric_current>;
-    inline constexpr auto resistance  = kind<"resistance", isq::impedance,
-                                             {.recipe = isq::voltage / isq::electric_current}>;
-    inline constexpr auto admittance  = kind<"admittance", inverse(isq::impedance)>;
-    inline constexpr auto conductance = kind<"conductance", isq::admittance, {.recipe = inverse(isq::resistance)}>;
+    inline constexpr kind_def impedance_def{"impedance", isq::electric_potential / isq::electric_current};
+    inline constexpr auto     impedance = defined_by<impedance_def>;
+    inline constexpr kind_def resistance_def{"resistance", isq::impedance,
+                                             {.recipe = isq::voltage / isq::electric_current}};
+    inline constexpr auto     resistance = defined_by<resistance_def>;
+    inline constexpr kind_def admittance_def{"admittance", inverse(isq::impedance)};
+    inline constexpr auto     admittance = defined_by<admittance_def>;
+    inline constexpr kind_def conductance_def{"conductance", isq::admittance, {.recipe = inverse(isq::resistance)}};
+    inline constexpr auto     conductance = defined_by<conductance_def>;
 
-    inline constexpr auto magnetic_flux_density = kind<"magnetic_flux_density",
-                                                       isq::mass / (isq::electric_current * pow<2>(isq::duration))>;
-    inline constexpr auto magnetic_flux         = kind<"magnetic_flux", isq::magnetic_flux_density * isq::area>;
-    inline constexpr auto inductance            = kind<"inductance", isq::magnetic_flux / isq::electric_current>;
-    inline constexpr auto electric_power        = kind<"electric_power", isq::power>;
+    inline constexpr kind_def magnetic_flux_density_def{"magnetic_flux_density",
+                                                        isq::mass / (isq::electric_current * pow<2>(isq::duration))};
+    inline constexpr auto     magnetic_flux_density = defined_by<magnetic_flux_density_def>;
+    inline constexpr kind_def magnetic_flux_def{"magnetic_flux", isq::magnetic_flux_density * isq::area};
+    inline constexpr auto     magnetic_flux = defined_by<magnetic_flux_def>;
+    inline constexpr kind_def inductance_def{"inductance", isq::magnetic_flux / isq::electric_current};
+    inline constexpr auto     inductance = defined_by<inductance_def>;
+    inline constexpr kind_def electric_power_def{"electric_power", isq::power};
+    inline constexpr auto     electric_power = defined_by<electric_power_def>;
 
     // Light (ISO 80000-7), photopic vision.
-    inline constexpr auto luminous_flux = kind<"luminous_flux", isq::luminous_intensity * isq::solid_angular_measure>;
-    inline constexpr auto illuminance   = kind<"illuminance", isq::luminous_flux / isq::area>;
+    inline constexpr kind_def luminous_flux_def{"luminous_flux", isq::luminous_intensity * isq::solid_angular_measure};
+    inline constexpr auto     luminous_flux = defined_by<luminous_flux_def>;
+    inline constexpr kind_def illuminance_def{"illuminance", isq::luminous_flux / isq::area};
+    inline constexpr auto     illuminance = defined_by<illuminance_def>;
 
     // Physical chemistry and ionizing radiation (ISO 80000-9, -10).
-    inline constexpr auto catalytic_activity = kind<"catalytic_activity", isq::amount_of_substance / isq::duration>;
-    inline constexpr auto activity           = kind<"activity", inverse(isq::duration)>;
-    inline constexpr auto absorbed_dose      = kind<"absorbed_dose", isq::energy / isq::mass>;
-    inline constexpr auto ionizing_radiation_quality_factor = kind<"ionizing_radiation_quality_factor",
-                                                                   isq::dimensionless>;
-    inline constexpr auto dose_equivalent = kind<"dose_equivalent",
-                                                 isq::absorbed_dose * isq::ionizing_radiation_quality_factor>;
+    inline constexpr kind_def catalytic_activity_def{"catalytic_activity", isq::amount_of_substance / isq::duration};
+    inline constexpr auto     catalytic_activity = defined_by<catalytic_activity_def>;
+    inline constexpr kind_def activity_def{"activity", inverse(isq::duration)};
+    inline constexpr auto     activity = defined_by<activity_def>;
+    inline constexpr kind_def absorbed_dose_def{"absorbed_dose", isq::energy / isq::mass};
+    inline constexpr auto     absorbed_dose = defined_by<absorbed_dose_def>;
+    inline constexpr kind_def ionizing_radiation_quality_factor_def{"ionizing_radiation_quality_factor",
+                                                                    isq::dimensionless};
+    inline constexpr auto     ionizing_radiation_quality_factor = defined_by<ionizing_radiation_quality_factor_def>;
+    inline constexpr kind_def dose_equivalent_def{"dose_equivalent",
+                                                  isq::absorbed_dose * isq::ionizing_radiation_quality_factor};
+    inline constexpr auto     dose_equivalent = defined_by<dose_equivalent_def>;
   } // namespace isq
 
   // SI prefixes. Past 10^±18 a prefix needs a grid number past 64 bits.
@@ -176,69 +255,109 @@ namespace ins
     inline constexpr prefix_t<30>  quetta{};
 
     // SI base units.
-    inline constexpr auto second = unit<"s", isq::duration>;
-    inline constexpr auto metre  = unit<"m", isq::length>;
+    inline constexpr unit_def second_def{"s", isq::duration};
+    inline constexpr auto     second = defined_by<second_def>;
+    inline constexpr unit_def metre_def{"m", isq::length};
+    inline constexpr auto     metre = defined_by<metre_def>;
     // (The gram is 1/1000 of the coherent unit of mass, which the kilogram names.)
-    inline constexpr auto gram     = detail::unit_tag<definition<unit_def, "g", detail::mag<1_g / 1000_g>,
-                                                                 isq::mass>::value>;
+    inline constexpr unit_def gram_def{"g", detail::mag<1_g / 1000_g>, isq::mass};
+    inline constexpr auto     gram = defined_by<gram_def>;
     inline constexpr auto kilogram = kilo(gram);
   } // namespace si
   namespace si
   {
-    inline constexpr auto ampere        = unit<"A", isq::electric_current>;
-    inline constexpr auto absolute_zero = origin<"absolute_zero", isq::thermodynamic_temperature>;
-    inline constexpr auto kelvin        = unit<"K", isq::thermodynamic_temperature, {.origin = si::absolute_zero}>;
-    inline constexpr auto ice_point     = origin<"ice_point", si::absolute_zero + just<27315, 100> * si::kelvin>;
-    inline constexpr auto mole          = unit<"mol", isq::amount_of_substance>;
-    inline constexpr auto candela       = unit<"cd", isq::luminous_intensity>;
+    inline constexpr unit_def ampere_def{"A", isq::electric_current};
+    inline constexpr auto     ampere = defined_by<ampere_def>;
+    inline constexpr origin_def absolute_zero_def{"absolute_zero", isq::thermodynamic_temperature};
+    inline constexpr auto       absolute_zero = defined_by<absolute_zero_def>;
+    inline constexpr unit_def kelvin_def{"K", isq::thermodynamic_temperature, {.origin = si::absolute_zero}};
+    inline constexpr auto     kelvin = defined_by<kelvin_def>;
+    inline constexpr origin_def ice_point_def{"ice_point", si::absolute_zero + just<27315, 100> * si::kelvin};
+    inline constexpr auto       ice_point = defined_by<ice_point_def>;
+    inline constexpr unit_def mole_def{"mol", isq::amount_of_substance};
+    inline constexpr auto     mole = defined_by<mole_def>;
+    inline constexpr unit_def candela_def{"cd", isq::luminous_intensity};
+    inline constexpr auto     candela = defined_by<candela_def>;
 
     // SI derived units with special names.
-    inline constexpr auto radian         = unit<"rad", si::metre / si::metre, {.kind = isq::angular_measure}>;
-    inline constexpr auto steradian      = unit<"sr", square(si::metre) / square(si::metre),
-                                                {.kind = isq::solid_angular_measure}>;
-    inline constexpr auto hertz          = unit<"Hz", one / si::second, {.kind = isq::frequency}>;
-    inline constexpr auto newton         = unit<"N", si::kilogram * si::metre / square(si::second),
-                                                {.kind = isq::force}>;
-    inline constexpr auto pascal         = unit<"Pa", si::newton / square(si::metre), {.kind = isq::pressure}>;
-    inline constexpr auto joule          = unit<"J", si::newton * si::metre, {.kind = isq::energy}>;
-    inline constexpr auto watt           = unit<"W", si::joule / si::second>;
-    inline constexpr auto coulomb        = unit<"C", si::ampere * si::second>;
-    inline constexpr auto volt           = unit<"V", si::watt / si::ampere, {.kind = isq::electric_potential}>;
-    inline constexpr auto farad          = unit<"F", si::coulomb / si::volt, {.kind = isq::capacitance}>;
-    inline constexpr auto ohm            = unit<"Ω", si::volt / si::ampere, {.ascii = "ohm", .kind = isq::impedance}>;
-    inline constexpr auto siemens        = unit<"S", one / si::ohm, {.kind = isq::admittance}>;
-    inline constexpr auto weber          = unit<"Wb", si::volt * si::second>;
-    inline constexpr auto tesla          = unit<"T", si::weber / square(si::metre),
-                                                {.kind = isq::magnetic_flux_density}>;
-    inline constexpr auto henry          = unit<"H", si::weber / si::ampere>;
-    inline constexpr auto degree_Celsius = unit<"℃", si::kelvin, {.ascii = "`C", .origin = si::ice_point}>;
-    inline constexpr auto lumen          = unit<"lm", si::candela * si::steradian, {.kind = isq::luminous_flux}>;
-    inline constexpr auto lux            = unit<"lx", si::lumen / square(si::metre), {.kind = isq::illuminance}>;
-    inline constexpr auto becquerel      = unit<"Bq", one / si::second, {.kind = isq::activity}>;
-    inline constexpr auto gray           = unit<"Gy", si::joule / si::kilogram, {.kind = isq::absorbed_dose}>;
-    inline constexpr auto sievert        = unit<"Sv", si::joule / si::kilogram, {.kind = isq::dose_equivalent}>;
-    inline constexpr auto katal          = unit<"kat", si::mole / si::second, {.kind = isq::catalytic_activity}>;
+    inline constexpr unit_def radian_def{"rad", si::metre / si::metre, {.kind = isq::angular_measure}};
+    inline constexpr auto     radian = defined_by<radian_def>;
+    inline constexpr unit_def steradian_def{"sr", square(si::metre) / square(si::metre),
+                                            {.kind = isq::solid_angular_measure}};
+    inline constexpr auto     steradian = defined_by<steradian_def>;
+    inline constexpr unit_def hertz_def{"Hz", one / si::second, {.kind = isq::frequency}};
+    inline constexpr auto     hertz = defined_by<hertz_def>;
+    inline constexpr unit_def newton_def{"N", si::kilogram * si::metre / square(si::second), {.kind = isq::force}};
+    inline constexpr auto     newton = defined_by<newton_def>;
+    inline constexpr unit_def pascal_def{"Pa", si::newton / square(si::metre), {.kind = isq::pressure}};
+    inline constexpr auto     pascal = defined_by<pascal_def>;
+    inline constexpr unit_def joule_def{"J", si::newton * si::metre, {.kind = isq::energy}};
+    inline constexpr auto     joule = defined_by<joule_def>;
+    inline constexpr unit_def watt_def{"W", si::joule / si::second};
+    inline constexpr auto     watt = defined_by<watt_def>;
+    inline constexpr unit_def coulomb_def{"C", si::ampere * si::second};
+    inline constexpr auto     coulomb = defined_by<coulomb_def>;
+    inline constexpr unit_def volt_def{"V", si::watt / si::ampere, {.kind = isq::electric_potential}};
+    inline constexpr auto     volt = defined_by<volt_def>;
+    inline constexpr unit_def farad_def{"F", si::coulomb / si::volt, {.kind = isq::capacitance}};
+    inline constexpr auto     farad = defined_by<farad_def>;
+    inline constexpr unit_def ohm_def{"Ω", si::volt / si::ampere, {.ascii = "ohm", .kind = isq::impedance}};
+    inline constexpr auto     ohm = defined_by<ohm_def>;
+    inline constexpr unit_def siemens_def{"S", one / si::ohm, {.kind = isq::admittance}};
+    inline constexpr auto     siemens = defined_by<siemens_def>;
+    inline constexpr unit_def weber_def{"Wb", si::volt * si::second};
+    inline constexpr auto     weber = defined_by<weber_def>;
+    inline constexpr unit_def tesla_def{"T", si::weber / square(si::metre), {.kind = isq::magnetic_flux_density}};
+    inline constexpr auto     tesla = defined_by<tesla_def>;
+    inline constexpr unit_def henry_def{"H", si::weber / si::ampere};
+    inline constexpr auto     henry = defined_by<henry_def>;
+    inline constexpr unit_def degree_Celsius_def{"℃", si::kelvin, {.ascii = "`C", .origin = si::ice_point}};
+    inline constexpr auto     degree_Celsius = defined_by<degree_Celsius_def>;
+    inline constexpr unit_def lumen_def{"lm", si::candela * si::steradian, {.kind = isq::luminous_flux}};
+    inline constexpr auto     lumen = defined_by<lumen_def>;
+    inline constexpr unit_def lux_def{"lx", si::lumen / square(si::metre), {.kind = isq::illuminance}};
+    inline constexpr auto     lux = defined_by<lux_def>;
+    inline constexpr unit_def becquerel_def{"Bq", one / si::second, {.kind = isq::activity}};
+    inline constexpr auto     becquerel = defined_by<becquerel_def>;
+    inline constexpr unit_def gray_def{"Gy", si::joule / si::kilogram, {.kind = isq::absorbed_dose}};
+    inline constexpr auto     gray = defined_by<gray_def>;
+    inline constexpr unit_def sievert_def{"Sv", si::joule / si::kilogram, {.kind = isq::dose_equivalent}};
+    inline constexpr auto     sievert = defined_by<sievert_def>;
+    inline constexpr unit_def katal_def{"kat", si::mole / si::second, {.kind = isq::catalytic_activity}};
+    inline constexpr auto     katal = defined_by<katal_def>;
 
     // Non-SI units accepted for use with the SI.
-    inline constexpr auto minute            = unit<"min", detail::mag<60> * si::second>;
-    inline constexpr auto hour              = unit<"h", detail::mag<60> * si::minute>;
-    inline constexpr auto day               = unit<"d", detail::mag<24> * si::hour>;
-    inline constexpr auto astronomical_unit = unit<"au", detail::mag<149'597'870'700> * si::metre>;
-    inline constexpr auto degree            = unit<"°", detail::mag<1_g / 180_g> * detail::mag_pi * si::radian,
-                                                   {.ascii = "deg", .space_before = false}>;
-    inline constexpr auto arcminute         = unit<"′", detail::mag<1_g / 60_g> * si::degree,
-                                                   {.ascii = "'", .space_before = false}>;
-    inline constexpr auto arcsecond         = unit<"″", detail::mag<1_g / 60_g> * si::arcminute,
-                                                   {.ascii = "''", .space_before = false}>;
-    inline constexpr auto are               = unit<"a", square(si::deca(si::metre))>;
-    inline constexpr auto litre             = unit<"L", cubic(si::deci(si::metre))>;
-    inline constexpr auto tonne             = unit<"t", detail::mag<1000> * si::kilogram>;
-    inline constexpr auto hectare           = hecto(are);
+    inline constexpr unit_def minute_def{"min", detail::mag<60> * si::second};
+    inline constexpr auto     minute = defined_by<minute_def>;
+    inline constexpr unit_def hour_def{"h", detail::mag<60> * si::minute};
+    inline constexpr auto     hour = defined_by<hour_def>;
+    inline constexpr unit_def day_def{"d", detail::mag<24> * si::hour};
+    inline constexpr auto     day = defined_by<day_def>;
+    inline constexpr unit_def astronomical_unit_def{"au", detail::mag<149'597'870'700> * si::metre};
+    inline constexpr auto     astronomical_unit = defined_by<astronomical_unit_def>;
+    inline constexpr unit_def degree_def{"°", detail::mag<1_g / 180_g> * detail::mag_pi * si::radian,
+                                         {.ascii = "deg", .space_before = false}};
+    inline constexpr auto     degree = defined_by<degree_def>;
+    inline constexpr unit_def arcminute_def{"′", detail::mag<1_g / 60_g> * si::degree,
+                                            {.ascii = "'", .space_before = false}};
+    inline constexpr auto     arcminute = defined_by<arcminute_def>;
+    inline constexpr unit_def arcsecond_def{"″", detail::mag<1_g / 60_g> * si::arcminute,
+                                            {.ascii = "''", .space_before = false}};
+    inline constexpr auto     arcsecond = defined_by<arcsecond_def>;
+    inline constexpr unit_def are_def{"a", square(si::deca(si::metre))};
+    inline constexpr auto     are = defined_by<are_def>;
+    inline constexpr unit_def litre_def{"L", cubic(si::deci(si::metre))};
+    inline constexpr auto     litre = defined_by<litre_def>;
+    inline constexpr unit_def tonne_def{"t", detail::mag<1000> * si::kilogram};
+    inline constexpr auto     tonne = defined_by<tonne_def>;
+    inline constexpr auto hectare = hecto(are);
   } // namespace si
   namespace si
   {
-    inline constexpr auto dalton       = unit<"Da", detail::mag<1.66053906892e-27_g> * si::kilogram>; // CODATA 2022
-    inline constexpr auto electronvolt = unit<"eV", detail::mag<1.602176634e-19_g> * si::joule>;
+    inline constexpr unit_def dalton_def{"Da", detail::mag<1.66053906892e-27_g> * si::kilogram}; // CODATA 2022
+    inline constexpr auto     dalton = defined_by<dalton_def>;
+    inline constexpr unit_def electronvolt_def{"eV", detail::mag<1.602176634e-19_g> * si::joule};
+    inline constexpr auto     electronvolt = defined_by<electronvolt_def>;
   } // namespace si
 
   // The defining constants of the SI (2019) and standard gravity, as units:
@@ -246,43 +365,66 @@ namespace ins
   // h, e, k and N_A need grid numbers past 64 bits.
   namespace si2019
   {
-    inline constexpr auto hyperfine_structure_transition_frequency_of_cs =
-      unit<"Δν_Cs", detail::mag<9'192'631'770> * si::hertz, {.ascii = "dv_Cs"}>;
-    inline constexpr auto speed_of_light_in_vacuum = unit<"c", detail::mag<299'792'458> * (si::metre / si::second)>;
-    inline constexpr auto luminous_efficacy        = unit<"K_cd", detail::mag<683> * (si::lumen / si::watt)>;
-    inline constexpr auto standard_gravity =
-      unit<"g₀", detail::mag<980665_g / 100000_g> * (si::metre / square(si::second)), {.ascii = "g_0"}>;
-    inline constexpr auto planck_constant    = unit<"h", detail::mag<6.62607015e-34_g> * si::joule * si::second>;
-    inline constexpr auto elementary_charge  = unit<"e", detail::mag<1.602176634e-19_g> * si::coulomb>;
-    inline constexpr auto boltzmann_constant = unit<"k", detail::mag<1.380649e-23_g> * (si::joule / si::kelvin)>;
-    inline constexpr auto avogadro_constant  = unit<"N_A", detail::mag<6.02214076e23_g> / si::mole>;
+    inline constexpr unit_def hyperfine_structure_transition_frequency_of_cs_def{
+      "Δν_Cs", detail::mag<9'192'631'770> * si::hertz, {.ascii = "dv_Cs"}};
+    inline constexpr auto     hyperfine_structure_transition_frequency_of_cs =
+      defined_by<hyperfine_structure_transition_frequency_of_cs_def>;
+    inline constexpr unit_def speed_of_light_in_vacuum_def{"c", detail::mag<299'792'458> * (si::metre / si::second)};
+    inline constexpr auto     speed_of_light_in_vacuum = defined_by<speed_of_light_in_vacuum_def>;
+    inline constexpr unit_def luminous_efficacy_def{"K_cd", detail::mag<683> * (si::lumen / si::watt)};
+    inline constexpr auto     luminous_efficacy = defined_by<luminous_efficacy_def>;
+    inline constexpr unit_def standard_gravity_def{"g₀",
+                                                   detail::mag<980665_g / 100000_g> * (si::metre / square(si::second)),
+                                                   {.ascii = "g_0"}};
+    inline constexpr auto     standard_gravity = defined_by<standard_gravity_def>;
+    inline constexpr unit_def planck_constant_def{"h", detail::mag<6.62607015e-34_g> * si::joule * si::second};
+    inline constexpr auto     planck_constant = defined_by<planck_constant_def>;
+    inline constexpr unit_def elementary_charge_def{"e", detail::mag<1.602176634e-19_g> * si::coulomb};
+    inline constexpr auto     elementary_charge = defined_by<elementary_charge_def>;
+    inline constexpr unit_def boltzmann_constant_def{"k", detail::mag<1.380649e-23_g> * (si::joule / si::kelvin)};
+    inline constexpr auto     boltzmann_constant = defined_by<boltzmann_constant_def>;
+    inline constexpr unit_def avogadro_constant_def{"N_A", detail::mag<6.02214076e23_g> / si::mole};
+    inline constexpr auto     avogadro_constant = defined_by<avogadro_constant_def>;
   } // namespace si2019
 
   // International (yard and pound agreement, 1959) and nautical units.
   namespace international
   {
-    inline constexpr auto yard          = unit<"yd", detail::mag<9144_g / 10000_g> * si::metre>;
-    inline constexpr auto foot          = unit<"ft", detail::mag<1_g / 3_g> * international::yard>;
-    inline constexpr auto inch          = unit<"in", detail::mag<1_g / 12_g> * international::foot>;
-    inline constexpr auto mile          = unit<"mi", detail::mag<1760> * international::yard>;
-    inline constexpr auto nautical_mile = unit<"nmi", detail::mag<1852> * si::metre>;
+    inline constexpr unit_def yard_def{"yd", detail::mag<9144_g / 10000_g> * si::metre};
+    inline constexpr auto     yard = defined_by<yard_def>;
+    inline constexpr unit_def foot_def{"ft", detail::mag<1_g / 3_g> * international::yard};
+    inline constexpr auto     foot = defined_by<foot_def>;
+    inline constexpr unit_def inch_def{"in", detail::mag<1_g / 12_g> * international::foot};
+    inline constexpr auto     inch = defined_by<inch_def>;
+    inline constexpr unit_def mile_def{"mi", detail::mag<1760> * international::yard};
+    inline constexpr auto     mile = defined_by<mile_def>;
+    inline constexpr unit_def nautical_mile_def{"nmi", detail::mag<1852> * si::metre};
+    inline constexpr auto     nautical_mile = defined_by<nautical_mile_def>;
 
-    inline constexpr auto pound = unit<"lb", detail::mag<45359237_g / 100000000_g> * si::kilogram>;
-    inline constexpr auto ounce = unit<"oz", detail::mag<1_g / 16_g> * international::pound>;
-    inline constexpr auto pound_force =
-      unit<"lbf", detail::mag<980665_g / 100000_g> * (international::pound * si::metre / square(si::second))>;
+    inline constexpr unit_def pound_def{"lb", detail::mag<45359237_g / 100000000_g> * si::kilogram};
+    inline constexpr auto     pound = defined_by<pound_def>;
+    inline constexpr unit_def ounce_def{"oz", detail::mag<1_g / 16_g> * international::pound};
+    inline constexpr auto     ounce = defined_by<ounce_def>;
+    inline constexpr unit_def pound_force_def{
+      "lbf", detail::mag<980665_g / 100000_g> * (international::pound * si::metre / square(si::second))};
+    inline constexpr auto     pound_force = defined_by<pound_force_def>;
 
-    inline constexpr auto knot = unit<"kn", international::nautical_mile / si::hour>;
+    inline constexpr unit_def knot_def{"kn", international::nautical_mile / si::hour};
+    inline constexpr auto     knot = defined_by<knot_def>;
 
-    inline constexpr auto zeroth_degree_Fahrenheit = origin<"zeroth_degree_Fahrenheit",
-                                                            si::absolute_zero + just<45967, 180> * si::kelvin>;
-    inline constexpr auto degree_Fahrenheit = unit<"℉", detail::mag<5_g / 9_g> * si::kelvin,
-                                                   {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit}>;
+    inline constexpr origin_def zeroth_degree_Fahrenheit_def{"zeroth_degree_Fahrenheit",
+                                                             si::absolute_zero + just<45967, 180> * si::kelvin};
+    inline constexpr auto       zeroth_degree_Fahrenheit = defined_by<zeroth_degree_Fahrenheit_def>;
+    inline constexpr unit_def degree_Fahrenheit_def{
+      "℉", detail::mag<5_g / 9_g> * si::kelvin, {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit}};
+    inline constexpr auto     degree_Fahrenheit = defined_by<degree_Fahrenheit_def>;
   } // namespace international
 
   // Scaled dimensionless units, as in mp-units: 8 % is the number 2/25.
-  inline constexpr auto percent   = unit<"%", detail::mag<0.01_g> * one>;
-  inline constexpr auto per_mille = unit<"‰", detail::mag<0.001_g> * one, {.ascii = "permille"}>;
+  inline constexpr unit_def percent_def{"%", detail::mag<0.01_g> * one};
+  inline constexpr auto     percent = defined_by<percent_def>;
+  inline constexpr unit_def per_mille_def{"‰", detail::mag<0.001_g> * one, {.ascii = "permille"}};
+  inline constexpr auto     per_mille = defined_by<per_mille_def>;
 
 } // namespace ins
 
