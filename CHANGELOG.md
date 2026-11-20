@@ -69,6 +69,11 @@
   | `d.Exp[i]` (SI), `d.UserDim`, `d.UserExp`, `d.UserSize` | `d.Base`, `d.Exp`, `d.Size`: every base dimension, sorted by name |
 
   `dim_one` is unchanged.
+- An inside has no `operator double` any more: `double(x)` and
+  `static_cast<double>(x)` become `x.to<double>()` (or `to<double>(x)` in
+  generic code), the one spelling that names its rounding. The value is the
+  same, rounded once. `static_cast<double>(x)` now fails with a message that
+  names `to<double>()`.
 
 ### Changed
 

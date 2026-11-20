@@ -853,7 +853,7 @@ static void bench_store_convert() {
     });
     conv.run("static_cast<double> (dyadic index)", [&] {
         ++i;
-        doNotOptimizeAway(static_cast<double>(rv[i & kMask]));
+        doNotOptimizeAway(to<double>(rv[i & kMask]));
     });
     conv.run("numerator() (Q8.8)", [&] {
         ++i;

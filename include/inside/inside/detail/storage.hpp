@@ -530,8 +530,7 @@ namespace ins::detail
     }
   }();
 
-  // Ungated double view of any inside (the public operator double() is gated on a rounding flag;
-  // this is always available).
+  // The double of any inside, rounded once (what to<double>() returns).
   // Everything but index storage holds the value verbatim; an index decodes through the grid.
   template <insidable B>
   [[nodiscard]] constexpr double as_double(const B& b) noexcept

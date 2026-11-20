@@ -463,7 +463,7 @@ namespace ins
 
     // Conversions:
     // - operator rational: implicit, lossless and exact.
-    // - operator double: explicit, the value rounded once to a double, as to<double>().
+    // - no operator double: a double is to<double>(), rounded once (static_cast<double>(x) names it).
     // - to<T>(): T where the grid proves the conversion total (no check is left),
     //   else expected<T, error> (overflow, rounding_error).
     // - to<T>(b): the free-function form, for generic code.
@@ -493,7 +493,11 @@ namespace ins
     operator T() const = delete ("inside: an index converts to the builtin integers that hold its whole grid - "
                                  "not to a smaller one, bool, a character or a floating type (x.to<T>(), x != 0)");
 
-    constexpr explicit operator double() const { return detail::as_double(*this); }
+    // A floating point is read with to<double>(), which names its rounding.
+    template <std::floating_point T>
+      requires(!detail::index_converts<inside, std::size_t>)
+    explicit operator T() const = delete (
+      "inside: read a floating point with x.to<double>() - the value rounded once");
 
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).

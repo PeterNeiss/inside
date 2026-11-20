@@ -179,21 +179,23 @@ TEST(InsideToTest, as_size_t_indexes_a_container) {
     ASSERT_EQ(s, 3u);
 }
 
-// operator double is gated on rounding policy
-TEST(InsideToTest, operator_double_is_gated_on_rounding_policy) {
+// A double is read with to<double>() (rounded once), under every policy; there is no operator double, so
+// static_cast<double>(x) names to<double>() in its diagnostic.
+TEST(InsideToTest, a_double_is_read_with_to_double) {
     using B_round  = inside<{{0, 1}, per<2>}, round_half_away>;
     using B_ignore = inside<{{0, 1}, per<2>}, round_toward_zero>;
     using B_strict = inside<{{0, 1}, per<2>}, checked>;
     using B_floor  = inside<{{0, 1}, per<2>}, round_floor>;
 
-    // operator double() is explicit, so use is_constructible_v to detect it.
-    static_assert(std::is_constructible_v<double, B_round>);
-    static_assert(std::is_constructible_v<double, B_ignore>);
-    static_assert(std::is_constructible_v<double, B_floor>);
-    static_assert(std::is_constructible_v<double, B_strict>); // explicit, rounded once
+    static_assert(!std::is_constructible_v<double, B_round>);
+    static_assert(!std::is_constructible_v<double, B_strict>);
+    static_assert(!std::is_constructible_v<float, B_floor>);
 
-    // The typed-error path is always available.
+    ASSERT_TRUE(B_round{0.5}.to<double>() == 0.5);
+    ASSERT_TRUE(B_ignore{0.5}.to<double>() == 0.5);
+    ASSERT_TRUE(B_floor{0.5}.to<double>() == 0.5);
     ASSERT_TRUE(B_strict{0.5}.to<double>() == 0.5);
+    ASSERT_TRUE(to<double>(B_strict{0.5}) == 0.5);
 }
 
 // to<T>() is a non-expected shortcut for to<T>().value()
@@ -227,16 +229,15 @@ TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
 template <typename B, typename T>
 concept has_member_to = requires(B b) { b.template to<T>(); };
 
-// A double is read from every inside, rounded once: by double(x) and by
-// to<double>(), under one rule.
+// A double is read from every inside, rounded once, by to<double>() (the only spelling: no operator double).
 TEST(InsideToTest, double_is_read_from_every_inside) {
     using strict_b  = inside<{0, 100}>; // no rounding flag
     using rounded_b = inside<{0, 100}, round_half_away>;
     static_assert(has_member_to<strict_b, double> && has_member_to<rounded_b, double>);
-    static_assert(std::is_constructible_v<double, strict_b> && std::is_constructible_v<double, rounded_b>);
-    static_assert(!std::is_convertible_v<strict_b, double>); // explicit only
+    static_assert(!std::is_constructible_v<double, strict_b> && !std::is_constructible_v<double, rounded_b>);
+    static_assert(!std::is_convertible_v<strict_b, double>);
     ASSERT_TRUE(rounded_b{42}.to<double>() == 42.0);
-    ASSERT_TRUE(double(strict_b{42}) == 42.0);
+    ASSERT_TRUE(to<double>(strict_b{42}) == 42.0);
 }
 
 // to<T>() takes only a conversion the grid proves total; where a value may
@@ -638,11 +639,11 @@ TEST(ConversionTest, to_a_dyadic_grid_lands_on_the_grid) {
 
     src_t src{1};
     rb    dst = src; // insidable -> dyadic store
-    ASSERT_EQ(double(dst), 1.0);
+    ASSERT_EQ(to<double>(dst), 1.0);
 
     src_t neg{-2};
     rb    dn = neg;
-    ASSERT_EQ(double(dn), -2.0);
+    ASSERT_EQ(to<double>(dn), -2.0);
 }
 
 // An index (non-negative integers) converts to the builtin integers that

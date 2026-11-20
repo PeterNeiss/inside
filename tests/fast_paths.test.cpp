@@ -380,7 +380,7 @@ TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
             bool               fired = false;
             x.on_clamp([&](auto&, const auto& over) {
                 fired = true;
-                EXPECT_EQ(double(over), static_cast<double>(*bd::try_sub(sum, bd::rational{100}))); // exact: quarters
+                EXPECT_EQ(to<double>(over), static_cast<double>(*bd::try_sub(sum, bd::rational{100}))); // exact: quarters
             }) += T{b, clamp};
             EXPECT_EQ(fired, sum > bd::rational{100});
         }
@@ -427,7 +427,7 @@ void steps_and_values() {
         ASSERT_TRUE(f) << i;
         EXPECT_EQ(static_cast<std::int64_t>(f->step()), i);
         const bd::rational v = bd::as_rational(*f);
-        EXPECT_EQ(double(*f), static_cast<double>(v));
+        EXPECT_EQ(to<double>(*f), static_cast<double>(v));
         EXPECT_EQ(f->template to<float>(), static_cast<float>(bd::nearest_float<double>(bd::exact_of(*f))));
         EXPECT_EQ(bd::rational(bd::to_value(f->numerator()), bd::to_value(f->denominator())), v);
         EXPECT_EQ((plain(to<long long, round_floor>(*f))), bd::floor(v));

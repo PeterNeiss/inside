@@ -296,9 +296,8 @@ which step takes a given set of hooks. A quantity's hooks wrap the inside's
 
 ## 5. Conversions
 
-The user-facing rules (an explicit
-`operator double`, an implicit conversion to a built-in integer for an index
-only: `to<T>()` reads any other) are in
+The user-facing rules (an implicit conversion to a built-in integer for an
+index only: `to<T>()` reads any other, a `double` too) are in
 [Conversions](guide/conversions.md). `rational` is `detail::rational`, the
 library's own exact 64-bit fraction (the raw of a bounded continuous grid, the
 fast path of exact arithmetic, the tests' oracle); it is no part of the user

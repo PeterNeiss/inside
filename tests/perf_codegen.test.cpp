@@ -56,7 +56,7 @@ extern "C" long ins_perf_mul_fast(long a, long b) {
 // index_double codec), no rational decode.
 using D = inside<{{-8, 8}, per<16384>}, round_half_away>;
 
-extern "C" double ins_perf_to_double(D a) { return static_cast<double>(a); }
+extern "C" double ins_perf_to_double(D a) { return to<double>(a); }
 
 // Compound subtraction fast path: `-=` on same-notch integer-backed grids
 // must subtract raws directly (index-raw Q8.8 here — the case that would

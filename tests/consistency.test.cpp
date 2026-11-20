@@ -560,7 +560,7 @@ template <typename T>
 void expect_double_decode_exact() {
     for (double d : probe_doubles<T>()) {
         const T t = test::store<T>(rational{d});
-        EXPECT_EQ(static_cast<double>(t), static_cast<double>(rational{t})) << "d = " << d;
+        EXPECT_EQ(to<double>(t), static_cast<double>(rational{t})) << "d = " << d;
     }
 }
 } // namespace
