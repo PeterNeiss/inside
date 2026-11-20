@@ -44,7 +44,7 @@ std::map<std::string, std::string_view> scan(std::string_view json)
 using order_id      = inside<{0, 9'000'000'000'000'000'000}>;                                     // 64-bit IDs
 using usd_per_item  = quantity<USD / item, inside<{{0, 1'000'000}, per<100>}, round_half_away>>; // to the cent
 using items         = quantity<item, inside<{1, 1000}>>;                                          // whole items
-using discount_rate = inside<{{0, 1}, per<100>}>;                                                 // to 1 %
+using discount_rate = quantity<percent, inside<{0, 100}>>;                                        // whole percent
 
 struct order
 {
@@ -69,7 +69,7 @@ std::expected<order, std::vector<std::pair<std::string, error>>> read_order(std:
     else
       errors.emplace_back(key, v.error());
   };
-  order o{order_id{0}, usd_per_item{0, USD / item}, items{1, item}, discount_rate{0}};
+  order o{order_id{0}, usd_per_item{0, USD / item}, items{1, item}, discount_rate{0, percent}};
   get("id"      , o.id);
   get("price"   , o.price);
   get("quantity", o.quantity);
@@ -85,18 +85,18 @@ std::string write_order(const order& o)
   return R"({"id": )" + to_string(o.id)
        + R"(, "price": )" + to_string(o.price.numerical_value_in(USD / item))
        + R"(, "quantity": )" + to_string(o.quantity.numerical_value_in(item))
-       + R"(, "discount": )" + to_string(o.discount) + "}";
+       + R"(, "discount": )" + to_string(o.discount.numerical_value_in(percent)) + "}";
 }
 
 int main()
 {
   // 1. A valid order: 2^53 + 1 survives, and the total is exact until its one rounding.
   using dollars = quantity<USD, inside<{{0, 1'000'000'000}, per<100>}, round_half_away>>;
-  constexpr std::string_view good = R"({"id": 9007199254740993, "price": 19.99, "quantity": 3, "discount": 0.15})";
+  constexpr std::string_view good = R"({"id": 9007199254740993, "price": 19.99, "quantity": 3, "discount": 15})";
   const auto o{read_order(good)};
   if (!o)
     return 1;
-  const dollars total{o->price * o->quantity * (just<1> - o->discount)}; // 50.9745 → 50.97
+  const dollars total{o->price * o->quantity * (just<100> * percent - o->discount)}; // 50.9745 → 50.97
   std::cout << "read   " << good << "\n"
             << "write  " << write_order(*o) << "\n"
             << "total  " << total << "\n"
@@ -105,7 +105,7 @@ int main()
     return 1;
 
   // 2. A bad order: each failing field reported with its cause.
-  constexpr std::string_view bad = R"({"id": 12x, "price": 19.999, "quantity": 0, "discount": 0.15})";
+  constexpr std::string_view bad = R"({"id": 12x, "price": 19.999, "quantity": 0, "discount": 15})";
   const auto b{read_order(bad)};
   std::cout << "\nread   " << bad << "\n";
   for (const auto& [key, e] : b.error())
