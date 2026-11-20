@@ -105,32 +105,41 @@ namespace ins::detail::gaexp
   struct domain_facts
   {
     using DP = parts_t<Domain>;
-    static constexpr std::size_t ND     = std::tuple_size_v<DP>;
-    static constexpr auto        ddims  = dims_of<DP>();
-    static constexpr int         scalar = []
+    static constexpr std::size_t ND    = std::tuple_size_v<DP>;
+    static constexpr auto        ddims = dims_of<DP>();
+    // The scalar part, the part with no blade, when there is one: its index in DP.
+    static constexpr bool has_scalar = []
     {
       for (std::size_t i = 0; i < ND; ++i)
         if (!has_blade(ddims[i]))
-          return static_cast<int>(i);
-      return -1;
+          return true;
+      return false;
     }();
-    static constexpr std::size_t N    = ND - (scalar >= 0 ? 1 : 0);
+    static constexpr std::size_t scalar_index = []
+    {
+      for (std::size_t i = 0; i < ND; ++i)
+        if (!has_blade(ddims[i]))
+          return i;
+      return std::size_t{0};
+    }();
+    // The parts of y: their indices in DP.
+    static constexpr std::size_t N    = ND - (has_scalar ? 1 : 0);
     static constexpr auto        yidx = []
     {
-      std::array<int, N> r{};
-      std::size_t        j{0};
+      std::array<std::size_t, N> r{};
+      std::size_t                j{0};
       for (std::size_t i = 0; i < ND; ++i)
-        if (static_cast<int>(i) != scalar)
-          r[j++] = static_cast<int>(i);
+        if (!has_scalar || i != scalar_index)
+          r[j++] = i;
       return r;
     }();
     template <std::size_t J>
-    using ypart = std::tuple_element_t<static_cast<std::size_t>(yidx[J]), DP>;
+    using ypart = std::tuple_element_t<yidx[J], DP>;
     static constexpr auto sq = []
     {
       std::array<signed char, N> r{};
       for (std::size_t j = 0; j < N; ++j)
-        r[j] = static_cast<signed char>(blade_square(ddims[static_cast<std::size_t>(yidx[j])]));
+        r[j] = static_cast<signed char>(blade_square(ddims[yidx[j]]));
       return r;
     }();
     static constexpr bool closed = []
@@ -138,8 +147,8 @@ namespace ins::detail::gaexp
       for (std::size_t i = 0; i < N; ++i)
         for (std::size_t j = i + 1; j < N; ++j)
         {
-          const dimension& a{ddims[static_cast<std::size_t>(yidx[i])]};
-          const dimension& b{ddims[static_cast<std::size_t>(yidx[j])]};
+          const dimension& a{ddims[yidx[i]]};
+          const dimension& b{ddims[yidx[j]]};
           if (blade_sign(a, b) + blade_sign(b, a) != 0)
             return false;
         }
@@ -181,10 +190,10 @@ namespace ins::detail::gaexp
     // Each is above by at most 2^-29. (e^amax: amax ≤ 0 counts as 0.)
     static constexpr double ea = []
     {
-      if constexpr (scalar >= 0)
+      if constexpr (has_scalar)
       {
         const double hi{
-          static_cast<double>(upper_of<num_t<std::tuple_element_t<static_cast<std::size_t>(scalar), DP>>>)};
+          static_cast<double>(upper_of<num_t<std::tuple_element_t<scalar_index, DP>>>)};
         return exp_upper(hi > 0 ? hi : 0.0);
       }
       else
@@ -205,29 +214,36 @@ namespace ins::detail::gaexp
     }(std::make_index_sequence<N>{});
   };
 
-  // What is known about a call onto CoDomain besides: for each part of CoDomain, where its value comes from
-  // (-2 zero, -1 the scalar part e^a·C, j ≥ 0 e^a·S·yⱼ) and its sign.
+  // Where a part of CoDomain takes its value from: zero (a blade y lacks), the scalar part e^a·C, or e^a·S·yⱼ.
+  enum class part_source : unsigned char { zero, scalar, blade };
+  struct part_origin
+  {
+    part_source Kind{part_source::zero};
+    std::size_t Blade{0}; // j, for part_source::blade
+  };
+
+  // What is known about a call onto CoDomain besides: for each part of CoDomain, where its value comes from, and its
+  // sign.
   template <class Domain, class CoDomain>
   struct facts : domain_facts<Domain>
   {
     using B = domain_facts<Domain>;
-    using B::ddims, B::N, B::scalar, B::yidx;
+    using B::ddims, B::N, B::yidx;
     using typename B::DP;
     using CP = parts_t<CoDomain>;
     static constexpr std::size_t NC    = std::tuple_size_v<CP>;
     static constexpr auto        cdims = dims_of<CP>();
     static constexpr auto        src   = []
     {
-      std::array<int, NC> r{};
+      std::array<part_origin, NC> r{};
       for (std::size_t p = 0; p < NC; ++p)
       {
-        r[p] = -2;
         if (!has_blade(cdims[p]))
-          r[p] = -1;
+          r[p] = {part_source::scalar, 0};
         else
           for (std::size_t j = 0; j < N; ++j)
-            if (blade_equal(cdims[p], ddims[static_cast<std::size_t>(yidx[j])]))
-              r[p] = static_cast<int>(j);
+            if (blade_equal(cdims[p], ddims[yidx[j]]))
+              r[p] = {part_source::blade, j};
       }
       return r;
     }();
@@ -242,9 +258,9 @@ namespace ins::detail::gaexp
       const auto fits = []<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if (src[Q] == -2)
+        if (src[Q].Kind == part_source::zero)
           return true;
-        const double m {src[Q] == -1 ? B::scalar_bound : B::part_bound[static_cast<std::size_t>(src[Q])]};
+        const double m {src[Q].Kind == part_source::scalar ? B::scalar_bound : B::part_bound[src[Q].Blade]};
         const double lo{static_cast<double>(lower_of<O>)}, hi{static_cast<double>(upper_of<O>)};
         return m * (1 + 0x1p-30) <= std::min(-lo, hi);
       };
@@ -254,12 +270,12 @@ namespace ins::detail::gaexp
     {
       bool scalar_seen{false};
       for (std::size_t p = 0; p < NC; ++p)
-        scalar_seen = scalar_seen || src[p] == -1;
+        scalar_seen = scalar_seen || src[p].Kind == part_source::scalar;
       for (std::size_t j = 0; j < N; ++j)
       {
         bool seen{false};
         for (std::size_t p = 0; p < NC; ++p)
-          seen = seen || src[p] == static_cast<int>(j);
+          seen = seen || (src[p].Kind == part_source::blade && src[p].Blade == j);
         if (!seen)
           return false;
       }
@@ -290,7 +306,8 @@ namespace ins::detail::gaexp
     static constexpr std::size_t    EZ = 2 * N * E + 1;
     wide_rational<E>                A;
     std::array<wide_rational<E>, N> Y;
-    int                             Part; // -1: the scalar part, else j
+    bool                            Scalar; // the scalar part, else part Part of y
+    std::size_t                     Part;
     int                             Sign; // ±1 of CoDomain's part against the canonical blade
 
     // e^a·C near 1 (|x| tiny), e^a near 0 (a very negative), cos √z near 0.
@@ -316,13 +333,13 @@ namespace ins::detail::gaexp
     // independent over the algebraic numbers unless a = z = 0).
     constexpr eng::maybe_exact<E> exact() const
     {
-      if (Part >= 0 && eng::is_zero(Y[static_cast<std::size_t>(Part)]))
+      if (!Scalar && eng::is_zero(Y[Part]))
         return wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
       if ((!HasA || eng::is_zero(A)) && eng::is_zero(z_exact()))
       {
-        if (Part < 0)
+        if (Scalar)
           return wide_rational<E>{wide_sint<E>{1}, wide_sint<E>{1}};
-        const wide_rational<E>& y{Y[static_cast<std::size_t>(Part)]};
+        const wide_rational<E>& y{Y[Part]};
         return wide_rational<E>{Sign < 0 ? -y.Num : y.Num, y.Den};
       }
       return std::nullopt;
@@ -408,7 +425,7 @@ namespace ins::detail::gaexp
                    topY{::ins::detail::ldexp(1.0, MagY)};
       I            v;
       double       err;
-      if (Part < 0)
+      if (Scalar)
       {
         v   = eng::mul_q(eq, cq, S);
         err = ee * topC + ec * topE + 2;
@@ -417,7 +434,7 @@ namespace ins::detail::gaexp
       {
         const I      p {eng::mul_q(eq, sq, S)};
         const double ep{ee * topC + es * topE + 2};
-        const I      yq{eng::to_q<S, K>(Y[static_cast<std::size_t>(Part)])}; // within ½
+        const I      yq{eng::to_q<S, K>(Y[Part])}; // within ½
         v   = eng::mul_q(p, yq, S);
         err = ep * topY + topE * topC + 2;
       }
@@ -840,12 +857,12 @@ namespace ins::detail::gaexp
   template <class F, std::size_t J>
   [[gnu::always_inline]] constexpr const auto& ynum(const typename F::DP& px)
   {
-    return number_of_part(std::get<static_cast<std::size_t>(F::yidx[J])>(px));
+    return number_of_part(std::get<F::yidx[J]>(px));
   }
   template <class F>
   [[gnu::always_inline]] constexpr const auto& anum(const typename F::DP& px)
   {
-    return number_of_part(std::get<static_cast<std::size_t>(F::scalar)>(px));
+    return number_of_part(std::get<F::scalar_index>(px));
   }
 
   // CoDomain's part numbers so far and which of them are decided.
@@ -873,8 +890,8 @@ namespace ins::detail::gaexp
   {
     static constexpr bool a_fp = []
     {
-      if constexpr (F::scalar >= 0)
-        return max_abs<num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), typename F::DP>>> <= 700;
+      if constexpr (F::has_scalar)
+        return max_abs<num_t<std::tuple_element_t<F::scalar_index, typename F::DP>>> <= 700;
       else
         return true;
     }();
@@ -882,7 +899,7 @@ namespace ins::detail::gaexp
 #ifndef INSIDE_MATH_NO_FP
     static constexpr bool any_fp = []<std::size_t... P>(std::index_sequence<P...>)
     {
-      return ((part_fp<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P] != -2) || ...);
+      return ((part_fp<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P].Kind != part_source::zero) || ...);
     }(std::make_index_sequence<F::NC>{});
     static constexpr bool inputs_fp = []<std::size_t... I>(std::index_sequence<I...>)
     {
@@ -891,7 +908,7 @@ namespace ins::detail::gaexp
     static constexpr bool fp_ok  = eng::fp_tier_available && any_fp && inputs_fp && a_fp && lam_fp;
     static constexpr bool any_dd = []<std::size_t... P>(std::index_sequence<P...>)
     {
-      return ((part_dd<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P] != -2) || ...);
+      return ((part_dd<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P].Kind != part_source::zero) || ...);
     }(std::make_index_sequence<F::NC>{});
     static constexpr bool inputs_dd = []<std::size_t... I>(std::index_sequence<I...>)
     {
@@ -906,7 +923,7 @@ namespace ins::detail::gaexp
     // z exactly from the value indices: every part of y on one notch 2^-k and N·max|index|² ≤ 2^53,
     // so Σ -sqⱼ·indexⱼ² is an exact int64 and double, and z = that·2^-2k exactly (no bound, no dd sum).
     template <std::size_t J>
-    using ypart = num_t<std::tuple_element_t<static_cast<std::size_t>(F::yidx[J]), typename F::DP>>;
+    using ypart = num_t<std::tuple_element_t<F::yidx[J], typename F::DP>>;
     static constexpr bool int_z = []
     {
       if constexpr (F::N < 2)
@@ -921,7 +938,7 @@ namespace ins::detail::gaexp
           {
             const bool same{((notch_of<ypart<J>> == notch_of<Y0>) && ...) && eng::notch_p<Y0> == 1};
             const int  bits{std::max({eng::index_bits<ypart<J>>...})};
-            return same && 2 * bits + static_cast<int>(std::bit_width(F::N)) <= 53;
+            return same && 2 * bits + std::bit_width(F::N) <= 53;
           }
         }(std::make_index_sequence<F::N>{});
     }();
@@ -966,7 +983,7 @@ namespace ins::detail::gaexp
   {
     using CP = typename F::CP;
     constexpr std::size_t N{F::N};
-    constexpr bool        A{F::scalar >= 0}, X{tier_facts<F>::exact_in};
+    constexpr bool        A{F::has_scalar}, X{tier_facts<F>::exact_in};
     constexpr int         T = []<std::size_t... P>(std::index_sequence<P...>)
     {
       const int b{std::max({0, part_fp_bits<num_t<std::tuple_element_t<P, CP>>>...})};
@@ -1017,12 +1034,12 @@ namespace ins::detail::gaexp
       [&]<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if constexpr (part_fp<O> && F::src[Q] != -2)
+        if constexpr (part_fp<O> && F::src[Q].Kind != part_source::zero)
         {
           if (st.Done[Q])
             return;
           double val, b;
-          if constexpr (F::src[Q] == -1)
+          if constexpr (F::src[Q].Kind == part_source::scalar)
             val = times_e(v.C, v.bC, v.Cmax, b);
           else if constexpr (N == 1)
           {
@@ -1032,7 +1049,7 @@ namespace ins::detail::gaexp
           }
           else
           {
-            constexpr std::size_t j {static_cast<std::size_t>(F::src[Q])};
+            constexpr std::size_t j {F::src[Q].Blade};
             const double          ay{__builtin_fabs(y[j])};
             val = p * y[j];
             if constexpr (X)
@@ -1054,7 +1071,7 @@ namespace ins::detail::gaexp
   {
     using CP = typename F::CP;
     constexpr std::size_t N{F::N};
-    constexpr bool        A{F::scalar >= 0}, X{tier_facts<F>::exact_in};
+    constexpr bool        A{F::has_scalar}, X{tier_facts<F>::exact_in};
     ddk::dd               a{0, 0};
     double                ra{0};
     if constexpr (A)
@@ -1108,13 +1125,13 @@ namespace ins::detail::gaexp
       [&]<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if constexpr (part_dd<O> && F::src[Q] != -2)
+        if constexpr (part_dd<O> && F::src[Q].Kind != part_source::zero)
         {
           if (st.Done[Q])
             return;
           ddk::dd val;
           double  b;
-          if constexpr (F::src[Q] == -1)
+          if constexpr (F::src[Q].Kind == part_source::scalar)
             val = times_e(v.C, v.bC, v.Cmax, b);
           else
           {
@@ -1125,7 +1142,7 @@ namespace ins::detail::gaexp
             }
             else
             {
-              constexpr std::size_t j {static_cast<std::size_t>(F::src[Q])};
+              constexpr std::size_t j {F::src[Q].Blade};
               const double          ay{__builtin_fabs(y[j].Hi) * (1 + 0x1p-50)};
               if constexpr (X)
               {
@@ -1159,24 +1176,24 @@ namespace ins::detail::gaexp
     {
       return std::max({std::size_t{1}, eng::input_limbs<num_t<std::tuple_element_t<I, DP>>>...});
     }(std::make_index_sequence<F::ND>{});
-    constexpr bool HasA{F::scalar >= 0};
+    constexpr bool HasA{F::has_scalar};
     constexpr int  MagA = []
     {
       if constexpr (HasA)
-        return eng::in_mag<num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), DP>>>;
+        return eng::in_mag<num_t<std::tuple_element_t<F::scalar_index, DP>>>;
       else
         return 1;
     }();
     constexpr int MagY = []<std::size_t... J>(std::index_sequence<J...>)
     {
-      return std::max({1, eng::in_mag<num_t<std::tuple_element_t<static_cast<std::size_t>(F::yidx[J]), DP>>>...});
+      return std::max({1, eng::in_mag<num_t<std::tuple_element_t<F::yidx[J], DP>>>...});
     }(std::make_index_sequence<N>{});
-    constexpr int MagL{MagY + static_cast<int>(std::bit_width(N)) + 1};
+    constexpr int MagL{MagY + std::bit_width(N) + 1};
     constexpr int KE = []
     {
       if constexpr (HasA)
       {
-        using A = num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), DP>>;
+        using A = num_t<std::tuple_element_t<F::scalar_index, DP>>;
         const double hi{static_cast<double>(upper_of<A>)};
         return std::max(0, static_cast<int>(hi * 1.4427) + 1) + 2;
       }
@@ -1195,13 +1212,14 @@ namespace ins::detail::gaexp
       [&]<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if constexpr (F::src[Q] != -2)
+        if constexpr (F::src[Q].Kind != part_source::zero)
         {
           if (!st.Done[Q])
           {
             core cq{c};
-            cq.Part = F::src[Q];
-            cq.Sign = F::osign[Q];
+            cq.Scalar = F::src[Q].Kind == part_source::scalar;
+            cq.Part   = F::src[Q].Blade;
+            cq.Sign   = F::osign[Q];
             eng::note<eng::probe::integer_run>();
             std::get<Q>(st.Out) = eng::evaluate<O, eng::start_bits<O>>(cq);
             st.Done[Q]          = true;
@@ -1249,7 +1267,7 @@ namespace ins::detail::gaexp
     for_index<NC>(
       [&]<std::size_t P>()
       {
-        if constexpr (F::src[P] == -2)
+        if constexpr (F::src[P].Kind == part_source::zero)
         {
           std::get<P>(st.Out) = num_t<std::tuple_element_t<P, CP>>(just<0>);
           st.Done[P]          = true;
@@ -1268,19 +1286,19 @@ namespace ins::detail::gaexp
         [&]<std::size_t P>()
         {
           using O = num_t<std::tuple_element_t<P, CP>>;
-          if constexpr (F::src[P] >= 0)
+          if constexpr (F::src[P].Kind == part_source::blade)
           {
-            if (ynum<F, static_cast<std::size_t>(F::src[P])>(px) == just<0>)
+            if (ynum<F, F::src[P].Blade>(px) == just<0>)
             {
               std::get<P>(st.Out) = O(just<0>);
               st.Done[P]          = true;
             }
           }
-          else if constexpr (F::src[P] == -1)
+          else if constexpr (F::src[P].Kind == part_source::scalar)
           {
             if (all_zero)
             {
-              if constexpr (F::scalar >= 0)
+              if constexpr (F::has_scalar)
               {
                 const auto& a{anum<F>(px)};
                 std::get<P>(st.Out) = ::ins::math::detail::entry::exp_fn::eval<O>(a);

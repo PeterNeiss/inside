@@ -69,6 +69,11 @@
   | `d.Exp[i]` (SI), `d.UserDim`, `d.UserExp`, `d.UserSize` | `d.Base`, `d.Exp`, `d.Size`: every base dimension, sorted by name |
 
   `dim_one` is unchanged.
+- An inside has no `operator double` any more: `double(x)` and
+  `static_cast<double>(x)` become `x.to<double>()` (or `to<double>(x)` in
+  generic code), the one spelling that names its rounding. The value is the
+  same, rounded once. `static_cast<double>(x)` now fails with a message that
+  names `to<double>()`.
 
 ### Changed
 
@@ -193,6 +198,23 @@
   catalog interns its dimensions, so including `units.hpp` costs about
   0.1 s more (1.00 s to 1.10 s); a TU of quantity code costs −3 % to +8 %
   (instructions), and `geoalg.test.cpp` compiles in 46 s (was 67 s).
+- A quantity that does not convert to another says why: its number would fall
+  off the target's grid (store it with `Q{q, round_half_away}` or
+  `Q{q, clamp}`, or check it with `exact_cast<Q>(q)`), another dimension, a
+  factor of π (`value_cast`), or another kind (`kind_cast`). Before, the
+  compiler only reported that no conversion exists, after kilobytes of type.
+  It costs about 0.3 % more compile time on quantity code.
+- Units compile faster: a quantity's test for its own reference and its
+  plain-number test return before the costlier terms, which formed for every
+  quantity type. 200 quantity expressions on distinct derived units compile
+  in 26 % fewer instructions (71.4 G to 52.9 G, GCC 16, -O0).
+
+### Fixed
+
+- A unit's power of π wrapped at 8 bits: `pow<127>(si::degree) *
+  pow<127>(si::arcminute)` held π⁻² instead of π²⁵⁴, silently, at compile
+  time. A power of π past ±127 is now a compile error, as a dimension
+  exponent past 127 is.
 
 ## 0.9.0 — 2026-11-15
 

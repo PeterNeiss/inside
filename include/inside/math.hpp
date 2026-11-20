@@ -167,14 +167,15 @@ namespace ins::math
         return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
       else if constexpr (int_direct<Out, integer_result_t<In, M>, In>)
       {
-        constexpr std::int64_t p{static_cast<std::int64_t>(notch64<In>.Num)};
-        constexpr std::int64_t q{static_cast<std::int64_t>(abs_den(notch64<In>.Den))};
+        static_assert(notch_int64<In>.Fits);
+        constexpr std::int64_t p{notch_int64<In>.P};
+        constexpr std::int64_t q{notch_int64<In>.Q};
         const std::int64_t     j{value_index<std::int64_t>(x) * p};
-        if constexpr (p == 1 && std::has_single_bit(static_cast<std::uint64_t>(q)) && M != round_mode::half_even)
+        if constexpr (p == 1 && notch_int64<In>.QShift >= 0 && M != round_mode::half_even)
         {
           // A notch 2^-k: shifts. floor is the arithmetic shift, ceil its mirror;
           // nearest and trunc shift the magnitude (half away from 0).
-          constexpr int k{std::countr_zero(static_cast<std::uint64_t>(q))};
+          constexpr int k{notch_int64<In>.QShift};
           if constexpr (M == round_mode::floor)
             return from_value_index<Out>(j >> k);
           else if constexpr (M == round_mode::ceil)

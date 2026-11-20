@@ -314,11 +314,12 @@ namespace ins
       else
         return anchored<X> && value_indices_fit_int64<X> && lower_index_fits_int64<X>;
     }();
-    // A notch 1/2^k, k ≥ 1 (an integer notch is no binary fraction: the lattice path divides it once).
+    // A notch 1/2^k, 1 ≤ k ≤ 63 (an integer notch is no binary fraction: the lattice path divides it once;
+    // a denominator past 64 bits is not read).
     template <insidable X>
     inline constexpr bool binary_notch =
-      notched<X> && grid_int{1} < grid_denominator(notch_of<X>)
-      && std::has_single_bit(static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_denominator(notch_of<X>))));
+      notched<X> && grid_int{1} < grid_denominator(notch_of<X>) && grid_denominator(notch_of<X>).bit_width() <= 64
+      && std::has_single_bit(static_cast<std::uint64_t>(grid_denominator(notch_of<X>)));
     template <insidable Out, insidable A, insidable B, bool Div>
     struct lattice_op
     {

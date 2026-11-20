@@ -12,5 +12,5 @@ using namespace ins;
 int main()
 {
   constexpr inside<{0, 100}> pct{150};   // error: 150 is outside [0, 100]
-  return static_cast<int>(pct.raw());
+  return pct;
 }

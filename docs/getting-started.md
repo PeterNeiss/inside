@@ -109,7 +109,7 @@ An inside does not turn into an `int` by itself. Name the type you want:
 | Write | Gives |
 |---|---|
 | `x.to<int>()` | an `int` when every value of the grid fits one (nothing is checked), else a `std::expected<int, error>` that fails if the value does not |
-| `double(x)` | a `double`, rounded once |
+| `x.to<double>()` | a `double`, rounded once |
 | `x.numerator()`, `x.denominator()` | the exact value as a fraction, two insides |
 | `std::cout << x`, `std::format("{}", x)` | the exact value as text |
 

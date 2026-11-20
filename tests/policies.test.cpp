@@ -118,7 +118,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
         auto s = sample::try_make(0.5);
         ASSERT_TRUE(s.has_value());
-        ASSERT_EQ(double(*s), 0.5);
+        ASSERT_EQ(to<double>(*s), 0.5);
 
         ASSERT_FALSE(sample::try_make(1.5).has_value());
         ASSERT_FALSE(sample::try_make(-1.25).has_value());

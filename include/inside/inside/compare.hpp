@@ -116,7 +116,7 @@ namespace ins
       else
       {
         constexpr std::uint64_t notch_num{notch64<B>.Num};
-        constexpr std::uint64_t notch_den{static_cast<std::uint64_t>(notch64<B>.Den)}; // Notch > 0
+        constexpr std::uint64_t notch_den{abs_den(notch64<B>.Den)};
         constexpr std::uint64_t index_mag{lower_index64<B>.Num > upper_index64<B>.Num ? lower_index64<B>.Num
                                                                                     : upper_index64<B>.Num};
         // The largest |c| of A: |min| = max + 1 for a signed type.
@@ -146,10 +146,12 @@ namespace ins
       else if constexpr (integer_value_storage<B> && values_fit_int64<B> && std::unsigned_integral<A>)
         return cmp(raw_int64(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
       else if constexpr (scalar_index_cmp_fits<B, A>)
+      {
         // (An index raw: the value index is raw + Lower/Notch.)
-        return cmp(
-          (signed_numerator(lower_index64<B>) + raw_int64(lhs)) * static_cast<std::int64_t>(notch64<B>.Num),
-          static_cast<std::int64_t>(rhs) * notch64<B>.Den);
+        static_assert(notch_int64<B>.Fits);
+        return cmp((signed_numerator(lower_index64<B>) + raw_int64(lhs)) * notch_int64<B>.P,
+                   static_cast<std::int64_t>(rhs) * notch_int64<B>.Q);
+      }
       else
         return cmp(as_rational(lhs), rational{rhs});
     }

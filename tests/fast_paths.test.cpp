@@ -288,6 +288,12 @@ void binary_text() {
         EXPECT_EQ(to_string(b), bd::fraction_to_string_u64(r.Den < 0, r.Num, bd::abs_den(r.Den), 0));
     }
 }
+// A binary notch is read within 64 bits: 1/2^63 is one, and a notch past 64 bits (1/2^70) is not (it compiles,
+// rather than failing the checked conversion of its denominator), nor is a 1/3 notch.
+static_assert(bd::binary_notch<inside<{{0, 1}, per<(std::uint64_t{1} << 63)>}>>);
+static_assert(!bd::binary_notch<inside<{{0, 1}, 0x1p-70}>>);
+static_assert(!bd::binary_notch<inside<{{0, 1}, just<1, 3>}>>);
+
 TEST(FastPathTest, binary_notches_print_as_the_fraction_printer) {
     binary_text<inside<{{0, 255}, per<256>}>>();
     binary_text<inside<{{-2, 2}, per<16384>}>>();
@@ -374,7 +380,7 @@ TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
             bool               fired = false;
             x.on_clamp([&](auto&, const auto& over) {
                 fired = true;
-                EXPECT_EQ(double(over), static_cast<double>(*bd::try_sub(sum, bd::rational{100}))); // exact: quarters
+                EXPECT_EQ(to<double>(over), static_cast<double>(*bd::try_sub(sum, bd::rational{100}))); // exact: quarters
             }) += T{b, clamp};
             EXPECT_EQ(fired, sum > bd::rational{100});
         }
@@ -421,7 +427,7 @@ void steps_and_values() {
         ASSERT_TRUE(f) << i;
         EXPECT_EQ(static_cast<std::int64_t>(f->step()), i);
         const bd::rational v = bd::as_rational(*f);
-        EXPECT_EQ(double(*f), static_cast<double>(v));
+        EXPECT_EQ(to<double>(*f), static_cast<double>(v));
         EXPECT_EQ(f->template to<float>(), static_cast<float>(bd::nearest_float<double>(bd::exact_of(*f))));
         EXPECT_EQ(bd::rational(bd::to_value(f->numerator()), bd::to_value(f->denominator())), v);
         EXPECT_EQ((plain(to<long long, round_floor>(*f))), bd::floor(v));

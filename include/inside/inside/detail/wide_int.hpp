@@ -264,7 +264,7 @@ namespace ins::detail
     [[nodiscard]] friend constexpr int bit_width_of(const wide_int& a) noexcept
     {
       const std::size_t n{limb::top_size(a.Word, N)};
-      return n == 0 ? 0 : static_cast<int>(n - 1) * limb_bits + static_cast<int>(std::bit_width(a.Word[n - 1]));
+      return n == 0 ? 0 : static_cast<int>(n - 1) * limb_bits + std::bit_width(a.Word[n - 1]);
     }
 
   private:

@@ -1048,7 +1048,7 @@ void prop_sin_cos(fuzz_state& s, long iters) {
     for (long i = 0; i < iters; ++i) {
         s.iter      = i;
         A        a  = A::from_raw(random_in_range_raw<A>(s.rng), unsafe);
-        double   ad = static_cast<double>(a);
+        double   ad = to<double>(a);
         rational sn = math::sin(a);
         rational cs = math::cos(a);
         FUZZ_REQUIRE(s, approx_le(sn, rational{std::sin(ad)}, tol));
@@ -1066,7 +1066,7 @@ void prop_tan(fuzz_state& s, long iters) {
     for (long i = 0; i < iters; ++i) {
         s.iter        = i;
         A          a  = A::from_raw(random_in_range_raw<A>(s.rng), unsafe);
-        double     ad = static_cast<double>(a);
+        double     ad = to<double>(a);
         const auto t  = math::tan(a); // plain: the branch holds no pole
         double     o  = std::tan(ad);
         // Skip the steep region where the double oracle diverges faster than
@@ -1085,7 +1085,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
+            double xd = to<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::exp2(x)}, std::exp2(xd), 0.01, rational{8, 16384}));
         }
     }
@@ -1095,7 +1095,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
+            double xd = to<double>(x);
             FUZZ_REQUIRE(s, approx_le(rational{math::log2(x)}, rational{std::log2(xd)}, rational{16, 16384}));
         }
     }
@@ -1105,7 +1105,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
+            double xd = to<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::exp(x)}, std::exp(xd), 0.01, rational{4, 256}));
         }
     }
@@ -1115,7 +1115,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
+            double xd = to<double>(x);
             // log's auto output is Q.8 (notch 1/256), so accuracy is a few Q.8 ULP.
             FUZZ_REQUIRE(s, approx_le(rational{math::log(x)}, rational{std::log(xd)}, rational{8, 256}));
         }
@@ -1126,7 +1126,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
+            double xd = to<double>(x);
             double o  = std::pow(10.0, xd);
             if (o > 60000.0)
                 continue; // stay inside the output grid range
@@ -1167,7 +1167,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd      = static_cast<double>(x);
+            double xd      = to<double>(x);
             s.current_prop = "atan";
             FUZZ_REQUIRE(s, approx_le(rational{math::atan(x)}, rational{std::atan(xd)}, tol));
             s.current_prop = "asin";
@@ -1183,7 +1183,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd      = static_cast<double>(x);
+            double xd      = to<double>(x);
             s.current_prop = "sinh";
             FUZZ_REQUIRE(s, approx_rel(rational{math::sinh(x)}, std::sinh(xd), 0.01, tol));
             s.current_prop = "cosh";
@@ -1200,7 +1200,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
+            double xd = to<double>(x);
             FUZZ_REQUIRE(s, approx_le(rational{math::log10(x)}, rational{std::log10(xd)}, tol));
         }
     }
@@ -1212,7 +1212,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
+            double xd = to<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::cbrt(x)}, std::cbrt(xd), 0.01, tol));
         }
     }
@@ -1225,8 +1225,8 @@ void prop_extended_math(fuzz_state& s, long iters) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
             In     y  = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
-            double xd = static_cast<double>(x);
-            double yd = static_cast<double>(y);
+            double xd = to<double>(x);
+            double yd = to<double>(y);
             FUZZ_REQUIRE(s, approx_rel(rational{math::hypot(x, y)}, std::hypot(xd, yd), 0.01, tol));
         }
     }
@@ -1240,8 +1240,8 @@ void prop_extended_math(fuzz_state& s, long iters) {
             s.iter        = i;
             B          b  = B::from_raw(random_in_range_raw<B>(s.rng), unsafe);
             E          e  = E::from_raw(random_in_range_raw<E>(s.rng), unsafe);
-            double     bd = static_cast<double>(b);
-            double     ed = static_cast<double>(e);
+            double     bd = to<double>(b);
+            double     ed = to<double>(e);
             double     o  = std::pow(bd, ed);
             const auto r  = math::pow(b, e); // plain: a positive base, the deduced range
             if (o < 1e6)

@@ -454,6 +454,12 @@ namespace ins
     {
       return (value >= 0) ? static_cast<std::uint64_t>(value) : std::uint64_t{0} - static_cast<std::uint64_t>(value);
     }
+    // The int64 of a sign and a magnitude (at most 2^63, and 2^63 only when negative): taken modulo 2^64,
+    // so -2^63 needs no special case.
+    [[nodiscard]] constexpr std::int64_t with_sign(bool negative, std::uint64_t magnitude) noexcept
+    {
+      return static_cast<std::int64_t>(negative ? std::uint64_t{0} - magnitude : magnitude);
+    }
   } // namespace detail
 } // namespace ins
 
@@ -1469,7 +1475,7 @@ namespace ins::detail
     [[nodiscard]] friend constexpr int bit_width_of(const wide_int& a) noexcept
     {
       const std::size_t n{limb::top_size(a.Word, N)};
-      return n == 0 ? 0 : static_cast<int>(n - 1) * limb_bits + static_cast<int>(std::bit_width(a.Word[n - 1]));
+      return n == 0 ? 0 : static_cast<int>(n - 1) * limb_bits + std::bit_width(a.Word[n - 1]);
     }
 
   private:
@@ -1759,7 +1765,7 @@ namespace ins::detail
       return;
     numerator /= g;
     ad /= g;
-    denominator = static_cast<std::int64_t>((denominator < 0) ? std::uint64_t{0} - ad : ad);
+    denominator = with_sign(denominator < 0, ad);
   }
 
   inline constexpr void cancel_gcd(std::uint64_t& a, std::uint64_t& b)
@@ -1988,7 +1994,7 @@ namespace ins::detail
     const auto [mag, neg] = round_magnitude(v, m);
     if (mag > (neg ? std::uint64_t{1} << 63 : (std::uint64_t{1} << 63) - 1))
       raise(error::overflow, "rational: the rounded integer is past int64");
-    return static_cast<std::int64_t>(neg ? std::uint64_t{0} - mag : mag);
+    return with_sign(neg, mag);
   }
 
   // Kept exact as a rational, for indices that may pass int64.
@@ -2211,7 +2217,7 @@ namespace ins::detail
         return ret_t{rational{0}};
       rational r;
       r.Num = num;
-      r.Den = static_cast<std::int64_t>(r_neg ? std::uint64_t{0} - a_ad : a_ad);
+      r.Den = with_sign(r_neg, a_ad);
       cancel_gcd(r.Num, r.Den);
       return ret_t{r};
     }
@@ -2248,8 +2254,7 @@ namespace ins::detail
           {
             rational r;
             r.Num = big.Lo - small.Lo;
-            r.Den = static_cast<std::int64_t>((a_neg ? a_bigger : !a_bigger) ? std::uint64_t{0} - denominator
-                                                                             : denominator);
+            r.Den = with_sign(a_neg ? a_bigger : !a_bigger, denominator);
             cancel_gcd(r.Num, r.Den);
             return ret_t{r};
           }
@@ -2340,8 +2345,7 @@ namespace ins::detail
 
     // The cross-cancellations above leave gcd(numerator, denominator) == 1,
     // so rational(num, den) and its redundant cancel_gcd are skipped.
-    return ret_t{rational_from_parts(numerator,
-                                     static_cast<std::int64_t>(r_neg ? std::uint64_t{0} - denominator : denominator))};
+    return ret_t{rational_from_parts(numerator, with_sign(r_neg, denominator))};
   }
 
   // The multiplicative inverse 1 / a. a is in lowest terms (Num and |Den| coprime), so the swapped pair is too.
@@ -3287,10 +3291,57 @@ namespace ins::detail
       return Size != 0 ? static_cast<int>(Size - 1) * 64 + std::bit_width(Limbs[Size - 1]) : std::bit_width(Small);
     }
 
-    // A truncating conversion to a builtin integer or a wide_int (two's complement).
+    // Whether the value fits T, a builtin integer or a wide_int: |v| below 2^digits, or v = -2^digits for a signed T;
+    // a negative value never fits an unsigned T. By width, so it never builds a big_int (run time cannot make one past
+    // 64 bits).
+    template <typename T>
+      requires raw_integer<T>
+    [[nodiscard]] constexpr bool fits() const
+    {
+      constexpr bool is_signed = []
+      {
+        if constexpr (std::integral<T>)
+          return std::is_signed_v<T>;
+        else
+          return T::is_signed;
+      }();
+      constexpr int digits = []
+      {
+        if constexpr (std::integral<T>)
+          return std::numeric_limits<T>::digits;
+        else
+          return T::bits - (T::is_signed ? 1 : 0);
+      }();
+      const int bw{bit_width()};
+      if (!Negative)
+        return bw <= digits;
+      const bool power_of_two{
+        Size == 0 ? std::has_single_bit(Small)
+                  : std::has_single_bit(Limbs[Size - 1])
+                      && std::all_of(Limbs, Limbs + Size - 1, [](std::uint64_t w) { return w == 0; })};
+      return is_signed && (bw <= digits || (bw == digits + 1 && power_of_two));
+    }
+
+    // The value as T, a builtin integer or a wide_int that holds it.
+    // In a constant expression a value that does not fit is a compile error; at run time the caller's grids bound it
+    // (unchecked, so a run-time path costs nothing). truncate_to<T>() wraps on purpose.
     template <typename T>
       requires raw_integer<T>
     constexpr explicit operator T() const
+    {
+      if consteval
+      {
+        if (!fits<T>())
+          constexpr_error<"big_int: the value does not fit the target type - truncate_to<T>() wraps it">();
+      }
+      return truncate_to<T>();
+    }
+
+    // The value modulo 2^bits of T (two's complement), for arithmetic that wraps on purpose:
+    // an index in an unsigned twin, the low bit of a negative value.
+    template <typename T>
+      requires raw_integer<T>
+    [[nodiscard]] constexpr T truncate_to() const
     {
       if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64)
       {
@@ -3785,6 +3836,8 @@ namespace ins
       {
         Num = b.Num.Small;
         const std::int64_t d{static_cast<std::int64_t>(b.Den.Small)};
+        // A denominator is positive: the optimizer then knows Den != 0 here, so big() never reads Big (null).
+        [[assume(d > 0)]];
         Den = b.Num.negative() ? -d : d;
         return;
       }
@@ -5247,6 +5300,7 @@ namespace ins
 } // namespace ins
 
 
+
 // An inside's template parameters as values (grid_of<B>, policy_of<B>, lower_of<B>, notch_of<B>, …
 // and their 64-bit forms), the insidable and numeric concepts,
 // and the plumbing every layer uses (plain_t, as_rational, raw_t).
@@ -5345,6 +5399,24 @@ namespace ins
     inline constexpr rational upper64 = to_rational(upper_of<B>);
     template <insidable B>
     inline constexpr rational notch64 = to_rational(notch_of<B>);
+
+    // B's notch as P/Q in the int64 the integer fast paths compute in (Q > 0), and Q's shift when Q = 2^QShift
+    // (else -1). Fits: P below 2^63 (Q always is); a fast path that reads P asserts it.
+    struct notch_int64_t
+    {
+      std::int64_t P{0};
+      std::int64_t Q{1};
+      int          QShift{-1};
+      bool         Fits{false};
+    };
+    template <insidable B>
+    inline constexpr notch_int64_t notch_int64 = []
+    {
+      constexpr std::uint64_t p{notch64<B>.Num}, q{abs_den(notch64<B>.Den)};
+      constexpr bool          fits{p <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())};
+      return notch_int64_t{fits ? static_cast<std::int64_t>(p) : 0, static_cast<std::int64_t>(q),
+                           std::has_single_bit(q) ? std::countr_zero(q) : -1, fits};
+    }();
 
     // An inside or a plain number (integer, floating point, rational).
     template <typename N>
@@ -5893,7 +5965,7 @@ namespace ins::detail
     requires q_format_fits<B>
   constexpr raw_t<B> q_format_encode(std::int64_t value) noexcept
   {
-    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
+    constexpr std::int64_t nd{notch_int64<B>.Q};
     return raw_cast<B>((value - lower_int64<B>) * nd);
   }
 
@@ -5902,9 +5974,9 @@ namespace ins::detail
     requires q_format_fits<B>
   constexpr rational q_format_decode(B b) noexcept
   {
-    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
-    const std::int64_t     n{raw_int64(b) + lower_int64<B> * nd};
-    if constexpr (std::has_single_bit(static_cast<std::uint64_t>(nd)))
+    constexpr std::int64_t nd{notch_int64<B>.Q};
+    const std::int64_t     n {raw_int64(b) + lower_int64<B> * nd};
+    if constexpr (notch_int64<B>.QShift >= 0)
     {
       // A power-of-two denominator reduces by the common trailing zeros (0 reduces to 0/1).
       const std::uint64_t m{n < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(n) : static_cast<std::uint64_t>(n)};
@@ -6063,8 +6135,7 @@ namespace ins::detail
     }
   }();
 
-  // Ungated double view of any inside (the public operator double() is gated on a rounding flag;
-  // this is always available).
+  // The double of any inside, rounded once (what to<double>() returns).
   // Everything but index storage holds the value verbatim; an index decodes through the grid.
   template <insidable B>
   [[nodiscard]] constexpr double as_double(const B& b) noexcept
@@ -6112,7 +6183,7 @@ namespace ins::detail
   template <insidable B>
   inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
   template <insidable B>
-  inline constexpr bool lower_index_odd = (static_cast<std::uint64_t>(lower_index_wide<B>) & 1) != 0;
+  inline constexpr bool lower_index_odd = (lower_index_wide<B>.template truncate_to<std::uint64_t>() & 1) != 0;
 
   // A double onto a lattice whose values times K stay below 2^51 (2^62 for a power-of-two K),
   // with K, S, M the Q-format's K, 1, Lower·K or the lattice codec's:
@@ -6135,7 +6206,7 @@ namespace ins::detail
       std::int64_t k, sv, m;
       if constexpr (q_format_fits<L>)
       {
-        k  = static_cast<std::int64_t>(abs_den(notch64<L>.Den));
+        k  = notch_int64<L>.Q;
         sv = 1;
         m  = lower_int64<L> * k;
       }
@@ -7390,10 +7461,10 @@ namespace ins::detail
       // In W's unsigned twin: a raw past W's max (a step count past 2^63 from a negative base)
       // wraps back onto the index, which fits W.
       using U = std::make_unsigned_t<W>;
-      return static_cast<W>(static_cast<U>(static_cast<W>(slot_base<X>)) + static_cast<U>(x.raw()));
+      return static_cast<W>(static_cast<U>(slot_base<X>.template truncate_to<W>()) + static_cast<U>(x.raw()));
     }
     else if constexpr (index_storage<X>)
-      return static_cast<W>(slot_base<X>) + static_cast<W>(x.raw());
+      return slot_base<X>.template truncate_to<W>() + static_cast<W>(x.raw());
     else
       return static_cast<W>(x.raw());
   }
@@ -7435,7 +7506,7 @@ namespace ins::detail
       if constexpr (std::is_integral_v<W>)
       {
         using U = std::make_unsigned_t<W>;
-        return static_cast<W>(static_cast<U>(static_cast<W>(base))
+        return static_cast<W>(static_cast<U>(base.truncate_to<W>())
                               + static_cast<U>(x.raw()) * static_cast<U>(static_cast<W>(scale)));
       }
       else
@@ -7458,7 +7529,7 @@ namespace ins::detail
     if constexpr (point_storage<Result>)
       return Result::from_raw(raw_t<Result>{}, unsafe);
     else if constexpr (index_storage<Result>)
-      return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)), unsafe);
+      return Result::from_raw(static_cast<raw_t<Result>>(j - slot_base<Result>.template truncate_to<W>()), unsafe);
     else
       return Result::from_raw(static_cast<raw_t<Result>>(j), unsafe);
   }
@@ -8083,7 +8154,7 @@ namespace ins::detail
     {
       std::int64_t p;
       return max_index_of<L> < (std::uint64_t{1} << 62)
-          && !mul_overflow(slot_period<L>, static_cast<std::int64_t>(abs_den(notch64<L>.Den)), &p);
+          && !mul_overflow(slot_period<L>, notch_int64<L>.Q, &p);
     }
   }();
   template <insidable L>
@@ -8173,7 +8244,7 @@ namespace ins::detail
         // Index storage on a notch 1/K grid over an integer Lower:
         // the offset (rhs − Lower)·K of an in-range rhs is below 2^64,
         // so uint64 steps, exact modulo 2^64, give it exactly.
-        constexpr std::uint64_t K{static_cast<std::uint64_t>(abs_den(notch64<L>.Den))};
+        constexpr std::uint64_t K{abs_den(notch64<L>.Den)};
         constexpr std::uint64_t lo{lower64<L>.Den < 0 ? std::uint64_t{0} - lower64<L>.Num
                                                       : lower64<L>.Num}; // Lower mod 2^64
         lhs = L::from_raw(raw_from_offset<L>((static_cast<std::uint64_t>(rhs) - lo) * K), unsafe);
@@ -8302,7 +8373,7 @@ namespace ins::detail
                     lhs = L::from_raw(endpoint_raw<L>(std::cmp_less(rhs, lower_int64<L>)), unsafe);
                   else
                   {
-                    constexpr std::int64_t k = abs_den(notch64<L>.Den);
+                    constexpr std::int64_t k{notch_int64<L>.Q};
                     const std::int64_t     t{static_cast<std::int64_t>(fold_slot<L>(
                       static_cast<std::int64_t>(static_cast<std::uint64_t>(rhs)
                                                 - static_cast<std::uint64_t>(lower_int64<L>))))};
@@ -8344,7 +8415,7 @@ namespace ins::detail
       return std::uint64_t{0};
     else
     {
-      constexpr std::int64_t  K = abs_den(notch64<L>.Den);
+      constexpr std::int64_t  K{notch_int64<L>.Q};
       constexpr std::uint64_t two_km = []
       {
         // 2·K·M with saturation (M bounds |value| and the offset span),
@@ -8681,8 +8752,8 @@ namespace ins::detail
         // Oversized denominators fall through (the max_den guard keeps every product inside int64).
         if constexpr (q_format_fits<L> && notched<L>)
         {
-          constexpr std::int64_t  K = abs_den(notch64<L>.Den);
-          constexpr std::int64_t  Lo{lower_int64<L>};
+          constexpr std::int64_t  K      {notch_int64<L>.Q};
+          constexpr std::int64_t  Lo     {lower_int64<L>};
           constexpr std::uint64_t max_den{q_format_max_den<L>};
 
           const std::uint64_t aden{abs_den(rv.Den)};
@@ -9223,7 +9294,7 @@ namespace ins::detail
           return;
         }
         const rational rat{*mapped};
-        std::uint64_t  ad{static_cast<std::uint64_t>(abs_den(rat.Den))};
+        std::uint64_t  ad{abs_den(rat.Den)};
         // Round the L offset to a notch index in value space through round_quotient (as the scalar path does),
         // honouring every rounding mode.
         std::uint64_t q{round_quotient<L, P>(rat.Num, ad)};
@@ -10404,10 +10475,9 @@ namespace ins::detail
     {
       // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of value indices, reduced once,
       // with no operand decoded and no checked divide.
-      constexpr std::int64_t a{static_cast<std::int64_t>(notch64<L>.Num)
-                               * static_cast<std::int64_t>(abs_den(notch64<R>.Den))};
-      constexpr std::int64_t b{static_cast<std::int64_t>(notch64<R>.Num)
-                               * static_cast<std::int64_t>(abs_den(notch64<L>.Den))};
+      static_assert(notch_int64<L>.Fits && notch_int64<R>.Fits);
+      constexpr std::int64_t a{notch_int64<L>.P * notch_int64<R>.Q};
+      constexpr std::int64_t b{notch_int64<R>.P * notch_int64<L>.Q};
       const std::int64_t d{value_index<std::int64_t>(rhs) * b};
       if constexpr (!zero_unchecked)
         if (d == 0)
@@ -11342,7 +11412,7 @@ namespace ins
 
     // Conversions:
     // - operator rational: implicit, lossless and exact.
-    // - operator double: explicit, the value rounded once to a double, as to<double>().
+    // - no operator double: a double is to<double>(), rounded once (static_cast<double>(x) names it).
     // - to<T>(): T where the grid proves the conversion total (no check is left),
     //   else expected<T, error> (overflow, rounding_error).
     // - to<T>(b): the free-function form, for generic code.
@@ -11372,7 +11442,11 @@ namespace ins
     operator T() const = delete ("inside: an index converts to the builtin integers that hold its whole grid - "
                                  "not to a smaller one, bool, a character or a floating type (x.to<T>(), x != 0)");
 
-    constexpr explicit operator double() const { return detail::as_double(*this); }
+    // A floating point is read with to<double>(), which names its rounding.
+    template <std::floating_point T>
+      requires(!detail::index_converts<inside, std::size_t>)
+    explicit operator T() const = delete (
+      "inside: read a floating point with x.to<double>() - the value rounded once");
 
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).
@@ -11465,7 +11539,7 @@ namespace ins
       {
         // Notch 1/K over an integer Lower: the value is n/K with n in int64 and K a constant,
         // so one division by a constant rounds it (no fraction to reduce).
-        constexpr std::int64_t K = detail::abs_den(detail::notch64<inside>.Den);
+        constexpr std::int64_t K{detail::notch_int64<inside>.Q};
         const std::int64_t     n{detail::raw_int64(*this) + detail::lower_int64<inside> * K};
         std::int64_t           t{n / K};
         if (const std::int64_t r{n % K}; r != 0)
@@ -11704,18 +11778,18 @@ namespace ins
       if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
         return {detail::to_value(*this), 1};
       else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>
-                         && std::has_single_bit(detail::abs_den(detail::notch64<inside>.Den)))
+                         && detail::notch_int64<inside>.QShift >= 0)
       {
-        constexpr std::int64_t nd = detail::abs_den(detail::notch64<inside>.Den);
+        constexpr std::int64_t nd {detail::notch_int64<inside>.Q};
         const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<inside> * nd};
         const int s{std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(nd))}; // 0 → 0/1
         return {num >> s, nd >> s};
       }
       else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>)
       {
-        constexpr std::int64_t nd = detail::abs_den(detail::notch64<inside>.Den);
+        constexpr std::int64_t nd {detail::notch_int64<inside>.Q};
         const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<inside> * nd};
-        const std::int64_t     g{std::gcd(num, nd)};
+        const std::int64_t     g  {std::gcd(num, nd)};
         return {num / g, nd / g};
       }
       else if constexpr (detail::lattice_codec<inside>.Ok)
@@ -12536,7 +12610,7 @@ namespace ins
       else
       {
         constexpr std::uint64_t notch_num{notch64<B>.Num};
-        constexpr std::uint64_t notch_den{static_cast<std::uint64_t>(notch64<B>.Den)}; // Notch > 0
+        constexpr std::uint64_t notch_den{abs_den(notch64<B>.Den)};
         constexpr std::uint64_t index_mag{lower_index64<B>.Num > upper_index64<B>.Num ? lower_index64<B>.Num
                                                                                     : upper_index64<B>.Num};
         // The largest |c| of A: |min| = max + 1 for a signed type.
@@ -12566,10 +12640,12 @@ namespace ins
       else if constexpr (integer_value_storage<B> && values_fit_int64<B> && std::unsigned_integral<A>)
         return cmp(raw_int64(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
       else if constexpr (scalar_index_cmp_fits<B, A>)
+      {
         // (An index raw: the value index is raw + Lower/Notch.)
-        return cmp(
-          (signed_numerator(lower_index64<B>) + raw_int64(lhs)) * static_cast<std::int64_t>(notch64<B>.Num),
-          static_cast<std::int64_t>(rhs) * notch64<B>.Den);
+        static_assert(notch_int64<B>.Fits);
+        return cmp((signed_numerator(lower_index64<B>) + raw_int64(lhs)) * notch_int64<B>.P,
+                   static_cast<std::int64_t>(rhs) * notch_int64<B>.Q);
+      }
       else
         return cmp(as_rational(lhs), rational{rhs});
     }
@@ -12962,11 +13038,12 @@ namespace ins
       else
         return anchored<X> && value_indices_fit_int64<X> && lower_index_fits_int64<X>;
     }();
-    // A notch 1/2^k, k ≥ 1 (an integer notch is no binary fraction: the lattice path divides it once).
+    // A notch 1/2^k, 1 ≤ k ≤ 63 (an integer notch is no binary fraction: the lattice path divides it once;
+    // a denominator past 64 bits is not read).
     template <insidable X>
     inline constexpr bool binary_notch =
-      notched<X> && grid_int{1} < grid_denominator(notch_of<X>)
-      && std::has_single_bit(static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_denominator(notch_of<X>))));
+      notched<X> && grid_int{1} < grid_denominator(notch_of<X>) && grid_denominator(notch_of<X>).bit_width() <= 64
+      && std::has_single_bit(static_cast<std::uint64_t>(grid_denominator(notch_of<X>)));
     template <insidable Out, insidable A, insidable B, bool Div>
     struct lattice_op
     {
@@ -14488,15 +14565,18 @@ namespace ins
       int           fives{0};
       while (rest != 1 && rest % 5 == 0)
         rest /= 5, ++fives;
-      char  buf[64];
-      char* p{buf};
+      // Each to_chars gets the 20 characters a uint64 takes at most (18446744073709551615), so the writes after
+      // it stay provably inside buf: -num/den is at most 42 characters.
+      constexpr std::ptrdiff_t u64_digits{20};
+      char                     buf[64];
+      char*                    p{buf};
       if (neg && num != 0)
         *p++ = '-';
       if (rest != 1) // num/den
       {
-        p    = std::to_chars(p, buf + sizeof buf, num).ptr;
+        p    = std::to_chars(p, p + u64_digits, num).ptr;
         *p++ = '/';
-        p    = std::to_chars(p, buf + sizeof buf, den).ptr;
+        p    = std::to_chars(p, p + u64_digits, den).ptr;
         return std::string(buf, p);
       }
       int digits{twos > fives ? twos : fives};
@@ -14504,7 +14584,7 @@ namespace ins
         digits = min_digits;
       if (digits > 19)
         return fraction_to_string<1>(neg, wide_uint<1>{num}, wide_uint<1>{den}, min_digits);
-      p = std::to_chars(p, buf + sizeof buf, num / den).ptr;
+      p = std::to_chars(p, p + u64_digits, num / den).ptr;
       if (digits != 0)
       {
         std::uint64_t pow{1};
@@ -14736,7 +14816,7 @@ namespace ins
     template <std::size_t K>
     std::string big_fraction_to_string(const big_rational& r)
     {
-      const auto n{static_cast<wide_uint<K>>(r.Num)}; // two's complement
+      const auto n{r.Num.truncate_to<wide_uint<K>>()}; // two's complement
       return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den), 0);
     }
   } // namespace detail
@@ -14778,10 +14858,10 @@ namespace ins
       else
       {
         // A notch 1/K: the integer part, then the fraction's decimals.
-        constexpr std::int64_t K = abs_den(notch64<B>.Den);
+        constexpr std::int64_t K  {notch_int64<B>.Q};
         const std::int64_t     num{raw_int64(b) + lower_int64<B> * K};
-        const std::uint64_t    a{num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num)
-                                         : static_cast<std::uint64_t>(num)};
+        const std::uint64_t    a  {num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num)
+                                 : static_cast<std::uint64_t>(num)};
         if (num < 0)
           *p++ = '-';
         std::uint64_t frac;
@@ -16857,8 +16937,8 @@ namespace ins::math::detail::engine
   template <insidable In>
   constexpr std::size_t offset_of(const In& x) noexcept
   {
-    return static_cast<std::size_t>(static_cast<std::uint64_t>(value_index<std::int64_t>(x))
-                                    - static_cast<std::uint64_t>(slot_base<In>));
+    return static_cast<std::uint64_t>(value_index<std::int64_t>(x))
+           - slot_base<In>.template truncate_to<std::uint64_t>();
   }
 
   // T's grid point at slot offset k (a notched, integer raw).
@@ -16884,7 +16964,7 @@ namespace ins::math::detail::engine
   template <insidable Out, insidable In, int W0, auto MakeCore>
   struct result_table
   {
-    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<std::int64_t>(grid_of<In>.step_count())) + 1;
+    static constexpr std::size_t N = static_cast<std::size_t>(grid_of<In>.step_count()) + 1;
     struct data
     {
       std::array<raw_t<Out>, N> Raw;
@@ -19570,7 +19650,7 @@ namespace ins::math
       }
       else
         return R::from_raw(raw_cast<R>((static_cast<std::uint64_t>(v) - static_cast<std::uint64_t>(lower_int64<R>))
-                                       / static_cast<std::uint64_t>(notch64<R>.Num)),
+                                       / notch64<R>.Num),
                            unsafe);
     }
 
@@ -23756,14 +23836,15 @@ namespace ins::math
         return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
       else if constexpr (int_direct<Out, integer_result_t<In, M>, In>)
       {
-        constexpr std::int64_t p{static_cast<std::int64_t>(notch64<In>.Num)};
-        constexpr std::int64_t q{static_cast<std::int64_t>(abs_den(notch64<In>.Den))};
+        static_assert(notch_int64<In>.Fits);
+        constexpr std::int64_t p{notch_int64<In>.P};
+        constexpr std::int64_t q{notch_int64<In>.Q};
         const std::int64_t     j{value_index<std::int64_t>(x) * p};
-        if constexpr (p == 1 && std::has_single_bit(static_cast<std::uint64_t>(q)) && M != round_mode::half_even)
+        if constexpr (p == 1 && notch_int64<In>.QShift >= 0 && M != round_mode::half_even)
         {
           // A notch 2^-k: shifts. floor is the arithmetic shift, ceil its mirror;
           // nearest and trunc shift the magnitude (half away from 0).
-          constexpr int k{std::countr_zero(static_cast<std::uint64_t>(q))};
+          constexpr int k{notch_int64<In>.QShift};
           if constexpr (M == round_mode::floor)
             return from_value_index<Out>(j >> k);
           else if constexpr (M == round_mode::ceil)
@@ -24154,9 +24235,9 @@ namespace ins::math
 //
 // Also here:
 //   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
-//   kind_cast, value_cast                    kinds and representations
-//   unit_def, kind_def, origin_def,     units, kinds, origins and
-//   base_dimension, unit_tag / kind_tag / origin_tag   dimensions of your own
+//   kind_cast, value_cast                        kinds and representations
+//   unit<>, base_unit<>, kind<>, origin<>,       units, kinds, origins and
+//   base_dimension<>                             dimensions of your own
 //   basis_vector                                 a basis vector of a geometric
 //                                                algebra: you state its square
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make(v, u)
@@ -24179,7 +24260,7 @@ namespace ins::math
 // ======================================================================
 // The units machinery without the catalog:
 // dimensions, magnitudes, kinds, units, references, quantity and quantity_point,
-// and the tools for units of your own (base_dimension, kind_def, unit_def, origin_def).
+// and the tools for units of your own (unit, base_unit, kind, origin, base_dimension).
 // <inside/units.hpp> adds the catalog (units/systems.hpp).
 
 
@@ -24512,14 +24593,22 @@ namespace ins
     grid_number Ratio{1};
     std::int8_t Pi{0};
 
+    // A power of π past ±127 is an error, not a wrap (as a dimension exponent is).
+    static consteval std::int8_t pi_exponent(int e)
+    {
+      if (e < -127 || e > 127)
+        ins::detail::constexpr_error<"units: a pi exponent past 127">();
+      return static_cast<std::int8_t>(e);
+    }
+
     friend constexpr bool operator==(const magnitude&, const magnitude&) = default;
     friend consteval magnitude operator*(const magnitude& a, const magnitude& b)
     {
-      return {a.Ratio * b.Ratio, static_cast<std::int8_t>(a.Pi + b.Pi)};
+      return {a.Ratio * b.Ratio, pi_exponent(a.Pi + b.Pi)};
     }
     friend consteval magnitude operator/(const magnitude& a, const magnitude& b)
     {
-      return {a.Ratio / b.Ratio, static_cast<std::int8_t>(a.Pi - b.Pi)};
+      return {a.Ratio / b.Ratio, pi_exponent(a.Pi - b.Pi)};
     }
     consteval magnitude pow(int n) const
     {
@@ -25739,9 +25828,19 @@ namespace ins
     template <unit_value From, unit_value To>
     inline constexpr bool exact_rescale_v = exact_factor_v<conversion_factor<From, To>>;
 
+    // A quantity of From converts implicitly to To: an exact factor, one dimension, and a kind that converts.
+    // A quantity of its own reference skips the test, in a branch: in an && chain the consteval calls of every operand
+    // run when the expression is formed, whatever the first decides.
     template <reference From, reference To>
-    inline constexpr bool implicit_v =
-      exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
+    consteval bool implicit_conversion()
+    {
+      if constexpr (From == To)
+        return true;
+      else
+        return exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
+    }
+    template <reference From, reference To>
+    inline constexpr bool implicit_v = implicit_conversion<From, To>();
     // A quantity of From on V that converts implicitly to To; one of R that converts to unit U (q.in<U>()).
     template <reference From, reference To, class V>
     concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V>;
@@ -25749,10 +25848,18 @@ namespace ins
     concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
 
     // A dimensionless quantity that is a plain number: no distinct kind (an angle), and an exact factor to unit one.
+    // (A branch: a quantity type names number_like_v<R> in a declaration, so every quantity forms it, and the factor
+    // to one exists only for dimension one.)
     template <reference R>
-    inline constexpr bool number_like_v =
-      dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit_value{}>>
-      && (!R.Kind || !kind_root(R.Kind.P)->Distinct);
+    consteval bool number_like()
+    {
+      if constexpr (!(dimension_of(R.U) == dim_one))
+        return false;
+      else
+        return exact_factor_v<conversion_factor<R.U, unit_value{}>> && (!R.Kind || !kind_root(R.Kind.P)->Distinct);
+    }
+    template <reference R>
+    inline constexpr bool number_like_v = number_like<R>();
 
     // Its number's type; void for any other quantity
     // (never forming the rescale, whose pi check would fire for an angle in degrees).
@@ -26132,6 +26239,22 @@ namespace ins
       requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
       : holder(Rep(detail::number_in_unit<R.U>(q))) {}
+    // Any other quantity names why it does not convert.
+    template <ins::reference R2, class V2>
+      requires detail::implicit_rescalable<R2, R, V2> && (!std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>)
+    quantity(const quantity<R2, V2>&) = delete ("units: the number, in this unit, may fall off this quantity's grid "
+                                                "- store it with Q{q, round_half_away} or Q{q, clamp}, or check it "
+                                                "with exact_cast<Q>(q)");
+    template <ins::reference R2, class V2>
+      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::dimension)
+    quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another dimension");
+    template <ins::reference R2, class V2>
+      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::pi)
+    quantity(const quantity<R2, V2>&) = delete (INSIDE_UNITS_WHY_PI);
+    template <ins::reference R2, class V2>
+      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::none && !detail::kind_converts(R2, R))
+    quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another kind - read it as this kind with "
+                                                "kind_cast<K>(q)");
 
     void numerical_value() const = delete ("units: a number alone has no unit - read q.numerical_value_in(si::metre)");
 
@@ -28067,6 +28190,7 @@ namespace ins
 #include <array>
 #include <cstddef>
 #include <expected>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -28182,11 +28306,14 @@ namespace ins
         return multivector<P...>{p...};
     }
 
-    // Where each blade of a sum comes from: a part of A, of B, or of both.
+    // Where each blade of a sum comes from: a part of A, of B, or of both (InA, InB), at index A in A's parts and B in
+    // B's.
     struct merge_item
     {
-      int A{-1};
-      int B{-1};
+      bool        InA{false};
+      std::size_t A{0};
+      bool        InB{false};
+      std::size_t B{0};
     };
     template <std::size_t N>
     struct merge_plan
@@ -28203,11 +28330,11 @@ namespace ins
       while (i < da.size() || j < db.size())
       {
         if (j == db.size() || (i < da.size() && blade_less(da[i], db[j])))
-          p.Items[p.Size++] = {static_cast<int>(i++), -1};
+          p.Items[p.Size++] = {.InA = true, .A = i++};
         else if (i == da.size() || blade_less(db[j], da[i]))
-          p.Items[p.Size++] = {-1, static_cast<int>(j++)};
+          p.Items[p.Size++] = {.InB = true, .B = j++};
         else
-          p.Items[p.Size++] = {static_cast<int>(i++), static_cast<int>(j++)};
+          p.Items[p.Size++] = {.InA = true, .A = i++, .InB = true, .B = j++};
       }
       return p;
     }
@@ -28231,7 +28358,7 @@ namespace ins
             []
             {
               constexpr merge_item it{plan.Items[K]};
-              if constexpr (it.A >= 0 && it.B >= 0)
+              if constexpr (it.InA && it.InB)
                 return requires(const std::tuple_element_t<it.A, PA>& x, const std::tuple_element_t<it.B, PB>& y)
                        {
                          x + y;
@@ -28261,9 +28388,9 @@ namespace ins
           [&]
           {
             constexpr merge_item it{plan.Items[K]};
-            if constexpr (it.A >= 0 && it.B >= 0)
+            if constexpr (it.InA && it.InB)
               return as_part(std::get<it.A>(pa) + std::get<it.B>(pb));
-            else if constexpr (it.A >= 0)
+            else if constexpr (it.InA)
               return std::get<it.A>(pa);
             else
               return std::get<it.B>(pb);
@@ -28408,9 +28535,9 @@ namespace ins
           [&]
           {
             constexpr merge_item it{plan.Items[K]};
-            if constexpr (it.A >= 0 && it.B >= 0)
+            if constexpr (it.InA && it.InB)
               return std::get<it.A>(pa) == std::get<it.B>(pb);
-            else if constexpr (it.A >= 0)
+            else if constexpr (it.InA)
               return part_is_zero(std::get<it.A>(pa));
             else
               return part_is_zero(std::get<it.B>(pb));
@@ -28498,15 +28625,15 @@ namespace ins
       blade_mul(x, blade_of(i));
       return x.size() + blade_of(a).size() == blade_of(i).size();
     }
-    // Where the part of type T comes from in the parts PX: its index, or -1.
+    // Where the part of type T comes from in the parts PX: its index, if PX has its blade.
     template <class T, class PX>
-    consteval int source_of()
+    consteval std::optional<std::size_t> source_of()
     {
       constexpr auto dx{dims_of<PX>()};
       for (std::size_t j = 0; j < dx.size(); ++j)
         if (blade_equal(part_dim<T>(), dx[j]))
-          return static_cast<int>(j);
-      return -1;
+          return j;
+      return std::nullopt;
     }
     // The number type of a part.
     template <class T>
@@ -28523,18 +28650,18 @@ namespace ins
     template <class T, class PX, class... Pol>
     consteval bool part_from()
     {
-      constexpr int from{source_of<T, PX>()};
-      if constexpr (from >= 0)
-        return std::constructible_from<T, const std::tuple_element_t<from, PX>&, const Pol&...>;
+      constexpr std::optional<std::size_t> from{source_of<T, PX>()};
+      if constexpr (from)
+        return std::constructible_from<T, const std::tuple_element_t<*from, PX>&, const Pol&...>;
       else
         return std::constructible_from<typename part_number<T>::type, decltype(just<0>), const Pol&...>;
     }
     template <class T, class PX>
     consteval bool part_from_implicitly()
     {
-      constexpr int from{source_of<T, PX>()};
-      if constexpr (from >= 0)
-        return std::convertible_to<const std::tuple_element_t<from, PX>&, T>;
+      constexpr std::optional<std::size_t> from{source_of<T, PX>()};
+      if constexpr (from)
+        return std::convertible_to<const std::tuple_element_t<*from, PX>&, T>;
       else
         return std::convertible_to<decltype(just<0>), typename part_number<T>::type>;
     }
@@ -28642,9 +28769,9 @@ namespace ins
           [&]
           {
             using T = Parts...[K];
-            constexpr int from{detail::source_of<T, PX>()};
-            if constexpr (from >= 0)
-              return T(std::get<from>(px), pol...);
+            constexpr std::optional<std::size_t> from{detail::source_of<T, PX>()};
+            if constexpr (from)
+              return T(std::get<*from>(px), pol...);
             else
               return detail::part_of_number<T>(just<0>, pol...);
           }()...};
@@ -30047,32 +30174,41 @@ namespace ins::detail::gaexp
   struct domain_facts
   {
     using DP = parts_t<Domain>;
-    static constexpr std::size_t ND     = std::tuple_size_v<DP>;
-    static constexpr auto        ddims  = dims_of<DP>();
-    static constexpr int         scalar = []
+    static constexpr std::size_t ND    = std::tuple_size_v<DP>;
+    static constexpr auto        ddims = dims_of<DP>();
+    // The scalar part, the part with no blade, when there is one: its index in DP.
+    static constexpr bool has_scalar = []
     {
       for (std::size_t i = 0; i < ND; ++i)
         if (!has_blade(ddims[i]))
-          return static_cast<int>(i);
-      return -1;
+          return true;
+      return false;
     }();
-    static constexpr std::size_t N    = ND - (scalar >= 0 ? 1 : 0);
+    static constexpr std::size_t scalar_index = []
+    {
+      for (std::size_t i = 0; i < ND; ++i)
+        if (!has_blade(ddims[i]))
+          return i;
+      return std::size_t{0};
+    }();
+    // The parts of y: their indices in DP.
+    static constexpr std::size_t N    = ND - (has_scalar ? 1 : 0);
     static constexpr auto        yidx = []
     {
-      std::array<int, N> r{};
-      std::size_t        j{0};
+      std::array<std::size_t, N> r{};
+      std::size_t                j{0};
       for (std::size_t i = 0; i < ND; ++i)
-        if (static_cast<int>(i) != scalar)
-          r[j++] = static_cast<int>(i);
+        if (!has_scalar || i != scalar_index)
+          r[j++] = i;
       return r;
     }();
     template <std::size_t J>
-    using ypart = std::tuple_element_t<static_cast<std::size_t>(yidx[J]), DP>;
+    using ypart = std::tuple_element_t<yidx[J], DP>;
     static constexpr auto sq = []
     {
       std::array<signed char, N> r{};
       for (std::size_t j = 0; j < N; ++j)
-        r[j] = static_cast<signed char>(blade_square(ddims[static_cast<std::size_t>(yidx[j])]));
+        r[j] = static_cast<signed char>(blade_square(ddims[yidx[j]]));
       return r;
     }();
     static constexpr bool closed = []
@@ -30080,8 +30216,8 @@ namespace ins::detail::gaexp
       for (std::size_t i = 0; i < N; ++i)
         for (std::size_t j = i + 1; j < N; ++j)
         {
-          const dimension& a{ddims[static_cast<std::size_t>(yidx[i])]};
-          const dimension& b{ddims[static_cast<std::size_t>(yidx[j])]};
+          const dimension& a{ddims[yidx[i]]};
+          const dimension& b{ddims[yidx[j]]};
           if (blade_sign(a, b) + blade_sign(b, a) != 0)
             return false;
         }
@@ -30123,10 +30259,10 @@ namespace ins::detail::gaexp
     // Each is above by at most 2^-29. (e^amax: amax ≤ 0 counts as 0.)
     static constexpr double ea = []
     {
-      if constexpr (scalar >= 0)
+      if constexpr (has_scalar)
       {
         const double hi{
-          static_cast<double>(upper_of<num_t<std::tuple_element_t<static_cast<std::size_t>(scalar), DP>>>)};
+          static_cast<double>(upper_of<num_t<std::tuple_element_t<scalar_index, DP>>>)};
         return exp_upper(hi > 0 ? hi : 0.0);
       }
       else
@@ -30147,29 +30283,36 @@ namespace ins::detail::gaexp
     }(std::make_index_sequence<N>{});
   };
 
-  // What is known about a call onto CoDomain besides: for each part of CoDomain, where its value comes from
-  // (-2 zero, -1 the scalar part e^a·C, j ≥ 0 e^a·S·yⱼ) and its sign.
+  // Where a part of CoDomain takes its value from: zero (a blade y lacks), the scalar part e^a·C, or e^a·S·yⱼ.
+  enum class part_source : unsigned char { zero, scalar, blade };
+  struct part_origin
+  {
+    part_source Kind{part_source::zero};
+    std::size_t Blade{0}; // j, for part_source::blade
+  };
+
+  // What is known about a call onto CoDomain besides: for each part of CoDomain, where its value comes from, and its
+  // sign.
   template <class Domain, class CoDomain>
   struct facts : domain_facts<Domain>
   {
     using B = domain_facts<Domain>;
-    using B::ddims, B::N, B::scalar, B::yidx;
+    using B::ddims, B::N, B::yidx;
     using typename B::DP;
     using CP = parts_t<CoDomain>;
     static constexpr std::size_t NC    = std::tuple_size_v<CP>;
     static constexpr auto        cdims = dims_of<CP>();
     static constexpr auto        src   = []
     {
-      std::array<int, NC> r{};
+      std::array<part_origin, NC> r{};
       for (std::size_t p = 0; p < NC; ++p)
       {
-        r[p] = -2;
         if (!has_blade(cdims[p]))
-          r[p] = -1;
+          r[p] = {part_source::scalar, 0};
         else
           for (std::size_t j = 0; j < N; ++j)
-            if (blade_equal(cdims[p], ddims[static_cast<std::size_t>(yidx[j])]))
-              r[p] = static_cast<int>(j);
+            if (blade_equal(cdims[p], ddims[yidx[j]]))
+              r[p] = {part_source::blade, j};
       }
       return r;
     }();
@@ -30184,9 +30327,9 @@ namespace ins::detail::gaexp
       const auto fits = []<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if (src[Q] == -2)
+        if (src[Q].Kind == part_source::zero)
           return true;
-        const double m {src[Q] == -1 ? B::scalar_bound : B::part_bound[static_cast<std::size_t>(src[Q])]};
+        const double m {src[Q].Kind == part_source::scalar ? B::scalar_bound : B::part_bound[src[Q].Blade]};
         const double lo{static_cast<double>(lower_of<O>)}, hi{static_cast<double>(upper_of<O>)};
         return m * (1 + 0x1p-30) <= std::min(-lo, hi);
       };
@@ -30196,12 +30339,12 @@ namespace ins::detail::gaexp
     {
       bool scalar_seen{false};
       for (std::size_t p = 0; p < NC; ++p)
-        scalar_seen = scalar_seen || src[p] == -1;
+        scalar_seen = scalar_seen || src[p].Kind == part_source::scalar;
       for (std::size_t j = 0; j < N; ++j)
       {
         bool seen{false};
         for (std::size_t p = 0; p < NC; ++p)
-          seen = seen || src[p] == static_cast<int>(j);
+          seen = seen || (src[p].Kind == part_source::blade && src[p].Blade == j);
         if (!seen)
           return false;
       }
@@ -30232,7 +30375,8 @@ namespace ins::detail::gaexp
     static constexpr std::size_t    EZ = 2 * N * E + 1;
     wide_rational<E>                A;
     std::array<wide_rational<E>, N> Y;
-    int                             Part; // -1: the scalar part, else j
+    bool                            Scalar; // the scalar part, else part Part of y
+    std::size_t                     Part;
     int                             Sign; // ±1 of CoDomain's part against the canonical blade
 
     // e^a·C near 1 (|x| tiny), e^a near 0 (a very negative), cos √z near 0.
@@ -30258,13 +30402,13 @@ namespace ins::detail::gaexp
     // independent over the algebraic numbers unless a = z = 0).
     constexpr eng::maybe_exact<E> exact() const
     {
-      if (Part >= 0 && eng::is_zero(Y[static_cast<std::size_t>(Part)]))
+      if (!Scalar && eng::is_zero(Y[Part]))
         return wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
       if ((!HasA || eng::is_zero(A)) && eng::is_zero(z_exact()))
       {
-        if (Part < 0)
+        if (Scalar)
           return wide_rational<E>{wide_sint<E>{1}, wide_sint<E>{1}};
-        const wide_rational<E>& y{Y[static_cast<std::size_t>(Part)]};
+        const wide_rational<E>& y{Y[Part]};
         return wide_rational<E>{Sign < 0 ? -y.Num : y.Num, y.Den};
       }
       return std::nullopt;
@@ -30350,7 +30494,7 @@ namespace ins::detail::gaexp
                    topY{::ins::detail::ldexp(1.0, MagY)};
       I            v;
       double       err;
-      if (Part < 0)
+      if (Scalar)
       {
         v   = eng::mul_q(eq, cq, S);
         err = ee * topC + ec * topE + 2;
@@ -30359,7 +30503,7 @@ namespace ins::detail::gaexp
       {
         const I      p {eng::mul_q(eq, sq, S)};
         const double ep{ee * topC + es * topE + 2};
-        const I      yq{eng::to_q<S, K>(Y[static_cast<std::size_t>(Part)])}; // within ½
+        const I      yq{eng::to_q<S, K>(Y[Part])}; // within ½
         v   = eng::mul_q(p, yq, S);
         err = ep * topY + topE * topC + 2;
       }
@@ -30782,12 +30926,12 @@ namespace ins::detail::gaexp
   template <class F, std::size_t J>
   [[gnu::always_inline]] constexpr const auto& ynum(const typename F::DP& px)
   {
-    return number_of_part(std::get<static_cast<std::size_t>(F::yidx[J])>(px));
+    return number_of_part(std::get<F::yidx[J]>(px));
   }
   template <class F>
   [[gnu::always_inline]] constexpr const auto& anum(const typename F::DP& px)
   {
-    return number_of_part(std::get<static_cast<std::size_t>(F::scalar)>(px));
+    return number_of_part(std::get<F::scalar_index>(px));
   }
 
   // CoDomain's part numbers so far and which of them are decided.
@@ -30815,8 +30959,8 @@ namespace ins::detail::gaexp
   {
     static constexpr bool a_fp = []
     {
-      if constexpr (F::scalar >= 0)
-        return max_abs<num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), typename F::DP>>> <= 700;
+      if constexpr (F::has_scalar)
+        return max_abs<num_t<std::tuple_element_t<F::scalar_index, typename F::DP>>> <= 700;
       else
         return true;
     }();
@@ -30824,7 +30968,7 @@ namespace ins::detail::gaexp
 #ifndef INSIDE_MATH_NO_FP
     static constexpr bool any_fp = []<std::size_t... P>(std::index_sequence<P...>)
     {
-      return ((part_fp<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P] != -2) || ...);
+      return ((part_fp<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P].Kind != part_source::zero) || ...);
     }(std::make_index_sequence<F::NC>{});
     static constexpr bool inputs_fp = []<std::size_t... I>(std::index_sequence<I...>)
     {
@@ -30833,7 +30977,7 @@ namespace ins::detail::gaexp
     static constexpr bool fp_ok  = eng::fp_tier_available && any_fp && inputs_fp && a_fp && lam_fp;
     static constexpr bool any_dd = []<std::size_t... P>(std::index_sequence<P...>)
     {
-      return ((part_dd<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P] != -2) || ...);
+      return ((part_dd<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P].Kind != part_source::zero) || ...);
     }(std::make_index_sequence<F::NC>{});
     static constexpr bool inputs_dd = []<std::size_t... I>(std::index_sequence<I...>)
     {
@@ -30848,7 +30992,7 @@ namespace ins::detail::gaexp
     // z exactly from the value indices: every part of y on one notch 2^-k and N·max|index|² ≤ 2^53,
     // so Σ -sqⱼ·indexⱼ² is an exact int64 and double, and z = that·2^-2k exactly (no bound, no dd sum).
     template <std::size_t J>
-    using ypart = num_t<std::tuple_element_t<static_cast<std::size_t>(F::yidx[J]), typename F::DP>>;
+    using ypart = num_t<std::tuple_element_t<F::yidx[J], typename F::DP>>;
     static constexpr bool int_z = []
     {
       if constexpr (F::N < 2)
@@ -30863,7 +31007,7 @@ namespace ins::detail::gaexp
           {
             const bool same{((notch_of<ypart<J>> == notch_of<Y0>) && ...) && eng::notch_p<Y0> == 1};
             const int  bits{std::max({eng::index_bits<ypart<J>>...})};
-            return same && 2 * bits + static_cast<int>(std::bit_width(F::N)) <= 53;
+            return same && 2 * bits + std::bit_width(F::N) <= 53;
           }
         }(std::make_index_sequence<F::N>{});
     }();
@@ -30908,7 +31052,7 @@ namespace ins::detail::gaexp
   {
     using CP = typename F::CP;
     constexpr std::size_t N{F::N};
-    constexpr bool        A{F::scalar >= 0}, X{tier_facts<F>::exact_in};
+    constexpr bool        A{F::has_scalar}, X{tier_facts<F>::exact_in};
     constexpr int         T = []<std::size_t... P>(std::index_sequence<P...>)
     {
       const int b{std::max({0, part_fp_bits<num_t<std::tuple_element_t<P, CP>>>...})};
@@ -30959,12 +31103,12 @@ namespace ins::detail::gaexp
       [&]<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if constexpr (part_fp<O> && F::src[Q] != -2)
+        if constexpr (part_fp<O> && F::src[Q].Kind != part_source::zero)
         {
           if (st.Done[Q])
             return;
           double val, b;
-          if constexpr (F::src[Q] == -1)
+          if constexpr (F::src[Q].Kind == part_source::scalar)
             val = times_e(v.C, v.bC, v.Cmax, b);
           else if constexpr (N == 1)
           {
@@ -30974,7 +31118,7 @@ namespace ins::detail::gaexp
           }
           else
           {
-            constexpr std::size_t j {static_cast<std::size_t>(F::src[Q])};
+            constexpr std::size_t j {F::src[Q].Blade};
             const double          ay{__builtin_fabs(y[j])};
             val = p * y[j];
             if constexpr (X)
@@ -30996,7 +31140,7 @@ namespace ins::detail::gaexp
   {
     using CP = typename F::CP;
     constexpr std::size_t N{F::N};
-    constexpr bool        A{F::scalar >= 0}, X{tier_facts<F>::exact_in};
+    constexpr bool        A{F::has_scalar}, X{tier_facts<F>::exact_in};
     ddk::dd               a{0, 0};
     double                ra{0};
     if constexpr (A)
@@ -31050,13 +31194,13 @@ namespace ins::detail::gaexp
       [&]<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if constexpr (part_dd<O> && F::src[Q] != -2)
+        if constexpr (part_dd<O> && F::src[Q].Kind != part_source::zero)
         {
           if (st.Done[Q])
             return;
           ddk::dd val;
           double  b;
-          if constexpr (F::src[Q] == -1)
+          if constexpr (F::src[Q].Kind == part_source::scalar)
             val = times_e(v.C, v.bC, v.Cmax, b);
           else
           {
@@ -31067,7 +31211,7 @@ namespace ins::detail::gaexp
             }
             else
             {
-              constexpr std::size_t j {static_cast<std::size_t>(F::src[Q])};
+              constexpr std::size_t j {F::src[Q].Blade};
               const double          ay{__builtin_fabs(y[j].Hi) * (1 + 0x1p-50)};
               if constexpr (X)
               {
@@ -31101,24 +31245,24 @@ namespace ins::detail::gaexp
     {
       return std::max({std::size_t{1}, eng::input_limbs<num_t<std::tuple_element_t<I, DP>>>...});
     }(std::make_index_sequence<F::ND>{});
-    constexpr bool HasA{F::scalar >= 0};
+    constexpr bool HasA{F::has_scalar};
     constexpr int  MagA = []
     {
       if constexpr (HasA)
-        return eng::in_mag<num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), DP>>>;
+        return eng::in_mag<num_t<std::tuple_element_t<F::scalar_index, DP>>>;
       else
         return 1;
     }();
     constexpr int MagY = []<std::size_t... J>(std::index_sequence<J...>)
     {
-      return std::max({1, eng::in_mag<num_t<std::tuple_element_t<static_cast<std::size_t>(F::yidx[J]), DP>>>...});
+      return std::max({1, eng::in_mag<num_t<std::tuple_element_t<F::yidx[J], DP>>>...});
     }(std::make_index_sequence<N>{});
-    constexpr int MagL{MagY + static_cast<int>(std::bit_width(N)) + 1};
+    constexpr int MagL{MagY + std::bit_width(N) + 1};
     constexpr int KE = []
     {
       if constexpr (HasA)
       {
-        using A = num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), DP>>;
+        using A = num_t<std::tuple_element_t<F::scalar_index, DP>>;
         const double hi{static_cast<double>(upper_of<A>)};
         return std::max(0, static_cast<int>(hi * 1.4427) + 1) + 2;
       }
@@ -31137,13 +31281,14 @@ namespace ins::detail::gaexp
       [&]<std::size_t Q>()
       {
         using O = num_t<std::tuple_element_t<Q, CP>>;
-        if constexpr (F::src[Q] != -2)
+        if constexpr (F::src[Q].Kind != part_source::zero)
         {
           if (!st.Done[Q])
           {
             core cq{c};
-            cq.Part = F::src[Q];
-            cq.Sign = F::osign[Q];
+            cq.Scalar = F::src[Q].Kind == part_source::scalar;
+            cq.Part   = F::src[Q].Blade;
+            cq.Sign   = F::osign[Q];
             eng::note<eng::probe::integer_run>();
             std::get<Q>(st.Out) = eng::evaluate<O, eng::start_bits<O>>(cq);
             st.Done[Q]          = true;
@@ -31191,7 +31336,7 @@ namespace ins::detail::gaexp
     for_index<NC>(
       [&]<std::size_t P>()
       {
-        if constexpr (F::src[P] == -2)
+        if constexpr (F::src[P].Kind == part_source::zero)
         {
           std::get<P>(st.Out) = num_t<std::tuple_element_t<P, CP>>(just<0>);
           st.Done[P]          = true;
@@ -31210,19 +31355,19 @@ namespace ins::detail::gaexp
         [&]<std::size_t P>()
         {
           using O = num_t<std::tuple_element_t<P, CP>>;
-          if constexpr (F::src[P] >= 0)
+          if constexpr (F::src[P].Kind == part_source::blade)
           {
-            if (ynum<F, static_cast<std::size_t>(F::src[P])>(px) == just<0>)
+            if (ynum<F, F::src[P].Blade>(px) == just<0>)
             {
               std::get<P>(st.Out) = O(just<0>);
               st.Done[P]          = true;
             }
           }
-          else if constexpr (F::src[P] == -1)
+          else if constexpr (F::src[P].Kind == part_source::scalar)
           {
             if (all_zero)
             {
-              if constexpr (F::scalar >= 0)
+              if constexpr (F::has_scalar)
               {
                 const auto& a{anum<F>(px)};
                 std::get<P>(st.Out) = ::ins::math::detail::entry::exp_fn::eval<O>(a);

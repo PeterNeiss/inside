@@ -44,7 +44,7 @@ namespace ins::detail
       return;
     numerator /= g;
     ad /= g;
-    denominator = static_cast<std::int64_t>((denominator < 0) ? std::uint64_t{0} - ad : ad);
+    denominator = with_sign(denominator < 0, ad);
   }
 
   inline constexpr void cancel_gcd(std::uint64_t& a, std::uint64_t& b)
@@ -273,7 +273,7 @@ namespace ins::detail
     const auto [mag, neg] = round_magnitude(v, m);
     if (mag > (neg ? std::uint64_t{1} << 63 : (std::uint64_t{1} << 63) - 1))
       raise(error::overflow, "rational: the rounded integer is past int64");
-    return static_cast<std::int64_t>(neg ? std::uint64_t{0} - mag : mag);
+    return with_sign(neg, mag);
   }
 
   // Kept exact as a rational, for indices that may pass int64.
@@ -496,7 +496,7 @@ namespace ins::detail
         return ret_t{rational{0}};
       rational r;
       r.Num = num;
-      r.Den = static_cast<std::int64_t>(r_neg ? std::uint64_t{0} - a_ad : a_ad);
+      r.Den = with_sign(r_neg, a_ad);
       cancel_gcd(r.Num, r.Den);
       return ret_t{r};
     }
@@ -533,8 +533,7 @@ namespace ins::detail
           {
             rational r;
             r.Num = big.Lo - small.Lo;
-            r.Den = static_cast<std::int64_t>((a_neg ? a_bigger : !a_bigger) ? std::uint64_t{0} - denominator
-                                                                             : denominator);
+            r.Den = with_sign(a_neg ? a_bigger : !a_bigger, denominator);
             cancel_gcd(r.Num, r.Den);
             return ret_t{r};
           }
@@ -625,8 +624,7 @@ namespace ins::detail
 
     // The cross-cancellations above leave gcd(numerator, denominator) == 1,
     // so rational(num, den) and its redundant cancel_gcd are skipped.
-    return ret_t{rational_from_parts(numerator,
-                                     static_cast<std::int64_t>(r_neg ? std::uint64_t{0} - denominator : denominator))};
+    return ret_t{rational_from_parts(numerator, with_sign(r_neg, denominator))};
   }
 
   // The multiplicative inverse 1 / a. a is in lowest terms (Num and |Den| coprime), so the swapped pair is too.

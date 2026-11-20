@@ -329,14 +329,22 @@ namespace ins
     grid_number Ratio{1};
     std::int8_t Pi{0};
 
+    // A power of π past ±127 is an error, not a wrap (as a dimension exponent is).
+    static consteval std::int8_t pi_exponent(int e)
+    {
+      if (e < -127 || e > 127)
+        ins::detail::constexpr_error<"units: a pi exponent past 127">();
+      return static_cast<std::int8_t>(e);
+    }
+
     friend constexpr bool operator==(const magnitude&, const magnitude&) = default;
     friend consteval magnitude operator*(const magnitude& a, const magnitude& b)
     {
-      return {a.Ratio * b.Ratio, static_cast<std::int8_t>(a.Pi + b.Pi)};
+      return {a.Ratio * b.Ratio, pi_exponent(a.Pi + b.Pi)};
     }
     friend consteval magnitude operator/(const magnitude& a, const magnitude& b)
     {
-      return {a.Ratio / b.Ratio, static_cast<std::int8_t>(a.Pi - b.Pi)};
+      return {a.Ratio / b.Ratio, pi_exponent(a.Pi - b.Pi)};
     }
     consteval magnitude pow(int n) const
     {

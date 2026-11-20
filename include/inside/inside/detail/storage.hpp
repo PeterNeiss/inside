@@ -360,7 +360,7 @@ namespace ins::detail
     requires q_format_fits<B>
   constexpr raw_t<B> q_format_encode(std::int64_t value) noexcept
   {
-    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
+    constexpr std::int64_t nd{notch_int64<B>.Q};
     return raw_cast<B>((value - lower_int64<B>) * nd);
   }
 
@@ -369,9 +369,9 @@ namespace ins::detail
     requires q_format_fits<B>
   constexpr rational q_format_decode(B b) noexcept
   {
-    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
-    const std::int64_t     n{raw_int64(b) + lower_int64<B> * nd};
-    if constexpr (std::has_single_bit(static_cast<std::uint64_t>(nd)))
+    constexpr std::int64_t nd{notch_int64<B>.Q};
+    const std::int64_t     n {raw_int64(b) + lower_int64<B> * nd};
+    if constexpr (notch_int64<B>.QShift >= 0)
     {
       // A power-of-two denominator reduces by the common trailing zeros (0 reduces to 0/1).
       const std::uint64_t m{n < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(n) : static_cast<std::uint64_t>(n)};
@@ -530,8 +530,7 @@ namespace ins::detail
     }
   }();
 
-  // Ungated double view of any inside (the public operator double() is gated on a rounding flag;
-  // this is always available).
+  // The double of any inside, rounded once (what to<double>() returns).
   // Everything but index storage holds the value verbatim; an index decodes through the grid.
   template <insidable B>
   [[nodiscard]] constexpr double as_double(const B& b) noexcept
@@ -579,7 +578,7 @@ namespace ins::detail
   template <insidable B>
   inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
   template <insidable B>
-  inline constexpr bool lower_index_odd = (static_cast<std::uint64_t>(lower_index_wide<B>) & 1) != 0;
+  inline constexpr bool lower_index_odd = (lower_index_wide<B>.template truncate_to<std::uint64_t>() & 1) != 0;
 
   // A double onto a lattice whose values times K stay below 2^51 (2^62 for a power-of-two K),
   // with K, S, M the Q-format's K, 1, Lower·K or the lattice codec's:
@@ -602,7 +601,7 @@ namespace ins::detail
       std::int64_t k, sv, m;
       if constexpr (q_format_fits<L>)
       {
-        k  = static_cast<std::int64_t>(abs_den(notch64<L>.Den));
+        k  = notch_int64<L>.Q;
         sv = 1;
         m  = lower_int64<L> * k;
       }

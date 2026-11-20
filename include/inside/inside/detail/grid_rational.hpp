@@ -90,6 +90,8 @@ namespace ins
       {
         Num = b.Num.Small;
         const std::int64_t d{static_cast<std::int64_t>(b.Den.Small)};
+        // A denominator is positive: the optimizer then knows Den != 0 here, so big() never reads Big (null).
+        [[assume(d > 0)]];
         Den = b.Num.negative() ? -d : d;
         return;
       }

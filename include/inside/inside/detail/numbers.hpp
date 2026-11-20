@@ -70,6 +70,12 @@ namespace ins
     {
       return (value >= 0) ? static_cast<std::uint64_t>(value) : std::uint64_t{0} - static_cast<std::uint64_t>(value);
     }
+    // The int64 of a sign and a magnitude (at most 2^63, and 2^63 only when negative): taken modulo 2^64,
+    // so -2^63 needs no special case.
+    [[nodiscard]] constexpr std::int64_t with_sign(bool negative, std::uint64_t magnitude) noexcept
+    {
+      return static_cast<std::int64_t>(negative ? std::uint64_t{0} - magnitude : magnitude);
+    }
   } // namespace detail
 } // namespace ins
 

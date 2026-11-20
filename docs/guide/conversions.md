@@ -41,7 +41,7 @@ conversion_loses<pct>(150);       // true: either of the two
 |---|---|
 | `x.to<T>()` | a `T` where it cannot fail (every value of the grid is an integer that fits `T`); else a `std::expected<T, error>`: `overflow` when it does not fit (a negative value into an unsigned type too), `rounding_error` for a fraction |
 | `x.to<int, round_floor>()` | the same, rounding a fraction by the given mode: a plain `int` when the grid fits |
-| `double(x)`, `x.to<double>()` | a `double`, rounded once from the exact value |
+| `x.to<double>()` | a `double`, rounded once from the exact value (there is no `double(x)`) |
 | `x.numerator()`, `x.denominator()` | the exact value in lowest terms, as insides on the integers: `3` and `16` for 0.1875 (`.to<int>()` reads them) |
 | `x.step()` | the count of notches above Lower, a `step_t<T>`; `T::from_step(i)` goes back |
 

@@ -741,8 +741,8 @@ namespace ins::math::detail::engine
   template <insidable In>
   constexpr std::size_t offset_of(const In& x) noexcept
   {
-    return static_cast<std::size_t>(static_cast<std::uint64_t>(value_index<std::int64_t>(x))
-                                    - static_cast<std::uint64_t>(slot_base<In>));
+    return static_cast<std::uint64_t>(value_index<std::int64_t>(x))
+           - slot_base<In>.template truncate_to<std::uint64_t>();
   }
 
   // T's grid point at slot offset k (a notched, integer raw).
@@ -768,7 +768,7 @@ namespace ins::math::detail::engine
   template <insidable Out, insidable In, int W0, auto MakeCore>
   struct result_table
   {
-    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<std::int64_t>(grid_of<In>.step_count())) + 1;
+    static constexpr std::size_t N = static_cast<std::size_t>(grid_of<In>.step_count()) + 1;
     struct data
     {
       std::array<raw_t<Out>, N> Raw;

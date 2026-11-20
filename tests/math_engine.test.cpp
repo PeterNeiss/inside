@@ -185,9 +185,9 @@ int check_rounding(Fn fn, Ref ref, int stride = 1) {
     const auto     count      = static_cast<long long>(grid_of<In>.step_count());
     for (long long i = 0; i <= count; i += stride) {
         const In x    = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)), unsafe);
-        const ld xv   = static_cast<ld>(static_cast<double>(x));
+        const ld xv   = static_cast<ld>(to<double>(x));
         const ld want = ref(xv);
-        const ld got  = static_cast<ld>(static_cast<double>(fn(x)));
+        const ld got  = static_cast<ld>(to<double>(fn(x)));
         const ld tol  = 1e-15L * (std::fabs(want) > 1 ? std::fabs(want) : 1);
         ld       k    = want / n;
         if (floor_mode) {
@@ -330,9 +330,9 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
             const sym4 y = test::store<sym4>(i / 8.0), x = test::store<sym4>(j / 8.0);
             const ld   a = std::atan2(static_cast<ld>(i) / 8, static_cast<ld>(j) / 8);
             const ld   h = std::hypot(static_cast<ld>(i) / 8, static_cast<ld>(j) / 8);
-            if (std::fabs(static_cast<double>(am::atan2<out20>(y, x)) - a) > n / 2)
+            if (std::fabs(to<double>(am::atan2<out20>(y, x)) - a) > n / 2)
                 ++bad;
-            if (std::fabs(static_cast<double>(am::hypot<out20>(x, y)) - h) > n / 2)
+            if (std::fabs(to<double>(am::hypot<out20>(x, y)) - h) > n / 2)
                 ++bad;
         }
     EXPECT_EQ(bad, 0);
@@ -351,7 +351,7 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
             const ld frac = want / n - std::floor(want / n);
             if (std::fabs(frac - 0.5L) * n < 1e-15L * want)
                 continue;
-            if (std::fabs(static_cast<double>(*r) - want) > n / 2)
+            if (std::fabs(to<double>(*r) - want) > n / 2)
                 ++bad;
         }
     EXPECT_EQ(bad, 0);
@@ -609,7 +609,7 @@ int tier_mismatches(Fn fn) {
         const In  x       = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)), unsafe);
         const Out integer = engine::evaluate<Out, engine::start_bits<Out>>(Core{engine::exact_input(x)});
         if (!(fn(x).raw() == integer.raw()) && bad++ < 3)
-            ADD_FAILURE() << "x = " << static_cast<double>(x);
+            ADD_FAILURE() << "x = " << to<double>(x);
     }
     return bad;
 }
@@ -1057,9 +1057,9 @@ double dd_worst_ratio(F kernel) {
         const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)), unsafe);
         const auto    a     = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref   = ddk::of_fixed(a.Value, a.Scale);
-        const ddk::dd v     = kernel(ddk::dd{static_cast<double>(x), 0});
+        const ddk::dd v     = kernel(ddk::dd{to<double>(x), 0});
         const double  err   = std::fabs(ddk::sub(v, ref).Hi);
-        const double  xd    = std::fabs(static_cast<double>(x));
+        const double  xd    = std::fabs(to<double>(x));
         const double  bound = engine::dd_eval_bound(xd, ref.Hi);
         worst               = std::max(worst, err / bound);
     }
@@ -1259,7 +1259,7 @@ double fp_worst_ratio(F kernel) {
         const auto    a     = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref   = ddk::of_fixed(a.Value, a.Scale);
         double        bound = 0;
-        const double  v     = kernel(static_cast<double>(x), bound);
+        const double  v     = kernel(to<double>(x), bound);
         const double  err   = std::fabs(ddk::sub(ddk::dd{v, 0}, ref).Hi);
         if (err > 0)
             worst = std::max(worst, err / bound);
@@ -1354,7 +1354,7 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
                 const expo e = expo::from_raw(detail::raw_from_offset<expo>(j), unsafe);
                 const auto a = core{engine::exact_input(b), engine::exact_input(e)}.template run<150>();
                 double     v, bound, y;
-                if (!fpk::pow_k<T>::pow(static_cast<double>(b), static_cast<double>(e), v, bound, y))
+                if (!fpk::pow_k<T>::pow(to<double>(b), to<double>(e), v, bound, y))
                     continue;
                 worst =
                     std::max(worst, std::fabs(ddk::sub(ddk::dd{v, 0}, ddk::of_fixed(a.Value, a.Scale)).Hi) / bound);
@@ -1381,7 +1381,7 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
                     engine::atan2_core<engine::input_limbs<sq>>{engine::exact_input(y), engine::exact_input(x)}
                         .template run<150>();
                 double       bound = 0;
-                const double v     = fpk::atan_k<T>::atan2(static_cast<double>(y), static_cast<double>(x), bound);
+                const double v     = fpk::atan_k<T>::atan2(to<double>(y), to<double>(x), bound);
                 worst =
                     std::max(worst, std::fabs(ddk::sub(ddk::dd{v, 0}, ddk::of_fixed(a.Value, a.Scale)).Hi) / bound);
             }

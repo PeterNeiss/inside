@@ -477,10 +477,9 @@ namespace ins::detail
     {
       // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of value indices, reduced once,
       // with no operand decoded and no checked divide.
-      constexpr std::int64_t a{static_cast<std::int64_t>(notch64<L>.Num)
-                               * static_cast<std::int64_t>(abs_den(notch64<R>.Den))};
-      constexpr std::int64_t b{static_cast<std::int64_t>(notch64<R>.Num)
-                               * static_cast<std::int64_t>(abs_den(notch64<L>.Den))};
+      static_assert(notch_int64<L>.Fits && notch_int64<R>.Fits);
+      constexpr std::int64_t a{notch_int64<L>.P * notch_int64<R>.Q};
+      constexpr std::int64_t b{notch_int64<R>.P * notch_int64<L>.Q};
       const std::int64_t d{value_index<std::int64_t>(rhs) * b};
       if constexpr (!zero_unchecked)
         if (d == 0)
