@@ -24,9 +24,9 @@
 //
 // Also here:
 //   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
-//   kind_cast, value_cast                    kinds and representations
-//   unit_def, kind_def, origin_def,     units, kinds, origins and
-//   base_dimension, unit_tag / kind_tag / origin_tag   dimensions of your own
+//   kind_cast, value_cast                        kinds and representations
+//   unit<>, base_unit<>, kind<>, origin<>,       units, kinds, origins and
+//   base_dimension<>                             dimensions of your own
 //   basis_vector                                 a basis vector of a geometric
 //                                                algebra: you state its square
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make(v, u)
