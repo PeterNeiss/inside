@@ -46,21 +46,33 @@ bit is checked. (The definitions are in `include/inside/inside/policy_flag.hpp`.
 
 ## Decoding a quantity
 
-GCC prints a quantity's reference as the structure behind it:
+GCC prints a quantity's reference as the structure behind it. A quantity in
+km:
 
 ```text
-quantity<reference{kind_ref{(& kind_holder<symbol_text{"length", 6}, …>::value), true}, true, recipe{…},
-                   unit_value{unit_atom [6]{unit_atom{(& definition<unit_def, symbol_text{"m", 1}, …>::value), 3, 1}},
-                              1, magnitude{grid_number{1, 1, 0}, 0}}},
+quantity<reference{kind_ref{(& isq::length_def), true}, true, recipe{kind_factor [6](), 0},
+                   unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 3, 1}}, 1,
+                              magnitude{grid_number{1, 1, 0}, 0}}},
          inside<…>>
 ```
 
 | Part | Means |
 |---|---|
-| `kind_ref{(& kind_holder<symbol_text{"length", 6}, …>::value), true}` | the quantity kind: `isq::length` |
-| `unit_atom{(& definition<unit_def, symbol_text{"m", 1}, …>::value), 3, 1}` | a named unit (`m`, and after it what it is defined by), its decimal prefix as a power of 10 (3: kilo), and its exponent (1) |
+| `kind_ref{(& isq::length_def), true}` | the quantity kind, `isq::length`, by its definition object |
+| `unit_atom{(& si::metre_def), 3, 1}` | a named unit (`si::metre`, by its definition object), its decimal prefix as a power of 10 (3: kilo), and its exponent (1) |
 | `magnitude{grid_number{1, 1, 0}, 0}` | the unit's extra factor as a grid number and a power of π: here 1·π⁰ |
 | `inside<…>` | the number, decoded as above |
+
+A unit or kind of your own declared in one line is spelled by its content
+instead: `(& definition<unit_def, symbol_text{"ftm", 3}, …>::value)`, with
+what it is defined by, and `(& kind_holder<symbol_text{"depth", 5}, …>::value)`.
+Declare it as a named definition, as the catalog does, and it prints by name
+([units of your own](../guide/units.md#units-of-your-own)):
+
+```cpp
+inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+inline constexpr auto     fathom = defined_by<fathom_def>;   // unit_atom{(& fathom_def), 0, 1}
+```
 
 ## Values in the message
 

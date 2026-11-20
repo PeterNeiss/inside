@@ -201,6 +201,26 @@ inline constexpr auto decibel = unit<"dB", one, {.kind = level}>;
 so (`just<1, 180> * pi * si::radian` is the degree), and `pi * q` is the
 quantity `q` in a unit scaled by π.
 
+### Named definitions: short type names
+
+A one-line entry is spelled by its content wherever its type is printed: in
+diagnostics, and in the symbols of functions that take its quantities. The
+catalog instead declares each entry as a named definition object and its
+name, and diagnostics spell `si::volt` as `(& ins::si::volt_def)`. Yours can
+be declared the same way; `unit_def`, `kind_def`, `origin_def` and
+`basis_vector_def` take the arguments of `unit<…>`, `kind<…>`, `origin<…>`
+and `basis_vector<…>`:
+
+```cpp
+inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+inline constexpr auto     fathom = defined_by<fathom_def>;
+```
+
+A quantity in fathoms then prints in about 390 characters instead of 700, and
+one in a base unit of your own (a named kind and unit) in 380 instead of
+1300 (`tools/symbol_lengths.sh`). In a header, declare the definition
+`inline constexpr`, so that every translation unit has the same one.
+
 ### Base dimensions of your own
 
 Every base dimension is a `base_dimension<"name">`, and a dimension holds
@@ -208,7 +228,8 @@ any number of them. The catalog declares the seven SI ones that way
 (`isq::length` is `kind<"length", base_dimension<"length">>`), and one of
 yours is declared the same way. Its base quantity and units follow as usual.
 A base dimension is its name, so `base_dimension<"length">` is the SI one, and
-`base_unit<"m", "length">` is `si::metre`.
+`base_unit<"m", "length">` equals `si::metre`: it converts, but is another
+type, since the catalog's metre is a named definition (below).
 Money then never adds to a length or a plain number, EUR/kg is a dimension of
 its own, and EUR + ct runs in ct. The same shape gives hit points, pixels,
 packets, gas, or ADC counts. Two currencies whose rate changes are two base
@@ -236,9 +257,12 @@ inline constexpr auto         e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
 
 ### Identity and limits
 
-An entry is identified by its content: a base dimension by its name, a kind by its name,
+Entries compare by content: a base dimension by its name, a kind by its name,
 dimension, recipe, kind boundary and parent chain; a unit by its symbols,
 dimension, magnitude, kind and origin; a basis vector also by its square. A
+one-line entry is also one type per content. A named definition, the
+catalog's or one of yours with `defined_by` (below), is one type per object:
+two with equal content compare equal and convert, but are different types. A
 unit holds at most 6 named units, a
 recipe at most 6 kinds, and an exponent stays within ±127; past that is a
 compile error.
@@ -318,14 +342,14 @@ translation units (best of three). On the maintainer's machine:
 
 | Compiler | inside | units.hpp | 200 inside expressions | as quantities |
 |---|---:|---:|---:|---:|
-| GCC 16, C++26 | 0.56 s | 1.08 s | 4.29 s | 7.70 s |
+| GCC 16, C++26 | 0.59 s | 1.09 s | 4.58 s | 7.71 s |
 
 The header adds about 0.5 s; printing (`units/io.hpp`, through
 `inside/io.hpp`) adds another 0.4 s. Units of your own need only
 `units/core.hpp`, without the catalog, which saves about 0.4 s of it: the
 catalog interns the dimension of each of its kinds and units. Each of the 200
 expressions uses its own grid, so most of the time is inside's arithmetic on
-those grids; units add about 17 ms per expression.
+those grids; units add about 16 ms per expression.
 
 ## Differences from mp-units
 
