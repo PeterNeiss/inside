@@ -153,15 +153,18 @@ namespace ins
       int           fives{0};
       while (rest != 1 && rest % 5 == 0)
         rest /= 5, ++fives;
-      char  buf[64];
-      char* p{buf};
+      // Each to_chars gets the 20 characters a uint64 takes at most (18446744073709551615), so the writes after
+      // it stay provably inside buf: -num/den is at most 42 characters.
+      constexpr std::ptrdiff_t u64_digits{20};
+      char                     buf[64];
+      char*                    p{buf};
       if (neg && num != 0)
         *p++ = '-';
       if (rest != 1) // num/den
       {
-        p    = std::to_chars(p, buf + sizeof buf, num).ptr;
+        p    = std::to_chars(p, p + u64_digits, num).ptr;
         *p++ = '/';
-        p    = std::to_chars(p, buf + sizeof buf, den).ptr;
+        p    = std::to_chars(p, p + u64_digits, den).ptr;
         return std::string(buf, p);
       }
       int digits{twos > fives ? twos : fives};
@@ -169,7 +172,7 @@ namespace ins
         digits = min_digits;
       if (digits > 19)
         return fraction_to_string<1>(neg, wide_uint<1>{num}, wide_uint<1>{den}, min_digits);
-      p = std::to_chars(p, buf + sizeof buf, num / den).ptr;
+      p = std::to_chars(p, p + u64_digits, num / den).ptr;
       if (digits != 0)
       {
         std::uint64_t pow{1};
