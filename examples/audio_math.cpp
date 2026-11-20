@@ -12,6 +12,13 @@
 
 using namespace ins;
 
+namespace
+{
+  inline constexpr auto level_kind = kind<"level", isq::dimensionless, {.distinct = true}>;
+  inline constexpr auto oct        = unit<"oct", one, {.kind = level_kind}>; // an octave: log₂ of a frequency ratio
+  inline constexpr auto FS         = base_unit<"FS", "amplitude">;          // full scale: a sample's peak
+} // namespace
+
 int main()
 {
   // 1. An envelope exp(t / τ) for t = −4, −3.75, …, 4 s (a cursor in steps of 1/4),
@@ -25,25 +32,30 @@ int main()
     std::cout << t << "\t" << math::exp<per<(1 << 14)>>(t / tau) << "\n";
   }
 
-  // 2. A sweep in half octaves from 20 Hz, 2^e rounded once onto 2^-14:
-  // whole octaves double exactly.
-  using octave = inside<{{0, 4}, per<(1 << 10)>}, round_half_away>;
-  constexpr auto f0{just<20> * si::hertz};
-  std::cout << "\noctave  frequency\n";
-  for (cursor<octave, per<2>> e; e != end(e); ++e)
-    std::cout << *e << "\t" << f0 * math::exp2<per<(1 << 14)>>(*e) << "\n";
-  if (f0 * math::exp2<per<(1 << 14)>>(octave{3}) != just<160> * si::hertz)
+  // 2. A sweep in half octaves from 20 Hz: an octave is a level, so the ratio 2^(e / 1 oct)
+  // rounds once onto 2^-14, and whole octaves double exactly.
+  using octaves = quantity<oct, inside<{{0, 4}, per<(1 << 10)>}, round_half_away>>;
+  constexpr auto f0        {just<20> * si::hertz};
+  constexpr auto one_octave{just<1> * oct};
+  std::cout << "\nsweep   frequency\n";
+  for (cursor<octaves, per<2>> e; e != end(e); ++e)
+    std::cout << *e << "\t" << f0 * math::exp2<per<(1 << 14)>>(*e / one_octave) << "\n";
+  if (f0 * math::exp2<per<(1 << 14)>>(octaves{3, oct} / one_octave) != just<160> * si::hertz)
     return 1;
-  if (math::exp2<per<(1 << 14)>>(octave{3}) != 8 || math::exp2<per<(1 << 14)>>(octave{4}) != 16)
+  if (math::exp2<per<(1 << 14)>>(octaves{3, oct} / one_octave) != 8
+      || math::exp2<per<(1 << 14)>>(octaves{4, oct} / one_octave) != 16)
     return 1;
 
-  // 3. A tanh soft clip beside a hard clip, and cosh² − sinh² = 1.
-  using drive        = inside<{{-4, 4}, per<(1 << 11)>}, round_half_away>;
-  using hard_clipped = inside<{{-1, 1}, per<(1 << 10)>}, clamp | round_half_away>;
-  std::cout << "\nx     tanh(x)   hard clip\n";
-  for (const drive x : {drive{-3}, drive{-0.5}, drive{0}, drive{1}, drive{3}})
-    std::cout << x << "\t" << math::tanh(x) << "\t" << hard_clipped{x} << "\n";
-  for (const drive x : {drive{-2}, drive{0}, drive{2}})
+  // 3. A tanh soft clip beside a hard clip, on samples in full scale (tanh takes the number x / 1 FS),
+  // and cosh² − sinh² = 1.
+  using drive        = quantity<FS, inside<{{-4, 4}, per<(1 << 11)>}, round_half_away>>;
+  using hard_clipped = quantity<FS, inside<{{-1, 1}, per<(1 << 10)>}, clamp | round_half_away>>;
+  constexpr auto full_scale{just<1> * FS};
+  std::cout << "\nx       tanh(x)   hard clip\n";
+  for (const drive x : {drive{-3, FS}, drive{-0.5, FS}, drive{0, FS}, drive{1, FS}, drive{3, FS}})
+    std::cout << x << "\t" << math::tanh(x / full_scale) * full_scale << "\t" << hard_clipped{x} << "\n";
+  using number = inside<{{-4, 4}, per<(1 << 11)>}, round_half_away>;
+  for (const number x : {number{-2}, number{0}, number{2}})
   {
     const auto s       {math::sinh(x)};
     const auto c       {math::cosh(x)};
@@ -53,13 +65,14 @@ int main()
       return 1;
   }
 
-  // 4. Octaves with log2 and a cube-root loudness curve: exact where the answer is.
+  // 4. A frequency ratio in octaves, log2 of it times 1 oct, and a cube-root loudness curve of an intensity ratio:
+  // exact where the answer is.
   using frequency_ratio = inside<{{0x1p-4, 16}, per<(1 << 10)>}, round_half_away>;
-  using loudness        = inside<{{0     , 64}, per<(1 << 8)> }, round_half_away>;
-  std::cout << "\nlog2(8) = "   << math::log2(frequency_ratio{8})
-            << ", log2(0.5) = " << math::log2(frequency_ratio{0.5})
-            << ", cbrt(27) = "  << math::cbrt(loudness{27}) << "\n";
-  if (math::log2(frequency_ratio{8}) != 3 || math::cbrt(loudness{27}) != 3)
+  using intensity_ratio = inside<{{0     , 64}, per<(1 << 8)> }, round_half_away>;
+  std::cout << "\nratio 8 = "   << math::log2(frequency_ratio{8}) * one_octave
+            << ", ratio 0.5 = " << math::log2(frequency_ratio{0.5}) * one_octave
+            << ", cbrt(27) = "  << math::cbrt(intensity_ratio{27}) << "\n";
+  if (math::log2(frequency_ratio{8}) * one_octave != just<3> * oct || math::cbrt(intensity_ratio{27}) != 3)
     return 1;
   return 0;
 }
