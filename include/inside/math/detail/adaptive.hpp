@@ -831,6 +831,17 @@ namespace ins::math::detail::engine
     return sum;
   }
 
+  // c, a fixed-point constant, as I: converted once, at compile time, and a build error if I does not hold it
+  // (a narrowing wide_int conversion would truncate). The *_as constants below are each *_q in a core's type.
+  template <class I, class C>
+  consteval I fixed_as(const C& c)
+  {
+    const I r{static_cast<I>(c)};
+    if (!(C{r} == c))
+      constexpr_error<"engine: a fixed-point constant does not fit its working type">();
+    return r;
+  }
+
   // ln 2 = 2·atanh(1/3).
   template <int W>
   inline constexpr fixed_t<W + 2> ln2_q = []
@@ -840,6 +851,8 @@ namespace ins::math::detail::engine
     const I v{I{2} * inverse_series<limbs_of<I>>(3, +1, G)};
     return static_cast<fixed_t<W + 2>>(round_shift(v, G - W));
   }();
+  template <class I, int W>
+  inline constexpr I ln2_as = fixed_as<I>(ln2_q<W>);
 
   // π = 16·atan(1/5) − 4·atan(1/239) (Machin).
   template <int W>
@@ -850,6 +863,8 @@ namespace ins::math::detail::engine
     const I v{I{16} * inverse_series<limbs_of<I>>(5, -1, G) - I{4} * inverse_series<limbs_of<I>>(239, -1, G)};
     return static_cast<fixed_t<W + 3>>(round_shift(v, G - W));
   }();
+  template <class I, int W>
+  inline constexpr I pi_as = fixed_as<I>(pi_q<W>);
 
   // ln 10 = 3·ln 2 + ln(5/4) = 6·atanh(1/3) + 2·atanh(1/9).
   template <int W>
@@ -860,6 +875,8 @@ namespace ins::math::detail::engine
     const I v{I{6} * inverse_series<limbs_of<I>>(3, +1, G) + I{2} * inverse_series<limbs_of<I>>(9, +1, G)};
     return static_cast<fixed_t<W + 4>>(round_shift(v, G - W));
   }();
+  template <class I, int W>
+  inline constexpr I ln10_as = fixed_as<I>(ln10_q<W>);
 
   // Exact integer helpers.
 
@@ -1274,6 +1291,8 @@ namespace ins::math::detail::engine
   // ⌊√2·2^S⌋: a value m at scale S is past √2 exactly when m exceeds it.
   template <int S>
   inline constexpr fixed_t<S + 2> sqrt2_q = static_cast<fixed_t<S + 2>>(isqrt(fixed_t<2 * S + 4>{2} << (2 * S)));
+  template <class I, int S>
+  inline constexpr I sqrt2_as = fixed_as<I>(sqrt2_q<S>);
 
   // log a for a ≥ 1 at scale S (so b ≥ 0), a within da units:
   // a = m·2^b with m in [0.7, 1.42], log a = log m + b·ln 2.
@@ -1283,14 +1302,14 @@ namespace ins::math::detail::engine
     using I = wide_sint<K>;
     int b{bit_width_of(a) - 1 - S}; // 2^b ≤ a/2^S < 2^(b+1)
     I   m{b >= 0 ? a >> b : a << (-b)};
-    if (m > static_cast<I>(sqrt2_q<S>))
+    if (m > sqrt2_as<I, S>)
     {
       ++b;
       m = b >= 0 ? a >> b : a << (-b);
     }
     const std::uint64_t   dm{shr_bound(da, b) + 1};
     const fixed_approx<K> l {log_series<S>(m, dm)};
-    return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<std::uint64_t>(b < 0 ? -b : b) + 1};
+    return {l.Value + I{b} * ln2_as<I, S>, l.Error + static_cast<std::uint64_t>(b < 0 ? -b : b) + 1};
   }
 
   // 1/ln 2 and 2/π at scale S (within 1 unit), for range reduction by a product.
@@ -1306,6 +1325,12 @@ namespace ins::math::detail::engine
   inline constexpr fixed_t<S + 2> log10e_q = inverse_q<S>(ln10_q<S + 16>);
   template <int S>
   inline constexpr fixed_t<S + 2> two_over_pi_q = inverse_q<S>(pi_q<S + 16>, 1);
+  template <class I, int S>
+  inline constexpr I log2e_as = fixed_as<I>(log2e_q<S>);
+  template <class I, int S>
+  inline constexpr I log10e_as = fixed_as<I>(log10e_q<S>);
+  template <class I, int S>
+  inline constexpr I two_over_pi_as = fixed_as<I>(two_over_pi_q<S>);
 
   // e^t for t at scale S, within dt units: e^r·2^k for t = k·ln 2 + r, as an approx at scale S − k.
   // k comes from t·(1/ln 2), so |r| ≤ ln 2/2 plus a hair (the series covers 0.36).
@@ -1314,12 +1339,12 @@ namespace ins::math::detail::engine
   constexpr approx<K> exp_fixed(const wide_sint<K>& t, std::uint64_t dt, int KMax) noexcept
   {
     using I = wide_sint<K>;
-    const I k{round_shift(mul_q(t, static_cast<I>(log2e_q<S>), S), S)};
+    const I k{round_shift(mul_q(t, log2e_as<I, S>, S), S)};
     if (I{KMax} < k)
       return approx<K>::beyond(false, KMax);
     if (k < I{-(S + 2)})
       return approx<K>::below(S);
-    const fixed_approx<K> e {exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0)};
+    const fixed_approx<K> e {exp_series<S>(t - k * ln2_as<I, S>, 0)};
     const int             kk{static_cast<int>(static_cast<std::int64_t>(k))};
     const std::uint64_t   ak{static_cast<std::uint64_t>(kk < 0 ? -kk : kk)};
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};

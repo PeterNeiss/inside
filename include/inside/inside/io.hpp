@@ -448,8 +448,7 @@ namespace ins
         // A notch 1/K: the integer part, then the fraction's decimals.
         constexpr std::int64_t K = abs_den(notch64<B>.Den);
         const std::int64_t     num{raw_int64(b) + lower_int64<B> * K};
-        const std::uint64_t    a{num < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(num)
-                                         : static_cast<std::uint64_t>(num)};
+        const std::uint64_t    a{safe_abs(num)};
         if (num < 0)
           *p++ = '-';
         std::uint64_t frac;

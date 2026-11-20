@@ -374,7 +374,7 @@ namespace ins::detail
     if constexpr (std::has_single_bit(static_cast<std::uint64_t>(nd)))
     {
       // A power-of-two denominator reduces by the common trailing zeros (0 reduces to 0/1).
-      const std::uint64_t m{n < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(n) : static_cast<std::uint64_t>(n)};
+      const std::uint64_t m{safe_abs(n)};
       const int           s{std::countr_zero(m | static_cast<std::uint64_t>(nd))};
       rational            r;
       r.Num = m >> s;

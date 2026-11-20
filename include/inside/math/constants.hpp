@@ -97,7 +97,7 @@ namespace ins::math
         constexpr std::uint64_t n2{std::uint64_t{1} << (2 * m)};
         using J = fixed_t<G + 3 * (1 << m) + 24>;
         J b{one_q<limbs_of<J>>(G)};
-        J a{-mul_small(static_cast<J>(ln2_q<G>), static_cast<std::uint64_t>(m))};
+        J a{-mul_small(ln2_as<J, G>, static_cast<std::uint64_t>(m))};
         J u{a}, v{b};
         for (std::uint64_t k = 1; !(a.is_zero() && b.is_zero()); ++k)
         {
@@ -129,7 +129,7 @@ namespace ins::math
           s2 = s2 + div_small(div_small(w, 2 * j + 1), 2 * j + 1);
           w  = div_small(mul_small(w, j + 1), 2 * (2 * j + 1));
         }
-        return (mul_q(static_cast<I>(pi_q<G>), log_term, G) + mul_small(s2, 3)) >> 3;
+        return (mul_q(pi_as<I, G>, log_term, G) + mul_small(s2, 3)) >> 3;
       }
 
       // ζ(3) = 5/2·Σ_{k≥1} (−1)^(k−1)/(k³·C(2k, k)).
@@ -160,11 +160,11 @@ namespace ins::math
         using T = fixed_t<2 * G + 8>;
         I v;
         if constexpr (Id == constant_id::pi)
-          v = static_cast<I>(pi_q<G>);
+          v = pi_as<I, G>;
         else if constexpr (Id == constant_id::two_pi)
-          v = static_cast<I>(pi_q<G>) << 1;
+          v = pi_as<I, G> << 1;
         else if constexpr (Id == constant_id::half_pi)
-          v = static_cast<I>(pi_q<G>) >> 1;
+          v = pi_as<I, G> >> 1;
         else if constexpr (Id == constant_id::inv_pi)
           v = static_cast<I>(inverse_q<G>(pi_q<G + 16>));
         else if constexpr (Id == constant_id::inv_sqrtpi)
@@ -172,13 +172,13 @@ namespace ins::math
         else if constexpr (Id == constant_id::e)
           v = e_series<G>();
         else if constexpr (Id == constant_id::log2e)
-          v = static_cast<I>(log2e_q<G>);
+          v = log2e_as<I, G>;
         else if constexpr (Id == constant_id::log10e)
-          v = static_cast<I>(log10e_q<G>);
+          v = log10e_as<I, G>;
         else if constexpr (Id == constant_id::ln2)
-          v = static_cast<I>(ln2_q<G>);
+          v = ln2_as<I, G>;
         else if constexpr (Id == constant_id::ln10)
-          v = static_cast<I>(ln10_q<G>);
+          v = ln10_as<I, G>;
         else if constexpr (Id == constant_id::sqrt2)
           v = sqrt_of<G>(2);
         else if constexpr (Id == constant_id::sqrt3)

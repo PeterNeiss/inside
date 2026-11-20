@@ -54,7 +54,7 @@ namespace ins::math::detail::engine
       constexpr std::size_t KJ{limbs_for_bits(64 * static_cast<int>(E) + 64 * static_cast<int>(KF) + T + 2 * S + 16)};
       using J = wide_sint<KJ>;
       using I = fixed_t<Bits + S + 4>;
-      const J pi_fixed{static_cast<J>(pi_q<T>)};
+      const J pi_fixed{pi_as<J, T>};
       const J num     {J{X.Num} * J{N}};
       const J den     {J{X.Den} * J{D}};
       J       y;
@@ -115,7 +115,7 @@ namespace ins::math::detail::engine
       const J               two_num{J{2} * numerator<J>()}, den{J{X.Den} * J{D}};
       const J               k{nearest_div(two_num, den)}; // quarter turns
       // r = π·(2t − k)/2 at scale S, within 1 unit.
-      const I r{static_cast<I>(nearest_div((two_num - k * den) * static_cast<J>(pi_q<P>), den << (P - S + 1)))};
+      const I r{static_cast<I>(nearest_div((two_num - k * den) * pi_as<J, P>, den << (P - S + 1)))};
       const unsigned q{static_cast<unsigned>(k.Word[0] & 3u)};
       auto neg = [](fixed_approx<K> f) { return fixed_approx<K>{-f.Value, f.Error}; };
       const fixed_approx<K> v{Cos ? ((q == 0) ? cos_series<S>(r, 2)
