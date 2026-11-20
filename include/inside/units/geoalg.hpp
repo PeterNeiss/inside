@@ -21,6 +21,7 @@
 #include <array>
 #include <cstddef>
 #include <expected>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -136,11 +137,14 @@ namespace ins
         return multivector<P...>{p...};
     }
 
-    // Where each blade of a sum comes from: a part of A, of B, or of both.
+    // Where each blade of a sum comes from: a part of A, of B, or of both (InA, InB), at index A in A's parts and B in
+    // B's.
     struct merge_item
     {
-      int A{-1};
-      int B{-1};
+      bool        InA{false};
+      std::size_t A{0};
+      bool        InB{false};
+      std::size_t B{0};
     };
     template <std::size_t N>
     struct merge_plan
@@ -157,11 +161,11 @@ namespace ins
       while (i < da.size() || j < db.size())
       {
         if (j == db.size() || (i < da.size() && blade_less(da[i], db[j])))
-          p.Items[p.Size++] = {static_cast<int>(i++), -1};
+          p.Items[p.Size++] = {.InA = true, .A = i++};
         else if (i == da.size() || blade_less(db[j], da[i]))
-          p.Items[p.Size++] = {-1, static_cast<int>(j++)};
+          p.Items[p.Size++] = {.InB = true, .B = j++};
         else
-          p.Items[p.Size++] = {static_cast<int>(i++), static_cast<int>(j++)};
+          p.Items[p.Size++] = {.InA = true, .A = i++, .InB = true, .B = j++};
       }
       return p;
     }
@@ -185,7 +189,7 @@ namespace ins
             []
             {
               constexpr merge_item it{plan.Items[K]};
-              if constexpr (it.A >= 0 && it.B >= 0)
+              if constexpr (it.InA && it.InB)
                 return requires(const std::tuple_element_t<it.A, PA>& x, const std::tuple_element_t<it.B, PB>& y)
                        {
                          x + y;
@@ -215,9 +219,9 @@ namespace ins
           [&]
           {
             constexpr merge_item it{plan.Items[K]};
-            if constexpr (it.A >= 0 && it.B >= 0)
+            if constexpr (it.InA && it.InB)
               return as_part(std::get<it.A>(pa) + std::get<it.B>(pb));
-            else if constexpr (it.A >= 0)
+            else if constexpr (it.InA)
               return std::get<it.A>(pa);
             else
               return std::get<it.B>(pb);
@@ -362,9 +366,9 @@ namespace ins
           [&]
           {
             constexpr merge_item it{plan.Items[K]};
-            if constexpr (it.A >= 0 && it.B >= 0)
+            if constexpr (it.InA && it.InB)
               return std::get<it.A>(pa) == std::get<it.B>(pb);
-            else if constexpr (it.A >= 0)
+            else if constexpr (it.InA)
               return part_is_zero(std::get<it.A>(pa));
             else
               return part_is_zero(std::get<it.B>(pb));
@@ -452,15 +456,15 @@ namespace ins
       blade_mul(x, blade_of(i));
       return x.size() + blade_of(a).size() == blade_of(i).size();
     }
-    // Where the part of type T comes from in the parts PX: its index, or -1.
+    // Where the part of type T comes from in the parts PX: its index, if PX has its blade.
     template <class T, class PX>
-    consteval int source_of()
+    consteval std::optional<std::size_t> source_of()
     {
       constexpr auto dx{dims_of<PX>()};
       for (std::size_t j = 0; j < dx.size(); ++j)
         if (blade_equal(part_dim<T>(), dx[j]))
-          return static_cast<int>(j);
-      return -1;
+          return j;
+      return std::nullopt;
     }
     // The number type of a part.
     template <class T>
@@ -477,18 +481,18 @@ namespace ins
     template <class T, class PX, class... Pol>
     consteval bool part_from()
     {
-      constexpr int from{source_of<T, PX>()};
-      if constexpr (from >= 0)
-        return std::constructible_from<T, const std::tuple_element_t<from, PX>&, const Pol&...>;
+      constexpr std::optional<std::size_t> from{source_of<T, PX>()};
+      if constexpr (from)
+        return std::constructible_from<T, const std::tuple_element_t<*from, PX>&, const Pol&...>;
       else
         return std::constructible_from<typename part_number<T>::type, decltype(just<0>), const Pol&...>;
     }
     template <class T, class PX>
     consteval bool part_from_implicitly()
     {
-      constexpr int from{source_of<T, PX>()};
-      if constexpr (from >= 0)
-        return std::convertible_to<const std::tuple_element_t<from, PX>&, T>;
+      constexpr std::optional<std::size_t> from{source_of<T, PX>()};
+      if constexpr (from)
+        return std::convertible_to<const std::tuple_element_t<*from, PX>&, T>;
       else
         return std::convertible_to<decltype(just<0>), typename part_number<T>::type>;
     }
@@ -596,9 +600,9 @@ namespace ins
           [&]
           {
             using T = Parts...[K];
-            constexpr int from{detail::source_of<T, PX>()};
-            if constexpr (from >= 0)
-              return T(std::get<from>(px), pol...);
+            constexpr std::optional<std::size_t> from{detail::source_of<T, PX>()};
+            if constexpr (from)
+              return T(std::get<*from>(px), pol...);
             else
               return detail::part_of_number<T>(just<0>, pol...);
           }()...};
