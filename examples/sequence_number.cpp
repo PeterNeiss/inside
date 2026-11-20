@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Modular packet sequence numbers (TCP/QUIC style) with epoch tracking:
 // wrap gives modular-2^16 arithmetic and on_wrap counts the wraps.
-// Packets are a base dimension (pkt); the epoch and the lap stay plain counts.
+// Packets are a base dimension (pkt), the epoch counts wraps in its own unit,
+// and the lap, packets over packets, is a plain number.
 
 #include <iostream>
 
@@ -16,15 +17,16 @@ using namespace ins::formats;
 
 namespace
 {
-  inline constexpr auto pkt = base_unit<"pkt", "packets">;
+  inline constexpr auto pkt   = base_unit<"pkt", "packets">;
+  inline constexpr auto epoch = base_unit<"epoch", "sequence_wraps">;
 } // namespace
 
 int main()
 {
   using sequence_number = quantity<pkt, inside<{0, 65535}, wrap>>; // the uint16 sequence space
-  using epoch_counter   = clamp_counter<1000>;                       // how often it wrapped, saturating
-  sequence_number seq  {65500, pkt};
-  epoch_counter   epoch{0};
+  using epoch_counter   = quantity<epoch, clamp_counter<1000>>;      // how often it wrapped, saturating
+  sequence_number seq   {65500, pkt};
+  epoch_counter   epochs{0, epoch};
 
   // 100_ins is the single-value inside<{100, 100}>, and times pkt a single-value quantity:
   // added to another quantity it widens the grid, a constant that never turns into a run-time int.
@@ -36,10 +38,10 @@ int main()
   std::cout << "step  seq    epoch\n";
   for (int i = 0; i < 8; ++i)
   {
-    seq.on_wrap([&](auto&, auto) { ++epoch; }) += window;
-    std::cout << "  " << i << "    " << seq << "    " << epoch << "\n";
+    seq.on_wrap([&](auto&, auto) { ++epochs; }) += window;
+    std::cout << "  " << i << "    " << seq << "    " << epochs << "\n";
   }
-  std::cout << "\nepoch count after burst: " << epoch << "\n";
+  std::cout << "\nepoch count after burst: " << epochs << "\n";
 
   // A 256-slot ring: one integer division gives the lap (a number) and the slot (in packets).
   // 256 pkt excludes 0, so the result is plain, not an expected.
@@ -54,7 +56,7 @@ int main()
       return 1;
   }
 
-  if (epoch != 1 || to_string(seq) != "764 pkt")
+  if (epochs != just<1> * epoch || to_string(seq) != "764 pkt")
     return 1;
   return 0;
 }

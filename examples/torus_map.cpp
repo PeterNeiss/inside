@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A playfield on a torus: a sprite's sub-pixel position wraps at the edges,
 // and on_wrap fires the "crossed edge" event.
-// Screen distance is in px, a base dimension of its own; the viewport cells are indices and stay plain.
+// Screen distance is in px, a base dimension of its own, and edge crossings count in their own unit;
+// the viewport cells are indices and stay plain.
 
 #include <iostream>
 #include <ranges>
@@ -17,7 +18,8 @@ using namespace ins::formats;
 
 namespace
 {
-  inline constexpr auto px = base_unit<"px", "screen">;
+  inline constexpr auto px       = base_unit<"px", "screen">;
+  inline constexpr auto crossing = base_unit<"crossing", "edge_crossings">;
 } // namespace
 
 // [0, 64) px in 1/16-pixel steps, so wrap's period is 64 px.
@@ -27,9 +29,11 @@ using pixel_delta = quantity<px, inside<{{-64, 64}, per<16>}, round_half_away>>;
 
 struct sprite
 {
-  pixels                   x{0, px}, y{0, px};
-  clamp_counter<1'000'000> edge_x_crossings{0};
-  clamp_counter<1'000'000> edge_y_crossings{0};
+  using crossings = quantity<crossing, clamp_counter<1'000'000>>;
+
+  pixels    x{0, px}, y{0, px};
+  crossings edge_x_crossings{0, crossing};
+  crossings edge_y_crossings{0, crossing};
 
   // The move rounds to the nearest 1/16 px on the store, and on_wrap fires on each edge crossing.
   void step(pixel_delta dx, pixel_delta dy)
@@ -72,8 +76,8 @@ int main()
     std::cout << c << " ";
   std::cout << "...\n";
 
-  if (to_string(s.x) != "8.75 px" || to_string(s.y) != "5 px" || s.edge_x_crossings != 1
-      || s.edge_y_crossings != 3)
+  if (to_string(s.x) != "8.75 px" || to_string(s.y) != "5 px" || s.edge_x_crossings != just<1> * crossing
+      || s.edge_y_crossings != just<3> * crossing)
     return 1;
   return 0;
 }

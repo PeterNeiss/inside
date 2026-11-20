@@ -20,15 +20,20 @@ using integral_kelvins = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, rou
 using percent_per_kelvin = quantity<percent / si::kelvin, inside<{{0, 4}, per<(1 << 8)>}, round_half_away>>;
 using command_percent    = quantity<percent, inside<{-100, 100}, clamp | round_half_away>>; // saturates and rounds
 
+namespace
+{
+  inline constexpr auto windup = base_unit<"windup", "integrator_saturations">; // one step at the integrator's limit
+} // namespace
+
 struct pid
 {
   percent_per_kelvin kp{1.5  , percent / si::kelvin};
   percent_per_kelvin ki{0.125, percent / si::kelvin};
   percent_per_kelvin kd{0.5  , percent / si::kelvin};
 
-  integral_kelvins         integral     {0, si::kelvin};
-  error_kelvins            previous     {0, si::kelvin};
-  clamp_counter<1'000'000> windup_events{0};
+  integral_kelvins                           integral     {0, si::kelvin};
+  error_kelvins                              previous     {0, si::kelvin};
+  quantity<windup, clamp_counter<1'000'000>> windup_events{0, windup};
 
   command_percent step(error_kelvins err)
   {
