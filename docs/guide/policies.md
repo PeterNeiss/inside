@@ -51,11 +51,11 @@ That is the usual type for an API boundary, such as an actuator command.
 A type's policy applies to every store. For one store, name the flags there:
 
 ```cpp
-using pct = inside<{0, 100}>;
-pct p{150, clamp};                 // 100: a new value under clamp
-pct q{3.7, round_half_away};         // 4
+using bounded = inside<{0, 100}>;
+bounded p{150, clamp};             // 100: a new value under clamp
+bounded q{3.7, round_half_away};   // 4
 
-pct x{50};
+bounded x{50};
 x.with<clamp>() = 150;             // 100: one assignment under clamp
 x.with<wrap>()  = 103;             // 2
 ```
@@ -69,10 +69,10 @@ Three channels report a failed store as a value:
 
 ```cpp
 int  n = 200;                     // read at run time
-auto m = pct::try_make(n);        // a std::expected: !m, m.error() == error::overflow
+auto m = bounded::try_make(n);    // a std::expected: !m, m.error() == error::overflow
 
 error ec{};
-pct y{50};
+bounded y{50};
 y.on_error(ec) = n;               // ec == error::overflow; y keeps 50
 ```
 
@@ -92,13 +92,13 @@ full picture, and the error handler that preconditions reach.
 ## Hooks
 
 A hook runs your code when a store clamps, wraps or fails. `x.on_wrap(f)`
-returns a handle; assign through it:
+returns a handle; assign through it. On a clock's seconds and minutes:
 
 ```cpp
-inside<{0, 59}, wrap>  seconds{0};
-inside<{0, 59}, clamp> minutes{0};   // (minutes += carry names its range handling)
-seconds.on_wrap([&](auto&, auto carry) { minutes += carry; }) = 125;
-// seconds == 5, minutes == 2
+quantity<si::second, inside<{0, 59}, wrap>>  seconds{0, si::second};
+quantity<si::minute, inside<{0, 59}, clamp>> minutes{0, si::minute};   // (+= carry names its range handling)
+seconds.on_wrap([&](auto&, auto carry) { minutes += carry * si::minute; }) = just<125> * si::second;
+// seconds == 5 s, minutes == 2 min
 ```
 
 | Hook | Runs when | Called as |
@@ -107,8 +107,9 @@ seconds.on_wrap([&](auto&, auto carry) { minutes += carry; }) = 125;
 | `x.on_wrap(f)` | a value is folded back | `f(x, carry)`: the number of periods |
 | `x.on_error(f)` | a checked store fails; its channel | `f(x, error, message)` |
 
-The carry and the overshoot are insides, so they add straight into another
-inside. A hook you do not call costs nothing.
+The carry is a number of periods and the overshoot is in the value's unit, so
+they add straight into another value (a carry times its unit into a quantity). A
+hook you do not call costs nothing.
 [`clock.cpp`](../../examples/clock.cpp) builds an s → min → h → day cascade
 this way.
 
@@ -127,17 +128,17 @@ A store is **proven** when every value of the source fits the target: an
 NaN fits no range). Every other store names what happens, before it runs:
 
 ```cpp
-using pct       = inside<{0, 100}>;
-int        n    = 150;                  // read at run time
+using bounded   = inside<{0, 100}>;
+int        n    = 150;                          // read at run time
 const auto step = 1_ins;
-pct x{50};                              // a constant: checked while compiling
-auto y = pct::try_make(n);              // a run-time int: std::expected<pct, error>
-pct  z{n, clamp};                       // or clamp, wrap, a rounding mode
+bounded x{50};                                  // a constant: checked while compiling
+auto    y = bounded::try_make(n);               // a run-time int: std::expected<bounded, error>
+bounded z{n, clamp};                            // or clamp, wrap, a rounding mode
 error ec{};
-x.on_error(ec) += step;                 // an error&: the first error is kept
+x.on_error(ec) += step;                         // an error&: the first error is kept
 x.on_error([](auto& s, error, auto) { s = 0_ins; }) += step;   // an alternative value
-x = pct::try_make(n).value_or(pct{0});  // the same, as an expected
-pct u{n, unsafe};                       // the fit is your precondition
+x = bounded::try_make(n).value_or(bounded{0});  // the same, as an expected
+bounded u{n, unsafe};                           // the fit is your precondition
 // x += step;                           // ❌ does not compile: x + step may pass 100
 ```
 

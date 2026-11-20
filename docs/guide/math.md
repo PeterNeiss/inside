@@ -9,9 +9,9 @@ without an FPU.
 #include <inside/math.hpp>
 using namespace ins;
 
-using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
-auto s = math::sin(angle{1});                   // 0.84149169921875, on the input's notch
-auto c = math::cos<per<(1 << 8)>>(angle{1});    // 0.5390625: the notch you name
+using arg = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
+auto s = math::sin(arg{1});                     // 0.84149169921875, on the input's notch
+auto c = math::cos<per<(1 << 8)>>(arg{1});      // 0.5390625: the notch you name
 auto h = math::hypot(s, s);                     // √(s² + s²)
 ```
 

@@ -69,6 +69,16 @@ own can be declared the same way with `defined_by`.
 - The definition holders build through the same constructors: `kind_holder`
   is one template, `origin_holder` has no lambda, and the positional
   `distinct`/recipe constructors of `kind_def` are gone.
+- Every value in the examples and the docs that measures something carries
+  its unit: temperatures are ℃ points (`algorithms.cpp` sorts and subtracts
+  them), altitudes metres, shares percent, pixel values DN, audio samples full
+  scale (FS), octaves a level unit, scores, trigger pulls, reloads, latency
+  samples and edge crossings units of their own, and a JSON discount is in %.
+  Predicates and self-checks compare with quantities, outputs print the
+  quantities' own units, and a number type is never named after a unit
+  (`tenths`, not `celsius`). Plain insides remain for pure mathematics,
+  indices and ratios, and values that only show a mechanism have neutral
+  names.
 
 ## 0.10.0 — 2026-11-20
 

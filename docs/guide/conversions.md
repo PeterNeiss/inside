@@ -29,10 +29,10 @@ or rounds.
 To test a value without storing it:
 
 ```cpp
-using pct = inside<{0, 100}>;
-conversion_overflows<pct>(150);   // true: outside [0, 100]
-conversion_rounds<pct>(3.5);      // true: not on notch 1
-conversion_loses<pct>(150);       // true: either of the two
+using bounded = inside<{0, 100}>;
+conversion_overflows<bounded>(150);   // true: outside [0, 100]
+conversion_rounds<bounded>(3.5);      // true: not on notch 1
+conversion_loses<bounded>(150);       // true: either of the two
 ```
 
 ## Out of an inside
@@ -118,9 +118,9 @@ With `<inside/inside/io.hpp>`, `to_string(x)`, `std::cout << x` and
 A format spec rounds once, from the exact value, by the type's rounding mode:
 
 ```cpp
-using cents = inside<{{0, 1'000'000}, per<100>}>;
-cents price{19.9_ins};
-std::println("{} {:.1f} {:>8}", price, price, price);   // 19.90 19.9    19.90
+using hundredths = inside<{{0, 1'000'000}, per<100>}>;
+hundredths x{19.9_ins};
+std::println("{} {:.1f} {:>8}", x, x, x);   // 19.90 19.9    19.90
 std::println("{:#04x}", inside<{0, 100}>{42});          // 0x2a
 ```
 
@@ -130,10 +130,10 @@ std::println("{:#04x}", inside<{0, 100}>{42});          // 0x2a
 stores it through `T::try_make`:
 
 ```cpp
-parse<pct>("42");                          // 42
-parse<pct>("0.1");                         // error::rounding_error: not on the grid
-parse<pct>("150");                         // error::overflow
-parse<pct>("4x");                          // error::invalid_format
+parse<bounded>("42");                      // 42
+parse<bounded>("0.1");                     // error::rounding_error: not on the grid
+parse<bounded>("150");                     // error::overflow
+parse<bounded>("4x");                      // error::invalid_format
 parse<inside<{{0, 1}, per<10>}>>("0.1");   // exactly 1/10
 std::cin >> a;                             // one token; failbit on an error
 ```

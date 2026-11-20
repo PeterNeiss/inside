@@ -6,8 +6,8 @@ store into a narrower type can fail, and there the type's
 [policy](policies.md) decides.
 
 ```cpp
-using lvl = inside<{0, 255}>;
-lvl a{100}, b{200};
+using small = inside<{0, 255}>;
+small a{100}, b{200};
 
 auto s = a + b;   // inside<{0, 510}>: 300
 auto d = a - b;   // inside<{-255, 255}>: -100
@@ -29,17 +29,19 @@ auto d = a * just<5, 2>;   // the exact factor 5/2
 // auto e = a + 1;         // does not compile; the message says what to write
 ```
 
-A runtime value gets its range from a type: `a + lvl{n}`. Comparisons need no
+A runtime value gets its range from a type: `a + small{n}`. Comparisons need no
 grid: `a == 5` and `a < 1.5_ins` are exact. A `double` does not compare with an
 inside, because 0.1 is not 1/10 in binary.
 
 Multiplying by a constant scales by an exact fraction, and a store rounds the
-result where the type allows it:
+result where the type allows it. Money is a quantity in a currency of your own
+([Units](units.md)):
 
 ```cpp
-using money = inside<{{0, 1'000'000}, per<100>}, round_half_away>;
-money subtotal{45.07};
-money tax{subtotal * just<8, 100>};   // 3.61: 8 %, rounded once to the cent
+inline constexpr auto USD = base_unit<"USD", "dollar">;
+using money = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_half_away>>;
+money subtotal{45.07, USD};
+money tax{subtotal * just<8, 100>};   // 3.61 USD: 8 %, rounded once to the cent
 ```
 
 ## Division
@@ -78,14 +80,15 @@ result on a type of your choice, round the exact result straight into it,
 once:
 
 ```cpp
-using eth   = inside<{{0, 1'000'000'000}, 1e-18_ins}>;            // to the wei
-using price = inside<{{0, 100'000'000}, per<100>}>;             // dollars per ETH
-using usd   = inside<{{0, 100'000'000'000'000'000}, per<100>}, round_half_away>;   // holds every product
+inline constexpr auto ETH = base_unit<"ETH", "ether">;   // USD as above
+using ether   = quantity<ETH, inside<{{0, 1'000'000'000}, 1e-18_ins}>>;   // to the wei
+using price   = quantity<USD / ETH, inside<{{0, 100'000'000}, per<100>}>>;
+using dollars = quantity<USD, inside<{{0, 100'000'000'000'000'000}, per<100>}, round_half_away>>;   // holds every product
 
-eth   balance{just<15, 10>};
-price rate{just<345678, 100>};
-usd   value = mul<usd>(balance, rate);                     // 5185.17
-auto  share = div<inside<{0, 100}, round_floor>>(val{50}, inside<{1, 10}>{3});   // 16
+ether   balance{just<15, 10>, ETH};
+price   rate{just<345678, 100>, USD / ETH};
+dollars value = mul<dollars>(balance, rate);                   // 5185.17 USD
+auto    share = div<inside<{0, 100}, round_floor>>(val{50}, inside<{1, 10}>{3});   // 16
 ```
 
 `mul<Out>(a, b)` and `div<Out>(a, b)` round by `Out`'s policy; a flag after
@@ -137,8 +140,8 @@ with `t` in [0, 1] lies between `a` and `b`, and its type says so.
 `x op= y` computes `x op y` and stores the result back through `x`'s policy:
 
 ```cpp
-using pct = inside<{0, 100}, clamp | round_toward_zero>;
-pct p{50};
+using bounded = inside<{0, 100}, clamp | round_toward_zero>;
+bounded p{50};
 p += 30;         // 80
 p *= 2;          // 100: clamped
 p /= 3_ins;      // 33: 100/3, rounded toward zero
@@ -162,9 +165,9 @@ operator accepts one and passes the first error on, so a chain needs no
 unwrapping:
 
 ```cpp
-lvl zero{0};
-auto r1 = a / inside<{1, 255}>{4} + lvl{10};   // a plain value: 35
-auto r2 = a / zero + lvl{10};                  // std::expected: error::division_by_zero
+small zero{0};
+auto r1 = a / inside<{1, 255}>{4} + small{10};   // a plain value: 35
+auto r2 = a / zero + small{10};                  // std::expected: error::division_by_zero
 ```
 
 To store the end of a chain, check it and store `*r`, or call

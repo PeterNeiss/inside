@@ -40,11 +40,11 @@ It steps through `T`'s range by `Step`, starting at `T`'s lower limit, and
 `end(t)` is the value one step past the last:
 
 ```cpp
-using time_t = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
-for (cursor<time_t, per<4>> t; t != end(t); ++t)          // −4, −3.75, …, 4
-    std::cout << t << ' ';
-for (cursor<time_t, per<4>> t = -2_ins; t <= 2; ++t)    // any start, the classic test
-    std::cout << t << ' ';
+using fine = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
+for (cursor<fine, per<4>> x; x != end(x); ++x)          // −4, −3.75, …, 4
+    std::cout << x << ' ';
+for (cursor<fine, per<4>> x = -2_ins; x <= 2; ++x)    // any start, the classic test
+    std::cout << x << ' ';
 ```
 
 - `Step` defaults to `T`'s notch. It must be a whole number of notches and
@@ -59,13 +59,16 @@ quantity, and the step is a number in the quantity's unit.
 
 ## Standard algorithms
 
-Insides sort, search and compare like integers, and as fast:
+Insides and quantities sort, search and compare like integers, and as fast.
+A predicate on quantities compares with a value of the same kind, never a bare
+number; here the readings are ℃ points:
 
 ```cpp
-using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;
-std::vector<celsius> temps = {21.5, -5.0, 37.0, 0.0, 15.5};
+constexpr auto deg_C = si::degree_Celsius;
+using celsius = quantity_point<deg_C, si::ice_point, inside<{{-40, 60}, 0.5}, round_half_away>>;
+std::vector<celsius> temps = {{21.5, deg_C}, {-5.0, deg_C}, {37.0, deg_C}, {0.0, deg_C}, {15.5, deg_C}};
 std::ranges::sort(temps);
-auto hot      = std::ranges::count_if(temps, [](celsius c) { return c > 30; });
+auto hot      = std::ranges::count_if(temps, [](celsius c) { return c > celsius{30, deg_C}; });
 auto [lo, hi] = std::ranges::minmax_element(temps);
 ```
 

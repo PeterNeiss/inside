@@ -46,10 +46,10 @@ as `printf` does with a `double`. A width alone keeps the exact text.
 | prints | `0.12`, `-0.13` | `0.13`, `-0.13` | `0.12`, `-0.13` | `0.13`, `-0.12` | `0.12`, `-0.12` |
 
 ```cpp
-inside<{0, 100}> hp{42};
-std::println("HP = {}", hp);               // HP = 42
-std::println("HP = {:>5}", hp);            // HP =    42
-std::println("HP = {:#04x}", hp);          // HP = 0x2a
+inside<{0, 100}> n{42};
+std::println("n = {}", n);                 // n = 42
+std::println("n = {:>5}", n);              // n =    42
+std::println("n = {:#04x}", n);            // n = 0x2a
 
 inside<{{0, 1}, per<(1 << 10)>}> g{0.125};
 std::println("{} {:.2f} {:e}", g, g, g);   // 0.125 0.12 1.250000e-01
@@ -70,14 +70,14 @@ applies, and flags after the type add to it for the call. `parse_exact<B>`
 accepts only a value B holds exactly, whatever B's policy:
 
 ```cpp
-using cents = inside<{{0, 1'000'000}, per<100>}>;
-parse<cents>("1.005");                     // error::rounding_error
-parse<cents, round_half_away>("1.005");      // 1.01: the tie goes away from zero
+using hundredths = inside<{{0, 1'000'000}, per<100>}>;
+parse<hundredths>("1.005");                    // error::rounding_error
+parse<hundredths, round_half_away>("1.005");   // 1.01: the tie goes away from zero
 
-using price = inside<{{0, 1'000'000}, per<100>}, round_half_away | clamp>;
-parse<price>("1.005");                     // 1.01: price rounds
-parse_exact<price>("1.005");               // error::rounding_error
-parse_exact<price>("2000000");             // error::overflow: not clamped
+using rounded = inside<{{0, 1'000'000}, per<100>}, round_half_away | clamp>;
+parse<rounded>("1.005");                   // 1.01: rounded rounds
+parse_exact<rounded>("1.005");             // error::rounding_error
+parse_exact<rounded>("2000000");           // error::overflow: not clamped
 ```
 
 The core header has the `constexpr` pointer-pair form,
