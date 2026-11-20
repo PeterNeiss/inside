@@ -343,7 +343,7 @@ namespace ins::detail
     {
       const limb::pair<std::uint64_t> qr{limb::div(r.Remainder, n.Word[i], d)};
       r.Quotient.Word[i] = qr.Hi;
-      r.Remainder = qr.Lo;
+      r.Remainder        = qr.Lo;
     }
     return r;
   }

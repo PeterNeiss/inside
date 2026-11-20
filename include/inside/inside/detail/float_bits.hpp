@@ -197,7 +197,7 @@ namespace ins::detail
     if (den_pow > max_pow)
     {
       const int drop{den_pow - max_pow};
-      exact = drop <= std::countr_zero(significand); // only zero bits dropped
+      exact       = drop <= std::countr_zero(significand); // only zero bits dropped
       significand = (drop >= 64) ? 0 : (significand >> drop);
       // The canonical {0, 1}: callers take this verbatim,
       // and a non-canonical {0, 2^62} would break the structural rational::operator==.

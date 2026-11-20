@@ -202,7 +202,7 @@ namespace ins::detail
       {
         const pair<L> t{mul(a[i], q)};
         L             c{0};
-        r[i] = add_carry(t.Lo, carry, c);
+        r[i]  = add_carry(t.Lo, carry, c);
         carry = static_cast<L>(t.Hi + c);
       }
       return carry;
@@ -217,8 +217,8 @@ namespace ins::detail
         const pair<L> p{mul(q, a[i])};
         L             c1{0}, c2{0};
         L             s{add_carry(r[i], p.Lo, c1)};
-        s = add_carry(s, carry, c2);
-        r[i] = s;
+        s     = add_carry(s, carry, c2);
+        r[i]  = s;
         carry = static_cast<L>(p.Hi + c1 + c2); // fits: (b−1)² + 2(b−1) < b²
       }
       return carry;
@@ -241,7 +241,7 @@ namespace ins::detail
       {
         const pair<L> t{div(rem, a[i], d)};
         q[i] = t.Hi;
-        rem = t.Lo;
+        rem  = t.Lo;
       }
       return rem;
     }
@@ -317,7 +317,7 @@ namespace ins::detail
               const L lo = s == 0 ? u[i] : static_cast<L>((u[i] << s) | (i > 0 ? u[i - 1] >> (64 - s) : L{0}));
               const pair<L> qr{div_preinv(rem, lo, d, inv)};
               q[i] = qr.Hi;
-              rem = qr.Lo;
+              rem  = qr.Lo;
             }
             r[0] = static_cast<L>(rem >> s);
             return;
@@ -327,7 +327,7 @@ namespace ins::detail
         {
           const pair<L> d{div(rem, u[i], v[0])};
           q[i] = d.Hi;
-          rem = d.Lo;
+          rem  = d.Lo;
         }
         r[0] = rem;
         return;
@@ -349,8 +349,8 @@ namespace ins::detail
         bool rhat_big{false}; // r̂ ≥ base: skip the test
         if (un[j + n] == vn[n - 1])
         {
-          qhat = static_cast<L>(~L{0});
-          rhat = static_cast<L>(un[j + n - 1] + vn[n - 1]);
+          qhat     = static_cast<L>(~L{0});
+          rhat     = static_cast<L>(un[j + n - 1] + vn[n - 1]);
           rhat_big = rhat < vn[n - 1];
         }
         else
@@ -371,7 +371,7 @@ namespace ins::detail
             break;
           --qhat;
           const L old{rhat};
-          rhat = static_cast<L>(rhat + vn[n - 1]);
+          rhat     = static_cast<L>(rhat + vn[n - 1]);
           rhat_big = rhat < old;
         }
         // Multiply and subtract q̂·vn from un[j .. j+n].

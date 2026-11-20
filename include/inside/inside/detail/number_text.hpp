@@ -141,7 +141,7 @@ namespace ins::detail
         continue;
       if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-'))
       {
-        r.ExpNeg = (c == '-');
+        r.ExpNeg      = (c == '-');
         exp_seen_sign = true;
         continue;
       }

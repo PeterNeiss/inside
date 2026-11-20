@@ -545,8 +545,8 @@ namespace ins::detail
     else
     {
       denominator = a_ad * b_ad_r;
-      A = a.Num * b_ad_r;
-      B = b.Num * a_ad_r;
+      A           = a.Num * b_ad_r;
+      B           = b.Num * a_ad_r;
     }
 
     if (a_neg == b_neg)

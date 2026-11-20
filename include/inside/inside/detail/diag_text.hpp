@@ -62,7 +62,7 @@ namespace ins::detail
       {
         const auto [q, r] = big_int::divmod(v, grid_int{10});
         digits[n++] = static_cast<char>('0' + static_cast<int>(r));
-        v = q;
+        v           = q;
       } while (!(v == grid_int{0}) && n < sizeof digits);
       while (n > 0)
         push(digits[--n]);
