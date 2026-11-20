@@ -58,9 +58,11 @@ For anything other than that, install your own handler:
 ```cpp
 #include <inside/inside.hpp>
 
+#include <utility>
+
 // The handler must not return (raise() traps if it does): log, reset, longjmp.
 [[noreturn]] void on_inside_error(ins::error code, const char* what) noexcept {
-    board_log(static_cast<int>(code), what);   // `what` is a static message
+    board_log(std::to_underlying(code), what);   // `what` is a static message
     board_fault_reset();
     for (;;) {}
 }
