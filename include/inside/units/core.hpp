@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// The units machinery without the catalog: dimensions, magnitudes, kinds,
-// units, references, quantity and quantity_point, and the tools for units
-// of your own (base_dimension, kind_def, unit_def, origin_def).
+// The units machinery without the catalog:
+// dimensions, magnitudes, kinds, units, references, quantity and quantity_point,
+// and the tools for units of your own (base_dimension, kind_def, unit_def, origin_def).
 // <inside/units.hpp> adds the catalog (units/systems.hpp).
 #ifndef INSIDE_UNITS_CORE_HPP
 #define INSIDE_UNITS_CORE_HPP
