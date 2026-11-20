@@ -53,8 +53,6 @@ namespace ins
 
   namespace detail
   {
-    template <class T>
-    inline constexpr bool is_quantity_v = false;
     template <reference R, class Rep>
     inline constexpr bool is_quantity_v<quantity<R, Rep>> = true;
   } // namespace detail
