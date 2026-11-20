@@ -742,7 +742,7 @@ namespace ins::math::detail::engine
   constexpr std::size_t offset_of(const In& x) noexcept
   {
     return static_cast<std::size_t>(static_cast<std::uint64_t>(value_index<std::int64_t>(x))
-                                    - static_cast<std::uint64_t>(slot_base<In>));
+                                    - slot_base<In>.template truncate_to<std::uint64_t>());
   }
 
   // T's grid point at slot offset k (a notched, integer raw).

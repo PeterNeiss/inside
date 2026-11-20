@@ -579,7 +579,7 @@ namespace ins::detail
   template <insidable B>
   inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
   template <insidable B>
-  inline constexpr bool lower_index_odd = (static_cast<std::uint64_t>(lower_index_wide<B>) & 1) != 0;
+  inline constexpr bool lower_index_odd = (lower_index_wide<B>.template truncate_to<std::uint64_t>() & 1) != 0;
 
   // A double onto a lattice whose values times K stay below 2^51 (2^62 for a power-of-two K),
   // with K, S, M the Q-format's K, 1, Lower·K or the lattice codec's:

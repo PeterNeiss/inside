@@ -287,10 +287,57 @@ namespace ins::detail
       return Size != 0 ? static_cast<int>(Size - 1) * 64 + std::bit_width(Limbs[Size - 1]) : std::bit_width(Small);
     }
 
-    // A truncating conversion to a builtin integer or a wide_int (two's complement).
+    // Whether the value fits T, a builtin integer or a wide_int: |v| below 2^digits, or v = -2^digits for a signed T;
+    // a negative value never fits an unsigned T. By width, so it never builds a big_int (run time cannot make one past
+    // 64 bits).
+    template <typename T>
+      requires raw_integer<T>
+    [[nodiscard]] constexpr bool fits() const
+    {
+      constexpr bool is_signed = []
+      {
+        if constexpr (std::integral<T>)
+          return std::is_signed_v<T>;
+        else
+          return T::is_signed;
+      }();
+      constexpr int digits = []
+      {
+        if constexpr (std::integral<T>)
+          return std::numeric_limits<T>::digits;
+        else
+          return T::bits - (T::is_signed ? 1 : 0);
+      }();
+      const int bw{bit_width()};
+      if (!Negative)
+        return bw <= digits;
+      const bool power_of_two{
+        Size == 0 ? std::has_single_bit(Small)
+                  : std::has_single_bit(Limbs[Size - 1])
+                      && std::all_of(Limbs, Limbs + Size - 1, [](std::uint64_t w) { return w == 0; })};
+      return is_signed && (bw <= digits || (bw == digits + 1 && power_of_two));
+    }
+
+    // The value as T, a builtin integer or a wide_int that holds it.
+    // In a constant expression a value that does not fit is a compile error; at run time the caller's grids bound it
+    // (unchecked, so a run-time path costs nothing). truncate_to<T>() wraps on purpose.
     template <typename T>
       requires raw_integer<T>
     constexpr explicit operator T() const
+    {
+      if consteval
+      {
+        if (!fits<T>())
+          constexpr_error<"big_int: the value does not fit the target type - truncate_to<T>() wraps it">();
+      }
+      return truncate_to<T>();
+    }
+
+    // The value modulo 2^bits of T (two's complement), for arithmetic that wraps on purpose:
+    // an index in an unsigned twin, the low bit of a negative value.
+    template <typename T>
+      requires raw_integer<T>
+    [[nodiscard]] constexpr T truncate_to() const
     {
       if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64)
       {

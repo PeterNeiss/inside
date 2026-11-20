@@ -543,7 +543,7 @@ static_assert((pow2(200) + big_int{5}) % pow2(70) == big_int{5});
 static_assert(-pow2(100) < big_int{0} && -pow2(100) < -pow2(99));
 static_assert(gcd(pow2(150) * big_int{3}, pow2(120) * big_int{9}) == pow2(120) * big_int{3});
 static_assert(pow2(130).bit_width() == 131);
-static_assert(static_cast<std::uint64_t>(pow2(64) + big_int{7}) == 7); // truncates like a builtin
+static_assert((pow2(64) + big_int{7}).truncate_to<std::uint64_t>() == 7); // truncates like a builtin
 static_assert(static_cast<wide_uint<3>>(pow2(130)) == (wide_uint<3>{1} << 130));
 static_assert(big_int{wide_sint<3>{-1} << 130} == -pow2(130));
 

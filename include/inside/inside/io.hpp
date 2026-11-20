@@ -404,7 +404,7 @@ namespace ins
     template <std::size_t K>
     std::string big_fraction_to_string(const big_rational& r)
     {
-      const auto n{static_cast<wide_uint<K>>(r.Num)}; // two's complement
+      const auto n{r.Num.truncate_to<wide_uint<K>>()}; // two's complement
       return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den), 0);
     }
   } // namespace detail

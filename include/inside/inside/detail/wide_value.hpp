@@ -732,10 +732,10 @@ namespace ins::detail
       // In W's unsigned twin: a raw past W's max (a step count past 2^63 from a negative base)
       // wraps back onto the index, which fits W.
       using U = std::make_unsigned_t<W>;
-      return static_cast<W>(static_cast<U>(static_cast<W>(slot_base<X>)) + static_cast<U>(x.raw()));
+      return static_cast<W>(static_cast<U>(slot_base<X>.template truncate_to<W>()) + static_cast<U>(x.raw()));
     }
     else if constexpr (index_storage<X>)
-      return static_cast<W>(slot_base<X>) + static_cast<W>(x.raw());
+      return slot_base<X>.template truncate_to<W>() + static_cast<W>(x.raw());
     else
       return static_cast<W>(x.raw());
   }
@@ -777,7 +777,7 @@ namespace ins::detail
       if constexpr (std::is_integral_v<W>)
       {
         using U = std::make_unsigned_t<W>;
-        return static_cast<W>(static_cast<U>(static_cast<W>(base))
+        return static_cast<W>(static_cast<U>(base.truncate_to<W>())
                               + static_cast<U>(x.raw()) * static_cast<U>(static_cast<W>(scale)));
       }
       else
@@ -800,7 +800,7 @@ namespace ins::detail
     if constexpr (point_storage<Result>)
       return Result::from_raw(raw_t<Result>{}, unsafe);
     else if constexpr (index_storage<Result>)
-      return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)), unsafe);
+      return Result::from_raw(static_cast<raw_t<Result>>(j - slot_base<Result>.template truncate_to<W>()), unsafe);
     else
       return Result::from_raw(static_cast<raw_t<Result>>(j), unsafe);
   }
