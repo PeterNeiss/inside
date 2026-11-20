@@ -17,7 +17,6 @@
 #include <type_traits>
 #include <utility>
 
-//---------------------------------------------------------------------------
 // std::mdspan with insides (opt-in: include this header).
 //
 //   m[i, j]                    a std::mdspan takes an inside on non-negative
@@ -49,638 +48,690 @@
 //                               (not `transform`: ADL on std::mdspan would
 //                               find std::transform(first, last, out, f))
 // Quantities: <inside/units/mdspan.hpp>.
-//---------------------------------------------------------------------------
-namespace ins {
-namespace detail {
-// An index type: an inside that converts to std::size_t - every value a
-// non-negative integer (core.hpp index_converts).
-template <class I>
-concept index_inside = insidable<I> && index_converts<I, std::size_t>;
+namespace ins
+{
+  namespace detail
+  {
+    // An index type: an inside that converts to std::size_t,
+    // every value a non-negative integer (core.hpp index_converts).
+    template <class I>
+    concept index_inside = insidable<I> && index_converts<I, std::size_t>;
 
-template <class I>
-inline constexpr std::size_t extent_of_index = [] {
-    if constexpr (index_inside<I>)
+    template <class I>
+    inline constexpr std::size_t extent_of_index = []
+    {
+      if constexpr (index_inside<I>)
         return static_cast<std::size_t>(grid_numerator(upper_of<I>)) + 1;
-    else
+      else
         return std::size_t{0};
-}();
+    }();
 
-template <class... Is>
-struct extents_of_impl {
-    static_assert((index_inside<Is> && ...),
-                  "extents_of<I...>: each I is an index type - an inside on non-negative integers (inside<{0, 479}>)");
-    using type = std::extents<std::size_t, extent_of_index<Is>...>;
-};
+    template <class... Is>
+    struct extents_of_impl
+    {
+      static_assert(
+        (index_inside<Is> && ...),
+        "extents_of<I...>: each I is an index type - an inside on non-negative integers (inside<{0, 479}>)");
+      using type = std::extents<std::size_t, extent_of_index<Is>...>;
+    };
 
-// 0 … n − 1 in steps of 1 (inside<{0, n − 1}>, also for n = 1).
-consteval grid index_range_grid(std::size_t n) {
-    return grid{interval{grid_number{0}, grid_number{n - 1}}, grid_number{1}};
-}
+    // 0 … n − 1 in steps of 1 (inside<{0, n − 1}>, also for n = 1).
+    consteval grid index_range_grid(std::size_t n)
+    {
+      return grid{interval{grid_number{0}, grid_number{n - 1}}, grid_number{1}};
+    }
 
-template <class E>
-inline constexpr bool is_extents_v = false;
-template <class I, std::size_t... Ns>
-inline constexpr bool is_extents_v<std::extents<I, Ns...>> = true;
+    template <class E>
+    inline constexpr bool is_extents_v = false;
+    template <class I, std::size_t... Ns>
+    inline constexpr bool is_extents_v<std::extents<I, Ns...>> = true;
 
-template <class M>
-inline constexpr bool is_mdspan_v = false;
-template <class T, class E, class L, class A>
-inline constexpr bool is_mdspan_v<std::mdspan<T, E, L, A>> = true;
-} // namespace detail
+    template <class M>
+    inline constexpr bool is_mdspan_v = false;
+    template <class T, class E, class L, class A>
+    inline constexpr bool is_mdspan_v<std::mdspan<T, E, L, A>> = true;
+  } // namespace detail
 
-// The extents whose indices are the index types Is: each extent is the
-// index's Upper + 1, the smallest that every value of it indexes.
-template <class... Is>
-using extents_of = typename detail::extents_of_impl<Is...>::type;
+  // The extents whose indices are the index types Is:
+  // each extent is the index's Upper + 1, the smallest that every value of it indexes.
+  template <class... Is>
+  using extents_of = typename detail::extents_of_impl<Is...>::type;
 
-// The index type of E's static extent N ≥ 1 at rank R: inside<{0, N − 1}>.
-template <class E, std::size_t R>
-    requires detail::is_extents_v<E> && (R < E::rank()) && (E::static_extent(R) != std::dynamic_extent) &&
-                 (E::static_extent(R) > 0)
-using extent_index_t = inside<detail::index_range_grid(E::static_extent(R))>;
+  // The index type of E's static extent N ≥ 1 at rank R: inside<{0, N − 1}>.
+  template <class E, std::size_t R>
+    requires detail::is_extents_v<E> && (R < E::rank()) && (E::static_extent(R) != std::dynamic_extent)
+          && (E::static_extent(R) > 0)
+  using extent_index_t = inside<detail::index_range_grid(E::static_extent(R))>;
 
-// I indexes rank R of E within bounds, proven by the types: I is an index
-// and its Upper lies below E's static extent (a dynamic extent proves
-// nothing). `static_assert(index_for<row, image::extents_type, 0>)`, or a
-// constraint on a function that takes indices.
-template <class I, class E, std::size_t R>
-concept index_for = detail::index_inside<I> && detail::is_extents_v<E> && (R < E::rank()) &&
-                    (E::static_extent(R) != std::dynamic_extent) && (upper_of<I> < grid_number{E::static_extent(R)});
+  // I indexes rank R of E within bounds, proven by the types:
+  // I is an index and its Upper lies below E's static extent (a dynamic extent proves nothing).
+  // `static_assert(index_for<row, image::extents_type, 0>)`, or a constraint on a function that takes indices.
+  template <class I, class E, std::size_t R>
+  concept index_for = detail::index_inside<I> && detail::is_extents_v<E> && (R < E::rank())
+                   && (E::static_extent(R) != std::dynamic_extent) && (upper_of<I> < grid_number{E::static_extent(R)});
 
-// Any std::mdspan (or a type derived from one).
-template <class M>
-concept mdspan_like =
+  // Any std::mdspan (or a type derived from one).
+  template <class M>
+  concept mdspan_like =
     requires(const M& m) { []<class T, class E, class L, class A>(const std::mdspan<T, E, L, A>&) {}(m); };
 
-//---------------------------------------------------------------------------
-// indices
-//---------------------------------------------------------------------------
-namespace detail {
-template <class E, std::size_t R>
-constexpr auto rank_indices(const E& e) {
-    if constexpr (E::static_extent(R) != std::dynamic_extent && E::static_extent(R) > 0) {
-        // 0 … N − 1 as index insides (an iota, not values<I>: values may
-        // start mid-ring, and that wrap costs every step).
+  // indices
+  namespace detail
+  {
+    template <class E, std::size_t R>
+    constexpr auto rank_indices(const E& e)
+    {
+      if constexpr (E::static_extent(R) != std::dynamic_extent && E::static_extent(R) > 0)
+      {
+        // 0 … N − 1 as index insides
+        // (an iota, not values<I>: values may start mid-ring, and that wrap costs every step).
         using I = extent_index_t<E, R>;
-        return std::views::iota(std::size_t{0}, E::static_extent(R)) |
-               std::views::transform([](std::size_t k) { return I::from_raw(raw_from_offset<I>(k), unsafe); });
-    } else
+        return std::views::iota(std::size_t{0}, E::static_extent(R))
+             | std::views::transform([](std::size_t k) { return I::from_raw(raw_from_offset<I>(k), unsafe); });
+      }
+      else
         return std::views::iota(typename E::index_type{0}, e.extent(R));
-}
-} // namespace detail
+    }
+  } // namespace detail
 
-// Every index tuple of e, the last index fastest (layout_right's order):
-// `for (auto [i, j] : indices(m))`. A static rank yields its extent_index_t,
-// which indexes m within bounds by its type.
-template <class I, std::size_t... Ns>
-[[nodiscard]] constexpr auto indices(const std::extents<I, Ns...>& e) {
+  // Every index tuple of e, the last index fastest (layout_right's order): `for (auto [i, j] : indices(m))`.
+  // A static rank yields its extent_index_t, which indexes m within bounds by its type.
+  template <class I, std::size_t... Ns>
+  [[nodiscard]] constexpr auto indices(const std::extents<I, Ns...>& e)
+  {
     using E = std::extents<I, Ns...>;
-    return [&]<std::size_t... R>(std::index_sequence<R...>) {
-        return std::views::cartesian_product(detail::rank_indices<E, R>(e)...);
+    return [&]<std::size_t... R>(std::index_sequence<R...>)
+    {
+      return std::views::cartesian_product(detail::rank_indices<E, R>(e)...);
     }(std::make_index_sequence<E::rank()>{});
-}
-template <class T, class E, class L, class A>
-[[nodiscard]] constexpr auto indices(const std::mdspan<T, E, L, A>& m) {
+  }
+  template <class T, class E, class L, class A>
+  [[nodiscard]] constexpr auto indices(const std::mdspan<T, E, L, A>& m)
+  {
     return indices(m.extents());
-}
+  }
 
-//---------------------------------------------------------------------------
-// Accessors: E (an inside, or a quantity with units/mdspan.hpp) viewed over
-// storage that is not E.
-//---------------------------------------------------------------------------
-namespace detail {
-// What an element is made of: its number (an inside), read and rebuilt;
-// rebind<N> is the same kind of element on the number N; total<Target>(r)
-// is the exact total of a range of such elements into Target, checked once.
-// Specialized for quantities in units/mdspan.hpp.
-template <class E>
-struct element_traits;
-template <insidable E>
-struct element_traits<E> {
-    using number = E;
-    template <insidable N>
-    using rebind = N;
-    static constexpr const E& number_of(const E& e) noexcept { return e; }
-    static constexpr E        make(const number& n) noexcept { return n; }
-    // The exact total into E: total where the caller proved it fits (a
-    // miss would be a precondition), try_total reporting it.
-    template <class Rng>
-    static constexpr E total(Rng&& r) {
+  // Accessors: E (an inside, or a quantity with units/mdspan.hpp) viewed over storage that is not E.
+  namespace detail
+  {
+    // What an element is made of: its number (an inside), read and rebuilt;
+    // rebind<N> is the same kind of element on the number N;
+    // total<Target>(r) is the exact total of a range of such elements into Target, checked once.
+    // Specialized for quantities in units/mdspan.hpp.
+    template <class E>
+    struct element_traits;
+    template <insidable E>
+    struct element_traits<E>
+    {
+      using number = E;
+      template <insidable N>
+      using rebind = N;
+      static constexpr const E& number_of(const E& e) noexcept { return e; }
+      static constexpr E        make(const number& n) noexcept { return n; }
+      // The exact total into E: total where the caller proved it fits (a miss would be a precondition),
+      // try_total reporting it.
+      template <class Rng>
+      static constexpr E total(Rng&& r)
+      {
         E    out{};
-        auto policy = make_policy<policy_of<E>>();
+        auto policy{make_policy<policy_of<E>>()};
         sum_into(r, out, policy);
         return out;
-    }
-    template <class Rng>
-    static constexpr std::expected<E, error> try_total(Rng&& r) {
+      }
+      template <class Rng>
+      static constexpr std::expected<E, error> try_total(Rng&& r)
+      {
         return try_store<E, policy_of<E>>([&](E& out, auto&& policy) { sum_into(r, out, policy); });
-    }
-    template <class V>
-    static constexpr std::expected<E, error> try_store_of(const V& v) {
+      }
+      template <class V>
+      static constexpr std::expected<E, error> try_store_of(const V& v)
+      {
         return E::try_make(v);
-    }
-};
-template <class E>
-concept mdspan_element = requires { typename element_traits<std::remove_cv_t<E>>::number; };
-template <class E>
-using element_number_t = typename element_traits<std::remove_cv_t<E>>::number;
+      }
+    };
+    template <class E>
+    concept mdspan_element = requires { typename element_traits<std::remove_cv_t<E>>::number; };
+    template <class E>
+    using element_number_t = typename element_traits<std::remove_cv_t<E>>::number;
 
-// How the storage is read and written: as plain values, or as raws.
-enum class storage_kind : unsigned char { value, raw };
+    // How the storage is read and written: as plain values, or as raws.
+    enum class storage_kind : unsigned char { value, raw };
 
-// The range of a raw type: a builtin's limits, or a wide_int's bits.
-template <class R>
-inline constexpr grid_int raw_type_min = [] {
-    if constexpr (std::integral<R>)
+    // The range of a raw type: a builtin's limits, or a wide_int's bits.
+    template <class R>
+    inline constexpr grid_int raw_type_min = []
+    {
+      if constexpr (std::integral<R>)
         return grid_int{std::numeric_limits<R>::min()};
-    else
+      else
         return R::is_signed ? -(grid_int{1} << (R::bits - 1)) : grid_int{0};
-}();
-template <class R>
-inline constexpr grid_int raw_type_max = [] {
-    if constexpr (std::integral<R>)
+    }();
+    template <class R>
+    inline constexpr grid_int raw_type_max = []
+    {
+      if constexpr (std::integral<R>)
         return grid_int{std::numeric_limits<R>::max()};
-    else
+      else
         return (grid_int{1} << (R::is_signed ? R::bits - 1 : R::bits)) - grid_int{1};
-}();
+    }();
 
-template <class E, class T, storage_kind K>
-constexpr E read_stored(const T& t) {
-    using tr = element_traits<E>;
-    using N  = typename tr::number;
-    if constexpr (K == storage_kind::value)
+    template <class E, class T, storage_kind K>
+    constexpr E read_stored(const T& t)
+    {
+      using tr = element_traits<E>;
+      using N  = typename tr::number;
+      if constexpr (K == storage_kind::value)
         return tr::make(stored<N>(t)); // a store by N's policy
-    else {
-        // A raw outside the grid is held by N's policy; skipped when every
-        // raw of the type is a point of the grid. The test runs in a work
-        // integer holding the raw type's range and the grid's (a uint64 raw
-        // passes int64; a wide raw is a wide_int).
-        using R                 = raw_t<N>;
-        constexpr grid_int rmin = raw_type_min<R>, rmax = raw_type_max<R>;
-        constexpr grid_int lo = raw_lo_exact<N>, hi = raw_hi_exact<N>;
+      else
+      {
+        // A raw outside the grid is held by N's policy; skipped when every raw of the type is a point of the grid.
+        // The test runs in a work integer holding the raw type's range and the grid's
+        // (a uint64 raw passes int64; a wide raw is a wide_int).
+        using R = raw_t<N>;
+        constexpr grid_int rmin{raw_type_min<R>}, rmax{raw_type_max<R>};
+        constexpr grid_int lo{raw_lo_exact<N>}, hi{raw_hi_exact<N>};
         using W = work_int_t<signed_value_bits({rmin, rmax, lo, hi, hi - lo + grid_int{1}})>;
         if constexpr (rmin == lo && rmax == hi)
+          return tr::make(N::from_raw(t, unsafe));
+        else
+        {
+          constexpr W wlo{static_cast<W>(lo)}, whi{static_cast<W>(hi)};
+          const W     r{static_cast<W>(t)};
+          if (!(r < wlo) && !(whi < r)) [[likely]]
             return tr::make(N::from_raw(t, unsafe));
-        else {
-            constexpr W wlo = static_cast<W>(lo), whi = static_cast<W>(hi);
-            const W     r = static_cast<W>(t);
-            if (!(r < wlo) && !(whi < r)) [[likely]]
-                return tr::make(N::from_raw(t, unsafe));
-            if constexpr (has_flag(policy_of<N>, unsafe))
-                return tr::make(N::from_raw(t, unsafe));
-            else if constexpr (has_flag(policy_of<N>, clamp))
-                return tr::make(N::from_raw(static_cast<R>(r < wlo ? wlo : whi), unsafe));
-            else if constexpr (has_flag(policy_of<N>, wrap))
-                return tr::make(
-                    N::from_raw(static_cast<R>(wlo + floor_divmod(r - wlo, whi - wlo + W{1}).Rem), unsafe));
-            else
-                raise(error::overflow, "raw_accessor: a raw outside the grid");
+          if constexpr (has_flag(policy_of<N>, unsafe))
+            return tr::make(N::from_raw(t, unsafe));
+          else if constexpr (has_flag(policy_of<N>, clamp))
+            return tr::make(N::from_raw(static_cast<R>(r < wlo ? wlo : whi), unsafe));
+          else if constexpr (has_flag(policy_of<N>, wrap))
+            return tr::make(N::from_raw(static_cast<R>(wlo + floor_divmod(r - wlo, whi - wlo + W{1}).Rem), unsafe));
+          else
+            raise(error::overflow, "raw_accessor: a raw outside the grid");
         }
+      }
     }
-}
 
-template <class T, storage_kind K, class E>
-constexpr T write_stored(const E& e) {
-    const auto& n = element_traits<E>::number_of(e);
-    if constexpr (K == storage_kind::raw)
+    template <class T, storage_kind K, class E>
+    constexpr T write_stored(const E& e)
+    {
+      const auto& n{element_traits<E>::number_of(e)};
+      if constexpr (K == storage_kind::raw)
         return n.raw();
-    else if constexpr (std::floating_point<T>)
+      else if constexpr (std::floating_point<T>)
         return n.template to<T>(); // rounded once
-    else {
+      else
+      {
         // A value past T: a precondition of the write, reported to the handler.
-        const auto r = n.template to<T>();
-        if constexpr (expected_like<decltype(r)>) {
-            if (!r) [[unlikely]]
-                raise(r.error(), "raw_accessor: a value that does not fit the stored type");
-            return *r;
-        } else
-            return r;
+        const auto r{n.template to<T>()};
+        if constexpr (expected_like<decltype(r)>)
+        {
+          if (!r) [[unlikely]]
+            raise(r.error(), "raw_accessor: a value that does not fit the stored type");
+          return *r;
+        }
+        else
+          return r;
+      }
     }
-}
 
-// A writable element of E stored as T: reads and assigns through E.
-template <class E, class T, storage_kind K>
-class stored_ref {
-    T* P;
+    // A writable element of E stored as T: reads and assigns through E.
+    template <class E, class T, storage_kind K>
+    class stored_ref
+    {
+      T* P;
 
-  public:
-    constexpr explicit stored_ref(T* p) noexcept : P{p} {}
-    [[nodiscard]] constexpr E   get() const { return read_stored<E, T, K>(*P); }
-    constexpr                   operator E() const { return get(); }
-    constexpr const stored_ref& operator=(const E& e) const {
+    public:
+      constexpr explicit stored_ref(T* p) noexcept : P{p} {}
+      [[nodiscard]] constexpr E   get() const { return read_stored<E, T, K>(*P); }
+      constexpr                   operator E() const { return get(); }
+      constexpr const stored_ref& operator=(const E& e) const
+      {
         *P = write_stored<T, K>(e);
         return *this;
-    }
-    constexpr const stored_ref& operator=(const stored_ref& o) const { return *this = o.get(); }
-    // (A plain number the grids cannot prove is written as a constant E{v}.)
-    template <class X>
-        requires(!std::same_as<std::remove_cvref_t<X>, E> && !std::same_as<std::remove_cvref_t<X>, stored_ref> &&
-                 std::constructible_from<E, const X&> && (!insidable<E> || insidable<X> || store_proven<E, X>))
-    constexpr const stored_ref& operator=(const X& x) const {
+      }
+      constexpr const stored_ref& operator=(const stored_ref& o) const { return *this = o.get(); }
+      // (A plain number the grids cannot prove is written as a constant E{v}.)
+      template <class X>
+        requires(!std::same_as<std::remove_cvref_t<X>, E> && !std::same_as<std::remove_cvref_t<X>, stored_ref>
+                 && std::constructible_from<E, const X&> && (!insidable<E> || insidable<X> || store_proven<E, X>))
+      constexpr const stored_ref& operator=(const X& x) const
+      {
         return *this = E(x);
-    }
-};
+      }
+    };
 
-template <class E, class T, storage_kind K>
-struct storage_accessor {
-    static_assert(mdspan_element<E>, "accessor: E is an inside (or, with units/mdspan.hpp, a quantity)");
-    using element_type     = E;
-    using data_handle_type = T*;
-    using offset_policy    = storage_accessor;
-    // Read-only storage gives the element by value, so every operator applies.
-    using reference =
+    template <class E, class T, storage_kind K>
+    struct storage_accessor
+    {
+      static_assert(mdspan_element<E>, "accessor: E is an inside (or, with units/mdspan.hpp, a quantity)");
+      using element_type     = E;
+      using data_handle_type = T*;
+      using offset_policy    = storage_accessor;
+      // Read-only storage gives the element by value, so every operator applies.
+      using reference =
         std::conditional_t<std::is_const_v<T>, std::remove_cv_t<E>, stored_ref<std::remove_cv_t<E>, T, K>>;
 
-    constexpr storage_accessor() noexcept = default;
-    [[nodiscard]] constexpr reference access(data_handle_type p, std::size_t i) const {
+      constexpr storage_accessor() noexcept = default;
+      [[nodiscard]] constexpr reference access(data_handle_type p, std::size_t i) const
+      {
         if constexpr (std::is_const_v<T>)
-            return read_stored<std::remove_cv_t<E>, std::remove_cv_t<T>, K>(p[i]);
+          return read_stored<std::remove_cv_t<E>, std::remove_cv_t<T>, K>(p[i]);
         else
-            return reference{p + i};
-    }
-    [[nodiscard]] constexpr data_handle_type offset(data_handle_type p, std::size_t i) const noexcept { return p + i; }
-};
+          return reference{p + i};
+      }
+      [[nodiscard]] constexpr data_handle_type offset(data_handle_type p, std::size_t i) const noexcept
+      {
+        return p + i;
+      }
+    };
 
-template <class E>
-concept raw_viewable =
-    mdspan_element<E> && integer_storage<element_number_t<E>> && !point_storage<element_number_t<E>>;
-} // namespace detail
+    template <class E>
+    concept raw_viewable =
+      mdspan_element<E> && integer_storage<element_number_t<E>> && !point_storage<element_number_t<E>>;
+  } // namespace detail
 
-// E's numbers stored as plain values of T (const T: a read-only view).
-template <class E, class T>
+  // E's numbers stored as plain values of T (const T: a read-only view).
+  template <class E, class T>
     requires std::is_arithmetic_v<std::remove_const_t<T>>
-using value_accessor = detail::storage_accessor<E, T, detail::storage_kind::value>;
+  using value_accessor = detail::storage_accessor<E, T, detail::storage_kind::value>;
 
-// E's numbers stored as their raws (const R: a read-only view).
-template <class E, class R = detail::raw_t<detail::element_number_t<E>>>
-    requires detail::raw_viewable<E> &&
-                 std::same_as<std::remove_const_t<R>, detail::raw_t<detail::element_number_t<E>>>
-using raw_accessor = detail::storage_accessor<E, R, detail::storage_kind::raw>;
+  // E's numbers stored as their raws (const R: a read-only view).
+  template <class E, class R = detail::raw_t<detail::element_number_t<E>>>
+    requires detail::raw_viewable<E>
+          && std::same_as<std::remove_const_t<R>, detail::raw_t<detail::element_number_t<E>>>
+  using raw_accessor = detail::storage_accessor<E, R, detail::storage_kind::raw>;
 
-//---------------------------------------------------------------------------
-// Element access shared by the algorithms below
-//---------------------------------------------------------------------------
-namespace detail {
-template <class M>
-using mdspan_value_t = std::remove_cv_t<typename M::element_type>;
+  // Element access shared by the algorithms below
+  namespace detail
+  {
+    template <class M>
+    using mdspan_value_t = std::remove_cv_t<typename M::element_type>;
 
-// m's element at integer indices, as a value (through any accessor).
-template <class M, class... I>
-constexpr mdspan_value_t<M> element_at(const M& m, I... i) {
-    return static_cast<mdspan_value_t<M>>(m[static_cast<typename M::index_type>(i)...]);
-}
+    // m's element at integer indices, as a value (through any accessor).
+    template <class M, class... I>
+    constexpr mdspan_value_t<M> element_at(const M& m, I... i)
+    {
+      return static_cast<mdspan_value_t<M>>(m[static_cast<typename M::index_type>(i)...]);
+    }
 
-// Each rank: equal static extents, or one dynamic (checked at run time).
-template <class E1, class E2>
-inline constexpr bool extents_compatible = [] {
-    if constexpr (E1::rank() != E2::rank())
+    // Each rank: equal static extents, or one dynamic (checked at run time).
+    template <class E1, class E2>
+    inline constexpr bool extents_compatible = []
+    {
+      if constexpr (E1::rank() != E2::rank())
         return false;
-    else
-        return [&]<std::size_t... R>(std::index_sequence<R...>) {
-            return ((E1::static_extent(R) == E2::static_extent(R) || E1::static_extent(R) == std::dynamic_extent ||
-                     E2::static_extent(R) == std::dynamic_extent) &&
-                    ...);
+      else
+        return [&]<std::size_t... R>(std::index_sequence<R...>)
+        {
+          return ((E1::static_extent(R) == E2::static_extent(R) || E1::static_extent(R) == std::dynamic_extent
+                   || E2::static_extent(R) == std::dynamic_extent)
+                  && ...);
         }(std::make_index_sequence<E1::rank()>{});
-}();
-// Extents R1 of E1 and R2 of E2 compatible.
-template <class E1, std::size_t R1, class E2, std::size_t R2>
-inline constexpr bool extent_compatible =
-    E1::static_extent(R1) == E2::static_extent(R2) || E1::static_extent(R1) == std::dynamic_extent ||
-    E2::static_extent(R2) == std::dynamic_extent;
+    }();
+    // Extents R1 of E1 and R2 of E2 compatible.
+    template <class E1, std::size_t R1, class E2, std::size_t R2>
+    inline constexpr bool extent_compatible =
+      E1::static_extent(R1) == E2::static_extent(R2) || E1::static_extent(R1) == std::dynamic_extent
+      || E2::static_extent(R2) == std::dynamic_extent;
 
-constexpr void require_extent(bool same, const char* what) {
-    if (!same) [[unlikely]]
+    constexpr void require_extent(bool same, const char* what)
+    {
+      if (!same) [[unlikely]]
         raise(error::domain_error, what);
-}
+    }
 
-// Calls f(i0, i1, …) for every integer index tuple of e, the last fastest.
-template <std::size_t R = 0, class E, class F, class... I>
-constexpr void for_each_index(const E& e, F& f, I... i) {
-    if constexpr (R == E::rank())
+    // Calls f(i0, i1, …) for every integer index tuple of e, the last fastest.
+    template <std::size_t R = 0, class E, class F, class... I>
+    constexpr void for_each_index(const E& e, F& f, I... i)
+    {
+      if constexpr (R == E::rank())
         f(i...);
-    else
+      else
         for (typename E::index_type k = 0; k < e.extent(R); ++k)
-            for_each_index<R + 1>(e, f, i..., k);
-}
+          for_each_index<R + 1>(e, f, i..., k);
+    }
 
-template <class E>
-inline constexpr bool all_static = E::rank_dynamic() == 0;
-template <class E>
-inline constexpr std::size_t static_size = [] {
-    std::size_t n = 1;
-    for (std::size_t r = 0; r < E::rank(); ++r)
+    template <class E>
+    inline constexpr bool all_static = E::rank_dynamic() == 0;
+    template <class E>
+    inline constexpr std::size_t static_size = []
+    {
+      std::size_t n{1};
+      for (std::size_t r = 0; r < E::rank(); ++r)
         n *= E::static_extent(r);
-    return n;
-}();
+      return n;
+    }();
 
-// The sum of n values of g: n·Lower … n·Upper on g's notch.
-consteval grid n_fold_grid(const grid& g, std::size_t n) {
-    const grid_number k{n};
-    if (n == 0 || g.Interval.Lower == g.Interval.Upper)
+    // The sum of n values of g: n·Lower … n·Upper on g's notch.
+    consteval grid n_fold_grid(const grid& g, std::size_t n)
+    {
+      const grid_number k{n};
+      if (n == 0 || g.Interval.Lower == g.Interval.Upper)
         return grid{g.Interval.Lower * k};
-    return grid{interval{g.Interval.Lower * k, g.Interval.Upper * k}, g.Notch};
-}
-template <insidable N, std::size_t Count>
-    requires notched<N> || point_grid<N>
-using n_fold_sum_t = inside<n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker>;
-// The same for an element (an inside or a quantity): its kind on that number.
-template <class E, std::size_t Count>
-using n_fold_t = typename element_traits<E>::template rebind<n_fold_sum_t<element_number_t<E>, Count>>;
+      return grid{interval{g.Interval.Lower * k, g.Interval.Upper * k}, g.Notch};
+    }
+    template <insidable N, std::size_t Count>
+      requires notched<N> || point_grid<N>
+    using n_fold_sum_t = inside<n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker>;
+    // The same for an element (an inside or a quantity): its kind on that number.
+    template <class E, std::size_t Count>
+    using n_fold_t = typename element_traits<E>::template rebind<n_fold_sum_t<element_number_t<E>, Count>>;
 
-// A total of Elem values over extents E always fits Target: Target's policy
-// takes any total, or E is static and Target holds the n-fold sum (same
-// reference for quantities).
-template <class Target, class Elem, class E>
-consteval bool total_proven() {
-    using TN = element_number_t<Target>;
-    using EN = element_number_t<Elem>;
-    if constexpr (sum_proven<TN, EN>)
+    // A total of Elem values over extents E always fits Target:
+    // Target's policy takes any total, or E is static and Target holds the n-fold sum
+    // (same reference for quantities).
+    template <class Target, class Elem, class E>
+    consteval bool total_proven()
+    {
+      using TN = element_number_t<Target>;
+      using EN = element_number_t<Elem>;
+      if constexpr (sum_proven<TN, EN>)
         return true;
-    else if constexpr (all_static<E> && (notched<EN> || point_grid<EN>)) {
+      else if constexpr (all_static<E> && (notched<EN> || point_grid<EN>))
+      {
         using NF = n_fold_t<Elem, static_size<E>>;
         if constexpr (insidable<Target>)
-            return insidable<NF> && store_proven<TN, element_number_t<NF>>;
-        else if constexpr (requires {
-                               Target::reference;
-                               NF::reference;
-                           })
-            return Target::reference == NF::reference && store_proven<TN, element_number_t<NF>>;
+          return insidable<NF> && store_proven<TN, element_number_t<NF>>;
+        else if constexpr (requires { Target::reference; NF::reference; })
+          return Target::reference == NF::reference && store_proven<TN, element_number_t<NF>>;
         else
-            return false;
-    } else
+          return false;
+      }
+      else
         return false;
-}
+    }
 
-// The values of m, as a range: its storage when it is one exhaustive block
-// of elements, else each element through m.
-template <class M>
-constexpr auto element_range(const M& m) {
-    using T = typename M::element_type;
-    using A = typename M::accessor_type;
-    using L = typename M::layout_type;
-    if constexpr (std::same_as<A, std::default_accessor<T>> &&
-                  (std::same_as<L, std::layout_right> || std::same_as<L, std::layout_left>))
+    // The values of m, as a range:
+    // its storage when it is one exhaustive block of elements, else each element through m.
+    template <class M>
+    constexpr auto element_range(const M& m)
+    {
+      using T = typename M::element_type;
+      using A = typename M::accessor_type;
+      using L = typename M::layout_type;
+      if constexpr (std::same_as<A, std::default_accessor<T>>
+                    && (std::same_as<L, std::layout_right> || std::same_as<L, std::layout_left>))
         return std::span<const T>(m.data_handle(), m.size());
-    else
-        return std::views::iota(std::size_t{0}, m.size()) | std::views::transform([m](std::size_t k) {
+      else
+        return std::views::iota(std::size_t{0}, m.size())
+             | std::views::transform(
+                 [m](std::size_t k)
+                 {
                    // k → index tuple, the last index fastest
                    using E = typename M::extents_type;
                    std::array<typename E::index_type, E::rank()> idx{};
-                   for (std::size_t r = E::rank(); r-- > 0;) {
-                       const auto n = static_cast<std::size_t>(m.extent(r));
-                       idx[r]       = static_cast<typename E::index_type>(k % n);
-                       k /= n;
+                   for (std::size_t r = E::rank(); r-- > 0;)
+                   {
+                     const auto n{static_cast<std::size_t>(m.extent(r))};
+                     idx[r] = static_cast<typename E::index_type>(k % n);
+                     k /= n;
                    }
                    return std::apply([&](auto... i) { return element_at(m, i...); }, idx);
-               });
-}
-} // namespace detail
-
-//---------------------------------------------------------------------------
-// sum
-//---------------------------------------------------------------------------
-// The exact total of m's elements into Target (an inside; a quantity with
-// units/mdspan.hpp, whose total is converted to Target's unit), checked
-// once by Target's policy.
-template <class Target, class T, class E, class L, class A>
-    requires detail::mdspan_element<T> && detail::mdspan_element<Target>
-[[nodiscard]] constexpr auto sum(const std::mdspan<T, E, L, A>& m) {
-    if constexpr (detail::total_proven<Target, std::remove_cv_t<T>, E>())
-        return detail::element_traits<Target>::total(detail::element_range(m));
-    else
-        return detail::element_traits<Target>::try_total(detail::element_range(m));
-}
-
-// All extents static: the result type is the N-fold sum of the element's
-// grid, N the element count, so it holds every total.
-template <class T, class E, class L, class A>
-    requires detail::mdspan_element<T> && detail::all_static<E> &&
-             (detail::notched<detail::element_number_t<T>> || detail::point_grid<detail::element_number_t<T>>)
-[[nodiscard]] constexpr auto sum(const std::mdspan<T, E, L, A>& m) {
-    return sum<detail::n_fold_t<std::remove_cv_t<T>, detail::static_size<E>>>(m);
-}
-template <class T, class E, class L, class A>
-    requires detail::mdspan_element<T> && detail::all_static<E> &&
-                 (!detail::notched<detail::element_number_t<T>> && !detail::point_grid<detail::element_number_t<T>>)
-auto sum(const std::mdspan<T, E, L, A>&) =
-    delete ("sum(m): a continuous element has no deduced total type - name one: sum<Target>(m)");
-
-//---------------------------------------------------------------------------
-// dot, matrix_vector_product, matrix_product
-//---------------------------------------------------------------------------
-namespace detail {
-template <class M>
-concept vector_span = mdspan_like<M> && M::extents_type::rank() == 1 && mdspan_element<mdspan_value_t<M>>;
-template <class M>
-concept matrix_span = mdspan_like<M> && M::extents_type::rank() == 2 && mdspan_element<mdspan_value_t<M>>;
-
-template <class X, class Y>
-using product_t = decltype(std::declval<mdspan_value_t<X>>() * std::declval<mdspan_value_t<Y>>());
-
-// Products of integer-raw lattices summed in int64, in units U of the
-// product's value unit, onto an integer-raw lattice Target: one rounded
-// division at the end (units_onto). Max: the largest |units| of one
-// product, so n terms fit int64 while n·Max does.
-template <class Target, class P>
-inline constexpr bool int64_products = [] {
-    if constexpr (!insidable<Target> || !insidable<P>)
-        return false;
-    else if constexpr (!integer_storage<P> || point_storage<P> || wide_valued<P> || !notched<P>)
-        return false;
-    else if constexpr (sizeof(raw_t<P>) <= 4 && lane32_block<P> >= 64)
-        return false; // sum_into adds those raws in vectorized 32-bit lanes
-    else
-        return units_onto<Target, grid_of<P>.value_unit()> && values_fit_int64<P> &&
-               signed_value_bits({units_lo<P, grid_of<P>.value_unit()>, units_hi<P, grid_of<P>.value_unit()>}) < 62;
-}();
-
-// Σ_k a(k)·b(k) over k < n, exactly, into Target: Target where Proven, else
-// an expected.
-template <class Target, bool Proven, class FA, class FB, class I>
-constexpr auto sum_of_products(I n, FA a, FB b) {
-    using P = decltype(a(I{}) * b(I{}));
-    if constexpr (int64_products<Target, P>) {
-        constexpr grid_number U = grid_of<P>.value_unit();
-        constexpr grid_int max = abs(units_lo<P, U>) < abs(units_hi<P, U>) ? abs(units_hi<P, U>) : abs(units_lo<P, U>);
-        constexpr std::int64_t terms = max == grid_int{0}
-                                           ? std::numeric_limits<std::int64_t>::max()
-                                           : std::numeric_limits<std::int64_t>::max() / static_cast<std::int64_t>(max);
-        if (std::cmp_less_equal(n, terms)) [[likely]] {
-            std::int64_t total = 0;
-            for (I k = 0; k < n; ++k)
-                total += value_in_units<std::int64_t, U>(a(k) * b(k));
-            constexpr grid_number  c  = U / notch_of<Target>;
-            constexpr std::int64_t cp = static_cast<std::int64_t>(grid_numerator(c));
-            constexpr std::int64_t cq = static_cast<std::int64_t>(grid_denominator(c));
-            std::int64_t           num;
-            if (!mul_overflow(total, cp, &num)) {
-                const auto s = lattice_round_slot<Target, policy_of<Target>>(num, cq);
-                if (s.Status == lattice_status::ok) [[likely]] {
-                    const Target t = Target::from_raw(raw_from_offset<Target>(s.Slot), unsafe);
-                    if constexpr (Proven)
-                        return t;
-                    else
-                        return std::expected<Target, error>{t};
-                }
-                if constexpr (!Proven)
-                    if (s.Status == lattice_status::overflow)
-                        return std::expected<Target, error>{std::unexpect, error::overflow};
-            }
-        }
+                 });
     }
-    auto products = std::views::iota(I{0}, n) | std::views::transform([&](I k) { return a(k) * b(k); });
-    if constexpr (Proven)
-        return element_traits<Target>::total(products);
+  } // namespace detail
+
+  // sum
+  // The exact total of m's elements into Target
+  // (an inside; a quantity with units/mdspan.hpp, whose total is converted to Target's unit),
+  // checked once by Target's policy.
+  template <class Target, class T, class E, class L, class A>
+    requires detail::mdspan_element<T> && detail::mdspan_element<Target>
+  [[nodiscard]] constexpr auto sum(const std::mdspan<T, E, L, A>& m)
+  {
+    if constexpr (detail::total_proven<Target, std::remove_cv_t<T>, E>())
+      return detail::element_traits<Target>::total(detail::element_range(m));
     else
+      return detail::element_traits<Target>::try_total(detail::element_range(m));
+  }
+
+  // All extents static: the result type is the N-fold sum of the element's grid, N the element count,
+  // so it holds every total.
+  template <class T, class E, class L, class A>
+    requires detail::mdspan_element<T> && detail::all_static<E>
+          && (detail::notched<detail::element_number_t<T>> || detail::point_grid<detail::element_number_t<T>>)
+  [[nodiscard]] constexpr auto sum(const std::mdspan<T, E, L, A>& m)
+  {
+    return sum<detail::n_fold_t<std::remove_cv_t<T>, detail::static_size<E>>>(m);
+  }
+  template <class T, class E, class L, class A>
+    requires detail::mdspan_element<T> && detail::all_static<E>
+          && (!detail::notched<detail::element_number_t<T>> && !detail::point_grid<detail::element_number_t<T>>)
+  auto sum(const std::mdspan<T, E, L, A>&)
+    = delete ("sum(m): a continuous element has no deduced total type - name one: sum<Target>(m)");
+
+  // dot, matrix_vector_product, matrix_product
+  namespace detail
+  {
+    template <class M>
+    concept vector_span = mdspan_like<M> && M::extents_type::rank() == 1 && mdspan_element<mdspan_value_t<M>>;
+    template <class M>
+    concept matrix_span = mdspan_like<M> && M::extents_type::rank() == 2 && mdspan_element<mdspan_value_t<M>>;
+
+    template <class X, class Y>
+    using product_t = decltype(std::declval<mdspan_value_t<X>>() * std::declval<mdspan_value_t<Y>>());
+
+    // Products of integer-raw lattices summed in int64, in units U of the product's value unit,
+    // onto an integer-raw lattice Target: one rounded division at the end (units_onto).
+    // Max: the largest |units| of one product, so n terms fit int64 while n·Max does.
+    template <class Target, class P>
+    inline constexpr bool int64_products = []
+    {
+      if constexpr (!insidable<Target> || !insidable<P>)
+        return false;
+      else if constexpr (!integer_storage<P> || point_storage<P> || wide_valued<P> || !notched<P>)
+        return false;
+      else if constexpr (sizeof(raw_t<P>) <= 4 && lane32_block<P> >= 64)
+        return false; // sum_into adds those raws in vectorized 32-bit lanes
+      else
+        return units_onto<Target, grid_of<P>.value_unit()> && values_fit_int64<P>
+            && signed_value_bits({units_lo<P, grid_of<P>.value_unit()>, units_hi<P, grid_of<P>.value_unit()>}) < 62;
+    }();
+
+    // Σ_k a(k)·b(k) over k < n, exactly, into Target: Target where Proven, else an expected.
+    template <class Target, bool Proven, class FA, class FB, class I>
+    constexpr auto sum_of_products(I n, FA a, FB b)
+    {
+      using P = decltype(a(I{}) * b(I{}));
+      if constexpr (int64_products<Target, P>)
+      {
+        constexpr grid_number  U{grid_of<P>.value_unit()};
+        constexpr grid_int     max{abs(units_lo<P, U>) < abs(units_hi<P, U>) ? abs(units_hi<P, U>)
+                                                                             : abs(units_lo<P, U>)};
+        constexpr std::int64_t terms{max == grid_int{0}
+                                     ? std::numeric_limits<std::int64_t>::max()
+                                     : std::numeric_limits<std::int64_t>::max() / static_cast<std::int64_t>(max)};
+        if (std::cmp_less_equal(n, terms)) [[likely]]
+        {
+          std::int64_t total{0};
+          for (I k = 0; k < n; ++k)
+            total += value_in_units<std::int64_t, U>(a(k) * b(k));
+          constexpr grid_number  c{U / notch_of<Target>};
+          constexpr std::int64_t cp{static_cast<std::int64_t>(grid_numerator(c))};
+          constexpr std::int64_t cq{static_cast<std::int64_t>(grid_denominator(c))};
+          std::int64_t           num;
+          if (!mul_overflow(total, cp, &num))
+          {
+            const auto s{lattice_round_slot<Target, policy_of<Target>>(num, cq)};
+            if (s.Status == lattice_status::ok) [[likely]]
+            {
+              const Target t{Target::from_raw(raw_from_offset<Target>(s.Slot), unsafe)};
+              if constexpr (Proven)
+                return t;
+              else
+                return std::expected<Target, error>{t};
+            }
+            if constexpr (!Proven)
+              if (s.Status == lattice_status::overflow)
+                return std::expected<Target, error>{std::unexpect, error::overflow};
+          }
+        }
+      }
+      auto products{std::views::iota(I{0}, n) | std::views::transform([&](I k) { return a(k) * b(k); })};
+      if constexpr (Proven)
+        return element_traits<Target>::total(products);
+      else
         return element_traits<Target>::try_total(products);
-}
-// The extent K of a product's summed index (dynamic_extent when dynamic).
-template <class Target, class X, class Y, std::size_t K>
-inline constexpr bool products_proven = total_proven<
-    Target,
-    product_t<X, Y>,
-    std::conditional_t<K == std::dynamic_extent, std::dextents<std::size_t, 1>, std::extents<std::size_t, K>>>();
-} // namespace detail
+    }
+    // The extent K of a product's summed index (dynamic_extent when dynamic).
+    template <class Target, class X, class Y, std::size_t K>
+    inline constexpr bool products_proven = total_proven<
+      Target,
+      product_t<X, Y>,
+      std::conditional_t<K == std::dynamic_extent, std::dextents<std::size_t, 1>, std::extents<std::size_t, K>>>();
+  } // namespace detail
 
-template <class Target, detail::vector_span X, detail::vector_span Y>
-    requires detail::mdspan_element<Target> &&
-             detail::extent_compatible<typename X::extents_type, 0, typename Y::extents_type, 0>
-[[nodiscard]] constexpr auto dot(const X& x, const Y& y) {
+  template <class Target, detail::vector_span X, detail::vector_span Y>
+    requires detail::mdspan_element<Target>
+          && detail::extent_compatible<typename X::extents_type, 0, typename Y::extents_type, 0>
+  [[nodiscard]] constexpr auto dot(const X& x, const Y& y)
+  {
     detail::require_extent(x.extent(0) == y.extent(0), "dot: the extents differ");
-    using I                 = typename X::index_type;
-    constexpr std::size_t K = X::static_extent(0) != std::dynamic_extent ? X::static_extent(0) : Y::static_extent(0);
+    using I = typename X::index_type;
+    constexpr std::size_t K{X::static_extent(0) != std::dynamic_extent ? X::static_extent(0) : Y::static_extent(0)};
     return detail::sum_of_products<Target, detail::products_proven<Target, X, Y, K>>(
-        x.extent(0), [&](I k) { return detail::element_at(x, k); }, [&](I k) { return detail::element_at(y, k); });
-}
-// Static extents: the result type is the N-fold sum of one product's grid.
-template <detail::vector_span X, detail::vector_span Y>
-    requires detail::all_static<typename X::extents_type> && detail::all_static<typename Y::extents_type> &&
-             (X::static_extent(0) == Y::static_extent(0))
-[[nodiscard]] constexpr auto dot(const X& x, const Y& y) {
+      x.extent(0), [&](I k) { return detail::element_at(x, k); }, [&](I k) { return detail::element_at(y, k); });
+  }
+  // Static extents: the result type is the N-fold sum of one product's grid.
+  template <detail::vector_span X, detail::vector_span Y>
+    requires detail::all_static<typename X::extents_type> && detail::all_static<typename Y::extents_type>
+          && (X::static_extent(0) == Y::static_extent(0))
+  [[nodiscard]] constexpr auto dot(const X& x, const Y& y)
+  {
     return dot<detail::n_fold_t<detail::product_t<X, Y>, X::static_extent(0)>>(x, y);
-}
-template <detail::vector_span X, detail::vector_span Y>
+  }
+  template <detail::vector_span X, detail::vector_span Y>
     requires(!detail::extent_compatible<typename X::extents_type, 0, typename Y::extents_type, 0>)
-auto dot(const X&, const Y&) = delete ("dot: the vectors' static extents differ");
+  auto dot(const X&, const Y&) = delete ("dot: the vectors' static extents differ");
 
-// y = A·x: y[i] = Σ_j A[i, j]·x[j], each exact, stored once by y's policy.
-template <detail::matrix_span MA, detail::vector_span X, detail::vector_span Y>
-    requires detail::extent_compatible<typename MA::extents_type, 1, typename X::extents_type, 0> &&
-             detail::extent_compatible<typename MA::extents_type, 0, typename Y::extents_type, 0>
-// (void where every element's total is proven, else std::expected<void,
-// error>: the first failure, the elements before it written.)
-constexpr auto matrix_vector_product(const MA& a, const X& x, const Y& y) {
+  // y = A·x: y[i] = Σ_j A[i, j]·x[j], each exact, stored once by y's policy.
+  template <detail::matrix_span MA, detail::vector_span X, detail::vector_span Y>
+    requires detail::extent_compatible<typename MA::extents_type, 1, typename X::extents_type, 0>
+          && detail::extent_compatible<typename MA::extents_type, 0, typename Y::extents_type, 0>
+  // (void where every element's total is proven, else std::expected<void, error>:
+  // the first failure, the elements before it written.)
+  constexpr auto matrix_vector_product(const MA& a, const X& x, const Y& y)
+  {
     detail::require_extent(a.extent(1) == x.extent(0) && a.extent(0) == y.extent(0),
                            "matrix_vector_product: the extents differ");
-    using Out               = detail::mdspan_value_t<Y>;
-    using I                 = typename MA::index_type;
-    constexpr std::size_t K = MA::static_extent(1) != std::dynamic_extent ? MA::static_extent(1) : X::static_extent(0);
-    constexpr bool        proven = detail::products_proven<Out, MA, X, K>;
-    for (I i = 0; i < a.extent(0); ++i) {
-        const auto t = detail::sum_of_products<Out, proven>(
-            a.extent(1),
-            [&](I j) { return detail::element_at(a, i, j); },
-            [&](I j) { return detail::element_at(x, j); });
-        if constexpr (proven)
-            y[static_cast<typename Y::index_type>(i)] = t;
-        else {
-            if (!t)
-                return std::expected<void, error>{std::unexpect, t.error()};
-            y[static_cast<typename Y::index_type>(i)] = *t;
-        }
+    using Out = detail::mdspan_value_t<Y>;
+    using I   = typename MA::index_type;
+    constexpr std::size_t K{MA::static_extent(1) != std::dynamic_extent ? MA::static_extent(1) : X::static_extent(0)};
+    constexpr bool        proven{detail::products_proven<Out, MA, X, K>};
+    for (I i = 0; i < a.extent(0); ++i)
+    {
+      const auto t{detail::sum_of_products<Out, proven>(
+        a.extent(1),
+        [&](I j) { return detail::element_at(a, i, j); },
+        [&](I j) { return detail::element_at(x, j); })};
+      if constexpr (proven)
+        y[static_cast<typename Y::index_type>(i)] = t;
+      else
+      {
+        if (!t)
+          return std::expected<void, error>{std::unexpect, t.error()};
+        y[static_cast<typename Y::index_type>(i)] = *t;
+      }
     }
     if constexpr (!proven)
-        return std::expected<void, error>{};
-}
+      return std::expected<void, error>{};
+  }
 
-// C = A·B: C[i, j] = Σ_k A[i, k]·B[k, j], each exact, stored once by C's policy.
-template <detail::matrix_span MA, detail::matrix_span MB, detail::matrix_span MC>
-    requires detail::extent_compatible<typename MA::extents_type, 1, typename MB::extents_type, 0> &&
-             detail::extent_compatible<typename MA::extents_type, 0, typename MC::extents_type, 0> &&
-             detail::extent_compatible<typename MB::extents_type, 1, typename MC::extents_type, 1>
-constexpr auto matrix_product(const MA& a, const MB& b, const MC& c) {
+  // C = A·B: C[i, j] = Σ_k A[i, k]·B[k, j], each exact, stored once by C's policy.
+  template <detail::matrix_span MA, detail::matrix_span MB, detail::matrix_span MC>
+    requires detail::extent_compatible<typename MA::extents_type, 1, typename MB::extents_type, 0>
+          && detail::extent_compatible<typename MA::extents_type, 0, typename MC::extents_type, 0>
+          && detail::extent_compatible<typename MB::extents_type, 1, typename MC::extents_type, 1>
+  constexpr auto matrix_product(const MA& a, const MB& b, const MC& c)
+  {
     detail::require_extent(a.extent(1) == b.extent(0) && a.extent(0) == c.extent(0) && b.extent(1) == c.extent(1),
                            "matrix_product: the extents differ");
     using Out = detail::mdspan_value_t<MC>;
     using I   = typename MA::index_type;
     using CI  = typename MC::index_type;
-    constexpr std::size_t K =
-        MA::static_extent(1) != std::dynamic_extent ? MA::static_extent(1) : MB::static_extent(0);
-    constexpr bool proven = detail::products_proven<Out, MA, MB, K>;
+    constexpr std::size_t K{MA::static_extent(1) != std::dynamic_extent ? MA::static_extent(1) : MB::static_extent(0)};
+    constexpr bool        proven{detail::products_proven<Out, MA, MB, K>};
     for (I i = 0; i < a.extent(0); ++i)
-        for (I j = 0; j < b.extent(1); ++j) {
-            const auto t = detail::sum_of_products<Out, proven>(
-                a.extent(1),
-                [&](I k) { return detail::element_at(a, i, k); },
-                [&](I k) { return detail::element_at(b, k, j); });
-            if constexpr (proven)
-                c[static_cast<CI>(i), static_cast<CI>(j)] = t;
-            else {
-                if (!t)
-                    return std::expected<void, error>{std::unexpect, t.error()};
-                c[static_cast<CI>(i), static_cast<CI>(j)] = *t;
-            }
+      for (I j = 0; j < b.extent(1); ++j)
+      {
+        const auto t{detail::sum_of_products<Out, proven>(
+          a.extent(1),
+          [&](I k) { return detail::element_at(a, i, k); },
+          [&](I k) { return detail::element_at(b, k, j); })};
+        if constexpr (proven)
+          c[static_cast<CI>(i), static_cast<CI>(j)] = t;
+        else
+        {
+          if (!t)
+            return std::expected<void, error>{std::unexpect, t.error()};
+          c[static_cast<CI>(i), static_cast<CI>(j)] = *t;
         }
+      }
     if constexpr (!proven)
-        return std::expected<void, error>{};
-}
+      return std::expected<void, error>{};
+  }
 
-//---------------------------------------------------------------------------
-// transform_into
-//---------------------------------------------------------------------------
-namespace detail {
-// out[idx] = v for every index, v = value(idx...): void where every store is
-// proven (it compiles), else std::expected<void, error> with the first failure
-// (the elements before it written).
-template <class Out, class R, class Ext, class Value>
-constexpr auto store_each(const Out& out, const Ext& extents, Value value) {
-    using OI = typename Out::index_type;
-    if constexpr (requires(const Out& o, std::array<OI, Out::rank()> i, R v) { o[i] = v; }) {
+  // transform_into
+  namespace detail
+  {
+    // out[idx] = v for every index, v = value(idx...): void where every store is proven (it compiles),
+    // else std::expected<void, error> with the first failure (the elements before it written).
+    template <class Out, class R, class Ext, class Value>
+    constexpr auto store_each(const Out& out, const Ext& extents, Value value)
+    {
+      using OI = typename Out::index_type;
+      if constexpr (requires(const Out& o, std::array<OI, Out::rank()> i, R v) { o[i] = v; })
+      {
         auto each = [&](auto... i) { out[static_cast<OI>(i)...] = value(i...); };
         for_each_index(extents, each);
-    } else {
+      }
+      else
+      {
         using E = mdspan_value_t<Out>;
         error ec{};
-        auto  each = [&](auto... i) {
-            if (ec != error{})
-                return;
-            if (const auto r = element_traits<E>::try_store_of(value(i...)))
-                out[static_cast<OI>(i)...] = *r;
-            else
-                ec = r.error();
+        auto  each = [&](auto... i)
+        {
+          if (ec != error{})
+            return;
+          if (const auto r = element_traits<E>::try_store_of(value(i...)))
+            out[static_cast<OI>(i)...] = *r;
+          else
+            ec = r.error();
         };
         for_each_index(extents, each);
         if (ec != error{})
-            return std::expected<void, error>{std::unexpect, ec};
+          return std::expected<void, error>{std::unexpect, ec};
         return std::expected<void, error>{};
+      }
     }
-}
-} // namespace detail
+  } // namespace detail
 
-// out[idx] = f(in[idx]) for every index, stored by out's element policy:
-// void where the grids prove every store, else std::expected<void, error>.
-template <mdspan_like In, mdspan_like Out, class F>
-    requires detail::extents_compatible<typename In::extents_type, typename Out::extents_type> &&
-             std::invocable<F&, detail::mdspan_value_t<In>>
-constexpr auto transform_into(const In& in, const Out& out, F f) {
+  // out[idx] = f(in[idx]) for every index, stored by out's element policy:
+  // void where the grids prove every store, else std::expected<void, error>.
+  template <mdspan_like In, mdspan_like Out, class F>
+    requires detail::extents_compatible<typename In::extents_type, typename Out::extents_type>
+          && std::invocable<F&, detail::mdspan_value_t<In>>
+  constexpr auto transform_into(const In& in, const Out& out, F f)
+  {
     detail::require_extent(in.extents() == out.extents(), "transform_into: the extents differ");
     using R = std::invoke_result_t<F&, detail::mdspan_value_t<In>>;
     return detail::store_each<Out, R>(
-        out, in.extents(), [&](auto... i) { return std::invoke(f, detail::element_at(in, i...)); });
-}
-// out[idx] = f(in1[idx], in2[idx]).
-template <mdspan_like In1, mdspan_like In2, mdspan_like Out, class F>
-    requires detail::extents_compatible<typename In1::extents_type, typename Out::extents_type> &&
-             detail::extents_compatible<typename In2::extents_type, typename Out::extents_type> &&
-             std::invocable<F&, detail::mdspan_value_t<In1>, detail::mdspan_value_t<In2>>
-constexpr auto transform_into(const In1& in1, const In2& in2, const Out& out, F f) {
+      out, in.extents(), [&](auto... i) { return std::invoke(f, detail::element_at(in, i...)); });
+  }
+  // out[idx] = f(in1[idx], in2[idx]).
+  template <mdspan_like In1, mdspan_like In2, mdspan_like Out, class F>
+    requires detail::extents_compatible<typename In1::extents_type, typename Out::extents_type>
+          && detail::extents_compatible<typename In2::extents_type, typename Out::extents_type>
+          && std::invocable<F&, detail::mdspan_value_t<In1>, detail::mdspan_value_t<In2>>
+  constexpr auto transform_into(const In1& in1, const In2& in2, const Out& out, F f)
+  {
     detail::require_extent(in1.extents() == out.extents() && in2.extents() == out.extents(),
                            "transform_into: the extents differ");
     using R = std::invoke_result_t<F&, detail::mdspan_value_t<In1>, detail::mdspan_value_t<In2>>;
-    return detail::store_each<Out, R>(out, in1.extents(), [&](auto... i) {
-        return std::invoke(f, detail::element_at(in1, i...), detail::element_at(in2, i...));
-    });
-}
+    return detail::store_each<Out, R>(
+      out, in1.extents(),
+      [&](auto... i) { return std::invoke(f, detail::element_at(in1, i...), detail::element_at(in2, i...)); });
+  }
 } // namespace ins
 
 #endif // INSIDE_INSIDE_MDSPAN_HPP

@@ -82,6 +82,13 @@
   brace-initialized locals, short headers, and comments broken at clause
   boundaries. Their outputs are unchanged, except for a few labels that spell
   a renamed type.
+- The headers in `include/` (and so `single_include/`) are laid out the same
+  way: Allman braces, two-space indentation with namespace bodies indented,
+  tables and runs of assignments aligned, brace-initialized locals, and
+  shorter comments broken at clause boundaries, without the `//---` banners.
+  Only layout, comments and initializer spelling change: the code's tokens
+  are the same but for `T x = e;` becoming `T x{e};` where `e` has type `T`,
+  and every diagnostic reads as before.
 - Grid numbers are held inline while they fit the 64-bit rational, so every
   `inside` type spells shorter: `inside<{{0, 1}, per<100>}, round_half_away>`
   prints in 221 characters instead of 609 and mangles in 145 instead of 203,

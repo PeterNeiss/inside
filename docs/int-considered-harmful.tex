@@ -634,7 +634,7 @@ and its edge policy:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/inside/inside/detail/core.hpp:160
+struct inside;                        // include/inside/inside/detail/core.hpp:211
 \end{lstlisting}
 
 \noindent
@@ -655,9 +655,9 @@ The number is always an \code{inside}:
 
 \begin{lstlisting}
 template<reference R, insidable Rep>
-class quantity;                       // include/inside/units/detail/quantity.hpp:314
+class quantity;                       // include/inside/units/detail/quantity.hpp:403
 template<reference R, origin_ref O, insidable Rep>
-class quantity_point;                 // include/inside/units/detail/point.hpp:66
+class quantity_point;                 // include/inside/units/detail/point.hpp:72
 \end{lstlisting}
 
 \noindent
@@ -1086,7 +1086,7 @@ Compile error & a store the grids cannot prove, with no channel & The default (\
 
 \noindent
 Quantities keep these shapes: dividing by a quantity whose grid holds 0 gives
-an \code{expected}, as it does for an \code{inside}. The codes form a small closed set (\file{inside/detail/error.hpp:40}). A value that
+an \code{expected}, as it does for an \code{inside}. The codes form a small closed set (\file{inside/detail/error.hpp:32}). A value that
 does not fit is always \code{overflow}, whichever path found it:
 
 \begin{lstlisting}

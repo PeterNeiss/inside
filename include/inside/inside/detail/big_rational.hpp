@@ -7,27 +7,20 @@
 #include <inside/inside/detail/rational.hpp>
 #include <inside/inside/detail/wide_int.hpp>
 
-//---------------------------------------------------------------------------
-// big_int / big_rational — grid numbers of any size (static reflection).
-//
+// big_int and big_rational: grid numbers of any size (static reflection).
 // A grid is a template argument, so its numbers must be structural values.
-// A value of at most one limb is held inline (Small); a larger magnitude is
-// interned in static storage with std::define_static_array and held by
-// pointer. Equal arrays intern to the same object, and every value has one
-// canonical form (reduced fraction, no leading zero limbs, inline when it
-// fits), so equal values are the same template argument.
-//
-// Interning is consteval: a value past 64 bits exists only at compile time.
-// So the operators are consteval too: a grid number is formed during
-// compilation, `N - 1` folds wherever N is a constant, and run-time code
-// computes with insides, which hold any value of their grid. The same
-// arithmetic by name (big_int::add, big_rational::mul, …) is constexpr for
-// the constexpr grid constructors, normalization and printing a grid; at
-// run time a result past one limb reports error::overflow.
-//
-// Arithmetic on large values runs on transient std::vector<std::uint64_t> magnitudes
-// with the wide_int limb kernels, during constant evaluation only.
-//---------------------------------------------------------------------------
+// A value of at most one limb is held inline (Small);
+// a larger magnitude is interned in static storage with std::define_static_array and held by pointer.
+// Equal arrays intern to the same object, and every value has one canonical form
+// (a reduced fraction, no leading zero limbs, inline when it fits), so equal values are the same template argument.
+// Interning is consteval, so a value past 64 bits exists only at compile time, and so are the operators:
+// a grid number is formed during compilation, N - 1 folds wherever N is a constant,
+// and run-time code computes with insides, which hold any value of their grid.
+// The same arithmetic by name (big_int::add, big_rational::mul, …) is constexpr,
+// for the constexpr grid constructors, normalization and printing a grid;
+// at run time a result past one limb reports error::overflow.
+// Arithmetic on large values runs on transient std::vector<std::uint64_t> magnitudes with the wide_int limb
+// kernels, during constant evaluation only.
 #include <algorithm>
 #include <bit>
 #include <compare>
@@ -35,315 +28,365 @@
 #include <meta>
 #include <vector>
 
-namespace ins::detail {
-namespace big {
-using mag = std::vector<std::uint64_t>; // little-endian, no top zeros
+namespace ins::detail
+{
+  namespace big
+  {
+    using mag = std::vector<std::uint64_t>; // little-endian, no top zeros
 
-constexpr void trim(mag& m) { m.resize(limb::top_size(m.data(), m.size())); }
+    constexpr void trim(mag& m) { m.resize(limb::top_size(m.data(), m.size())); }
 
-constexpr std::strong_ordering compare(const mag& a, const mag& b) {
-    if (a.size() != b.size())
+    constexpr std::strong_ordering compare(const mag& a, const mag& b)
+    {
+      if (a.size() != b.size())
         return a.size() <=> b.size();
-    return std::lexicographical_compare_three_way(a.rbegin(), a.rend(), b.rbegin(), b.rend());
-}
-
-constexpr mag add(const mag& a, const mag& b) {
-    const mag& x = a.size() >= b.size() ? a : b; // the longer
-    const mag& y = a.size() >= b.size() ? b : a;
-    mag        r(x.size() + 1, 0);
-    r.back() = limb::add(r.data(), x.data(), x.size(), y.data(), y.size());
-    trim(r);
-    return r;
-}
-
-// a − b for a ≥ b.
-constexpr mag sub(const mag& a, const mag& b) {
-    mag r(a.size(), 0);
-    limb::sub(r.data(), a.data(), a.size(), b.data(), b.size());
-    trim(r);
-    return r;
-}
-
-constexpr mag mul(const mag& a, const mag& b) {
-    if (a.empty() || b.empty())
-        return {};
-    mag r(a.size() + b.size(), 0);
-    limb::mul_basecase(r.data(), a.data(), a.size(), b.data(), b.size());
-    trim(r);
-    return r;
-}
-
-// {a / b, a % b} for b ≠ 0.
-struct divmod_result {
-    mag Quotient;
-    mag Remainder;
-};
-constexpr divmod_result divmod(const mag& a, const mag& b) {
-    if (compare(a, b) < 0)
-        return {{}, a};
-    mag q(a.size() - b.size() + 1, 0), r(b.size(), 0), un(a.size() + 1, 0), vn(b.size(), 0);
-    limb::divmod(a.data(), a.size(), b.data(), b.size(), q.data(), r.data(), un.data(), vn.data());
-    trim(q);
-    trim(r);
-    return {q, r};
-}
-
-constexpr mag gcd(mag a, mag b) {
-    return euclid_gcd(std::move(a), std::move(b), [](const mag& x, const mag& y) { return divmod(x, y).Remainder; });
-}
-
-constexpr int bit_width(const mag& m) {
-    return m.empty() ? 0 : static_cast<int>(m.size() - 1) * 64 + std::bit_width(m.back());
-}
-
-// m · 2^k (k ≥ 0).
-constexpr mag shl(const mag& m, int k) {
-    mag r(m.size() + static_cast<std::size_t>(k / 64) + 1, 0);
-    limb::shift_left(r.data(), r.size(), m.data(), m.size(), k);
-    trim(r);
-    return r;
-}
-
-// x·(−1)^xn + y·(−1)^yn as a magnitude and sign.
-struct signed_mag {
-    mag  Mag;
-    bool Negative;
-};
-constexpr signed_mag add_signed(const mag& x, bool xn, const mag& y, bool yn) {
-    if (xn == yn)
-        return {add(x, y), xn};
-    return compare(x, y) >= 0 ? signed_mag{sub(x, y), xn} : signed_mag{sub(y, x), yn};
-}
-
-// A fraction of transient magnitudes, unreduced: nothing is interned, so it
-// computes at runtime too (a big grid's predicates against a runtime value).
-struct fraction {
-    mag  Num;                   // |numerator|
-    mag  Den{std::uint64_t{1}}; // > 0
-    bool Negative = false;
-};
-
-constexpr std::strong_ordering compare(const fraction& a, const fraction& b) {
-    const int sa = a.Num.empty() ? 0 : a.Negative ? -1 : 1, sb = b.Num.empty() ? 0 : b.Negative ? -1 : 1;
-    if (sa != sb)
-        return sa <=> sb;
-    const std::strong_ordering m = compare(mul(a.Num, b.Den), mul(b.Num, a.Den));
-    return sa < 0 ? 0 <=> m : m;
-}
-
-constexpr fraction operator+(const fraction& a, const fraction& b) {
-    auto [n, neg] = add_signed(mul(a.Num, b.Den), a.Negative, mul(b.Num, a.Den), b.Negative);
-    return {n, mul(a.Den, b.Den), neg && !n.empty()};
-}
-
-// (a − b) / n is an integer (n ≠ 0).
-constexpr bool same_lattice(const fraction& a, fraction b, const fraction& n) {
-    b.Negative       = !b.Negative && !b.Num.empty();
-    const fraction d = a + b;
-    return divmod(mul(d.Num, n.Den), mul(d.Den, n.Num)).Remainder.empty();
-}
-
-// A floating-point value within the double range exactly, in lowest terms:
-// a wider one (long double) as the sum of the doubles it splits into.
-template <std::floating_point T>
-constexpr fraction fraction_of_float(T v) {
-    if constexpr (wide_float<T>) {
-        if (!is_double_value(v)) {
-            fraction s;
-            for_each_double_part(v, [&](double p) {
-                s = s + fraction_of_float(p);
-                return true;
-            });
-            const mag g = gcd(s.Num, s.Den);
-            return {divmod(s.Num, g).Quotient, divmod(s.Den, g).Quotient, s.Negative};
-        }
+      return std::lexicographical_compare_three_way(a.rbegin(), a.rend(), b.rbegin(), b.rend());
     }
-    const double d = static_cast<double>(v);
-    if (d == 0)
+
+    constexpr mag add(const mag& a, const mag& b)
+    {
+      const mag& x{a.size() >= b.size() ? a : b}; // the longer
+      const mag& y{a.size() >= b.size() ? b : a};
+      mag r(x.size() + 1, 0);
+      r.back() = limb::add(r.data(), x.data(), x.size(), y.data(), y.size());
+      trim(r);
+      return r;
+    }
+
+    // a − b for a ≥ b.
+    constexpr mag sub(const mag& a, const mag& b)
+    {
+      mag r(a.size(), 0);
+      limb::sub(r.data(), a.data(), a.size(), b.data(), b.size());
+      trim(r);
+      return r;
+    }
+
+    constexpr mag mul(const mag& a, const mag& b)
+    {
+      if (a.empty() || b.empty())
         return {};
-    auto [mant, e] = double_parts(d);
-    if (e < 0) { // in lowest terms: the twos the denominator shares
-        const int z = std::min(std::countr_zero(mant), -e);
+      mag r(a.size() + b.size(), 0);
+      limb::mul_basecase(r.data(), a.data(), a.size(), b.data(), b.size());
+      trim(r);
+      return r;
+    }
+
+    // {a / b, a % b} for b ≠ 0.
+    struct divmod_result
+    {
+      mag Quotient;
+      mag Remainder;
+    };
+    constexpr divmod_result divmod(const mag& a, const mag& b)
+    {
+      if (compare(a, b) < 0)
+        return {{}, a};
+      mag q(a.size() - b.size() + 1, 0), r(b.size(), 0), un(a.size() + 1, 0), vn(b.size(), 0);
+      limb::divmod(a.data(), a.size(), b.data(), b.size(), q.data(), r.data(), un.data(), vn.data());
+      trim(q);
+      trim(r);
+      return {q, r};
+    }
+
+    constexpr mag gcd(mag a, mag b)
+    {
+      return euclid_gcd(std::move(a), std::move(b), [](const mag& x, const mag& y) { return divmod(x, y).Remainder; });
+    }
+
+    constexpr int bit_width(const mag& m)
+    {
+      return m.empty() ? 0 : static_cast<int>(m.size() - 1) * 64 + std::bit_width(m.back());
+    }
+
+    // m · 2^k (k ≥ 0).
+    constexpr mag shl(const mag& m, int k)
+    {
+      mag r(m.size() + static_cast<std::size_t>(k / 64) + 1, 0);
+      limb::shift_left(r.data(), r.size(), m.data(), m.size(), k);
+      trim(r);
+      return r;
+    }
+
+    // x·(−1)^xn + y·(−1)^yn as a magnitude and a sign.
+    struct signed_mag
+    {
+      mag  Mag;
+      bool Negative;
+    };
+    constexpr signed_mag add_signed(const mag& x, bool xn, const mag& y, bool yn)
+    {
+      if (xn == yn)
+        return {add(x, y), xn};
+      return compare(x, y) >= 0 ? signed_mag{sub(x, y), xn} : signed_mag{sub(y, x), yn};
+    }
+
+    // A fraction of transient magnitudes, unreduced:
+    // nothing is interned, so it computes at run time too (a big grid's predicates against a run-time value).
+    struct fraction
+    {
+      mag  Num;                   // |numerator|
+      mag  Den{std::uint64_t{1}}; // > 0
+      bool Negative = false;
+    };
+
+    constexpr std::strong_ordering compare(const fraction& a, const fraction& b)
+    {
+      const int sa{a.Num.empty() ? 0 : a.Negative ? -1 : 1}, sb{b.Num.empty() ? 0 : b.Negative ? -1 : 1};
+      if (sa != sb)
+        return sa <=> sb;
+      const std::strong_ordering m{compare(mul(a.Num, b.Den), mul(b.Num, a.Den))};
+      return sa < 0 ? 0 <=> m : m;
+    }
+
+    constexpr fraction operator+(const fraction& a, const fraction& b)
+    {
+      auto [n, neg] = add_signed(mul(a.Num, b.Den), a.Negative, mul(b.Num, a.Den), b.Negative);
+      return {n, mul(a.Den, b.Den), neg && !n.empty()};
+    }
+
+    // (a − b) / n is an integer (n ≠ 0).
+    constexpr bool same_lattice(const fraction& a, fraction b, const fraction& n)
+    {
+      b.Negative = !b.Negative && !b.Num.empty();
+      const fraction d{a + b};
+      return divmod(mul(d.Num, n.Den), mul(d.Den, n.Num)).Remainder.empty();
+    }
+
+    // A floating-point value within the double range exactly, in lowest terms:
+    // a wider one (long double) as the sum of the doubles it splits into.
+    template <std::floating_point T>
+    constexpr fraction fraction_of_float(T v)
+    {
+      if constexpr (wide_float<T>)
+      {
+        if (!is_double_value(v))
+        {
+          fraction s;
+          for_each_double_part(v,
+                               [&](double p)
+                               {
+                                 s = s + fraction_of_float(p);
+                                 return true;
+                               });
+          const mag g = gcd(s.Num, s.Den);
+          return {divmod(s.Num, g).Quotient, divmod(s.Den, g).Quotient, s.Negative};
+        }
+      }
+      const double d{static_cast<double>(v)};
+      if (d == 0)
+        return {};
+      auto [mant, e] = double_parts(d);
+      if (e < 0) // in lowest terms: the twos the denominator shares
+      {
+        const int z{std::min(std::countr_zero(mant), -e)};
         mant >>= z;
         e += z;
+      }
+      return e >= 0 ? fraction{shl(mag{mant}, e), mag{std::uint64_t{1}}, d < 0}
+                    : fraction{mag{mant}, shl(mag{std::uint64_t{1}}, -e), d < 0};
     }
-    return e >= 0 ? fraction{shl(mag{mant}, e), mag{std::uint64_t{1}}, d < 0}
-                  : fraction{mag{mant}, shl(mag{std::uint64_t{1}}, -e), d < 0};
-}
-} // namespace big
+  } // namespace big
 
-//---------------------------------------------------------------------------
-// big_int — a signed integer of any size; structural.
-//---------------------------------------------------------------------------
-struct big_int {
-    std::uint64_t        Small = 0;       // the magnitude when Size == 0
-    const std::uint64_t* Limbs = nullptr; // interned magnitude, Size ≥ 2 limbs
-    std::size_t          Size  = 0;       // tested instead of Limbs: under -fno-delete-null-pointer-checks
-                                          // (implied by -fsanitize=null) GCC cannot compare an interned
-                                          // pointer with nullptr in a constant expression
-    bool Negative = false;                // never set for zero
+  // big_int: a signed integer of any size; structural.
+  struct big_int
+  {
+    std::uint64_t        Small    = 0;       // the magnitude when Size == 0
+    const std::uint64_t* Limbs    = nullptr; // the interned magnitude, Size ≥ 2 limbs
+    std::size_t          Size     = 0;       // tested instead of Limbs (see below)
+    bool                 Negative = false;   // never set for zero
+    // Size, not Limbs: under -fno-delete-null-pointer-checks (implied by -fsanitize=null)
+    // GCC cannot compare an interned pointer with nullptr in a constant expression.
 
     constexpr big_int() = default;
 
     template <std::integral T>
-        requires(std::numeric_limits<T>::digits <= 64)
+      requires(std::numeric_limits<T>::digits <= 64)
     constexpr big_int(T v) noexcept
-        : Small{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
-                                             : static_cast<std::uint64_t>(v)},
-          Negative{std::is_signed_v<T> && v < 0} {}
+      : Small{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
+                                           : static_cast<std::uint64_t>(v)},
+        Negative{std::is_signed_v<T> && v < 0} {}
 
-    // A builtin wider than 64 bits (__int128): its limbs. One past a limb
-    // exists only at compile time (from_mag), as every big grid number.
+    // A builtin wider than 64 bits (__int128): its limbs.
+    // One past a limb exists only at compile time (from_mag), as every big grid number does.
     template <std::integral T>
-        requires(std::numeric_limits<T>::digits > 64)
-    constexpr big_int(T v) {
-        using U        = std::make_unsigned_t<T>;
-        const bool neg = std::is_signed_v<T> && v < 0;
-        big::mag   m;
-        for (U u = neg ? U{0} - static_cast<U>(v) : static_cast<U>(v); u != 0; u >>= 64)
-            m.push_back(static_cast<std::uint64_t>(u));
-        *this = from_mag(std::move(m), neg);
+      requires(std::numeric_limits<T>::digits > 64)
+    constexpr big_int(T v)
+    {
+      using U = std::make_unsigned_t<T>;
+      const bool neg{std::is_signed_v<T> && v < 0};
+      big::mag   m;
+      for (U u = neg ? U{0} - static_cast<U>(v) : static_cast<U>(v); u != 0; u >>= 64)
+        m.push_back(static_cast<std::uint64_t>(u));
+      *this = from_mag(std::move(m), neg);
     }
 
     // From a wide_int (sign-extending a signed one).
     template <std::size_t N, bool S>
-    constexpr big_int(const wide_int<N, S>& w) {
-        const bool               neg = w.negative();
-        const wide_int<N, false> m(neg ? -w : w);
-        *this = from_mag(big::mag(m.Word, m.Word + N), neg);
+    constexpr big_int(const wide_int<N, S>& w)
+    {
+      const bool               neg{w.negative()};
+      const wide_int<N, false> m(neg ? -w : w);
+      *this = from_mag(big::mag(m.Word, m.Word + N), neg);
     }
 
-    // By value, not by pointer (see Size): equal magnitudes intern to the
-    // same array, so this matches the defaulted comparison.
-    friend constexpr bool operator==(const big_int& a, const big_int& b) noexcept {
-        return a.Size == b.Size && a.Small == b.Small && a.Negative == b.Negative &&
-               std::equal(a.Limbs, a.Limbs + a.Size, b.Limbs);
+    // By value, not by pointer (see Size):
+    // equal magnitudes intern to the same array, so this matches the defaulted comparison.
+    friend constexpr bool operator==(const big_int& a, const big_int& b) noexcept
+    {
+      return a.Size == b.Size && a.Small == b.Small && a.Negative == b.Negative
+          && std::equal(a.Limbs, a.Limbs + a.Size, b.Limbs);
     }
 
     [[nodiscard]] constexpr bool is_zero() const noexcept { return Size == 0 && Small == 0; }
     [[nodiscard]] constexpr bool negative() const noexcept { return Negative; }
     [[nodiscard]] constexpr bool fits_limb() const noexcept { return Size == 0; }
 
-    [[nodiscard]] constexpr big::mag magnitude() const {
-        if (Size != 0)
-            return big::mag(Limbs, Limbs + Size);
-        if (Small)
-            return big::mag{Small};
-        return {};
+    [[nodiscard]] constexpr big::mag magnitude() const
+    {
+      if (Size != 0)
+        return big::mag(Limbs, Limbs + Size);
+      if (Small)
+        return big::mag{Small};
+      return {};
     }
 
-    // The canonical big_int of a one-limb magnitude and sign.
-    static constexpr big_int of_limb(std::uint64_t m, bool neg) noexcept {
-        big_int r;
-        r.Small    = m;
-        r.Negative = neg && m != 0;
+    // The canonical big_int of a one-limb magnitude and a sign.
+    static constexpr big_int of_limb(std::uint64_t m, bool neg) noexcept
+    {
+      big_int r;
+      r.Small    = m;
+      r.Negative = neg && m != 0;
+      return r;
+    }
+
+    // The canonical big_int of a magnitude and a sign:
+    // inline when it fits one limb, else interned (constant evaluation only).
+    static constexpr big_int from_mag(big::mag m, bool neg)
+    {
+      big::trim(m);
+      if (m.size() <= 1)
+        return of_limb(m.empty() ? std::uint64_t{0} : m[0], neg);
+      big_int r;
+      if consteval
+      {
+        const auto s{std::define_static_array(m)};
+        r.Limbs    = s.data();
+        r.Size     = s.size();
+        r.Negative = neg;
         return r;
+      }
+      else
+      {
+        raise(error::overflow, "big_int: a value past 64 bits exists only at compile time");
+      }
     }
 
-    // The canonical big_int of a magnitude and sign: inline when it fits one
-    // limb, else interned (constant evaluation only).
-    static constexpr big_int from_mag(big::mag m, bool neg) {
-        big::trim(m);
-        if (m.size() <= 1)
-            return of_limb(m.empty() ? std::uint64_t{0} : m[0], neg);
-        big_int r;
-        if consteval {
-            const auto s = std::define_static_array(m);
-            r.Limbs      = s.data();
-            r.Size       = s.size();
-            r.Negative   = neg;
-            return r;
-        } else {
-            raise(error::overflow, "big_int: a value past 64 bits exists only at compile time");
-        }
+    [[nodiscard]] constexpr int bit_width() const
+    {
+      return Size != 0 ? static_cast<int>(Size - 1) * 64 + std::bit_width(Limbs[Size - 1]) : std::bit_width(Small);
     }
 
-    [[nodiscard]] constexpr int bit_width() const {
-        return Size != 0 ? static_cast<int>(Size - 1) * 64 + std::bit_width(Limbs[Size - 1]) : std::bit_width(Small);
-    }
-
-    // Truncating conversion to a builtin integer or wide_int (two's complement).
+    // A truncating conversion to a builtin integer or a wide_int (two's complement).
     template <typename T>
-        requires raw_integer<T>
-    constexpr explicit operator T() const {
-        if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64) {
-            using U = std::make_unsigned_t<T>; // the low limbs that fit U
-            U u     = 0;
-            for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(std::uint64_t)) : 1; i-- > 0;)
-                u = (u << 64) | (Size != 0 ? Limbs[i] : Small);
-            return static_cast<T>(Negative ? U{0} - u : u);
-        } else if constexpr (std::integral<T>) {
-            const std::uint64_t low = Size != 0 ? Limbs[0] : Small;
-            return static_cast<T>(Negative ? std::uint64_t{0} - low : low);
-        } else {
-            T w{0};
-            for (std::size_t i = 0; i < sizeof(w.Word) / sizeof(w.Word[0]); ++i)
-                w.Word[i] = Size != 0 ? (i < Size ? Limbs[i] : 0) : (i == 0 ? Small : 0);
-            return Negative ? -w : w;
-        }
+      requires raw_integer<T>
+    constexpr explicit operator T() const
+    {
+      if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64)
+      {
+        using U = std::make_unsigned_t<T>; // the low limbs that fit U
+        U u{0};
+        for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(std::uint64_t)) : 1; i-- > 0;)
+          u = (u << 64) | (Size != 0 ? Limbs[i] : Small);
+        return static_cast<T>(Negative ? U{0} - u : u);
+      }
+      else if constexpr (std::integral<T>)
+      {
+        const std::uint64_t low{Size != 0 ? Limbs[0] : Small};
+        return static_cast<T>(Negative ? std::uint64_t{0} - low : low);
+      }
+      else
+      {
+        T w{0};
+        for (std::size_t i = 0; i < sizeof(w.Word) / sizeof(w.Word[0]); ++i)
+          w.Word[i] = Size != 0 ? (i < Size ? Limbs[i] : 0) : (i == 0 ? Small : 0);
+        return Negative ? -w : w;
+      }
     }
 
-    friend constexpr std::strong_ordering operator<=>(const big_int& a, const big_int& b) {
-        if (a.Negative != b.Negative)
-            return a.Negative ? std::strong_ordering::less : std::strong_ordering::greater;
-        std::strong_ordering m = a.Size <=> b.Size; // canonical: more limbs, larger
-        if (m == 0) {
-            if (a.Size == 0)
-                m = a.Small <=> b.Small;
-            else
-                for (std::size_t i = a.Size; i-- > 0 && m == 0;)
-                    m = a.Limbs[i] <=> b.Limbs[i];
-        }
-        return a.Negative ? 0 <=> m : m;
+    friend constexpr std::strong_ordering operator<=>(const big_int& a, const big_int& b)
+    {
+      if (a.Negative != b.Negative)
+        return a.Negative ? std::strong_ordering::less : std::strong_ordering::greater;
+      std::strong_ordering m{a.Size <=> b.Size}; // canonical: more limbs, larger
+      if (m == 0)
+      {
+        if (a.Size == 0)
+          m = a.Small <=> b.Small;
+        else
+          for (std::size_t i = a.Size; i-- > 0 && m == 0;)
+            m = a.Limbs[i] <=> b.Limbs[i];
+      }
+      return a.Negative ? 0 <=> m : m;
     }
 
     // The arithmetic by name, for run-time paths on one-limb values.
-    static constexpr big_int neg(big_int a) {
-        a.Negative = !a.Negative && !a.is_zero();
-        return a;
+    static constexpr big_int neg(big_int a)
+    {
+      a.Negative = !a.Negative && !a.is_zero();
+      return a;
     }
-    static constexpr big_int add(const big_int& a, const big_int& b) {
-        if (a.Size == 0 && b.Size == 0) {
-            if (a.Negative == b.Negative) {
-                std::uint64_t       c = 0;
-                const std::uint64_t s = limb::add_carry(a.Small, b.Small, c);
-                if (c == 0)
-                    return of_limb(s, a.Negative);
-            } else
-                return a.Small >= b.Small ? of_limb(a.Small - b.Small, a.Negative)
-                                          : of_limb(b.Small - a.Small, b.Negative);
+    static constexpr big_int add(const big_int& a, const big_int& b)
+    {
+      if (a.Size == 0 && b.Size == 0)
+      {
+        if (a.Negative == b.Negative)
+        {
+          std::uint64_t       c{0};
+          const std::uint64_t s{limb::add_carry(a.Small, b.Small, c)};
+          if (c == 0)
+            return of_limb(s, a.Negative);
         }
-        auto [m, neg] = big::add_signed(a.magnitude(), a.Negative, b.magnitude(), b.Negative);
-        return from_mag(std::move(m), neg);
+        else
+          return a.Small >= b.Small ? of_limb(a.Small - b.Small, a.Negative)
+                                    : of_limb(b.Small - a.Small, b.Negative);
+      }
+      auto [m, neg] = big::add_signed(a.magnitude(), a.Negative, b.magnitude(), b.Negative);
+      return from_mag(std::move(m), neg);
     }
     static constexpr big_int sub(const big_int& a, const big_int& b) { return add(a, neg(b)); }
-    static constexpr big_int mul(const big_int& a, const big_int& b) {
-        if (a.Size == 0 && b.Size == 0) {
-            const limb::pair<std::uint64_t> p = limb::mul(a.Small, b.Small);
-            if (p.Hi == 0)
-                return of_limb(p.Lo, a.Negative != b.Negative);
-        }
-        // ×±1 (a unit denominator, mostly): no product to form and intern.
-        if ((a.Size == 0 && a.Small == 1) || (b.Size == 0 && b.Small == 1)) {
-            big_int r  = a.Size == 0 && a.Small == 1 ? b : a;
-            r.Negative = a.Negative != b.Negative && !r.is_zero();
-            return r;
-        }
-        return from_mag(big::mul(a.magnitude(), b.magnitude()), a.Negative != b.Negative);
+    static constexpr big_int mul(const big_int& a, const big_int& b)
+    {
+      if (a.Size == 0 && b.Size == 0)
+      {
+        const limb::pair<std::uint64_t> p{limb::mul(a.Small, b.Small)};
+        if (p.Hi == 0)
+          return of_limb(p.Lo, a.Negative != b.Negative);
+      }
+      // ×±1 (a unit denominator, mostly): no product to form and intern.
+      if ((a.Size == 0 && a.Small == 1) || (b.Size == 0 && b.Small == 1))
+      {
+        big_int r{a.Size == 0 && a.Small == 1 ? b : a};
+        r.Negative = a.Negative != b.Negative && !r.is_zero();
+        return r;
+      }
+      return from_mag(big::mul(a.magnitude(), b.magnitude()), a.Negative != b.Negative);
     }
     // Truncating division, as the builtin operators. Pre: b ≠ 0.
     struct divmod_result;
     static constexpr divmod_result divmod(const big_int& a, const big_int& b);
-    static constexpr big_int       quot(const big_int& a, const big_int& b);
-    static constexpr big_int       rem(const big_int& a, const big_int& b);
+    static constexpr big_int quot(const big_int& a, const big_int& b);
+    static constexpr big_int rem(const big_int& a, const big_int& b);
     // a · 2^k (k ≥ 0).
-    static constexpr big_int shl(const big_int& a, int k) {
-        if (a.Size == 0 && k < 64 && std::countl_zero(a.Small) >= k) {
-            big_int r = a;
-            r.Small   = a.Small << k;
-            return r;
-        }
-        return from_mag(big::shl(a.magnitude(), k), a.Negative);
+    static constexpr big_int shl(const big_int& a, int k)
+    {
+      if (a.Size == 0 && k < 64 && std::countl_zero(a.Small) >= k)
+      {
+        big_int r{a};
+        r.Small = a.Small << k;
+        return r;
+      }
+      return from_mag(big::shl(a.magnitude(), k), a.Negative);
     }
 
     friend consteval big_int operator-(const big_int& a) { return neg(a); }
@@ -353,65 +396,72 @@ struct big_int {
     friend consteval big_int operator/(const big_int& a, const big_int& b) { return quot(a, b); }
     friend consteval big_int operator%(const big_int& a, const big_int& b) { return rem(a, b); }
     friend consteval big_int operator<<(const big_int& a, int k) { return shl(a, k); }
-};
+  };
 
-struct big_int::divmod_result {
+  struct big_int::divmod_result
+  {
     big_int Quotient;
     big_int Remainder;
-};
+  };
 
-// (Free functions, not hidden friends: callers spell detail::abs / gcd.)
-constexpr big_int abs(big_int a) {
+  // (Free functions, not hidden friends: callers spell detail::abs and gcd.)
+  constexpr big_int abs(big_int a)
+  {
     a.Negative = false;
     return a;
-}
+  }
 
-constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_result {
+  constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_result
+  {
     if (b.is_zero())
-        fail_hard<"big_int: division by zero">(error::division_by_zero);
+      fail_hard<"big_int: division by zero">(error::division_by_zero);
     if (a.Size == 0 && b.Size == 0)
-        return {of_limb(a.Small / b.Small, a.Negative != b.Negative), of_limb(a.Small % b.Small, a.Negative)};
-    if (b.Size == 0) { // a one-limb divisor: one pass over a's limbs
-        big::mag            q(a.Limbs, a.Limbs + a.Size);
-        const std::uint64_t r = limb::div_1(q.data(), q.data(), q.size(), b.Small);
-        return {from_mag(std::move(q), a.Negative != b.Negative), of_limb(r, a.Negative)};
+      return {of_limb(a.Small / b.Small, a.Negative != b.Negative), of_limb(a.Small % b.Small, a.Negative)};
+    if (b.Size == 0) // a one-limb divisor: one pass over a's limbs
+    {
+      big::mag            q(a.Limbs, a.Limbs + a.Size);
+      const std::uint64_t r{limb::div_1(q.data(), q.data(), q.size(), b.Small)};
+      return {from_mag(std::move(q), a.Negative != b.Negative), of_limb(r, a.Negative)};
     }
-    big::divmod_result m = big::divmod(a.magnitude(), b.magnitude());
+    big::divmod_result m{big::divmod(a.magnitude(), b.magnitude())};
     return {from_mag(std::move(m.Quotient), a.Negative != b.Negative), from_mag(std::move(m.Remainder), a.Negative)};
-}
-constexpr big_int big_int::quot(const big_int& a, const big_int& b) { return divmod(a, b).Quotient; }
-constexpr big_int big_int::rem(const big_int& a, const big_int& b) {
-    if (b.Size == 0 && a.Size != 0 && !b.is_zero()) { // a one-limb divisor: the remainder alone
-        std::uint64_t r = 0;
-        for (std::size_t i = a.Size; i-- > 0;)
-            r = limb::div(r, a.Limbs[i], b.Small).Lo;
-        return of_limb(r, a.Negative);
+  }
+  constexpr big_int big_int::quot(const big_int& a, const big_int& b) { return divmod(a, b).Quotient; }
+  constexpr big_int big_int::rem(const big_int& a, const big_int& b)
+  {
+    if (b.Size == 0 && a.Size != 0 && !b.is_zero()) // a one-limb divisor: the remainder alone
+    {
+      std::uint64_t r{0};
+      for (std::size_t i = a.Size; i-- > 0;)
+        r = limb::div(r, a.Limbs[i], b.Small).Lo;
+      return of_limb(r, a.Negative);
     }
     return divmod(a, b).Remainder;
-}
+  }
 
-constexpr big_int gcd(const big_int& a, const big_int& b) {
+  constexpr big_int gcd(const big_int& a, const big_int& b)
+  {
     return euclid_gcd(abs(a), abs(b), [](const big_int& x, const big_int& y) { return big_int::rem(x, y); });
-}
+  }
 
-constexpr int bit_width_of(const big_int& v) { return v.bit_width(); }
+  constexpr int bit_width_of(const big_int& v) { return v.bit_width(); }
 
-//---------------------------------------------------------------------------
-// big_rational — an exact fraction of any size; structural and canonical
-// (reduced, positive denominator).
-//---------------------------------------------------------------------------
-struct big_rational;
-constexpr big::fraction fraction_of(const big_rational& r);
+  // big_rational: an exact fraction of any size; structural and canonical (reduced, positive denominator).
+  struct big_rational;
+  constexpr big::fraction fraction_of(const big_rational& r);
 } // namespace ins::detail
-namespace ins {
-struct grid_number; // grid_rational.hpp: holds a big_rational past 64 bits
+namespace ins
+{
+  struct grid_number; // grid_rational.hpp: holds a big_rational past 64 bits
 } // namespace ins
-namespace ins::detail {
+namespace ins::detail
+{
 
-template <class T>
-concept big_operand = std::integral<T> || std::same_as<T, rational>;
+  template <class T>
+  concept big_operand = std::integral<T> || std::same_as<T, rational>;
 
-struct big_rational {
+  struct big_rational
+  {
     big_int Num{};
     big_int Den{1};
 
@@ -420,111 +470,124 @@ struct big_rational {
     constexpr big_rational(T v) noexcept(std::numeric_limits<T>::digits <= 64) : Num{v} {}
     constexpr big_rational(big_int n, big_int d = big_int{1}) : Num{n}, Den{d} { normalize(); }
     constexpr big_rational(const rational& r) : Num{big_int::of_limb(r.Num, r.Den < 0)}, Den{abs_den(r.Den)} {}
-    // Anything else that converts to `rational` (an inside: just<-6, 5>)
-    // takes that one conversion, so it can be a grid limit or notch.
+    // Anything else that converts to rational (an inside: just<-6, 5>) takes that one conversion,
+    // so it can be a grid limit or notch.
     template <class T>
-        requires(std::is_class_v<T> && !std::same_as<T, rational> && !std::same_as<T, grid_number> &&
-                 std::convertible_to<const T&, rational>)
+      requires(std::is_class_v<T> && !std::same_as<T, rational> && !std::same_as<T, grid_number>
+               && std::convertible_to<const T&, rational>)
     constexpr big_rational(const T& v) : big_rational(rational(v)) {}
-    constexpr big_rational(std::floating_point auto d) // exact binary value
+    constexpr big_rational(std::floating_point auto d) // the exact binary value
     {
-        if (!is_finite(d))
-            fail_hard<"big_rational: not a finite number">(error::not_finite);
-        if constexpr (wide_float<decltype(d)>)
-            if (!is_double_value(d) && !is_finite(static_cast<double>(d)))
-                fail_hard<"big_rational: a long double past the double range">(error::overflow);
-        // One limb each (most limits): m·2^e reduced, no transient magnitudes.
-        if (is_double_value(d)) {
-            auto [m, e] = double_parts(static_cast<double>(d));
-            if (m == 0)
-                return;
-            if (e < 0) {
-                const int z = std::min(std::countr_zero(m), -e);
-                m >>= z;
-                e += z;
-            }
-            if (e < 0 ? e > -64 : e <= std::countl_zero(m)) {
-                Num = big_int::of_limb(e >= 0 ? m << e : m, d < 0);
-                Den = big_int{e >= 0 ? std::uint64_t{1} : std::uint64_t{1} << -e};
-                return;
-            }
+      if (!is_finite(d))
+        fail_hard<"big_rational: not a finite number">(error::not_finite);
+      if constexpr (wide_float<decltype(d)>)
+        if (!is_double_value(d) && !is_finite(static_cast<double>(d)))
+          fail_hard<"big_rational: a long double past the double range">(error::overflow);
+      // One limb each (most limits): m·2^e reduced, with no transient magnitudes.
+      if (is_double_value(d))
+      {
+        auto [m, e] = double_parts(static_cast<double>(d));
+        if (m == 0)
+          return;
+        if (e < 0)
+        {
+          const int z{std::min(std::countr_zero(m), -e)};
+          m >>= z;
+          e += z;
         }
-        // In lowest terms from the start (a long double as the sum of the
-        // doubles it splits into).
-        const big::fraction f = big::fraction_of_float(d);
-        Num                   = big_int::from_mag(f.Num, f.Negative);
-        Den                   = big_int::from_mag(f.Den, false);
+        if (e < 0 ? e > -64 : e <= std::countl_zero(m))
+        {
+          Num = big_int::of_limb(e >= 0 ? m << e : m, d < 0);
+          Den = big_int{e >= 0 ? std::uint64_t{1} : std::uint64_t{1} << -e};
+          return;
+        }
+      }
+      // In lowest terms from the start (a long double as the sum of the doubles it splits into).
+      const big::fraction f{big::fraction_of_float(d)};
+      Num = big_int::from_mag(f.Num, f.Negative);
+      Den = big_int::from_mag(f.Den, false);
     }
 
     friend constexpr bool operator==(const big_rational&, const big_rational&) = default;
 
-    constexpr void normalize() {
-        if (Den.is_zero())
-            fail_hard<"big_rational: zero denominator">(error::division_by_zero);
-        if (Den.negative()) {
-            Num = big_int::neg(Num);
-            Den = big_int::neg(Den);
-        }
-        if (Num.is_zero()) {
-            Den = big_int{1};
-            return;
-        }
-        const big_int g = gcd(Num, Den);
-        if (g != big_int{1}) {
-            Num = big_int::quot(Num, g);
-            Den = big_int::quot(Den, g);
-        }
+    constexpr void normalize()
+    {
+      if (Den.is_zero())
+        fail_hard<"big_rational: zero denominator">(error::division_by_zero);
+      if (Den.negative())
+      {
+        Num = big_int::neg(Num);
+        Den = big_int::neg(Den);
+      }
+      if (Num.is_zero())
+      {
+        Den = big_int{1};
+        return;
+      }
+      const big_int g{gcd(Num, Den)};
+      if (g != big_int{1})
+      {
+        Num = big_int::quot(Num, g);
+        Den = big_int::quot(Den, g);
+      }
     }
 
     // The 64-bit rational, when the value fits it.
-    [[nodiscard]] constexpr bool fits_rational() const noexcept {
-        return Num.fits_limb() && Den.fits_limb() && std::in_range<std::int64_t>(Den.Small);
+    [[nodiscard]] constexpr bool fits_rational() const noexcept
+    {
+      return Num.fits_limb() && Den.fits_limb() && std::in_range<std::int64_t>(Den.Small);
     }
 
-    // Implicit: lets every 64-bit path keep working on a small grid. A value
-    // past 64 bits fails the build when such a path meets it.
-    constexpr operator rational() const {
-        if (!fits_rational())
-            fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(error::overflow);
-        const std::int64_t d = static_cast<std::int64_t>(Den.Small); // in lowest terms already
-        return rational_from_parts(Num.Small, Num.negative() ? -d : d);
+    // Implicit, so every 64-bit path keeps working on a small grid.
+    // A value past 64 bits fails the build when such a path meets it.
+    constexpr operator rational() const
+    {
+      if (!fits_rational())
+        fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(error::overflow);
+      const std::int64_t d{static_cast<std::int64_t>(Den.Small)}; // in lowest terms already
+      return rational_from_parts(Num.Small, Num.negative() ? -d : d);
     }
 
-    friend constexpr std::strong_ordering operator<=>(const big_rational& a, const big_rational& b) {
-        // One-limb parts compare by a 128-bit cross product, forming no big
-        // value: runtime comparisons (a store's range check) stay allocation-
-        // and error-free.
-        if (a.Num.fits_limb() && a.Den.fits_limb() && b.Num.fits_limb() && b.Den.fits_limb()) {
-            if (a.Num.negative() != b.Num.negative())
-                return a.Num.negative() ? std::strong_ordering::less : std::strong_ordering::greater;
-            const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
-            return a.Num.negative() ? 0 <=> m : m;
-        }
-        // Signs, then integers, decide without forming magnitudes.
-        const int sa = a.Num.is_zero() ? 0 : a.Num.negative() ? -1 : 1;
-        const int sb = b.Num.is_zero() ? 0 : b.Num.negative() ? -1 : 1;
-        if (sa != sb || sa == 0)
-            return sa <=> sb;
-        if (a.is_integer() && b.is_integer())
-            return a.Num <=> b.Num;
-        return big::compare(fraction_of(a), fraction_of(b));
+    friend constexpr std::strong_ordering operator<=>(const big_rational& a, const big_rational& b)
+    {
+      // One-limb parts compare by a 128-bit cross product, forming no big value:
+      // run-time comparisons (a store's range check) stay free of allocation and errors.
+      if (a.Num.fits_limb() && a.Den.fits_limb() && b.Num.fits_limb() && b.Den.fits_limb())
+      {
+        if (a.Num.negative() != b.Num.negative())
+          return a.Num.negative() ? std::strong_ordering::less : std::strong_ordering::greater;
+        const std::strong_ordering m{limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small)};
+        return a.Num.negative() ? 0 <=> m : m;
+      }
+      // The signs, then integers, decide without forming magnitudes.
+      const int sa{a.Num.is_zero() ? 0 : a.Num.negative() ? -1 : 1};
+      const int sb{b.Num.is_zero() ? 0 : b.Num.negative() ? -1 : 1};
+      if (sa != sb || sa == 0)
+        return sa <=> sb;
+      if (a.is_integer() && b.is_integer())
+        return a.Num <=> b.Num;
+      return big::compare(fraction_of(a), fraction_of(b));
     }
 
     // The arithmetic by name, for run-time paths on one-limb values.
-    static constexpr big_rational neg(big_rational a) {
-        a.Num = big_int::neg(a.Num);
-        return a;
+    static constexpr big_rational neg(big_rational a)
+    {
+      a.Num = big_int::neg(a.Num);
+      return a;
     }
-    static constexpr big_rational add(const big_rational& a, const big_rational& b) {
-        return {big_int::add(big_int::mul(a.Num, b.Den), big_int::mul(b.Num, a.Den)), big_int::mul(a.Den, b.Den)};
+    static constexpr big_rational add(const big_rational& a, const big_rational& b)
+    {
+      return {big_int::add(big_int::mul(a.Num, b.Den), big_int::mul(b.Num, a.Den)), big_int::mul(a.Den, b.Den)};
     }
     static constexpr big_rational sub(const big_rational& a, const big_rational& b) { return add(a, neg(b)); }
-    static constexpr big_rational mul(const big_rational& a, const big_rational& b) {
-        return {big_int::mul(a.Num, b.Num), big_int::mul(a.Den, b.Den)};
+    static constexpr big_rational mul(const big_rational& a, const big_rational& b)
+    {
+      return {big_int::mul(a.Num, b.Num), big_int::mul(a.Den, b.Den)};
     }
     // Pre: b ≠ 0.
-    static constexpr big_rational div(const big_rational& a, const big_rational& b) {
-        return {big_int::mul(a.Num, b.Den), big_int::mul(a.Den, b.Num)};
+    static constexpr big_rational div(const big_rational& a, const big_rational& b)
+    {
+      return {big_int::mul(a.Num, b.Den), big_int::mul(a.Den, b.Num)};
     }
 
     friend consteval big_rational operator-(const big_rational& a) { return neg(a); }
@@ -535,96 +598,108 @@ struct big_rational {
 
     [[nodiscard]] constexpr bool is_integer() const noexcept { return Den == big_int{1}; }
 
-    // Mixed with an integer or the 64-bit rational: each converts to both
-    // big_rational and rational, so these exact overloads keep the operators
-    // unambiguous.
+    // Mixed with an integer or the 64-bit rational:
+    // each converts to both big_rational and rational, so these exact overloads keep the operators unambiguous.
     template <big_operand T>
-    friend constexpr bool operator==(const big_rational& a, const T& b) {
-        return a == big_rational{b};
+    friend constexpr bool operator==(const big_rational& a, const T& b)
+    {
+      return a == big_rational{b};
     }
     template <big_operand T>
-    friend constexpr std::strong_ordering operator<=>(const big_rational& a, const T& b) {
-        return a <=> big_rational{b};
+    friend constexpr std::strong_ordering operator<=>(const big_rational& a, const T& b)
+    {
+      return a <=> big_rational{b};
     }
     template <big_operand T>
-    friend consteval big_rational operator+(const big_rational& a, const T& b) {
-        return a + big_rational{b};
+    friend consteval big_rational operator+(const big_rational& a, const T& b)
+    {
+      return a + big_rational{b};
     }
     template <big_operand T>
-    friend consteval big_rational operator+(const T& a, const big_rational& b) {
-        return big_rational{a} + b;
+    friend consteval big_rational operator+(const T& a, const big_rational& b)
+    {
+      return big_rational{a} + b;
     }
     template <big_operand T>
-    friend consteval big_rational operator-(const big_rational& a, const T& b) {
-        return a - big_rational{b};
+    friend consteval big_rational operator-(const big_rational& a, const T& b)
+    {
+      return a - big_rational{b};
     }
     template <big_operand T>
-    friend consteval big_rational operator-(const T& a, const big_rational& b) {
-        return big_rational{a} - b;
+    friend consteval big_rational operator-(const T& a, const big_rational& b)
+    {
+      return big_rational{a} - b;
     }
     template <big_operand T>
-    friend consteval big_rational operator*(const big_rational& a, const T& b) {
-        return a * big_rational{b};
+    friend consteval big_rational operator*(const big_rational& a, const T& b)
+    {
+      return a * big_rational{b};
     }
     template <big_operand T>
-    friend consteval big_rational operator*(const T& a, const big_rational& b) {
-        return big_rational{a} * b;
+    friend consteval big_rational operator*(const T& a, const big_rational& b)
+    {
+      return big_rational{a} * b;
     }
     template <big_operand T>
-    friend consteval big_rational operator/(const big_rational& a, const T& b) {
-        return a / big_rational{b};
+    friend consteval big_rational operator/(const big_rational& a, const T& b)
+    {
+      return a / big_rational{b};
     }
     template <big_operand T>
-    friend consteval big_rational operator/(const T& a, const big_rational& b) {
-        return big_rational{a} / b;
+    friend consteval big_rational operator/(const T& a, const big_rational& b)
+    {
+      return big_rational{a} / b;
     }
 
     // The nearest double, by way of the top 64 bits of each part.
-    constexpr explicit operator double() const {
-        // |v| as top·2^sh, top below 2^64 (with a sticky bit for the bits
-        // below): the quotient of the tops is then finite, and the shift is
-        // applied once after it, so a numerator and a denominator both past
-        // 2^1024 still give their finite ratio.
-        auto split = [](const big_int& v, int& sh) {
-            const big::mag m  = v.magnitude();
-            const int      bw = big::bit_width(m);
-            sh                = 0;
-            if (bw <= 64)
-                return static_cast<double>(m.empty() ? std::uint64_t{0} : m[0]);
-            sh                    = bw - 64;
-            const std::size_t w   = static_cast<std::size_t>(sh / 64);
-            const int         b   = sh % 64;
-            std::uint64_t     top = m[w] >> b;
-            if (b != 0 && w + 1 < m.size())
-                top |= m[w + 1] << (64 - b);
-            const bool sticky =
-                (b != 0 && (m[w] << (64 - b)) != 0) || std::any_of(m.begin(),
-                                                                   m.begin() + static_cast<std::ptrdiff_t>(w),
-                                                                   [](std::uint64_t x) { return x != 0; });
-            return static_cast<double>(top | (sticky ? 1u : 0u));
-        };
-        int          sn = 0, sd = 0;
-        const double n = split(Num, sn), d = split(Den, sd);
-        const double q = ldexp(n / d, sn - sd);
-        return Num.negative() ? -q : q;
+    constexpr explicit operator double() const
+    {
+      // |v| as top·2^sh, top below 2^64 (with a sticky bit for the bits below):
+      // the quotient of the tops is then finite and the shift is applied once after it,
+      // so a numerator and a denominator both past 2^1024 still give their finite ratio.
+      auto split = [](const big_int& v, int& sh)
+      {
+        const big::mag m = v.magnitude();
+        const int      bw{big::bit_width(m)};
+        sh = 0;
+        if (bw <= 64)
+          return static_cast<double>(m.empty() ? std::uint64_t{0} : m[0]);
+        sh = bw - 64;
+        const std::size_t w{static_cast<std::size_t>(sh / 64)};
+        const int         b{sh % 64};
+        std::uint64_t     top{m[w] >> b};
+        if (b != 0 && w + 1 < m.size())
+          top |= m[w + 1] << (64 - b);
+        const bool sticky{(b != 0 && (m[w] << (64 - b)) != 0)
+                          || std::any_of(m.begin(), m.begin() + static_cast<std::ptrdiff_t>(w),
+                                         [](std::uint64_t x) { return x != 0; })};
+        return static_cast<double>(top | (sticky ? 1u : 0u));
+      };
+      int          sn{0}, sd{0};
+      const double n{split(Num, sn)}, d{split(Den, sd)};
+      const double q{ldexp(n / d, sn - sd)};
+      return Num.negative() ? -q : q;
     }
     constexpr explicit operator float() const { return static_cast<float>(static_cast<double>(*this)); }
-};
-// A grid number as a transient fraction, for tests that run at runtime too.
-constexpr big::fraction fraction_of(const big_rational& r) {
+  };
+  // A grid number as a transient fraction, for tests that run at run time too.
+  constexpr big::fraction fraction_of(const big_rational& r)
+  {
     return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()};
-}
+  }
 
-constexpr big_rational abs(big_rational a) {
+  constexpr big_rational abs(big_rational a)
+  {
     a.Num = abs(a.Num);
     return a;
-}
+  }
 
-// gcd of two fractions: gcd of numerators over lcm of denominators.
-constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
-    const big_int dg = gcd(a.Den, b.Den);
+  // The gcd of two fractions: the gcd of the numerators over the lcm of the denominators.
+  constexpr big_rational gcd(const big_rational& a, const big_rational& b)
+  {
+    const big_int dg{gcd(a.Den, b.Den)};
     return {gcd(a.Num, b.Num), big_int::mul(big_int::quot(a.Den, dg), b.Den)};
-}
+  }
 } // namespace ins::detail
 
 #endif // INSIDE_INSIDE_DETAIL_BIG_RATIONAL_HPP
