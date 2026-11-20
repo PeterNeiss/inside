@@ -76,7 +76,7 @@ sqrt 2          = 1.414
 
 The URL above follows `main`. For a link that keeps working when the API
 changes, pin a release tag instead:
-`https://raw.githubusercontent.com/PeterNeiss/inside/v0.9.0/single_include/inside/inside.hpp`.
+`https://raw.githubusercontent.com/PeterNeiss/inside/v0.10.0/single_include/inside/inside.hpp`.
 Where URL includes are not available, paste the file into a second source
 pane named `inside/inside.hpp` and include it as usual.
 

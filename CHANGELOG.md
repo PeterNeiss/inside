@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 — 2026-11-20
 
-### Upgrading
+The library stands on its own: `ins` instead of `beman::inside`, its own build
+and CI. A grid number is a class of its own, held inline while it fits; the SI
+base dimensions are base dimensions like yours; `on_error` and `with` replace
+`policy`. Every header and example is laid out by hand. A unit's power of π no
+longer wraps, a quantity that does not convert says why, quantity code compiles
+faster, and a `double` is read with `to<double>()` alone. The papers are
+pinned to this release.
+
+### Upgrading from 0.9.0
 
 - The library left its Beman-project names behind:
 
@@ -208,6 +216,10 @@
   plain-number test return before the costlier terms, which formed for every
   quantity type. 200 quantity expressions on distinct derived units compile
   in 26 % fewer instructions (71.4 G to 52.9 G, GCC 16, -O0).
+- The three papers in `docs/proposal/` name every entity of their synopses
+  (no exposition-only placeholders), follow the headers, and carry what SG6
+  expects of an R0: revision history, a before/after table, alternatives,
+  related papers, proposed polls. Their links point at this release.
 
 ### Fixed
 
