@@ -194,6 +194,13 @@
   0.1 s more (1.00 s to 1.10 s); a TU of quantity code costs −3 % to +8 %
   (instructions), and `geoalg.test.cpp` compiles in 46 s (was 67 s).
 
+### Fixed
+
+- A unit's power of π wrapped at 8 bits: `pow<127>(si::degree) *
+  pow<127>(si::arcminute)` held π⁻² instead of π²⁵⁴, silently, at compile
+  time. A power of π past ±127 is now a compile error, as a dimension
+  exponent past 127 is.
+
 ## 0.9.0 — 2026-11-15
 
 The API review: one word and one function per idea, and no old spelling
