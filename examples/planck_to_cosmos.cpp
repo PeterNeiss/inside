@@ -35,7 +35,7 @@ int main()
   // sqrt of m² is m again, exact to the last of 41 decimals.
   const metres mean = math::sqrt<length_number>(planck * universe);
   std::cout << "sqrt(planck * universe) = " << mean << "\n";
-  if (mean != *parse<metres>("0.00011926040415829555623064347860850441433"))
+  if (mean != *parse<metres>("0.00011926040415829555623064347860850441433 m"))
     return 1;
   return 0;
 }

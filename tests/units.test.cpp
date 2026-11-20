@@ -820,9 +820,9 @@ TEST(UnitsAlgorithmsTest, folds_sum_and_parse) {
     EXPECT_EQ(to_string(add_all(just<1> * HP, just<2> * HP, just<3> * HP)), "6 HP");
     EXPECT_EQ(to_string(mul_all(just<2> * si::metre, just<3> * si::metre, just<1, 2>)), "3 m²");
 
-    EXPECT_EQ(to_string(*parse<usd_t>("12.34")), "12.34 HP");
-    EXPECT_EQ(parse<usd_t>("12.3x").error(), error::invalid_format);
-    EXPECT_EQ(parse_exact<usd_t>("12.345").error(), error::rounding_error);
+    EXPECT_EQ(to_string(*parse<usd_t>("12.34 HP")), "12.34 HP");
+    EXPECT_EQ(parse<usd_t>("12.3x HP").error(), error::invalid_format);
+    EXPECT_EQ(parse_exact<usd_t>("12.345 HP").error(), error::rounding_error);
 }
 
 TEST(UnitsAlgorithmsTest, predicates_and_casts) {

@@ -32,12 +32,12 @@ int main()
   using account_eth = quantity<ETH, inside<{{0, 1'000'000'000}, to_the_wei}>>; // one account
   static_assert(sizeof(account_eth) == 16); // 10^27 + 1 points: two 64-bit limbs
 
-  // 1. Exact parsing from text, where the nearest double has lost the last ten digits.
-  const std::string text = "123456789.123456789123456789";
+  // 1. Exact parsing from text with its unit, where the nearest double has lost the last ten digits.
+  const std::string text = "123456789.123456789123456789 ETH";
   const account_eth balance{*parse<account_eth>(text)};
   std::cout << "balance  " << balance << "\n"
             << "double   " << std::format("{:.17g}", std::stod(text)) << "\n";
-  if (to_string(balance) != text + " ETH")
+  if (to_string(balance) != text)
     return 1;
   static_assert(just<1> * wei == 1e-18_ins * ETH); // one wei is the notch of the grid
 
@@ -50,8 +50,8 @@ int main()
     return 1;
 
   // An overdraft is reported, not wrapped: 1.4999 ETH + the fee is more than 1.5 ETH.
-  const account_eth alice{*parse<account_eth>("1.5")};
-  const auto        spent{*parse<account_eth>("1.4999") + fee}; // 1.50053 ETH
+  const account_eth alice{*parse<account_eth>("1.5 ETH")};
+  const auto        spent{*parse<account_eth>("1.4999 ETH") + fee}; // 1.50053 ETH
   const auto        after{value_cast<account_eth>(alice - spent)};
   std::cout << "send     " << (after ? to_string(*after) : error_message(after.error())) << "\n";
   if (after || after.error() != error::overflow)
@@ -61,7 +61,7 @@ int main()
   // sum adds the wide raws exactly (an expected: the count is a run-time number).
   using total_eth = quantity<ETH, inside<{{0, 1'000'000'000'000}, to_the_wei}>>;
   std::array<account_eth, 1000> accounts;
-  accounts.fill(*parse<account_eth>("999999999.999999999999999999"));
+  accounts.fill(*parse<account_eth>("999999999.999999999999999999 ETH"));
   const auto sum{ins::sum<total_eth>(accounts)};
   if (!sum)
     return 1;
@@ -73,7 +73,7 @@ int main()
   // so the exact product rounds straight onto the cents. ETH·USD/ETH is USD.
   using usd_per_eth = quantity<USD / ETH, inside<{{0, 1'000'000}, per<100>}>>; // to the cent
   using dollars     = quantity<USD, inside<{{0, 1'000'000'000'000'000}, per<100>}, round_half_away>>;
-  const dollars value{mul<dollars>(balance, *parse<usd_per_eth>("3141.59"))};
+  const dollars value{mul<dollars>(balance, *parse<usd_per_eth>("3141.59 USD/ETH"))};
   std::cout << "value    " << value << "\n";
   if (to_string(value) != "387850614142.36 USD")
     return 1;
