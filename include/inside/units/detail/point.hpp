@@ -60,6 +60,24 @@ namespace ins
       return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{};
     }
 
+    // Whether Rep stores the plain number V (under the one-shot flags Pol) only while compiling:
+    // the condition of inside's consteval constructors.
+    template <class Rep, class Pol>
+    inline constexpr policy_flag point_flags_with =
+      ins::detail::override_flags(policy_of<Rep>, policy_of<std::remove_cvref_t<Pol>>);
+    template <class Rep, class V, class... Pol>
+    inline constexpr bool point_store_immediate = false;
+    template <class Rep, class V>
+      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
+    inline constexpr bool point_store_immediate<Rep, V> =
+      !ins::detail::store_proven<Rep, std::remove_cvref_t<V>, policy_of<Rep>>;
+    template <class Rep, class V, class Pol>
+      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
+    inline constexpr bool point_store_immediate<Rep, V, Pol> =
+      !ins::detail::store_proven<inside<grid_of<Rep>, point_flags_with<Rep, Pol>>, std::remove_cvref_t<V>,
+                                 point_flags_with<Rep, Pol>>
+      && !ins::detail::reports_into_errc<Pol>;
+
     template <origin_ref O, class Q>
     constexpr auto make_point(Q&& q)
     {
@@ -82,6 +100,29 @@ namespace ins
 
     constexpr quantity_point() = default;
     constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
+
+    // From a number in the point's own unit, counted from its origin, stored as quantity<R, Rep>{v, u} stores it:
+    // celsius{21.5, si::degree_Celsius}, celsius{v, si::degree_Celsius, clamp}.
+    // A plain number the grids cannot prove is stored only while compiling, as by inside's consteval constructor;
+    // this constructor is consteval then itself, so no escalation is left to infer.
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && (!detail::point_store_immediate<Rep, V, Pol...>)
+    constexpr quantity_point(V&& v, Tag u, Pol&&... pol)
+      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && detail::point_store_immediate<Rep, V, Pol...>
+    consteval quantity_point(V&& v, Tag u, Pol&&... pol)
+      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && (!detail::own_unit_v<quantity<R, Rep>, Tag>)
+    quantity_point(V&&, Tag, Pol&&...) = delete ("units: a point from a number takes the point's own unit - write "
+                                                 "point<u>(v) and convert it with point_in or point_for");
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.

@@ -35,9 +35,9 @@ limit and a step, the *notch*. All three are exact and known at compile time,
 and the value can never leave the grid.
 
 ```cpp
-using pct    = inside<{0, 100}>;                    // the integers 0 … 100
-using halves = inside<{0.5, 10}>;                   // 0.5 … 10 in steps of 1/2
-using sample = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
+using integers = inside<{0, 100}>;                    // the integers 0 … 100
+using halves   = inside<{0.5, 10}>;                   // 0.5 … 10 in steps of 1/2
+using q14      = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
 ```
 
 Both limits belong to the grid. With two limits the notch is the coarsest one
@@ -51,7 +51,7 @@ that keeps every integer and both limits on the grid; `per<D>` names a step of
 operation can produce, so the result cannot overflow:
 
 ```cpp
-pct a{70}, b{58};
+integers a{70}, b{58};
 auto s = a + b;        // inside<{0, 200}>: 128
 auto d = a - b;        // inside<{-100, 100}>: 12
 auto p = a * b;        // inside<{0, 10000}>: 4060
@@ -91,8 +91,8 @@ compile.
 A value between two notches needs permission to round:
 
 ```cpp
-using cents = inside<{{0, 1000}, per<100>}, round_half_away>;
-cents price{19.999};              // 20.00
+using hundredths = inside<{{0, 1000}, per<100>}, round_half_away>;
+hundredths x{19.999};             // 20.00
 ```
 
 The policies are `clamp`, `wrap`, the rounding modes (`round_half_away`,
@@ -133,7 +133,9 @@ total.in(km);                                                // 13.300 km
 ```
 
 A unit conversion only rescales the grid, so it is exact and costs nothing at
-run time. Temperatures are points on a scale:
+run time. A quantity compares only with a quantity of its kind
+(`total > just<10> * km`), never with a bare number. Temperatures are points
+on a scale:
 
 ```cpp
 auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
@@ -151,8 +153,8 @@ its output grid, and it is the same on every platform, at compile time and
 without an FPU. A result is rounded, so the input or the output must allow it:
 
 ```cpp
-using angle = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
-math::sin(angle{1});                                // 0.841796875: the output grid follows the input
+using arg = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
+math::sin(arg{1});                                  // 0.841796875: the output grid follows the input
 using out = inside<{{0, 2}, per<100>}, round_half_away>;
 math::sqrt<out>(inside<{0, 4}>{2});            // 1.41: you name the output grid
 ```
@@ -166,13 +168,16 @@ math::sin<per<1000>>(just<30> * si::degree);   // 0.500
 
 ## How a value flows
 
+An audio sample, in full scale (FS), through a gain (a ratio) and a bias (a sample):
+
 ```cpp
-using mix = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away | clamp>;
-// gain and bias are insides too
-sample s = read_input();     // 1. enter the bounded world once
-auto   m = s * gain + bias;  // 2. compute: the types widen, nothing overflows
-mix    out{m};               // 3. store at the end: the policy rounds and clamps
-double d = double(out);    // 4. leave for floating point, explicitly
+inline constexpr auto FS = base_unit<"FS", "amplitude">;
+using sample = quantity<FS, inside<{{-1, 1}, per<(1 << 14)>}>>;
+using mix    = quantity<FS, inside<{{-4, 4}, per<(1 << 14)>}, round_half_away | clamp>>;
+sample s = read_input();                         // 1. enter the bounded world once
+auto   m = s * gain + bias;                      // 2. compute: the types widen, nothing overflows
+mix    out{m};                                   // 3. store at the end: the policy rounds and clamps
+double d = out.numerical_value_in(FS).to<double>();   // 4. leave for floating point, explicitly
 ```
 
 Convert in once, compute exactly, and narrow once at the end. Steps 1 to 3

@@ -22,7 +22,7 @@ namespace
 
 int main()
 {
-  static_assert(just<1> * i * (just<1> * i) == just<-1>);
+  static_assert(just<1> * i * (just<1> * i) == -one);
 
   // 1. (3 + 4i)(1 - 2i) = 11 - 2i, the conjugate is the reverse, |z|² = z z̃ = 25,
   // and z / w is exact.
@@ -43,7 +43,7 @@ int main()
   const auto one_plus_i{just<1> + just<1> * i};
   const auto fourth    {one_plus_i * one_plus_i * one_plus_i * one_plus_i};
   std::cout << "(1 + i)⁴ = " << fourth << '\n';
-  if (!(fourth == just<-4>))
+  if (!(fourth == just<-4> * one))
     return 1;
 
   // 3. Gaussian integers with parts in [-10, 10]:
@@ -54,7 +54,7 @@ int main()
   const auto     p{a * b};
   static_assert(std::same_as<decltype(part(p, one)), inside<{-200, 200}>>);
   std::cout << "(" << a << ")(" << b << ") = " << p << '\n';
-  if (!(p == just<5>))
+  if (!(p == just<5> * one))
     return 1;
 
   // 4. An impedance Z = R + X i: I = V / Z = V Z̃ / |Z|², exactly, in A.
@@ -71,7 +71,7 @@ int main()
   const fine_angle pi = math::pi; // π rounded onto 2^-20
   const auto       euler{math::exp(pi * i)};
   std::cout << "e^(iπ) = " << euler << '\n';
-  if (!(euler == just<-1>))
+  if (!(euler == -one))
     return 1;
   return 0;
 }

@@ -9,9 +9,9 @@ without an FPU.
 #include <inside/math.hpp>
 using namespace ins;
 
-using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
-auto s = math::sin(angle{1});                   // 0.84149169921875, on the input's notch
-auto c = math::cos<per<(1 << 8)>>(angle{1});    // 0.5390625: the notch you name
+using arg = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
+auto s = math::sin(arg{1});                     // 0.84149169921875, on the input's notch
+auto c = math::cos<per<(1 << 8)>>(arg{1});      // 0.5390625: the notch you name
 auto h = math::hypot(s, s);                     // √(s² + s²)
 ```
 
@@ -94,7 +94,9 @@ auto big = math::factorial(inside<{0, 100}>{100});         // 100!, on a wide ra
 fractional, and follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)`
 and `lcm(0, b)` are 0. Their result types keep the lattice the operands share
 (the gcd of two even grids is even; of halves and thirds a multiple of 1/6:
-`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). `fn<Out>(…)` stores a
+`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). Two quantities that add
+take them in their common unit: buses every 12 min and 18 min meet every
+`lcm` = 36 min, and `gcd(3 cm, 4 mm)` is 2 mm. `fn<Out>(…)` stores a
 result into `Out`;
 [`combinatorics.cpp`](../../examples/combinatorics.cpp) uses them for
 odds as exact fractions.
@@ -154,7 +156,7 @@ in every form above:
 | `sqrt`, `cbrt` | a unit with that root | the root of the unit: m² → m |
 | `sin`, `cos`, `tan` | an angle in rad (`sin`, `cos`: or degrees, or any unit with a factor of π, reduced exactly) | a plain inside |
 | `asin`, `acos`, `atan` | a dimensionless quantity | rad |
-| `atan2(y, x)`, `hypot(x, y)` | two quantities of one dimension | rad; their common unit |
+| `atan2(y, x)`, `hypot(x, y)`, `gcd(x, y)`, `lcm(x, y)` | two quantities of one dimension | rad; their common unit |
 | `exp`, `exp2`, `log`, …, `atanh`, `pow_base<B>`, `pow` | dimensionless quantities | a plain inside |
 | `exp` | a multivector, or a quantity of one blade, whose non-scalar parts anticommute | a multivector: each part rounded once |
 | `value_cast<si::radian, Out>(q)` | an angle in degrees or turns | rad, rounded once |

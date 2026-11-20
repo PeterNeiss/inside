@@ -36,9 +36,9 @@ whole range divided by the period (an inside past 64 bits). No carry
 saturates.
 
 ```cpp
-using pos = inside<{{0, 64}, per<16>}, wrap | round_half_away>;
-pos p{0};
-int wraps = 0;
+using ring = inside<{{0, 64}, per<16>}, wrap | round_half_away>;
+ring p{0};
+int  wraps = 0;
 p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
 // p == 1.4375 (65.5 − 1025/16: the period is the span plus one notch), wraps == 1
 ```
@@ -144,10 +144,10 @@ leaves the previous value.
 without unwrapping:
 
 ```cpp
-using volts = inside<{{-1, 1}, per<1'000'000>}, round_half_away>;
-inside<{-1000, 1000}> x{500}, offset{100};
-inside<{0, 1000}> gain{400};
-auto v = volts::try_make((x - offset) / gain);   // the division's error, or the store's: 1
+using result = inside<{{-1, 1}, per<1'000'000>}, round_half_away>;
+inside<{-1000, 1000}> x{500}, y{100};
+inside<{0, 1000}>     d{400};
+auto r = result::try_make((x - y) / d);   // the division's error, or the store's: 1
 ```
 
 For a quantity, `Q::try_make<F>(v, u)` takes a number and its unit, and

@@ -44,6 +44,8 @@ constexpr auto km = si::kilo(si::metre);
 
 template <class A, class B>
 concept can_add = requires(const A& a, const B& b) { a + b; };
+template <class A, class B>
+concept can_equal = requires(const A& a, const B& b) { a == b; } || requires(const A& a, const B& b) { b == a; };
 template <class X>
 concept can_invert = requires(const X& v) { inverse(v); };
 
@@ -133,8 +135,8 @@ TEST(GeoalgTest, quantity_products_carry_the_sign) {
     EXPECT_EQ(to_string(a * b), "12 x y");
     EXPECT_EQ(to_string(b * a), "-12 x y");
     static_assert(decltype(a * b)::reference == decltype(b * a)::reference); // the sign is in the number
-    EXPECT_TRUE(a * a == just<9>);
-    EXPECT_TRUE((just<2> * xy) * (just<3> * xy) == just<-6>);
+    EXPECT_TRUE(a * a == just<9> * one);
+    EXPECT_TRUE((just<2> * xy) * (just<3> * xy) == just<-6> * one);
     // A product that vanishes is the zero multivector.
     static_assert(std::same_as<decltype((just<1> * p0) * (just<1> * p0)), multivector<>>);
     // Division by a blade: x / y = x y (y² = 1); x / γ₁ = -x γ₁ (γ₁² = -1).
@@ -200,11 +202,14 @@ TEST(GeoalgTest, the_algebra_holds) {
     EXPECT_TRUE(squared_norm(u) == 14);
     // In spacetime, γ₀ is timelike and γ₁ spacelike.
     EXPECT_TRUE(squared_norm(just<3> * g0 + just<2> * g1) == 5);
-    EXPECT_TRUE((just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1) == just<5>);
-    // A builtin integer compares as a number does, on either side.
-    EXPECT_TRUE((just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1) == 5);
-    EXPECT_TRUE(5 == (just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1));
-    EXPECT_FALSE(u == 14);
+    EXPECT_TRUE((just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1) == just<5> * one);
+    EXPECT_TRUE(just<5> * one == (just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1));
+    EXPECT_FALSE(u == just<14> * one);
+    // A multivector or a quantity never compares with a number: only plain insides do.
+    using g0_squared = decltype((just<3> * g0) * (just<3> * g0));
+    static_assert(can_equal<g0_squared, decltype(just<9> * one)> && can_equal<g0_squared, decltype(one)>);
+    static_assert(!can_equal<g0_squared, int> && !can_equal<g0_squared, decltype(just<9>)>);
+    static_assert(!can_equal<decltype(u), int> && !can_equal<decltype(u), decltype(just<14>)>);
 }
 
 TEST(GeoalgTest, results_collapse) {
@@ -224,16 +229,16 @@ TEST(GeoalgTest, results_collapse) {
 
 TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
     const auto z1 = just<3> + just<4> * xy;
-    EXPECT_TRUE(z1 * inverse(z1) == just<1>);
+    EXPECT_TRUE(z1 * inverse(z1) == one);
     const auto q = just<1> + just<2> * xy + just<3> * zx + just<4> * y * z;
-    EXPECT_TRUE(q * inverse(q) == just<1>);
-    EXPECT_TRUE(inverse(q) * q == just<1>);
+    EXPECT_TRUE(q * inverse(q) == one);
+    EXPECT_TRUE(inverse(q) * q == one);
     const auto u = just<1> * x + just<2> * y + just<2> * z;
-    EXPECT_TRUE(u * inverse(u) == just<1>);
+    EXPECT_TRUE(u * inverse(u) == one);
     const auto dual_number = just<2> + just<3> * p0;
-    EXPECT_TRUE(dual_number * inverse(dual_number) == just<1>);
+    EXPECT_TRUE(dual_number * inverse(dual_number) == one);
     const auto split = just<2> + just<1> * x; // G(1,0): the conjugate
-    EXPECT_TRUE(split * inverse(split) == just<1>);
+    EXPECT_TRUE(split * inverse(split) == one);
     static_assert(can_invert<decltype(q)>);
     // An even element of G(1,3) with two commuting bivectors: x x~ has a
     // grade-4 part, so there is no inverse of that form.
@@ -250,7 +255,7 @@ TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
     ASSERT_FALSE(bad.has_value());
     EXPECT_EQ(bad.error(), error::division_by_zero);
     ASSERT_TRUE(good.has_value());
-    EXPECT_TRUE((*good == just<1, 2>));
+    EXPECT_TRUE((*good == just<1, 2> * one));
 }
 
 TEST(GeoalgTest, declared_multivectors_convert) {
@@ -285,8 +290,8 @@ TEST(GeoalgTest, duals_and_complements) {
     const auto pb   = just<1> * p1 * p2 - just<2> * p0 * p1; // (0, 2)
     const auto line = regressive(pa, pb, i);
     static_assert(multivector_like<decltype(line)>);
-    EXPECT_TRUE(regressive(line, pa, i) == multivector<>{});
-    EXPECT_TRUE(regressive(line, pb, i) == multivector<>{});
+    EXPECT_TRUE(regressive(line, pa, i) == 0);
+    EXPECT_TRUE(regressive(line, pb, i) == 0);
 }
 
 TEST(GeoalgTest, text) {

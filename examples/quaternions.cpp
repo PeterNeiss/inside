@@ -31,8 +31,8 @@ namespace
 int main()
 {
   // 1. Hamilton's rules, i² = j² = k² = ijk = -1 and ij = k = -ji, at compile time.
-  static_assert(one_i * one_i == just<-1> && one_j * one_j == just<-1> && one_k * one_k == just<-1>);
-  static_assert(one_i * one_j * one_k == just<-1>);
+  static_assert(one_i * one_i == -one && one_j * one_j == -one && one_k * one_k == -one);
+  static_assert(one_i * one_j * one_k == -one);
   static_assert(one_i * one_j == one_k && one_j * one_i == -one_k);
   static_assert(one_j * one_k == one_i && one_k * one_i == one_j);
 
@@ -58,7 +58,7 @@ int main()
 
   // 4. q³ = -1: three turns of 120° make a full turn, which a rotor represents by -1.
   std::cout << "q³ = " << q * q * q << '\n';
-  if (!(q * q * q == just<-1>))
+  if (!(q * q * q == -one))
     return 1;
 
   // 5. q from its angle, exp(θ/2 · n) with θ/2 = π/3 about n = (i + j + k)/√3:

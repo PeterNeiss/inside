@@ -40,7 +40,7 @@ paths (`a % 5_ins`, `a / 5_ins` under a rounding mode):
 
 ```cpp
 struct voice {
-    [[no_unique_address]] decltype(just<440>) pitch;   // 0 bytes
+    [[no_unique_address]] decltype(just<440> * si::hertz) pitch;   // 440 Hz, 0 bytes
     std::uint32_t frames;
 };
 static_assert(sizeof(voice) == 4);
@@ -125,15 +125,16 @@ integers, sized from its denominator bound
 quotients are plain values:
 
 ```cpp
-using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_half_away>;
-const length planck   = just<1.616255e-35_g>;
-const length universe = just<8.8e26_g>;
+using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_half_away>;
+using metres        = quantity<si::metre, length_number>;
+const metres planck   = just<1.616255e-35_g> * si::metre;
+const metres universe = just<8.8e26_g> * si::metre;
 auto ratio = universe / planck;       // exactly 1760…0/323251, a plain value
 math::log10<per<(1 << 20)>>(ratio);   // 61.73597…, rounded once onto 2^-20
 ```
 
-[`planck_to_cosmos.cpp`](../../examples/planck_to_cosmos.cpp) runs this with
-lengths in metres. Integer grids past 64 bits compute exactly in fixed-width
+[`planck_to_cosmos.cpp`](../../examples/planck_to_cosmos.cpp) runs this and
+takes the geometric mean. Integer grids past 64 bits compute exactly in fixed-width
 integers: [`rsa.cpp`](../../examples/rsa.cpp) runs textbook RSA-1024 on
 residues `inside<{0, n - 1}>`, where a product of two residues is a 2048-bit
 grid and `% inside<{n, n}>{}` brings it back as a plain residue.

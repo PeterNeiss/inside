@@ -57,10 +57,10 @@ int main()
 
   // The quotient's denominators are at most 1·max|positive| = 10,
   // so what is computed from it knows its own bound: exact, and still nothing to unwrap.
-  using per_item = decltype(number{} / positive{});
-  const per_item price{number{20} / positive{3}}; // 20/3 per item
-  const auto     total{price * positive{7} + price / positive{2}};
-  static_assert(grid_of<per_item>.MaxDenominator == 10);
+  using quotient = decltype(number{} / positive{});
+  const quotient q    {number{20} / positive{3}}; // 20/3
+  const auto     total{q * positive{7} + q / positive{2}};
+  static_assert(grid_of<quotient>.MaxDenominator == 10);
   static_assert(insidable<decltype(total)>);
   std::cout << "20/3 * 7 + 20/3 / 2    = " << total << "\n"; // 140/3 + 10/3
   if (total != 50)

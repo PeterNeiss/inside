@@ -936,6 +936,29 @@ namespace ins
     return detail::in_common_unit<A, B>(a) <=> detail::in_common_unit<A, B>(b);
   }
 
+  // A unit compares as one of itself, under the rule of two quantities: len == si::metre is len == 1 m,
+  // q * inverse(q) == one; a plain number takes no unit. −u is the quantity −1 u: i * i == -one.
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
+          && requires(const X& x, Tag t) { x == just<1> * t; }
+  [[nodiscard]] constexpr bool operator==(const X& x, Tag t)
+  {
+    return x == just<1> * t;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
+          && requires(const X& x, Tag t) { x <=> just<1> * t; }
+  [[nodiscard]] constexpr auto operator<=>(const X& x, Tag t)
+  {
+    return x <=> just<1> * t;
+  }
+  template <class Tag>
+    requires detail::is_reference_tag_v<Tag>
+  [[nodiscard]] constexpr auto operator-(Tag t)
+  {
+    return just<-1> * t;
+  }
+
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
   // the number is inside's min, max or midpoint (exact).
   template <reference A, class VA, reference B, class VB>

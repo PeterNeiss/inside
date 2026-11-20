@@ -9,8 +9,13 @@
 #include <inside/inside.hpp>
 #include <inside/inside/io.hpp>
 #include <inside/math.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
+#include <inside/units/math.hpp> // gcd and lcm of quantities
 
 using namespace ins;
+
+constexpr auto cm = si::centi(si::metre);
 
 // The first and last 12 of a number's digits.
 std::string digits(const std::string& s)
@@ -25,6 +30,13 @@ std::expected<T, error> read(int v)
 {
   volatile int x{v};
   return T::try_make(x);
+}
+// A length or a duration read at run time: the number, checked in its unit.
+template <class Q, class Unit>
+std::expected<Q, error> read(int v, Unit u)
+{
+  volatile int x{v};
+  return Q::try_make(x, u);
 }
 
 int main()
@@ -115,20 +127,20 @@ int main()
   if (to_string(demer) != "671/1296")
     return 1;
 
-  // 5. gcd and lcm: buses every 12 and 18 minutes meet again after lcm minutes;
-  // a 42 × 56 board cuts into squares of side gcd.
-  using minutes     = inside<{1, 60 }>;
-  using centimetres = inside<{1, 100}>;
-  const auto every12{read<minutes>(12)},     every18{read<minutes>(18)};
-  const auto w42    {read<centimetres>(42)}, h56    {read<centimetres>(56)};
+  // 5. gcd and lcm, of quantities in their common unit: buses every 12 and 18 min meet again after their lcm;
+  // a 42 cm × 56 cm board cuts into squares of side gcd.
+  using minutes     = quantity<si::minute, inside<{1, 60 }>>;
+  using centimetres = quantity<cm, inside<{1, 100}>>;
+  const auto every12{read<minutes>(12, si::minute)}, every18{read<minutes>(18, si::minute)};
+  const auto w42    {read<centimetres>(42, cm)},     h56    {read<centimetres>(56, cm)};
   if (!every12 || !every18 || !w42 || !h56)
     return 1;
   const auto        meet{math::lcm(*every12, *every18)};
   const centimetres w   {*w42}, h{*h56};
   const auto        side{math::gcd(w, h)};
-  std::cout << "buses meet  every " << meet << " minutes\nsquare tile " << side << " cm: "
+  std::cout << "buses meet  every " << meet << "\nsquare tile " << side << ": "
             << div(w, side, round_toward_zero) << " x " << div(h, side, round_toward_zero) << "\n";
-  if (meet != 36 || side != 14)
+  if (meet != just<36> * si::minute || side != just<14> * cm)
     return 1;
   return 0;
 }

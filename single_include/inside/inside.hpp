@@ -26701,6 +26701,29 @@ namespace ins
     return detail::in_common_unit<A, B>(a) <=> detail::in_common_unit<A, B>(b);
   }
 
+  // A unit compares as one of itself, under the rule of two quantities: len == si::metre is len == 1 m,
+  // q * inverse(q) == one; a plain number takes no unit. −u is the quantity −1 u: i * i == -one.
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
+          && requires(const X& x, Tag t) { x == just<1> * t; }
+  [[nodiscard]] constexpr bool operator==(const X& x, Tag t)
+  {
+    return x == just<1> * t;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
+          && requires(const X& x, Tag t) { x <=> just<1> * t; }
+  [[nodiscard]] constexpr auto operator<=>(const X& x, Tag t)
+  {
+    return x <=> just<1> * t;
+  }
+  template <class Tag>
+    requires detail::is_reference_tag_v<Tag>
+  [[nodiscard]] constexpr auto operator-(Tag t)
+  {
+    return just<-1> * t;
+  }
+
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
   // the number is inside's min, max or midpoint (exact).
   template <reference A, class VA, reference B, class VB>
@@ -27366,6 +27389,24 @@ namespace ins
       return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{};
     }
 
+    // Whether Rep stores the plain number V (under the one-shot flags Pol) only while compiling:
+    // the condition of inside's consteval constructors.
+    template <class Rep, class Pol>
+    inline constexpr policy_flag point_flags_with =
+      ins::detail::override_flags(policy_of<Rep>, policy_of<std::remove_cvref_t<Pol>>);
+    template <class Rep, class V, class... Pol>
+    inline constexpr bool point_store_immediate = false;
+    template <class Rep, class V>
+      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
+    inline constexpr bool point_store_immediate<Rep, V> =
+      !ins::detail::store_proven<Rep, std::remove_cvref_t<V>, policy_of<Rep>>;
+    template <class Rep, class V, class Pol>
+      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
+    inline constexpr bool point_store_immediate<Rep, V, Pol> =
+      !ins::detail::store_proven<inside<grid_of<Rep>, point_flags_with<Rep, Pol>>, std::remove_cvref_t<V>,
+                                 point_flags_with<Rep, Pol>>
+      && !ins::detail::reports_into_errc<Pol>;
+
     template <origin_ref O, class Q>
     constexpr auto make_point(Q&& q)
     {
@@ -27388,6 +27429,29 @@ namespace ins
 
     constexpr quantity_point() = default;
     constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
+
+    // From a number in the point's own unit, counted from its origin, stored as quantity<R, Rep>{v, u} stores it:
+    // celsius{21.5, si::degree_Celsius}, celsius{v, si::degree_Celsius, clamp}.
+    // A plain number the grids cannot prove is stored only while compiling, as by inside's consteval constructor;
+    // this constructor is consteval then itself, so no escalation is left to infer.
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && (!detail::point_store_immediate<Rep, V, Pol...>)
+    constexpr quantity_point(V&& v, Tag u, Pol&&... pol)
+      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && detail::point_store_immediate<Rep, V, Pol...>
+    consteval quantity_point(V&& v, Tag u, Pol&&... pol)
+      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
+    template <class V, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
+           && (!detail::own_unit_v<quantity<R, Rep>, Tag>)
+    quantity_point(V&&, Tag, Pol&&...) = delete ("units: a point from a number takes the point's own unit - write "
+                                                 "point<u>(v) and convert it with point_in or point_for");
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
@@ -29059,8 +29123,10 @@ namespace ins
   {
     return detail::mv_add(a, detail::mv_negate(b));
   }
+  // Equality: a multivector with a multivector or a quantity, never with a plain number
+  // (only plain insides compare with numbers; a scalar part is a quantity: z * conj(z) == just<25> * one).
   template <class A, class B>
-    requires detail::mv_operands<A, B> && detail::mv_addable<A, B>
+    requires detail::mv_operands<A, B> && detail::mv_addable<A, B> && (!insidable<A>) && (!insidable<B>)
   [[nodiscard]] constexpr bool operator==(const A& a, const B& b)
   {
     return detail::mv_equal(a, b);
@@ -29074,23 +29140,6 @@ namespace ins
     requires detail::mv_operands<A, B> && (!detail::mv_addable<A, B>)
   void operator-(const A&, const B&) = delete ("units: subtracting multivectors of different dimensions (outside "
                                                "their blades), or parts of one blade that do not add");
-
-  // A number and a quantity, as elements: i·i == just<-1>, (2 e₁)² == just<4>.
-  template <insidable V, reference A, class VA>
-    requires detail::mv_addable<V, quantity<A, VA>>
-  [[nodiscard]] constexpr bool operator==(const V& v, const quantity<A, VA>& q)
-  {
-    return detail::mv_equal(v, q);
-  }
-
-  // A builtin integer compares as a number does: squared_norm(z) == 25, i * i == -1.
-  template <class A, ins::detail::step_integer N>
-    requires(!insidable<A>) && (multivector_like<A> || quantity_like<A>)
-         && requires(const A& a, const ins::detail::lifted_t<N>& v) { a == v; }
-  [[nodiscard]] constexpr bool operator==(const A& a, N n)
-  {
-    return a == ins::detail::lift_integer(n);
-  }
 
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
   template <reference A, class VA, reference B, class VB>
@@ -29586,7 +29635,7 @@ struct std::formatter<ins::quantity_point<R, O, V>> : std::formatter<ins::quanti
 //                                      with a factor of π (°, a turn), reduced exactly by quarter turns,
 //                                      exact at Niven's values (name the notch then: sin<per<K>>(q))
 //   asin, acos, atan(x), atan2(y, x)   an angle in radians (x a dimensionless quantity; atan2 of two that add)
-//   hypot(x, y)                        in the common unit
+//   hypot(x, y), gcd(x, y), lcm(x, y)  in the common unit (gcd and lcm exact)
 //   exp … atanh, pow_base<B>, pow      of numbers: dimensionless quantities (and insides): a number
 //   math::exp(x) of a multivector      units/detail/geoalg_exp.hpp
 //   value_cast<si::radian, Out>(q)     degree → radian (a pi factor): the exact x·π/180, rounded once onto Out
@@ -29964,7 +30013,7 @@ namespace ins
       tan,    // tan: of an angle in radians; a number
       arc,    // asin, acos, atan: of a number; an angle in radians
       arc2,   // atan2: of two quantities that add; an angle in radians
-      common, // hypot: of two quantities that add; in their common unit
+      common, // hypot, gcd, lcm: of two quantities that add; in their common unit
       number, // exp … atanh, pow_base, pow: of numbers; a number
     };
     template <class F>
@@ -29999,6 +30048,10 @@ namespace ins
     inline constexpr math_rule rule_of<m::entry::atan2_fn> = math_rule::arc2;
     template <>
     inline constexpr math_rule rule_of<m::entry::hypot_fn> = math_rule::common;
+    template <>
+    inline constexpr math_rule rule_of<m::gcd_fn> = math_rule::common;
+    template <>
+    inline constexpr math_rule rule_of<m::lcm_fn> = math_rule::common;
 #define INSIDE_UNITS_NUMBER_RULE(fn) \
   template <>                        \
   inline constexpr math_rule rule_of<m::entry::fn##_fn> = math_rule::number;
@@ -30250,7 +30303,7 @@ namespace ins::math::detail
 
 namespace ins::math
 {
-  // atan2 and hypot of two quantities that do not add (another dimension or kind, no common unit).
+  // atan2, hypot, gcd and lcm of two quantities that do not add (another dimension or kind, no common unit).
   template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
     requires(ins::detail::sum_diagnosed<A, B>())
   void atan2(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
@@ -30259,6 +30312,14 @@ namespace ins::math
     requires(ins::detail::sum_diagnosed<A, B>())
   void hypot(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
     "units: hypot takes two quantities that add - one dimension and kind, a common unit");
+  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+    requires(ins::detail::sum_diagnosed<A, B>())
+  void gcd(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+    "units: gcd takes two quantities that add - one dimension and kind, a common unit");
+  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+    requires(ins::detail::sum_diagnosed<A, B>())
+  void lcm(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+    "units: lcm takes two quantities that add - one dimension and kind, a common unit");
 } // namespace ins::math
 
 // exp of multivectors (units/detail/geoalg_exp.hpp).

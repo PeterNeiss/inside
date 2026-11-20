@@ -35,11 +35,11 @@ int main()
 
   // 2. I = V / R: every R is at least 1 kΩ, so 9/6230 A is a plain value;
   // it rounds once onto µA.
-  using volts      = quantity<si::volt, inside<{1, 12}>>;          // a supply
-  using current_ma = inside<{{0, 20}, per<1000>}, round_half_away>; // mA to the µA
+  using volts     = quantity<si::volt, inside<{1, 12}>>;                         // a supply
+  using milliamps = quantity<mA, inside<{{0, 20}, per<1000>}, round_half_away>>; // mA to the µA
 
   const volts supply{9, si::volt};
-  const auto  i     {value_cast<mA, current_ma>(supply / r)};
+  const auto  i     {value_cast<milliamps>(supply / r)};
   std::cout << "I      = " << i << '\n'; // 1.445 mA
   if (to_string(i) != "1.445 mA")
     return 1;
@@ -73,9 +73,9 @@ int main()
 
   // The cutoff 1/(2πτ) is 1/s, cast to a frequency (not an activity, Bq).
   // pi keeps π in the unit, so it rounds once, with the true π, onto 0.01 Hz.
-  using cutoff_hz = inside<{{0, 100'000}, per<100>}, round_half_away>;
+  using hundredths = inside<{{0, 100'000}, per<100>}, round_half_away>;
   const auto f {just<1> / (just<2> * (pi * tau))};
-  const auto fc{value_cast<si::hertz, cutoff_hz>(kind_cast<isq::frequency>(f))};
+  const auto fc{value_cast<si::hertz, hundredths>(kind_cast<isq::frequency>(f))};
   std::cout << "f_c    = " << fc << '\n'; // 255.47 Hz
   if (to_string(fc) != "255.47 Hz")
     return 1;

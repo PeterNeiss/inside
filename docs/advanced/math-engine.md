@@ -228,17 +228,9 @@ span + notch, which is never exactly 2π: `inside<{{0, 6.28125}, per<(1 << 6)>},
 folds every 6.296875 rad, so each revolution shifts the angle by about
 0.014 rad.
 
-Without units, carry a wrapping phase in turns (period exactly 1) and convert
-at the call. The conversion adds the rounding onto the angle grid and
-`math::two_pi`'s own error (about 6·10⁻¹⁸), but never accumulates:
-
-```cpp
-using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<(1 << 12)>}, wrap | round_half_away>;
-using angle_t = inside<{{0, 8}, per<(1 << 14)>}, round_half_away>;
-turn_t phase{0};
-phase += turn_t{0.25};
-auto s = math::sin<per<(1 << 14)>>(angle_t{phase * math::two_pi});   // 1
-```
+Carry a wrapping phase in a unit with a factor of π instead, a slot as above
+or a turn (`unit<"tr", just<2> * pi * si::radian>`): its period is exact, and
+`sin` and `cos` reduce it exactly, so no 2π is ever rounded.
 
 ## Without floating point
 

@@ -5,8 +5,11 @@
 
 #include <iostream>
 
+#include <inside/inside/formats.hpp>
 #include <inside/inside.hpp>
 #include <inside/inside/io.hpp>
+#include <inside/units.hpp>
+#include <inside/units/io.hpp>
 
 using namespace ins;
 
@@ -19,31 +22,32 @@ int read(int v)
 
 int main()
 {
-  // 1. Reporting an out-of-range 200.
-  // A constant is checked while compiling (`percent x = 200;` does not compile),
-  // and a run-time int may not fit, so `percent x = n;` does not compile either: name a channel.
-  using percent = inside<{0, 100}, checked>;
-  const int n{read(200)};
+  // 1. Reporting an out-of-range 200 %.
+  // A constant is checked while compiling (`percentage x{200, percent};` does not compile),
+  // and a run-time int may not fit, so `percentage x{n, percent};` does not compile either: name a channel.
+  using percentage = quantity<percent, inside<{0, 100}, checked>>;
+  const int  n{read(200)};
+  const auto n_percent{formats::int32{n} * percent}; // any int fits int32: a quantity to store and check
 
-  auto maybe{percent::try_make(n)};
+  auto maybe{percentage::try_make(n, percent)};
   std::cout << "expected: " << (maybe ? "has value" : error_message(maybe.error())) << "\n";
 
-  auto ok{percent::try_make(50)};
+  auto ok{percentage::try_make(50, percent)};
   std::cout << "in-range: " << *ok << "\n";
 
   // 2. Per-store overrides on a default-checked inside: an error&, a hook with an alternative value, clamp.
   ins::error ec{};
-  percent z(50);
-  z.on_error(ec) = n;
+  percentage z{50, percent};
+  z.on_error(ec) = n_percent;
   std::cout << "policy ec:" << (ec != error{} ? error_message(ec) : "no error") << " (z=" << z << ")" << "\n";
 
-  percent r(50);
+  percentage r{50, percent};
   r.on_error(
     [](auto& self, error code, std::string_view msg)
     {
-      std::cout << "on_error: [" << error_message(code) << "] " << msg << " -> recover to 0" << "\n";
-      self = 0; // the alternative value
-    }) = n;
+      std::cout << "on_error: [" << error_message(code) << "] " << msg << " -> recover to 0 %" << "\n";
+      self = just<0> * percent; // the alternative value
+    }) = n_percent;
   std::cout << "          (r=" << r << ")" << "\n";
 
   inside<{0, 100}> w(50);
@@ -62,28 +66,31 @@ int main()
     }) = 3.0; // 3 is not on the notch-2 grid
   std::cout << "          (c=" << c << ")" << "\n";
 
-  const auto quotient{div(percent(10), percent(0))};
+  // An average speed over 0 s.
+  using metres  = quantity<si::metre, inside<{0, 100}>>;
+  using seconds = quantity<si::second, inside<{0, 60}>>;
+  const auto quotient{div(metres{10, si::metre}, seconds{0, si::second})};
   if (!quotient)
-    std::cout << "div/0:    [" << error_message(quotient.error()) << "] -> recover to 0" << "\n";
-  const auto q{quotient.value_or(std::remove_cvref_t<decltype(*quotient)>{0})};
+    std::cout << "div/0:    [" << error_message(quotient.error()) << "] -> recover to 0 m/s" << "\n";
+  const auto q{quotient.value_or(std::remove_cvref_t<decltype(*quotient)>{0, si::metre / si::second})};
   std::cout << "          (q=" << q << ")" << "\n";
 
   // 4. add / sub / mul / div / mod take an error& too: ec is set, and the result holds the error.
   ec = error{};
-  auto qz{div(percent(10), percent(0), ec)};
+  auto qz{div(metres{10, si::metre}, seconds{0, si::second}, ec)};
   std::cout << "free-fn:  " << (ec != error{} ? error_message(ec) : "no error")
             << " (q has_value=" << (qz.has_value() ? "true" : "false") << ")" << "\n";
 
   // 5. Policies that avoid errors: clamp saturates, wrap is modular; try_make reports.
-  using clamped_percent = inside<{0, 100}, clamp>;
-  using compass_degrees = inside<{0, 359}, wrap>;
-  using digit           = inside<{0, 9  }>;
+  using clamped_percentage = quantity<percent, inside<{0, 100}, clamp>>;
+  using heading            = quantity<si::degree, inside<{0, 359}, wrap>>;
+  using digit              = inside<{0, 9}>;
 
-  clamped_percent cl = 150;
-  std::cout << "clamp:    150 -> " << cl << "\n";
+  clamped_percentage cl{150, percent};
+  std::cout << "clamp:    150 % -> " << cl << "\n";
 
-  compass_degrees wr = 370;
-  std::cout << "wrap:     370 -> " << wr << "\n";
+  heading wr{370, si::degree};
+  std::cout << "wrap:     370° -> " << wr << "\n";
 
   auto tm{digit::try_make(10)};
   std::cout << "try_make: 10  -> " << (tm ? "has value" : error_message(tm.error())) << "\n";
@@ -96,16 +103,17 @@ int main()
       std::cout << "on_clamp: overshoot=" << overshoot << " (saturated to " << self << ")" << "\n";
     }) = 150;
 
-  inside<{0, 59}> sec(50);
+  quantity<si::second, inside<{0, 59}>> sec{50, si::second}; // the seconds of a clock
   sec.on_wrap(
     [](auto& self, auto carry)
     {
       std::cout << "on_wrap:  carry=" << carry << " (wrapped to " << self << ")" << "\n";
-    }) = 75;
+    }) = just<75> * si::second;
 
-  // A hook on a compound op: the sum cannot fail, but storing it back past [0,100] fires on_clamp.
-  clamped_percent combo(50);
-  combo.on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; }) += 200;
+  // A hook on a compound op: the sum cannot fail, but storing it back past 100 % fires on_clamp.
+  clamped_percentage combo{50, percent};
+  combo.on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; })
+    += just<200> * percent;
   std::cout << "          (combo=" << combo << ")" << "\n";
   return 0;
 }

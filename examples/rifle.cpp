@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A rifle, its magazine and a reserve, built on policies.
-// Ammunition is a base dimension in rounds (rd), while trigger pulls, reloads and dry clicks stay plain event
-// counts, so the two never mix.
+// Ammunition is a base dimension in rounds (rd), and so are trigger pulls (pull: hits, misses, dry clicks)
+// and reloads, so none of them mix.
 // The magazine wraps (firing past empty is the reload event, on_wrap),
 // and the reserve clamps (a withdrawal past empty saturates, and on_clamp's overshoot says how short it was).
 
@@ -19,7 +19,12 @@ using namespace ins::formats;
 
 namespace
 {
-  inline constexpr auto rd = base_unit<"rd", "ammunition">;
+  inline constexpr auto rd     = base_unit<"rd", "ammunition">;
+  inline constexpr auto pull   = base_unit<"pull", "trigger_pulls">;
+  inline constexpr auto reload = base_unit<"reload", "reloads">;
+
+  using pulls        = quantity<pull, clamp_counter<1'000'000>>; // saturating event tallies
+  using reload_count = quantity<reload, clamp_counter<1'000'000>>;
 } // namespace
 
 class magazine
@@ -38,11 +43,11 @@ class rifle
 public:
   using dropped_rounds = quantity<rd, inside<{0, 1'000'000}, clamp>>;
 
-  magazine                 mag;
-  clamp_counter<1'000'000> pulled_trigger{0};     // saturating event tallies
-  clamp_counter<1'000'000> missed_shots  {0};
-  clamp_counter<1'000'000> reloads       {0};
-  dropped_rounds           rounds_dropped{0, rd}; // accumulates the magazine's rounds
+  magazine       mag;
+  pulls          pulled_trigger{0, pull};
+  pulls          missed_shots  {0, pull};
+  reload_count   reloads       {0, reload};
+  dropped_rounds rounds_dropped{0, rd}; // accumulates the magazine's rounds
 };
 
 class player
@@ -50,9 +55,9 @@ class player
 public:
   using reserve_t = quantity<rd, inside<{0, 200}, clamp>>;
 
-  reserve_t                reserve   {60, rd}; // two spare magazines' worth
-  rifle                    weapon;
-  clamp_counter<1'000'000> dry_clicks{0};      // the magazine and the reserve both empty
+  reserve_t reserve   {60, rd};  // two spare magazines' worth
+  rifle     weapon;
+  pulls     dry_clicks{0, pull}; // the magazine and the reserve both empty
 
   // Pull the trigger once:
   //   magazine and reserve empty  → a dry click;
@@ -130,7 +135,8 @@ int main()
     p.pull_trigger();
   status("after 40 more (reserve dries up):   ");
 
-  if (to_string(p.weapon.rounds_dropped) != "10 rd" || p.weapon.reloads != 2 || p.dry_clicks != 10
+  if (to_string(p.weapon.rounds_dropped) != "10 rd" || p.weapon.reloads != just<2> * reload
+      || p.dry_clicks != just<10> * pull
       || !p.weapon.mag.empty())
     return 1;
   return 0;

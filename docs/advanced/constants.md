@@ -12,8 +12,8 @@ are exact.
 using namespace ins;
 namespace pc = ins::constants;
 
-using angle_t = inside<{{0, 4}, per<(1 << 10)>}>;
-auto x = angle_t{1.5} * math::pi;                                   // π to angle_t's resolution
+using fine = inside<{{0, 4}, per<(1 << 10)>}>;
+auto x = fine{1.5} * math::pi;                                      // π to fine's resolution
 auto d = pc::speed_of_light_in_vacuum * quantity<si::second, inside<{0, 10}>>{2, si::second};
 d.in(si::metre);                                                    // 599584916 m, exact
 auto w = pc::standard_gravity * quantity<si::kilogram, inside<{0, 100}>>{70, si::kilogram};

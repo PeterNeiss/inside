@@ -5,11 +5,16 @@ limit in steps of a *notch*. This page shows how to write grids and their
 values, and the ready-made formats.
 
 ```cpp
-using pct    = inside<{0, 100}>;                    // 0, 1, …, 100
-using sample = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
-using temp   = inside<{{-40, 60}, 0.5}>;            // −40 … 60 in steps of 0.5
-using money  = inside<{{0, 1'000'000}, per<100>}>;  // cents
+using integers   = inside<{0, 100}>;                    // 0, 1, …, 100
+using q14        = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
+using halves     = inside<{{-40, 60}, 0.5}>;            // −40 … 60 in steps of 0.5
+using hundredths = inside<{{0, 1'000'000}, per<100>}>;  // 0 … 1 000 000 in steps of 1/100
 ```
+
+A grid holds numbers. When they measure something, give them a unit:
+`quantity<si::metre, halves>` is a length on that grid, and money to the cent
+is `quantity<USD, hundredths>` with a currency of your own
+([Units](units.md)).
 
 ## Writing a grid
 
@@ -54,9 +59,10 @@ For a range you think of as half-open, such as an index `[0, N)` or an angle
 so the grid is still closed and the type is the same:
 
 ```cpp
-using degrees = inside<{0, 360, bounds::half_open}>;             // inside<{0, 359}>
-using pos     = inside<{{0, 64}, per<16>, bounds::half_open}>;   // inside<{{0, 63.9375}, per<16>}>
-using inner   = inside<{0, 10, bounds::open}>;                   // inside<{1, 9}>
+using index      = inside<{0, 360, bounds::half_open}>;             // inside<{0, 359}>
+using sixteenths = inside<{{0, 64}, per<16>, bounds::half_open}>;   // inside<{{0, 63.9375}, per<16>}>
+using inner      = inside<{0, 10, bounds::open}>;                   // inside<{1, 9}>
+using heading    = quantity<si::degree, inside<{0, 360, bounds::half_open}>>;   // an angle: [0°, 359°]
 ```
 
 ## The default value
@@ -99,8 +105,8 @@ them in):
 using namespace ins::formats;
 
 uq8_8 gain{1.5};              // stored as 384
-wrap_counter<255> seq{255};
-++seq;                       // 0
+wrap_counter<255> counter{255};
+++counter;                   // 0
 ```
 
 `-x` of an `int64` reaches 2⁶³, past `int64_t`: its type stores a wider

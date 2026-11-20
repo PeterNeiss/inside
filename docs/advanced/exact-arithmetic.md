@@ -178,7 +178,7 @@ the operation cannot overflow and returns a plain value:
 
 ```cpp
 auto q = inside<{0, 100}>{50} / inside<{1, 7}>{3};   // 50/3, denominators ≤ 7
-auto f = q * 9_ins / 5_ins + 32_ins;                 // 62, denominators ≤ 35
+auto f = q * 7_ins / 5_ins + 2_ins;                  // 76/3, denominators ≤ 35
 auto s = q * q - q;                                  // 2350/9, denominators ≤ 343
 ```
 

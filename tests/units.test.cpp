@@ -315,6 +315,31 @@ TEST(UnitsTest, points_shift_their_grid_between_origins) {
     EXPECT_EQ(rational{kp.quantity_from_origin().numerical_value_in(si::kelvin)}, rational(29315, 100));
 }
 
+TEST(UnitsTest, points_from_a_number_and_their_unit) {
+    using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-40, 60}, per<2>}, round_half_away>>;
+    const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding
+    EXPECT_EQ(to_string(room), "21.5 ℃");
+    EXPECT_TRUE(room == point<si::degree_Celsius>(just<43, 2>));
+    const std::vector<celsius> t = {{21.5, si::degree_Celsius}, {-5, si::degree_Celsius}};
+    EXPECT_TRUE(t[1] < t[0]);
+    const celsius hot{80, si::degree_Celsius, clamp}; // a one-shot policy, as for a quantity
+    EXPECT_EQ(to_string(hot), "60 ℃");
+    // Run-time numbers, as an inside takes them: an int under clamp, a double (maybe NaN) with a channel.
+    volatile int    whole   = 90;
+    volatile double reading = 70.2;
+    error           ec{};
+    const celsius   gauge {static_cast<int>(whole), si::degree_Celsius, clamp};
+    const celsius   sensor{static_cast<double>(reading), si::degree_Celsius, make_policy<clamp>(ec)};
+    EXPECT_EQ(to_string(gauge), "60 ℃");
+    EXPECT_EQ(to_string(sensor), "60 ℃");
+    EXPECT_EQ(ec, error{});
+    static_assert(celsius{21.5, si::degree_Celsius} > celsius{-5, si::degree_Celsius});
+    // Only the point's own unit: a number in K names no origin, a number alone no unit.
+    static_assert(!std::constructible_from<celsius, int, decltype(si::kelvin)>);
+    static_assert(!std::constructible_from<celsius, int, decltype(si::metre)>);
+    static_assert(!std::constructible_from<celsius, int>);
+}
+
 TEST(UnitsTest, point_arithmetic) {
     auto       t  = point<si::degree_Celsius>(inside<{-40, 60}>{20});
     const auto t2 = t + delta<si::kelvin>(just<5>);
@@ -420,6 +445,12 @@ consteval bool addable_units() {
 }
 template <class A, class B>
 concept can_less = requires(const A& a, const B& b) { a < b; };
+template <class A, class B>
+concept can_equal = requires(const A& a, const B& b) { a == b; };
+template <class A, class B>
+concept can_compare = can_less<A, B> && can_less<B, A> && can_equal<A, B> && can_equal<B, A>;
+template <class A, class B>
+concept cannot_compare = !can_less<A, B> && !can_less<B, A> && !can_equal<A, B> && !can_equal<B, A>;
 template <class A>
 concept can_scale_raw = requires(const A& a) { a * 2; } || requires(const A& a) { 2 * a; } ||
                         requires(const A& a) { a / 2; } || requires(const A& a) { 2 / a; };
@@ -460,6 +491,38 @@ TEST(UnitsApiTest, mismatches_are_constraint_failures) {
     static_assert(!can_in_radians<degrees>); // a factor of pi: value_cast rounds it
     static_assert(!can_cast_to_duration<metres>);
     static_assert(can_atan2<metres, metres> && !can_atan2<metres, seconds>);
+}
+
+TEST(UnitsApiTest, quantities_compare_only_with_compatible_quantities) {
+    using plain      = inside<{0, 10}>;
+    using kilometres = quantity<km, inside<{0, 10}>>;
+    using percents   = quantity<percent, inside<{0, 100}>>;
+    using ones       = quantity<one, inside<{0, 10}>>;
+    using celsius_q  = quantity<si::degree_Celsius, inside<{0, 10}>>;
+    using celsius_pt = decltype(point<si::degree_Celsius>(plain{}));
+    using kelvin_pt  = decltype(point<si::kelvin>(inside<{0, 400}>{}));
+    // Only a plain inside compares with a standard integer (a double is rejected by design).
+    static_assert(can_compare<plain, int> && cannot_compare<plain, double>);
+    // A quantity compares with a quantity of its kind, in any unit.
+    static_assert(can_compare<metres, kilometres>);
+    static_assert(can_compare<percents, decltype(just<0> * percent)> && can_compare<percents, ones>);
+    // Never with a number, not even a dimensionless one: % and unit one take no int, double or plain inside.
+    static_assert(cannot_compare<metres, int> && cannot_compare<metres, plain>);
+    static_assert(cannot_compare<percents, int> && cannot_compare<percents, double> && cannot_compare<percents, plain>);
+    static_assert(cannot_compare<ones, int> && cannot_compare<ones, plain>);
+    static_assert(cannot_compare<celsius_q, int> && cannot_compare<metres, seconds>);
+    // A point compares with a point of the same absolute origin, never with a quantity or a number.
+    static_assert(can_compare<celsius_pt, kelvin_pt>);
+    static_assert(cannot_compare<celsius_pt, celsius_q> && cannot_compare<celsius_pt, int>
+                  && cannot_compare<celsius_pt, plain>);
+    // A unit compares as one of itself, under the same rule; −u is −1 u.
+    static_assert(can_compare<metres, decltype(si::metre)> && can_compare<kilometres, decltype(si::metre)>);
+    static_assert(can_compare<percents, decltype(percent)> && can_compare<percents, decltype(one)>);
+    static_assert(cannot_compare<plain, decltype(one)> && cannot_compare<metres, decltype(si::second)>
+                  && cannot_compare<celsius_pt, decltype(si::degree_Celsius)>);
+    EXPECT_TRUE(metres(1, si::metre) == si::metre && si::metre == metres(1, si::metre));
+    EXPECT_TRUE(-si::metre < metres(0, si::metre) && kilometres(1, km) > si::metre);
+    static_assert(-si::metre == just<-1> * si::metre);
 }
 
 TEST(UnitsApiTest, tags_for_your_own_entries) {
@@ -869,6 +932,11 @@ using namespace ins;
 namespace {
 using rad_t = inside<{{-4, 4}, per<1'000'000>}, round_half_away>;
 using deg_t = inside<{{-360, 360}, per<1'000'000>}, round_half_away>;
+
+template <class A, class B>
+concept can_gcd = requires(const A& a, const B& b) { math::gcd(a, b); } || requires(const A& a, const B& b) {
+    math::lcm(a, b);
+};
 } // namespace
 
 TEST(UnitsMathTest, degree_to_radian_rounds_once) {
@@ -914,6 +982,20 @@ TEST(UnitsMathTest, trigonometry_in_radians) {
                                                                                                 si::kilo(si::metre)};
     EXPECT_EQ(rational{math::atan2(y, x).numerical_value_in(si::radian)}, rational(644, 1000)); // atan(3/4) = 0.6435…
     EXPECT_EQ(to_string(math::hypot(y, x)), "5.000 m");
+}
+
+TEST(UnitsMathTest, gcd_and_lcm_in_the_common_unit) {
+    using minutes = quantity<si::minute, inside<{1, 60}>>;
+    const minutes a{12, si::minute}, b{18, si::minute};
+    EXPECT_TRUE(math::gcd(a, b) == just<6> * si::minute);
+    EXPECT_TRUE(math::lcm(a, b) == just<36> * si::minute);
+    EXPECT_EQ(to_string(math::lcm(a, b)), "36 min");
+    // Mixed units: the common unit (3 cm and 4 mm are 30 mm and 4 mm).
+    const quantity<si::centi(si::metre), inside<{0, 10}>> c{3, si::centi(si::metre)};
+    const quantity<si::milli(si::metre), inside<{0, 100}>> m{4, si::milli(si::metre)};
+    EXPECT_EQ(to_string(math::gcd(c, m)), "2 mm");
+    EXPECT_TRUE(math::lcm(c, m) == just<6> * si::centi(si::metre));
+    static_assert(!can_gcd<minutes, decltype(just<1> * si::metre)> && can_gcd<minutes, decltype(just<1> * si::hour)>);
 }
 
 TEST(UnitsMathTest, number_functions_keep_the_unit) {

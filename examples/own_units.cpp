@@ -53,8 +53,8 @@ int main()
   static_assert(sounding.kind == depth);
 
   // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.
-  using rankine_degrees = inside<{{0, 1000}, per<100>}>;
-  const auto freezing{point<rankine>(rankine_degrees{just<49167, 100>})};
+  using rankine_point = quantity_point<rankine, si::absolute_zero, inside<{{0, 1000}, per<100>}>>;
+  const rankine_point freezing{just<49167, 100>, rankine};
   std::cout << "freezing   " << freezing << " = " << freezing.point_in(si::degree_Celsius) << " = "
             << freezing.point_in(international::degree_Fahrenheit) << '\n';
   if (!(freezing == point<si::degree_Celsius>(just<0>))

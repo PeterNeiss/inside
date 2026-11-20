@@ -15,21 +15,28 @@
 #include <inside/inside/mdspan.hpp>
 #include <inside/math.hpp>
 #include <inside/units/io.hpp>
+#include <inside/units/math.hpp>
 #include <inside/units/mdspan.hpp>
 
 using namespace ins;
 
-using pixel  = inside<{0 , 255}>;
-using smooth = inside<{0 , 255}, round_half_away>; // a blurred pixel: rounded once
-using row    = inside<{0 , 7  }, clamp>;           // clamp: an index past an edge is the edge
-using col    = inside<{0 , 7  }, clamp>;
-using offset = inside<{-1, 1  }, clamp>;
+namespace
+{
+  inline constexpr auto DN = base_unit<"DN", "pixel_value">; // a digital number: a raw pixel value
+} // namespace
+
+// Pixel values are quantities in DN; the indices stay plain insides.
+using pixel  = quantity<DN, inside<{0, 255}>>;
+using smooth = quantity<DN, inside<{0, 255}, round_half_away>>; // a blurred pixel: rounded once
+using row    = inside<{0 , 7}, clamp>;                           // clamp: an index past an edge is the edge
+using col    = inside<{0 , 7}, clamp>;
+using offset = inside<{-1, 1}, clamp>;
 
 using image        = std::mdspan<pixel , extents_of<row, col>>; // a std::mdspan takes the indices as they are
 using smooth_image = std::mdspan<smooth, extents_of<row, col>>;
 // The sum of 9 pixels: sum counts at run time, so its type cannot show they fit;
 // clamp names what would happen.
-using window = inside<{0, 9 * 255}, clamp>;
+using window = quantity<DN, inside<{0, 9 * 255}, clamp>>;
 
 // out = the 3×3 mean of in: each 9-pixel sum is exact, then rounded once into the output pixel.
 void blur(const image& in, const smooth_image& out)
@@ -51,36 +58,38 @@ int main()
 {
   // 1. A dark 8×8 image with a bright 4×4 square and one bright corner pixel, and its box blur.
   std::array<pixel, 64> px{};
-  std::ranges::fill(px, pixel{10});
+  std::ranges::fill(px, pixel{10, DN});
   const image img{px.data()};
   for (auto [r, c] : indices(img))
     if (r >= 2 && r <= 5 && c >= 2 && c <= 5)
-      img[r, c] = pixel{200};
-  img[row{0}, col{0}] = pixel{255};
+      img[r, c] = pixel{200, DN};
+  img[row{0}, col{0}] = pixel{255, DN};
 
   std::array<smooth, 64> bl{};
   const smooth_image     blurred{bl.data()};
   blur(img, blurred);
-  std::cout << "blurred:\n";
+  std::cout << "blurred (DN):\n";
   for (auto [r, c] : indices(blurred))
-    std::cout << (c == 0 ? "  " : " ") << std::string(3 - to_string(blurred[r, c]).size(), ' ')
-              << blurred[r, c] << (c == 7 ? "\n" : "");
+  {
+    const auto v{to_string(blurred[r, c].numerical_value_in(DN))};
+    std::cout << (c == 0 ? "  " : " ") << std::string(3 - v.size(), ' ') << v << (c == 7 ? "\n" : "");
+  }
 
   // The corner reads itself 4 times (clamped), its neighbours twice, the diagonal once:
   // 1070/9, rounded to 119.
   const auto corner{blurred[row{0}, col{0}]};
   const auto total {sum(img)}; // exact, on [0, 64·255]
-  static_assert(upper_of<decltype(total)> == 64 * 255);
+  static_assert(upper_of<decltype(total)::rep> == 64 * 255);
   const auto mean{total / 64_ins};
   std::cout << "corner " << corner << ", centre " << blurred[row{3}, col{3}] << ", mean " << mean << "\n";
-  if (corner != 119 || blurred[row{3}, col{3}] != 200 || to_string(mean) != "61.328125")
+  if (corner != just<119> * DN || blurred[row{3}, col{3}] != just<200> * DN || to_string(mean) != "61.328125 DN")
     return 1;
 
   // 2. Interior pixels need no clamp: 1 … 6 plus or minus 1 is on 0 … 7, proven by the grids.
   // The largest step between a pixel's left and right neighbours:
   using inner_index = inside<{1, 6}>;
   using image_index = inside<{0, 7}>;
-  pixel edge = 0;
+  pixel edge{0, DN};
   for (auto [r, c] : std::views::cartesian_product(values<inner_index>, values<inner_index>))
   {
     const auto step{math::abs(img[r, image_index{c + 1_ins}] - img[r, image_index{c - 1_ins}])};
@@ -88,7 +97,7 @@ int main()
       edge = step;
   }
   std::cout << "largest step " << edge << "\n";
-  if (edge != 190)
+  if (edge != just<190> * DN)
     return 1;
 
   // 3. A heat map: 4×6 raw codes in 0.1 K steps from 200 K, as a sensor sends them, read as kelvin.

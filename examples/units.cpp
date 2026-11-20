@@ -40,8 +40,8 @@ int main()
     return 1;
 
   // 2. 20 ℃ as a point: 293.15 K counted from absolute zero, and 68 ℉, on shifted grids.
-  using celsius = inside<{{-50, 50}, per<10>}, round_half_away>; // to 0.1 ℃
-  const auto room{point<si::degree_Celsius>(celsius{20})};
+  using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-50, 50}, per<10>}, round_half_away>>;
+  const celsius room{20, si::degree_Celsius}; // to 0.1 ℃
   const auto k   {room.point_for(si::absolute_zero).in(si::kelvin)};
   const auto f   {room.point_for(international::zeroth_degree_Fahrenheit).in(international::degree_Fahrenheit)};
   std::cout << "room:    " << room << " = " << k << " = " << f << '\n'; // 20.0 ℃ = 293.15 K = 68.00 ℉
@@ -63,9 +63,9 @@ int main()
 
   // 4. A bearing of 30° from north rounds once into radians;
   // the east and north components of a 1.5 km leg are 1.5 km · sin and · cos, each on a 1e-6 grid.
-  using degrees = quantity<si::degree, inside<{0, 360}>>;
-  using radians = inside<{{0, 7}, per<1'000'000>}, round_half_away>;
-  const auto bearing{value_cast<si::radian, radians>(degrees{30, si::degree})};
+  using degrees    = quantity<si::degree, inside<{0, 360}>>;
+  using millionths = inside<{{0, 7}, per<1'000'000>}, round_half_away>;
+  const auto bearing{value_cast<si::radian, millionths>(degrees{30, si::degree})};
   const auto east   {just<1.5> * km * math::sin(bearing)};
   const auto north  {just<1.5> * km * math::cos(bearing)};
   std::cout << "bearing: " << bearing << ", east " << east.in(si::metre) << ", north " << north.in(si::metre)

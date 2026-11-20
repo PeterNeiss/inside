@@ -77,11 +77,11 @@ int main()
 
   // Half the ellipse's period, π·a·√(a/μ): √(s²/km²) is s/km, so a·√(a/μ) is a time;
   // pi keeps π in the unit until the cast to hours rounds once with the true π.
-  using hours = inside<{{0, 200}, per<10> }, round_half_away>;
-  using days  = inside<{{0, 10 }, per<100>}, round_half_away>;
+  using tenths     = inside<{{0, 200}, per<10> }, round_half_away>;
+  using hundredths = inside<{{0, 10 }, per<100>}, round_half_away>;
   const auto rt {math::sqrt<per<1'000'000'000>>(a / mu)};
-  const auto t_h{value_cast<si::hour, hours>(pi * (a * rt))};
-  const auto t_d{value_cast<si::day, days>(pi * (a * rt))};
+  const auto t_h{value_cast<si::hour, tenths>(pi * (a * rt))};
+  const auto t_d{value_cast<si::day, hundredths>(pi * (a * rt))};
   std::cout << "transfer  = " << t_h << " (" << t_d << ")\n";
   if (to_string(t_h) != "119.5 h" || to_string(t_d) != "4.98 d")
     return 1;
@@ -91,22 +91,23 @@ int main()
   // A torque has the same dimension but another recipe:
   //   quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v; // does not compile
   // (A value_cast into a grid that may not hold the value is an expected.)
-  using speed_km_s = inside<{{0, 20    }, per<1000>}, round_half_away>;
-  using gigajoules = inside<{{0, 10'000}, per<1000>}, round_half_away>;
-  const auto v         {value_cast<km_s, speed_km_s>(kind_cast<isq::speed>(v_peri))};
-  const auto checked_ke{value_cast<si::giga(si::joule), gigajoules>(m_final * v * v)};
+  using speed          = quantity<km_s, inside<{{0, 20}, per<1000>}, round_half_away>>;
+  using kinetic_energy = quantity<isq::kinetic_energy[si::giga(si::joule)],
+                                  inside<{{0, 10'000}, per<1000>}, round_half_away>>;
+  const auto v         {value_cast<speed>(kind_cast<isq::speed>(v_peri))};
+  const auto checked_ke{value_cast<si::giga(si::joule), kinetic_energy::rep>(m_final * v * v)};
   if (!checked_ke)
     return 1;
-  const quantity<isq::kinetic_energy[si::giga(si::joule)], gigajoules> ke = *checked_ke;
+  const kinetic_energy ke = *checked_ke;
   std::cout << "KE        = " << ke << '\n';
   if (to_string(ke) != "2331.271 GJ")
     return 1;
 
   // 110 kN on 104.5 t, in units of standard gravity (exact: g₀ is rational).
-  using kilonewtons = quantity<si::kilo(si::newton), inside<{1, 1000}>>;
-  using g0_multiple = inside<{{0, 10}, per<1000>}, round_half_away>;
+  using kilonewtons  = quantity<si::kilo(si::newton), inside<{1, 1000}>>;
+  using acceleration = quantity<si2019::standard_gravity, inside<{{0, 10}, per<1000>}, round_half_away>>;
   const kilonewtons thrust{110, si::kilo(si::newton)};
-  const auto        acc   {value_cast<si2019::standard_gravity, g0_multiple>(thrust / m0)};
+  const auto        acc   {value_cast<acceleration>(thrust / m0)};
   if (!acc)
     return 1;
   std::cout << "a0        = " << *acc << '\n';

@@ -17,13 +17,18 @@
 using namespace ins;
 using namespace ins::formats;
 
+namespace
+{
+  inline constexpr auto smp = base_unit<"smp", "latency_samples">; // one latency sample
+} // namespace
+
 constexpr auto ms = si::milli(si::second);
 
 int main()
 {
   // Ten bins, 0–9.9, 10–19.9, …, 90–100 ms; a count saturates at a bar height of 9.
-  using bar_height = clamp_counter<9>;
-  std::vector<bar_height> bins(10, bar_height{0});
+  using bar_height = quantity<smp, clamp_counter<9>>;
+  std::vector<bar_height> bins(10, bar_height{0, smp});
 
   // In-range samples, outliers, and values off the 0.1 ms notch.
   double samples[] = {
@@ -34,8 +39,9 @@ int main()
 
   using milliseconds = quantity<ms, inside<{{0, 100}, per<10>}, round_half_away>>;
   using bin          = inside<{0, 9}, clamp | round_floor>; // 100 ms → the last bin; bins takes it as an index
-  clamp_counter<1'000'000> rejected{0};
-  clamp_counter<1'000'000> lossy   {0};
+  using tally        = quantity<smp, clamp_counter<1'000'000>>;
+  tally rejected{0, smp};
+  tally lossy   {0, smp};
 
   for (double s : samples)
   {
@@ -74,7 +80,7 @@ int main()
   std::cout << "lossy (off-notch): " << lossy << "\n";
   std::cout << "bin capacity (numeric_limits<bar_height>::max()): " << std::numeric_limits<bar_height>::max()
             << "\n";
-  if (rejected != 2 || lossy != 7 || bins[9] != 1)
+  if (rejected != just<2> * smp || lossy != just<7> * smp || bins[9] != just<1> * smp)
     return 1;
   return 0;
 }

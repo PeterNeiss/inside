@@ -21,15 +21,16 @@ of the bounds. `extents_of`
 turns index types into extents, so the two agree by construction:
 
 ```cpp
-using pixel = inside<{0, 255}>;
-using row   = inside<{0, 479}>;
+inline constexpr auto DN = base_unit<"DN", "pixel_value">;   // a raw pixel value
+using pixel = quantity<DN, inside<{0, 255}>>;                // an element may be a quantity…
+using row   = inside<{0, 479}>;                              // … an index is a plain inside
 using col   = inside<{0, 639}>;
 std::vector<pixel> data(480 * 640);
 std::mdspan<pixel, extents_of<row, col>> img{data.data()};   // extents 480 × 640
 
 row r = 17;
 col c = 300;
-img[r, c] = pixel{255};     // within the extents: the types prove it
+img[r, c] = pixel{255, DN};   // within the extents: the types prove it
 ```
 
 The same conversion serves every place where `std::mdspan` takes an index:
@@ -86,7 +87,7 @@ which is within bounds by its type; a dynamic extent yields integers:
 
 ```cpp
 for (auto [r, c] : indices(img))
-    img[r, c] = pixel{0};
+    img[r, c] = pixel{0, DN};
 ```
 
 `indices` is for clear code. The algorithms below run plain loops, which the
@@ -106,7 +107,8 @@ E, so every operator applies to it. A writable view gives a small reference
 object: assign to it, read it with `.get()` or by converting to E.
 
 ```cpp
-using adc = inside<{0, 4095}>;                                  // 12 bits in a uint16_t
+inline constexpr auto cts = base_unit<"cts", "count">;          // an ADC count
+using adc = quantity<cts, inside<{0, 4095}>>;                   // 12 bits in a uint16_t
 std::array<std::uint16_t, 64> dma{};                            // filled by the hardware
 std::mdspan<adc, std::extents<std::size_t, 64>, std::layout_right,
             raw_accessor<adc, const std::uint16_t>> samples{dma.data()};

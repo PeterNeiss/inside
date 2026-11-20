@@ -62,10 +62,16 @@ and then add: km + m runs in metres, EUR + ct in cents. A valid mixed-unit sum
 cannot overflow, and its result is exact. `*` and `/` multiply the units:
 metres over minutes is m/min, and `.in(km / si::hour)` turns it into km/h.
 
+A quantity compares only with a quantity it could be added to, and a unit
+compares as one of itself (`len > si::metre` is `len > 1 m`, `-si::metre` is
+−1 m). Only a plain inside compares with a number: not even a percentage or a
+quantity of unit `one` takes `== 5`; write `p == just<5> * percent`.
+
 Quantities of different dimensions never mix:
 
 ```cpp
 // total + just<1> * si::second;   // does not compile: a length and a duration
+// total > 1000;                   // does not compile: a length is no number
 ```
 
 ## Kinds
@@ -91,7 +97,12 @@ auto rise   = warmer - room;                                     // 5 ℃, a dif
 
 `point<U>(v)` makes a point, `delta<U>(v)` a difference. Two points subtract
 to a difference, a point and a difference add to a point, and two points do
-not add.
+not add. A point type takes a number in its own unit, as a quantity does:
+
+```cpp
+using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-40, 60}, 0.5}>>;
+std::vector<celsius> temps = {{21.5, si::degree_Celsius}, {-5, si::degree_Celsius}};
+```
 
 ## Units of your own
 

@@ -96,10 +96,11 @@ A unit puts a meaning on the same raw at no cost (see [Units](../guide/units.md)
 #include <inside/units.hpp>
 using namespace ins;
 
-using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;     // a 0.5 °C step, a uint8_t
-auto room = point<si::degree_Celsius>(celsius{21.4});        // 21.5 ℃: rounded onto the step
-auto body = point<si::degree_Celsius>(celsius{37});
-auto diff = body - room;                                     // 15.5 ℃, a temperature difference
+using celsius = quantity_point<si::degree_Celsius, si::ice_point,
+                               inside<{{-40, 60}, 0.5}, round_half_away>>;   // a 0.5 ℃ step, a uint8_t
+celsius room{21.4, si::degree_Celsius};                      // 21.5 ℃: rounded onto the step
+celsius body{37, si::degree_Celsius};
+auto    diff = body - room;                                  // 15.5 ℃, a temperature difference
 
 constexpr auto km = si::kilo(si::metre);
 quantity<km, inside<{0, 10}>> d{7, km};

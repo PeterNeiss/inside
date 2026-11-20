@@ -52,15 +52,13 @@ int main()
   // 2. partition_point bisects the grid itself:
   // the first tenth of a ℃ past 212 ℉ in 11 exact comparisons out of 2001 values
   // (a ℃ point's ℉ point is an exact shift and scale of the grid).
-  using celsius = inside<{{-50, 150}, per<10>}>;
-  auto fahrenheit = [](celsius c)
-  {
-    return point<si::degree_Celsius>(c).point_in(international::degree_Fahrenheit);
-  };
-  const auto boiling{point<international::degree_Fahrenheit>(212_ins)};
-  const auto boil   {rng::partition_point(values<celsius>, [&](celsius c) { return fahrenheit(c) <= boiling; })};
-  std::cout << "above 212 ℉: " << point<si::degree_Celsius>(*boil) << " = " << fahrenheit(*boil) << "\n";
-  if (*boil != 100.1_ins || to_string(fahrenheit(*boil)) != "212.18 ℉")
+  using tenths = inside<{{-50, 150}, per<10>}>;
+  const auto celsius   {values<tenths> | views::transform([](tenths t) { return point<si::degree_Celsius>(t); })};
+  const auto fahrenheit{[](const auto& c) { return c.point_in(international::degree_Fahrenheit); }};
+  const auto boiling   {point<international::degree_Fahrenheit>(212_ins)};
+  const auto boil      {*rng::partition_point(celsius, [&](const auto& c) { return fahrenheit(c) <= boiling; })};
+  std::cout << "above 212 ℉: " << boil << " = " << fahrenheit(boil) << "\n";
+  if (boil != point<si::degree_Celsius>(100.1_ins) || to_string(fahrenheit(boil)) != "212.18 ℉")
     return 1;
 
   // The first thousandth whose square exceeds 2: sqrt(2), rounded up.
@@ -77,12 +75,13 @@ int main()
   const slot                                  head{2};
   show("oldest first:", inside_range<grid_of<slot>>{head} | views::transform([&](slot s) { return ring[s]; }));
 
-  // 4. A cursor and its end as a subrange, which pipes too:
-  // the quarter hours of a day (0 … 1440, both ends) and the ones in office hours.
-  using minute_of_day = inside<{0, 24 * 60}>;
-  cursor<minute_of_day, 15> c;
-  rng::subrange             quarters{c, end(c)};
-  auto office{quarters | views::filter([](minute_of_day m) { return m >= 9 * 60 && m < 17 * 60; })};
+  // 4. A cursor and its end as a subrange, which pipes too: the quarter hours of a day (0 … 1440 min, both ends)
+  // and the ones in office hours. The cursor is an index; the range it walks yields quantities.
+  cursor<inside<{0, 24 * 60}>, 15> c;
+  const auto quarters{rng::subrange{c, end(c)} | views::transform([](auto n) { return n * si::minute; })};
+  const auto opens   {just<9> * si::hour};
+  const auto closes  {just<17> * si::hour};
+  auto       office  {quarters | views::filter([&](const auto& t) { return t >= opens && t < closes; })};
   std::cout << "quarters:     " << rng::distance(quarters) << ", in office hours: " << rng::distance(office)
             << " (" << rng::min(office) << " … " << rng::max(office) << ")\n";
   if (rng::distance(quarters) != 97 || rng::distance(office) != 32)
