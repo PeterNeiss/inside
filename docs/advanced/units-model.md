@@ -318,14 +318,14 @@ translation units (best of three). On the maintainer's machine:
 
 | Compiler | inside | units.hpp | 200 inside expressions | as quantities |
 |---|---:|---:|---:|---:|
-| GCC 16, C++26 | 0.58 s | 1.10 s | 4.61 s | 8.25 s |
+| GCC 16, C++26 | 0.56 s | 1.08 s | 4.29 s | 7.70 s |
 
 The header adds about 0.5 s; printing (`units/io.hpp`, through
 `inside/io.hpp`) adds another 0.4 s. Units of your own need only
 `units/core.hpp`, without the catalog, which saves about 0.4 s of it: the
 catalog interns the dimension of each of its kinds and units. Each of the 200
 expressions uses its own grid, so most of the time is inside's arithmetic on
-those grids; units add about 18 ms per expression.
+those grids; units add about 17 ms per expression.
 
 ## Differences from mp-units
 
