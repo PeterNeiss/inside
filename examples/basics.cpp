@@ -12,10 +12,15 @@
 
 using namespace ins;
 
+namespace
+{
+  inline constexpr auto DN = base_unit<"DN", "pixel_value">; // a digital number: a raw pixel value
+} // namespace
+
 // A pixel whose channels saturate.
-// A run-time delta has a range too: name it, so `R += d` is inside += inside.
-using channel       = inside<{0   , 255}, clamp>;
-using channel_delta = inside<{-512, 512}>;
+// A run-time delta has a range too: name it, so `R += d` is quantity += quantity.
+using channel       = quantity<DN, inside<{0   , 255}, clamp>>;
+using channel_delta = quantity<DN, inside<{-512, 512}>>;
 
 struct rgb
 {
@@ -36,23 +41,23 @@ struct rgb
 int main()
 {
   // 1. clamp: a brightness, an RGB pixel.
-  using brightness_percent = inside<{0, 100}, clamp>;
-  brightness_percent brightness = 120; // 100
-  brightness -= 200;                   // 0: a plain integer steps a clamp type
+  using brightness_percent = quantity<percent, inside<{0, 100}, clamp>>;
+  brightness_percent brightness{120, percent}; // 100 %
+  brightness -= just<200> * percent;           // 0 %: a constant steps a clamp type
   std::cout << "brightness " << brightness << "\n";
 
   inside<{0, 100}> strict{50}; // checked by default …
   strict.with<clamp>() = 200;  // … clamped for this one store
   std::cout << "with<clamp> " << strict << "\n";
-  if (brightness != 0 || strict != 100)
+  if (brightness != just<0> * percent || strict != 100)
     return 1;
 
-  rgb pixel{200, 100, 50};
-  pixel.brighten(80);
-  std::cout << "brighten   " << pixel << "\n"; // rgb(255, 180, 130)
-  pixel.brighten(-300);
-  std::cout << "darken     " << pixel << "\n"; // rgb(0, 0, 0)
-  if (pixel.R != 0 || pixel.G != 0)
+  rgb pixel{{200, DN}, {100, DN}, {50, DN}};
+  pixel.brighten(just<80> * DN);
+  std::cout << "brighten   " << pixel << "\n"; // rgb(255 DN, 180 DN, 130 DN)
+  pixel.brighten(just<-300> * DN);
+  std::cout << "darken     " << pixel << "\n"; // rgb(0 DN, 0 DN, 0 DN)
+  if (pixel.R != just<0> * DN || pixel.G != just<0> * DN)
     return 1;
 
   // 2. wrap: a compass heading in [0°, 360°), whole degrees.
