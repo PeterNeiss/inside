@@ -118,6 +118,9 @@ Errors are reported as a `ins::error`. The library does not use
 | `domain_error` | the argument is outside the function's mathematical domain: `sqrt` of a negative, `pow` of a negative base |
 | `not_finite` | a NaN or an infinity came in from a `double` |
 | `invalid_format` | text that is not a number (`parse`, `operator>>`) |
+| `missing_unit` | a quantity's text without its unit: `"12.5"` for metres |
+| `unknown_unit` | a unit's text that names no unit visible at the call, or does not read as one |
+| `incompatible_unit` | a unit that does not convert exactly to the quantity's: another dimension or kind, a factor of π, another absolute origin |
 
 `error{}` (0) means no error, and `error_message(e)` gives a short static text.
 

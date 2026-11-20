@@ -1286,6 +1286,9 @@ TEST(PolicyTest, error_message_stringifies_every_error) {
     ASSERT_EQ(std::string_view{error_message(error::rounding_error)}, "value is not on the grid");
     ASSERT_EQ(std::string_view{error_message(error::not_finite)}, "non-finite floating-point value");
     ASSERT_EQ(std::string_view{error_message(error::invalid_format)}, "malformed number");
+    ASSERT_EQ(std::string_view{error_message(error::missing_unit)}, "number without its unit");
+    ASSERT_EQ(std::string_view{error_message(error::unknown_unit)}, "unknown unit");
+    ASSERT_EQ(std::string_view{error_message(error::incompatible_unit)}, "unit does not convert exactly to the quantity's");
     ASSERT_EQ(std::string_view{error_message(static_cast<error>(999))}, "unknown inside error");
 }
 

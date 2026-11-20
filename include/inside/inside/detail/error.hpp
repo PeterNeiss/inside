@@ -38,6 +38,10 @@ namespace ins
     rounding_error,   // a value off the grid (between notches)
     not_finite,       // a non-finite double input (NaN, Inf)
     invalid_format,   // text that is not a number (parse, operator>>)
+    missing_unit,     // a quantity's text without its unit ("12.5" for metres)
+    unknown_unit,     // a unit's text that names no unit visible at the call, or does not read as one
+    incompatible_unit // a unit that does not convert exactly to the quantity's (another dimension or kind,
+                      // a factor of pi, another absolute origin)
   };
 
   // The static, allocation-free message of a code, the one source for every error path:
@@ -58,6 +62,12 @@ namespace ins
         return "non-finite floating-point value";
       case error::invalid_format:
         return "malformed number";
+      case error::missing_unit:
+        return "number without its unit";
+      case error::unknown_unit:
+        return "unknown unit";
+      case error::incompatible_unit:
+        return "unit does not convert exactly to the quantity's";
     }
     return "unknown inside error";
   }
@@ -203,6 +213,13 @@ namespace ins
           constexpr_error<"inside: a non-finite floating-point value (not_finite) in a constant expression">();
         case error::invalid_format:
           constexpr_error<"inside: malformed number text (invalid_format) in a constant expression">();
+        case error::missing_unit:
+          constexpr_error<"units: a number without its unit (missing_unit) in a constant expression">();
+        case error::unknown_unit:
+          constexpr_error<"units: an unknown unit (unknown_unit) in a constant expression">();
+        case error::incompatible_unit:
+          constexpr_error<"units: a unit that does not convert exactly (incompatible_unit) in a constant "
+                          "expression">();
         default:
           constexpr_error<"inside: argument outside the function's domain (domain_error) in a constant expression">();
       }
