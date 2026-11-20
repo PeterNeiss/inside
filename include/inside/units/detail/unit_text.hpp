@@ -167,8 +167,58 @@ namespace ins::detail
     return digits == 0 || digits == 3 ? 0 : sign * e;
   }
 
-  // A quantity's text split: the number, then its unit after a space, or against it when the unit starts with a
-  // byte no number has (90°, 15%). Spaces around the unit are dropped.
+  // Where a number's text ends, in the grammar parse reads: a sign, then a decimal (digits, '.', ' separators, an
+  // e exponent), a 0x hexadecimal (with a p exponent) or a 0b binary number, then /denominator.
+  constexpr std::size_t number_text_end(std::string_view t)
+  {
+    const auto digit = [&](std::size_t i, int base)
+    {
+      if (i >= t.size())
+        return false;
+      const char c{t[i]};
+      return (c >= '0' && c <= '9' && c - '0' < base)
+             || (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')));
+    };
+    const auto exponent = [&](std::size_t& i, char lower)
+    {
+      if (i < t.size() && (t[i] == lower || t[i] == lower - 32))
+      {
+        std::size_t j{i + 1};
+        if (j < t.size() && (t[j] == '+' || t[j] == '-'))
+          ++j;
+        if (digit(j, 10))
+        {
+          for (i = j; digit(i, 10); ++i)
+          {
+          }
+        }
+      }
+    };
+    const auto number = [&](std::size_t i)
+    {
+      if (i < t.size() && (t[i] == '+' || t[i] == '-'))
+        ++i;
+      const int base{t.substr(i, 2) == "0x" || t.substr(i, 2) == "0X"   ? 16
+                     : t.substr(i, 2) == "0b" || t.substr(i, 2) == "0B" ? 2
+                                                                          : 10};
+      if (base != 10)
+        i += 2;
+      while (digit(i, base) || (i < t.size() && (t[i] == '.' || t[i] == '\'')))
+        ++i;
+      if (base == 10)
+        exponent(i, 'e');
+      else if (base == 16)
+        exponent(i, 'p');
+      return i;
+    };
+    std::size_t i{number(0)};
+    if (i + 1 < t.size() && t[i] == '/' && digit(i + 1, 10))
+      i = number(i + 1);
+    return i;
+  }
+
+  // A quantity's text split: the number up to the first space and the unit after it, or without a space the number
+  // as far as its grammar reads and the unit against it (90°, 90deg). Spaces around the unit are dropped.
   struct quantity_text
   {
     std::string_view Number;
@@ -176,14 +226,11 @@ namespace ins::detail
   };
   constexpr quantity_text split_quantity_text(std::string_view t)
   {
-    std::size_t i{t.find(' ')};
-    if (i == std::string_view::npos)
-    {
-      i = 0;
-      while (i < t.size() && static_cast<unsigned char>(t[i]) < 0x80 && t[i] != '%')
-        ++i;
-    }
-    std::string_view unit{t.substr(i)};
+    while (t.ends_with(' '))
+      t.remove_suffix(1);
+    const std::size_t space{t.find(' ')};
+    const std::size_t i{space != std::string_view::npos ? space : number_text_end(t)};
+    std::string_view  unit{t.substr(i)};
     while (unit.starts_with(' '))
       unit.remove_prefix(1);
     while (unit.ends_with(' '))

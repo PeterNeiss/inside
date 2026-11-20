@@ -44,6 +44,9 @@ foreach(test_src ${INSIDE_TEST_SOURCES})
     )
 endforeach()
 
+# units_text has a second translation unit that sees fewer units (each call site's set is its own).
+target_sources(inside.tests.units_text PRIVATE units_text_other.cpp)
+
 # Compile-fail diagnostics suite — regression-tests that ill-formed uses stay
 # ill-formed and keep their intended messages (see fail/CMakeLists.txt).
 add_subdirectory(fail)
