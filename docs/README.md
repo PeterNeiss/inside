@@ -66,7 +66,7 @@ and the [certified math pairs](certified.md).
 | `<inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
 | `<inside/units.hpp>` | quantities: the machinery and the SI and ISQ catalog |
 | `<inside/units/core.hpp>` | the machinery alone, enough for units of your own |
-| `<inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |
+| `<inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` with the unit, `>>` into an expected |
 | `<inside/units/math.hpp>` | math on quantities: roots of units, angles in degrees, `value_cast` across π |
 | `<inside/units/random.hpp>` | `uniform<Q>(rng)` |
 | `<inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `view_in` |

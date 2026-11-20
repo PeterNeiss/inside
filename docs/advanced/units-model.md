@@ -290,7 +290,7 @@ the numbers, so it still rounds once and checks once.
 | `add(a, b, args…)`, `sub`, `mod`, `mul`, `div` | inside's free arithmetic with a per-call flag or `error&`: sums in the common unit, products and quotients with the units multiplied |
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
 | `lerp` | on quantities in their common unit; `lerp`'s t is a number |
-| `ins::parse<Q, F>(text)`, `ins::parse_exact<Q>(text)` | the number, read in Q's unit |
+| `ins::parse<Q, F>(text)`, `parse<Q, F>(number, unit)`, `parse<Q, F>(number, u)`, `ins::parse_exact<Q>(…)`, `>>` into `std::expected<Q, error>` | the number with its unit, in any visible unit that converts exactly ([text](text.md#reading-a-quantity-with-its-unit)) |
 | `conversion_overflows<Q>(v, u)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number `v` in unit `u` against Q's grid |
 | `values<Q>`, `cursor<Q, Step>` | the number's grid, as quantities; `Step` is a number in Q's unit |
 | `ins::uniform<Q>(rng)` | units/random.hpp: a number drawn from Q's grid, in Q's unit |

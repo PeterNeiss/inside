@@ -193,7 +193,9 @@ With `<inside/units/io.hpp>`, `to_string(q)`, `<<` and `std::format`
 print the number and the unit's symbol: `5 km`, `39.9 km/h`, `20 ℃`, `12 m²`.
 A format spec applies to the number (`{:.2f}`), and
 `unit_symbol(u, text_encoding::ascii)` gives an ASCII spelling (`um`, `ohm`).
-`ins::parse<Q>(text)` reads a number in Q's unit.
+`ins::parse<Q>(text)` reads it back, with its unit: `"1.5 h"` into minutes
+is 90 min, in any unit that converts exactly; a bare number is
+`error::missing_unit` ([reading quantities](../advanced/text.md#reading-a-quantity-with-its-unit)).
 
 ## Details
 
