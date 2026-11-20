@@ -155,9 +155,10 @@ int main()
 
   // Weeks and the day of the week by one divmod: a week's grid excludes 0, so it cannot fail.
   using day_number = quantity<si::day, inside<{0, 1'000'000}, round_toward_zero>>;
+  // The quotient counts whole weeks: a number, times the week a duration again.
   const auto [weeks, dow] = divmod(day_number{14003, si::day}, just<1> * week);
-  std::cout << "day 14003 is " << weeks << " weeks + " << dow << " (0 d = the reference day's weekday)\n";
-  if (weeks != 2000 || dow != just<3> * si::day)
+  std::cout << "day 14003 is " << weeks * week << " + " << dow << " (0 d = the reference day's weekday)\n";
+  if (weeks * week != just<2000> * week || dow != just<3> * si::day)
     return 1;
 
   // With 1970-01-01 (a Thursday, 4 days after a Sunday) as day 0: 2008-05-04, a Sunday.

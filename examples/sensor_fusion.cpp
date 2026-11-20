@@ -18,10 +18,10 @@ constexpr auto deg_C = si::degree_Celsius;
 
 int main()
 {
-  // Three sensors in ℃, each with the precision of its hardware.
-  using outdoor_reading = inside<{{-40, 60}, per<2> }, round_half_away>; // 0.5 ℃
-  using indoor_reading  = inside<{{0  , 50}, per<10>}, round_half_away>; // 0.1 ℃
-  using ground_reading  = inside<{{-10, 30}, per<4> }, round_half_away>; // 0.25 ℃
+  // Three sensors in ℃, each with the precision of its hardware: the number each sends, read as a ℃ point.
+  using halves   = inside<{{-40, 60}, per<2> }, round_half_away>; // outdoor, 0.5 ℃
+  using tenths   = inside<{{0  , 50}, per<10>}, round_half_away>; // indoor, 0.1 ℃
+  using quarters = inside<{{-10, 30}, per<4> }, round_half_away>; // ground, 0.25 ℃
 
   double raw[] = {22.5, 21.7, -50.0, 22.0, 23.25}; // -50 is an outlier, below the outdoor grid
 
@@ -55,11 +55,11 @@ int main()
     weight_sum.on_error(accumulated)   += w;
   };
 
-  accept(std::type_identity<outdoor_reading>{}, raw[0], w_outdoor, "outdoor");
-  accept(std::type_identity<indoor_reading>{} , raw[1], w_indoor , "indoor ");
-  accept(std::type_identity<outdoor_reading>{}, raw[2], w_outdoor, "outdoor");
-  accept(std::type_identity<ground_reading>{} , raw[3], w_ground , "ground ");
-  accept(std::type_identity<indoor_reading>{} , raw[4], w_indoor , "indoor ");
+  accept(std::type_identity<halves>{}  , raw[0], w_outdoor, "outdoor");
+  accept(std::type_identity<tenths>{}  , raw[1], w_indoor , "indoor ");
+  accept(std::type_identity<halves>{}  , raw[2], w_outdoor, "outdoor");
+  accept(std::type_identity<quarters>{}, raw[3], w_ground , "ground ");
+  accept(std::type_identity<tenths>{}  , raw[4], w_indoor , "indoor ");
   if (accumulated != error{})
     return 1;
 
