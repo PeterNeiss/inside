@@ -44,7 +44,7 @@ int main()
   const auto n{just<1> * e1 + just<1> * e2};
   const auto w{grade<1>(-n * v * inverse(n))};
   std::cout << "n⁻¹ = " << inverse(n) << ", -n v n⁻¹ = " << w << '\n';
-  if (to_string(w) != "-5 m e₁ - 4 m e₂ + 6 m e₃")
+  if (to_string(w) != "-5 m·e₁ - 4 m·e₂ + 6 m·e₃")
     return 1;
 
   // 3. u∧v∧x is the signed volume, and dual(u∧v, e₁e₂e₃) is u × v.
@@ -52,7 +52,7 @@ int main()
   const auto volume{wedge(wedge(u, v), x)};
   const auto cross {dual(wedge(u, v), e1 * e2 * e3)};
   std::cout << "u∧v∧x = " << volume << ", u × v = " << cross << '\n';
-  if (to_string(volume) != "-3 m³ e₁ e₂ e₃" || to_string(cross) != "-3 m² e₁ + 6 m² e₂ - 3 m² e₃")
+  if (to_string(volume) != "-3 m³·e₁·e₂·e₃" || to_string(cross) != "-3 m²·e₁ + 6 m²·e₂ - 3 m²·e₃")
     return 1;
 
   // 4. Dual numbers a + b ε: ε ε drops out of products,

@@ -113,7 +113,7 @@ TEST(UnitsTest, sums_run_in_the_common_unit) {
     // Neither divides the other: ft + m runs in 1/1250 m (= 1/381 ft).
     const auto f = just<1> * international::foot + just<1> * si::metre;
     EXPECT_EQ(rational{f.numerical_value_in(si::metre)}, rational(1631, 1250)); // 1.3048 m
-    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(f)>::unit), "[1/381 ft]");
+    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(f)>::unit), "[1/381·ft]");
     // The smaller unit is scaled, whichever side it is on: one type.
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(f)>,
                                  decltype(just<1> * si::metre + just<1> * international::foot)>);
@@ -168,17 +168,17 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
     const auto                                  p = pi * t;
     static_assert(magnitude_of(std::remove_cvref_t<decltype(p)>::unit).Pi == 1);
     EXPECT_EQ(p.numerical_value_in(pi * si::second), 3); // the number is untouched
-    EXPECT_EQ(to_string(p), "3 [π s]");
-    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(p)>::unit, text_encoding::ascii), "[pi s]");
-    EXPECT_EQ(to_string(t * ins::detail::mag<2>), "3 [2 s]");
+    EXPECT_EQ(to_string(p), "3 [π·s]");
+    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(p)>::unit, text_encoding::ascii), "[pi*s]");
+    EXPECT_EQ(to_string(t * ins::detail::mag<2>), "3 [2·s]");
     EXPECT_EQ((t * ins::detail::mag<2>).numerical_value_in(si::second), 6);
-    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(t / pi)>::unit), "[π⁻¹ s]");
+    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(t / pi)>::unit), "[π⁻¹·s]");
     // π · π⁻¹ cancels: back to seconds, exactly.
     EXPECT_EQ((pi * t / pi).numerical_value_in(si::second), 3);
     // A magnitude times a number is that number in [π], then [π s].
-    EXPECT_EQ(to_string(pi * just<2> * si::second), "2 [π s]");
+    EXPECT_EQ(to_string(pi * just<2> * si::second), "2 [π·s]");
     EXPECT_EQ(to_string(just<2> * pi), "2 [π]");
-    EXPECT_EQ(unit_symbol(pi / si::metre), "[π m⁻¹]");
+    EXPECT_EQ(unit_symbol(pi / si::metre), "[π·m⁻¹]");
 }
 
 TEST(UnitsTest, compound_assignment_and_casts) {
@@ -256,9 +256,9 @@ TEST(UnitsTest, separate_kinds_do_not_mix) {
 }
 
 TEST(UnitsTest, text) {
-    EXPECT_EQ(unit_symbol(si::kilogram * square(si::metre) / square(si::second)), "kg m²/s²");
-    EXPECT_EQ(unit_symbol(si::kilogram * square(si::metre) / square(si::second), text_encoding::ascii), "kg m^2/s^2");
-    EXPECT_EQ(unit_symbol(si::joule / (si::kilogram * si::kelvin)), "J/(K kg)");
+    EXPECT_EQ(unit_symbol(si::kilogram * square(si::metre) / square(si::second)), "kg·m²/s²");
+    EXPECT_EQ(unit_symbol(si::kilogram * square(si::metre) / square(si::second), text_encoding::ascii), "kg*m^2/s^2");
+    EXPECT_EQ(unit_symbol(si::joule / (si::kilogram * si::kelvin)), "J/(K·kg)");
     EXPECT_EQ(unit_symbol(si::micro(si::metre)), "µm");
     EXPECT_EQ(unit_symbol(si::micro(si::metre), text_encoding::ascii), "um");
     EXPECT_EQ(unit_symbol(si::ohm), "Ω");
@@ -560,7 +560,7 @@ TEST(UnitsApiTest, value_cast_to_a_quantity_type) {
 TEST(UnitsApiTest, units_scale_by_magnitudes_on_either_side) {
     static_assert(si::metre * ins::detail::mag<2> == ins::detail::mag<2> * si::metre);
     static_assert(si::metre / pi == ins::detail::mag<1> / pi * si::metre);
-    EXPECT_EQ(unit_symbol(si::metre * ins::detail::mag<2>), "[2 m]");
+    EXPECT_EQ(unit_symbol(si::metre * ins::detail::mag<2>), "[2·m]");
 }
 
 TEST(UnitsApiTest, sums_take_one_type_in_either_order) {
@@ -572,9 +572,9 @@ TEST(UnitsApiTest, sums_take_one_type_in_either_order) {
 
 TEST(UnitsApiTest, a_denominator_alone_prints_negative_exponents) {
     EXPECT_EQ(to_string(just<2> / si::second), "2 s⁻¹");
-    EXPECT_EQ(to_string(just<1> / (si::second * si::metre)), "1 m⁻¹ s⁻¹");
+    EXPECT_EQ(to_string(just<1> / (si::second * si::metre)), "1 m⁻¹·s⁻¹");
     EXPECT_EQ(unit_symbol(inverse(si::second), text_encoding::ascii), "s^-1");
-    EXPECT_EQ(unit_symbol(pi / si::metre), "[π m⁻¹]");
+    EXPECT_EQ(unit_symbol(pi / si::metre), "[π·m⁻¹]");
     EXPECT_EQ(unit_symbol(si::metre / si::second), "m/s");
 }
 
@@ -622,8 +622,8 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
 
     const auto both  = (just<2> * loot) * (just<3> * net);
     const auto seven = both / (just<1> * gold_u);
-    EXPECT_EQ(to_string(both + both), "12 loot net");
-    EXPECT_EQ(to_string(both / (just<2> * si::second)), "3 loot net/s");
+    EXPECT_EQ(to_string(both + both), "12 loot·net");
+    EXPECT_EQ(to_string(both / (just<2> * si::second)), "3 loot·net/s");
     static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.U).Size == 7); // gold⁰ drops out
     static_assert(!can_add<decltype(both), decltype(seven)>);
 }
@@ -1106,7 +1106,7 @@ TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
     EXPECT_EQ(to_string(pc::characteristic_impedance_of_vacuum.in(si::ohm)), "376.730313412 Ω");
     EXPECT_EQ(
         std::format("{:.5e}", pc::gravitational_constant.in(cubic(si::metre) / (si::kilogram * square(si::second)))),
-        "6.67430e-11 m³/(kg s²)");
+        "6.67430e-11 m³/(kg·s²)");
     EXPECT_EQ(std::format("{:.11e}", pc::vacuum_magnetic_permeability.in(si::newton / square(si::ampere))),
               "1.25663706127e-06 N/A²");
 }
@@ -1114,7 +1114,7 @@ TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
 TEST(ConstantsTest, si2019_defining_constants_are_exact) {
     static_assert(pc::planck_constant.kind == isq::action);
     static_assert(pc::elementary_charge.kind == isq::electric_charge);
-    EXPECT_EQ(std::format("{:.8e}", pc::planck_constant.in(si::joule * si::second)), "6.62607015e-34 J s");
+    EXPECT_EQ(std::format("{:.8e}", pc::planck_constant.in(si::joule * si::second)), "6.62607015e-34 J·s");
     EXPECT_EQ(std::format("{:.9e}", pc::elementary_charge.in(si::coulomb)), "1.602176634e-19 C");
     EXPECT_EQ(std::format("{:.6e}", pc::boltzmann_constant.in(si::joule / si::kelvin)), "1.380649e-23 J/K");
     EXPECT_EQ(std::format("{:.8e}", pc::avogadro_constant.in(one / si::mole)), "6.02214076e+23 mol⁻¹");
@@ -1125,7 +1125,7 @@ TEST(ConstantsTest, si2019_defining_constants_are_exact) {
 
 TEST(ConstantsTest, derived_constants_are_exact_products) {
     // R = N_A·k and F = N_A·e, in full.
-    EXPECT_EQ(to_string(pc::molar_gas_constant.in(si::joule / (si::mole * si::kelvin))), "8.31446261815324 J/(K mol)");
+    EXPECT_EQ(to_string(pc::molar_gas_constant.in(si::joule / (si::mole * si::kelvin))), "8.31446261815324 J/(K·mol)");
     EXPECT_EQ(to_string(pc::faraday_constant.in(si::coulomb / si::mole)), "96485.3321233100184 C/mol");
     EXPECT_TRUE(pc::molar_gas_constant == pc::avogadro_constant * pc::boltzmann_constant);
     EXPECT_TRUE(pc::faraday_constant == pc::avogadro_constant * pc::elementary_charge);
@@ -1135,12 +1135,12 @@ TEST(ConstantsTest, derived_constants_are_exact_products) {
     // ħ = h/2π: a factor of π rounds once, through value_cast.
     using fine = inside<{{0, 1}, 1e-45_g}, round_half_away>;
     EXPECT_EQ(std::format("{:.9e}", value_cast<si::joule * si::second, fine>(pc::reduced_planck_constant)),
-              "1.054571818e-34 J s");
+              "1.054571818e-34 J·s");
     // E = h·ν for 540 THz, exactly.
     const quantity<si::tera(si::hertz), inside<{0, 1000}>> nu{540, si::tera(si::hertz)};
     EXPECT_EQ(std::format("{:.9e}", (pc::planck_constant * nu).in(si::joule)), "3.578077881e-19 J");
     // c₂ = hc/k.
-    EXPECT_EQ(std::format("{:.9e}", pc::second_radiation_constant.in(si::metre * si::kelvin)), "1.438776878e-02 K m");
+    EXPECT_EQ(std::format("{:.9e}", pc::second_radiation_constant.in(si::metre * si::kelvin)), "1.438776878e-02 K·m");
 }
 } // namespace constants_tests
 

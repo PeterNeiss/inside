@@ -14,6 +14,10 @@ own can be declared the same way with `defined_by`.
   text (`"5 m"`, or any unit that converts exactly: `"5 km"`), pass it apart
   (`parse<Q>("5", "km")`), or name it in code (`parse<Q>("5", si::metre)`).
   `to_string(q)` reads back: `parse<Q>(to_string(q)) == q`.
+- A unit's factors print joined by `·` (ASCII `*`) instead of a space:
+  `kg·m²/s²`, `J/(K·kg)`, `[1/381·ft]`, a multivector's `2 m·e₁ + 1 m·e₂`.
+  A quantity's text is then one number and one unit token, so `>>` reads
+  what `<<` writes; `parse` still accepts a space between factors.
 - A unit or kind that re-declares a catalog entry by its content
   (`base_unit<"m", "length">` for `si::metre`) still compares equal to it and
   converts, but is now another type. A sum of the two may run in either unit.

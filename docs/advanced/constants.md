@@ -21,7 +21,7 @@ w.in(si::newton);                                                   // 686.46550
 
 // h, e, k and N_A are grid numbers past 64 bits.
 auto R = pc::avogadro_constant * pc::boltzmann_constant;            // exact
-std::format("{:.14e}", R.in(si::joule / (si::mole * si::kelvin)));  // 8.31446261815324e+00 J/(K mol)
+std::format("{:.14e}", R.in(si::joule / (si::mole * si::kelvin)));  // 8.31446261815324e+00 J/(K·mol)
 auto E = pc::planck_constant * quantity<si::tera(si::hertz), inside<{0, 1000}>>{540, si::tera(si::hertz)};
 std::format("{:.9e}", E.in(si::joule));                             // 3.578077881e-19 J
 ```

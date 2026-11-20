@@ -132,24 +132,24 @@ TEST(GeoalgTest, products_of_basis_blades_match_a_bitmask_reference) {
 TEST(GeoalgTest, quantity_products_carry_the_sign) {
     const auto a = just<3> * x;
     const auto b = just<4> * y;
-    EXPECT_EQ(to_string(a * b), "12 x y");
-    EXPECT_EQ(to_string(b * a), "-12 x y");
+    EXPECT_EQ(to_string(a * b), "12 x·y");
+    EXPECT_EQ(to_string(b * a), "-12 x·y");
     static_assert(decltype(a * b)::reference == decltype(b * a)::reference); // the sign is in the number
     EXPECT_TRUE(a * a == just<9> * one);
     EXPECT_TRUE((just<2> * xy) * (just<3> * xy) == just<-6> * one);
     // A product that vanishes is the zero multivector.
     static_assert(std::same_as<decltype((just<1> * p0) * (just<1> * p0)), multivector<>>);
     // Division by a blade: x / y = x y (y² = 1); x / γ₁ = -x γ₁ (γ₁² = -1).
-    EXPECT_EQ(to_string((just<6> * x) / (just<2> * y)), "3 x y");
+    EXPECT_EQ(to_string((just<6> * x) / (just<2> * y)), "3 x·y");
     EXPECT_EQ(to_string(just<1> / (just<2> * xy)), "-0.5 xy");
-    EXPECT_EQ(to_string((just<1> * g0) / (just<1> * g1)), "-1 γ₀ γ₁");
+    EXPECT_EQ(to_string((just<1> * g0) / (just<1> * g1)), "-1 γ₀·γ₁");
     // Physical units commute with everything and print first.
-    EXPECT_EQ(to_string((just<3> * si::metre * x) * (just<2> * si::second * y)), "6 m s x y");
+    EXPECT_EQ(to_string((just<3> * si::metre * x) * (just<2> * si::second * y)), "6 m·s·x·y");
 }
 
 TEST(GeoalgTest, named_blades_convert_with_their_sign) {
     const auto q = just<5> * zx;
-    EXPECT_EQ(to_string(q.in(x * z)), "-5 x z");
+    EXPECT_EQ(to_string(q.in(x * z)), "-5 x·z");
     // A sum runs in the shorter spelling of one size.
     EXPECT_EQ(to_string(q + just<1> * x * z), "4 zx");
     EXPECT_TRUE(q == just<-5> * x * z);
@@ -168,7 +168,7 @@ TEST(GeoalgTest, multivectors_sum_per_blade_in_order) {
     EXPECT_TRUE(a - a == multivector<>{});
     // The parts of one blade add in their common unit.
     const auto d = just<1> * km * x + just<500> * si::metre * x + just<2> * si::metre * y;
-    EXPECT_EQ(to_string(d), "1500 m x + 2 m y");
+    EXPECT_EQ(to_string(d), "1500 m·x + 2 m·y");
     // The zero is the identity of +.
     static_assert(std::same_as<decltype(multivector<>{} + a), std::remove_cvref_t<decltype(a)>>);
     static_assert(std::same_as<decltype(multivector<>{} + just<1> * x), decltype(just<1> * x)>);
@@ -271,14 +271,14 @@ TEST(GeoalgTest, declared_multivectors_convert) {
     using small = multivector<inside<{-1, 1}>, quantity<xy, inside<{-1, 1}>>>;
     const small s{a, clamp};
     EXPECT_EQ(to_string(s), "1 + 1 xy");
-    EXPECT_EQ(to_string((just<2> * km * x + just<3> * km * y).in(si::metre)), "2000 m x + 3000 m y");
+    EXPECT_EQ(to_string((just<2> * km * x + just<3> * km * y).in(si::metre)), "2000 m·x + 3000 m·y");
 }
 
 TEST(GeoalgTest, duals_and_complements) {
     const auto u = just<1> * x + just<2> * y + just<3> * z;
     const auto v = just<4> * x + just<5> * y + just<6> * z;
     EXPECT_EQ(to_string(dual(wedge(u, v), x * y * z)), "-3 x + 6 y - 3 z"); // u × v
-    EXPECT_EQ(to_string(complement(u, x * y * z)), "3 x y - 2 x z + 1 y z");
+    EXPECT_EQ(to_string(complement(u, x * y * z)), "3 x·y - 2 x·z + 1 y·z");
     const auto a = just<1> + just<2> * x - just<1> * y + just<3> * xy + just<5> * x * y * z;
     EXPECT_TRUE(uncomplement(complement(a, x * y * z), x * y * z) == a);
     // In the projective plane: the pseudoscalar is the identity of the join.
@@ -297,7 +297,7 @@ TEST(GeoalgTest, duals_and_complements) {
 TEST(GeoalgTest, text) {
     const auto z1 = just<3> - just<4> * xy;
     EXPECT_EQ(to_string(z1), "3 - 4 xy");
-    EXPECT_EQ(to_string(just<1> * g0 * g1 * si::metre, text_encoding::ascii), "1 m g0 g1");
+    EXPECT_EQ(to_string(just<1> * g0 * g1 * si::metre, text_encoding::ascii), "1 m*g0*g1");
     EXPECT_EQ(std::format("[{:>10}]", z1), "[  3 - 4 xy]");
     std::ostringstream os;
     os << z1 << ' ' << multivector<>{};

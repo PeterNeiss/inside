@@ -395,32 +395,38 @@ namespace ins::detail
       return {};
     }
 
-    // [N/D π^k …]'s scale: a number, π with an exponent, or both (2π, ASCII 2*pi, pi^-1).
-    static constexpr bool read_scale(std::string_view s, read_unit_text& u)
+    // [N/D π^k·unit]: a scale (a number, π with an exponent, or both: 2π, ASCII 2*pi, pi^-1), then a separator and
+    // the unit (the separator a space in older text). Where the unit starts (the end for none); npos when the scale
+    // does not read.
+    static constexpr std::size_t read_scale(std::string_view s, read_unit_text& u)
     {
-      std::size_t p{s.find("π")};
-      if (p == std::string_view::npos)
-        p = s.find("pi");
-      std::string_view num{p == std::string_view::npos ? s : s.substr(0, p)};
-      if (num.ends_with('*'))
-        num.remove_suffix(1);
-      if (!num.empty())
+      std::size_t i{number_text_end(s)};
+      if (i > 0)
       {
-        const auto w{parse_exact<text_scale_limbs>(num.data(), num.data() + num.size())};
+        const auto w{parse_exact<text_scale_limbs>(s.data(), s.data() + i)};
         if (!w || !(wide_rational<text_scale_limbs>{0, 1} < *w))
-          return false;
+          return std::string_view::npos;
         u.Scale = *w;
       }
-      if (p != std::string_view::npos)
+      const std::string_view rest{s.substr(i)};
+      const std::size_t      pi{rest.starts_with("π") || rest.starts_with("pi") ? 2
+                                : i > 0 && rest.starts_with("*pi")             ? 3
+                                                                                : 0};
+      if (pi != 0)
       {
-        std::size_t i{p + 2};
-        const int   e{read_text_exponent(s, i)};
-        if (e == 0 || i != s.size())
-          return false;
+        i += pi;
+        const int e{read_text_exponent(s, i)};
+        if (e == 0)
+          return std::string_view::npos;
         u.ScalePi = static_cast<std::int8_t>(e);
       }
+      else if (i == 0)
+        return std::string_view::npos;
       u.Scaled = true;
-      return !num.empty() || p != std::string_view::npos;
+      if (i == s.size())
+        return i;
+      const std::size_t sep{text_separator(s, i)};
+      return sep == 0 ? std::string_view::npos : i + sep;
     }
 
     // factors ['/' (symbol | '(' factors ')')], or 1/…, with a whole symbol tried first.
@@ -491,10 +497,8 @@ namespace ins::detail
         if (!t.ends_with(']'))
           return std::unexpected{error::unknown_unit};
         const std::string_view inner{t.substr(1, t.size() - 2)};
-        const std::size_t      space{inner.find(' ')};
-        if (!read_scale(inner.substr(0, space), u))
-          return std::unexpected{error::unknown_unit};
-        if (space != std::string_view::npos && !read_plain(inner.substr(space + 1), u))
+        const std::size_t      unit{read_scale(inner, u)};
+        if (unit == std::string_view::npos || (unit < inner.size() && !read_plain(inner.substr(unit), u)))
           return std::unexpected{error::unknown_unit};
         return u;
       }

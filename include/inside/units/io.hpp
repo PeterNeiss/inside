@@ -105,7 +105,7 @@ namespace ins
     return stream;
   }
 
-  // Text: a unit's symbol (kg m²/s², km/h, 1/s), a quantity as "5 km".
+  // Text: a unit's symbol (kg·m²/s², km/h, 1/s), a quantity as "5 km".
   enum class text_encoding : unsigned char { utf8, ascii };
 
   namespace detail
@@ -147,7 +147,7 @@ namespace ins
     }
 
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
-    // The blade atoms come last, in their order: 2 m e₁.
+    // The blade atoms come last, in their order: 2 m·e₁.
     inline void append_atoms(std::string& s, const unit_value& u, int sign, text_encoding enc)
     {
       bool first{true};
@@ -158,7 +158,7 @@ namespace ins
           if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_blade_atom(a) != blades)
             continue;
           if (!first)
-            s += ' ';
+            s += enc == text_encoding::utf8 ? "·" : "*";
           first = false;
           s += prefix_symbol(a.Prefix, enc);
           s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->ascii();
@@ -167,7 +167,8 @@ namespace ins
     }
   } // namespace detail
 
-  // The symbol of a unit: "km", "kg m²/s²", "s⁻¹", "[1/381 ft]" (a scaled unit).
+  // The symbol of a unit: "km", "kg·m²/s²", "s⁻¹", "[1/381·ft]" (a scaled unit); ASCII joins with '*'.
+  // A symbol holds no space, so a quantity's text is a number and one unit token.
   inline std::string unit_symbol(const unit_value& u, text_encoding enc = text_encoding::utf8)
   {
     std::string s;
@@ -196,7 +197,7 @@ namespace ins
         scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
         detail::append_exponent(scale, u.Scale.Pi, enc);
       }
-      s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
+      s = "[" + scale + (s.empty() ? "" : (enc == text_encoding::utf8 ? "·" : "*") + s) + "]";
     }
     return s;
   }

@@ -53,7 +53,7 @@ int main()
   const auto r{q * v * inverse(q)};
   std::cout << "q⁻¹ = " << inverse(q) << '\n';
   std::cout << "v = " << v << ", q v q⁻¹ = " << grade<1>(r) << " (and " << part(r, e1 * e2 * e3) << " e₁e₂e₃)\n";
-  if (to_string(grade<1>(r)) != "2 m e₁ + 3 m e₂ + 1 m e₃" || !(grade<3>(r) == multivector<>{}))
+  if (to_string(grade<1>(r)) != "2 m·e₁ + 3 m·e₂ + 1 m·e₃" || !(grade<3>(r) == multivector<>{}))
     return 1;
 
   // 4. q³ = -1: three turns of 120° make a full turn, which a rotor represents by -1.

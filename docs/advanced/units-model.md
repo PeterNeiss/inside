@@ -70,7 +70,7 @@ once onto `Out`, which needs a rounding mode. Only factors of π and 1/π are
 supported.
 
 π can scale a quantity too: `pi * q` multiplies the **unit**, not the
-number. `pi * just<2> * si::second` is the number 2 in the unit [π s], so
+number. `pi * just<2> * si::second` is the number 2 in the unit [π·s], so
 π is never approximated, and a later `value_cast<si::hour, Out>(…)` rounds
 once, with the true π. That is how to write π·a·√(a/μ) or 1/(2πRC):
 `x * math::pi` approximates π to `x`'s resolution, and the grid numbers would
@@ -91,7 +91,7 @@ L / (20 dB) is one.
 
 `+`, `-`, `%` and the comparisons convert both sides to the **common unit**,
 whose magnitude is the gcd of the two. km + m runs in m; ft + m runs in
-1/1250 m, printed `[1/381 ft]`, and m + ft is the same type. Two spellings of
+1/1250 m, printed `[1/381·ft]`, and m + ft is the same type. Two spellings of
 one size (J and N·m) add in the shorter one. Both conversions are exact
 rescales, then inside's `+` runs, so the result is exact and its grid is the
 tight hull of the operands. (mp-units forms the sum from the unscaled
@@ -356,8 +356,8 @@ those grids; units add about 16 ms per expression.
 
 - The number is always an inside: no `double` or `int` representations, and
   no vector or tensor characters. Vectors are multivectors over basis vectors
-  of your own instead ([geometric algebra](geometric-algebra.md)): 2 m e₁ +
-  1 m e₂ is a sum of two quantities, each with its own grid.
+  of your own instead ([geometric algebra](geometric-algebra.md)): 2 m·e₁ +
+  1 m·e₂ is a sum of two quantities, each with its own grid.
 - No logarithmic units. A level such as dB is a dimensionless kind of your
   own, which adds and subtracts; its conversion to a ratio is an explicit
   `math::pow_base<10>`.

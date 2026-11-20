@@ -165,6 +165,17 @@ TEST(UnitsTextTest, a_stream_reads_into_an_expected) {
     in >> m;
     EXPECT_EQ(m.error(), error::missing_unit);
     EXPECT_TRUE(in.fail()); // the input ran out
+
+    // A compound unit prints as one token (its factors joined by ·), so >> reads what << writes.
+    constexpr auto                 kg_m2_s2 = si::kilogram * square(si::metre) / square(si::second);
+    const energies                 e{5, si::joule};
+    std::stringstream              io;
+    io << quantity<kg_m2_s2, inside<{0, 10}>>{5, kg_m2_s2} << " " << e;
+    std::expected<energies, error> a, b;
+    io >> a >> b;
+    EXPECT_EQ(io.str(), "5 kg·m²/s² 5.000 J");
+    EXPECT_TRUE(a && *a == e);
+    EXPECT_TRUE(b && *b == e);
 }
 
 TEST(UnitsTextTest, constant_expressions) {

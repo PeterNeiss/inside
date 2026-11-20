@@ -160,7 +160,7 @@ inline constexpr auto         e2 = basis_vector<"e₂", +1>;
 inline constexpr auto         i = unit<"i", e1 * e2>;
 
 auto z = (just<3> + just<4> * i) * (just<1> - just<2> * i);      // 11 - 2 i
-auto v = (just<2> * si::metre * e1 + just<1> * si::metre * e2) * i;   // -1 m e₁ + 2 m e₂
+auto v = (just<2> * si::metre * e1 + just<1> * si::metre * e2) * i;   // -1 m·e₁ + 2 m·e₂
 ```
 
 [Geometric algebra](../advanced/geometric-algebra.md) has the model, the

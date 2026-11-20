@@ -89,11 +89,13 @@ writes a JSON document byte for byte this way.
 ## Quantities
 
 `to_string(q)`, `<<` and `std::format` write the number and then the unit's
-symbol: `5 km`, `10.5 m/s`, `kg m²/s²`, `90°`, `20 ℃`. A unit with only a
-denominator shows negative exponents: `2 s⁻¹`, `1 m⁻¹ s⁻¹`. A format spec
+symbol: `5 km`, `10.5 m/s`, `kg·m²/s²`, `90°`, `20 ℃`. A unit's factors are
+joined by `·`, so a quantity's text is one number and one unit token (which
+`>>` reads back). A unit with only a
+denominator shows negative exponents: `2 s⁻¹`, `1 m⁻¹·s⁻¹`. A format spec
 applies to the number (`{:.2f}`, `{:>8}`), and
 `unit_symbol(u, text_encoding::ascii)` gives the ASCII spelling:
-`kg m^2/s^2`, `um`, `ohm`.
+`kg*m^2/s^2`, `um`, `ohm`.
 
 ### Reading a quantity with its unit
 
@@ -132,7 +134,7 @@ different units get different specializations.
 **The unit's text.** A symbol with an optional SI prefix (`k`, `µ`, ASCII
 `u`) and exponent (`²`, `⁻¹`, `^2`, `^-1`); factors joined by a space, `·`
 or `*`; one `/` before a symbol or a parenthesized product (`J/(kg K)`),
-or `1/s`; a scaled unit as printed (`[1/381 ft]`). An exact symbol wins
+or `1/s`; a scaled unit as printed (`[1/381·ft]`). An exact symbol wins
 over a prefix reading (`min` is the minute, `mm` the millimetre); at most
 6 symbols and exponents up to 9.
 
