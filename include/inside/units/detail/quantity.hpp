@@ -83,9 +83,19 @@ namespace ins
     template <unit_value From, unit_value To>
     inline constexpr bool exact_rescale_v = exact_factor_v<conversion_factor<From, To>>;
 
+    // A quantity of From converts implicitly to To: an exact factor, one dimension, and a kind that converts.
+    // A quantity of its own reference skips the test, in a branch: in an && chain the consteval calls of every operand
+    // run when the expression is formed, whatever the first decides.
     template <reference From, reference To>
-    inline constexpr bool implicit_v =
-      exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
+    consteval bool implicit_conversion()
+    {
+      if constexpr (From == To)
+        return true;
+      else
+        return exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
+    }
+    template <reference From, reference To>
+    inline constexpr bool implicit_v = implicit_conversion<From, To>();
     // A quantity of From on V that converts implicitly to To; one of R that converts to unit U (q.in<U>()).
     template <reference From, reference To, class V>
     concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V>;
@@ -93,10 +103,18 @@ namespace ins
     concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
 
     // A dimensionless quantity that is a plain number: no distinct kind (an angle), and an exact factor to unit one.
+    // (A branch: a quantity type names number_like_v<R> in a declaration, so every quantity forms it, and the factor
+    // to one exists only for dimension one.)
     template <reference R>
-    inline constexpr bool number_like_v =
-      dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit_value{}>>
-      && (!R.Kind || !kind_root(R.Kind.P)->Distinct);
+    consteval bool number_like()
+    {
+      if constexpr (!(dimension_of(R.U) == dim_one))
+        return false;
+      else
+        return exact_factor_v<conversion_factor<R.U, unit_value{}>> && (!R.Kind || !kind_root(R.Kind.P)->Distinct);
+    }
+    template <reference R>
+    inline constexpr bool number_like_v = number_like<R>();
 
     // Its number's type; void for any other quantity
     // (never forming the rescale, whose pi check would fire for an angle in degrees).
@@ -476,6 +494,22 @@ namespace ins
       requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
       : holder(Rep(detail::number_in_unit<R.U>(q))) {}
+    // Any other quantity names why it does not convert.
+    template <ins::reference R2, class V2>
+      requires detail::implicit_rescalable<R2, R, V2> && (!std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>)
+    quantity(const quantity<R2, V2>&) = delete ("units: the number, in this unit, may fall off this quantity's grid "
+                                                "- store it with Q{q, round_half_away} or Q{q, clamp}, or check it "
+                                                "with exact_cast<Q>(q)");
+    template <ins::reference R2, class V2>
+      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::dimension)
+    quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another dimension");
+    template <ins::reference R2, class V2>
+      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::pi)
+    quantity(const quantity<R2, V2>&) = delete (INSIDE_UNITS_WHY_PI);
+    template <ins::reference R2, class V2>
+      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::none && !detail::kind_converts(R2, R))
+    quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another kind - read it as this kind with "
+                                                "kind_cast<K>(q)");
 
     void numerical_value() const = delete ("units: a number alone has no unit - read q.numerical_value_in(si::metre)");
 
