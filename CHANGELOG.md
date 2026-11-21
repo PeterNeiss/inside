@@ -1,11 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — 2026-11-21
 
 Short type names: the catalog's units, kinds and origins are named definition
 objects, so diagnostics and symbols spell `si::volt` as
 `(& ins::si::volt_def)` instead of its whole definition, and units of your
-own can be declared the same way with `defined_by`.
+own can be declared the same way with `defined_by`. Quantities read from text
+with their units, and `>>` reads what `<<` writes. Basis vectors name their
+rule: beside the geometric one, `inner` (Rⁿ with the dot product) and
+`polynomial` (a variable, with `<inside/units/polynomial.hpp>` for the
+calculus). Multivectors gain `log`, `sqrt`, `sandwich` and `rotate`, and
+`exp<C>` reports a part that misses C as an `expected`. Angles round once in
+degrees: `asin`, `acos`, `atan` and `atan2` give one straight into a unit with
+a factor of π, and `tan` takes one. A unit is one of itself in arithmetic,
+so `just<1> *` is rarely needed. Every value in the examples that measures
+something carries its unit.
 
 ### Upgrading from 0.10.0
 

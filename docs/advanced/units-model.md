@@ -346,7 +346,7 @@ translation units (best of three). On the maintainer's machine:
 
 | Compiler | inside | units.hpp | 200 inside expressions | as quantities |
 |---|---:|---:|---:|---:|
-| GCC 16, C++26 | 0.59 s | 1.09 s | 4.58 s | 7.71 s |
+| GCC 16, C++26 | 0.59 s | 1.16 s | 4.69 s | 7.98 s |
 
 The header adds about 0.5 s; printing (`units/io.hpp`, through
 `inside/io.hpp`) adds another 0.4 s. Units of your own need only
