@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <concepts>
 #include <cstdint>
 #include <format>
@@ -1309,5 +1310,81 @@ TEST(PiTierTest, value_cast_across_pi_matches_the_exact_engine) {
     cast_sweep<si::radian, inside<{{-8, 8}, per<(1 << 30)>}, round_floor>, deg>(si::degree);
     cast_sweep<si::degree, inside<{{-402, 402}, per<100>}, round_half_even>, rad>(si::radian);
     cast_sweep<si::degree, inside<{{-402, 402}, per<(1 << 16)>}, round_toward_zero>, rad>(si::radian);
+}
+
+// asin, acos, atan and atan2 straight into degrees: rounded once (against a long double reference, within half a
+// notch), the double tier deciding only what the exact engine decides, exact at Niven's angles.
+template <class Out>
+bool degrees_ok(const Out& got, long double radians) {
+    const long double want = radians * 180 / 3.14159265358979323846264338327950288L;
+    const long double n    = static_cast<long double>(static_cast<double>(notch_of<typename Out::rep>));
+    return std::fabs(static_cast<long double>(got.numerical_value_in(si::degree).template to<double>()) - want) <=
+           n / 2 + 1e-12L * (1 + std::fabs(want));
+}
+TEST(PiTierTest, arcs_into_degrees_round_once) {
+    namespace entry = ins::math::detail::entry;
+    using len       = quantity<si::metre, inside<{{-8, 8}, per<4>}>>;
+    using deg       = quantity<si::degree, inside<{{-180, 180}, per<1000>}, round_half_away>>;
+    int bad         = 0;
+    for (const auto y : values<typename len::rep>)
+        for (const auto x : values<typename len::rep>) {
+            const deg f = math::atan2<deg>(len{y, si::metre}, len{x, si::metre});
+            bad += !(f.numerical_value_in(si::degree).raw() == ud::pi_arc_exact<entry::atan2_fn, deg>(y, x).raw()) ||
+                   !degrees_ok(f, std::atan2(static_cast<long double>(y.template to<double>()),
+                                             static_cast<long double>(x.template to<double>())));
+        }
+    EXPECT_EQ(bad, 0);
+    using ratio = quantity<one, inside<{{-1, 1}, per<64>}>>;
+    using half  = quantity<si::degree, inside<{{-90, 90}, per<(1 << 16)>}, round_floor>>;
+    using whole = quantity<si::degree, inside<{{0, 180}, per<1000>}, round_half_even>>;
+    int bad1    = 0;
+    for (const auto v : values<typename ratio::rep>) {
+        const ratio       q{v, one};
+        const long double r = v.template to<double>();
+        const half        s = math::asin<half>(q);
+        bad1 += !(s.numerical_value_in(si::degree).raw() == ud::pi_arc_exact<entry::asin_fn, half>(v).raw());
+        bad1 += !(math::atan<half>(q).numerical_value_in(si::degree).raw() ==
+                  ud::pi_arc_exact<entry::atan_fn, half>(v).raw());
+        const whole c = math::acos<whole>(q);
+        bad1 += !(c.numerical_value_in(si::degree).raw() == ud::pi_arc_exact<entry::acos_fn, whole>(v).raw());
+        // round_floor: the value lies in [got, got + notch).
+        const long double want = std::asin(r) * 180 / 3.14159265358979323846264338327950288L;
+        const long double got  = static_cast<long double>(s.numerical_value_in(si::degree).template to<double>());
+        bad1 += !(got <= want + 1e-12L && want - got < 0x1p-16L + 1e-12L);
+        bad1 += !degrees_ok(c, std::acos(r));
+    }
+    EXPECT_EQ(bad1, 0);
+    // Niven's angles, exactly: asin ½ = 30°, acos(-½) = 120°, atan 1 = 45°, atan2(-1, -1) = -135°.
+    EXPECT_TRUE(math::asin<half>(ratio{0.5, one}) == just<30> * si::degree);
+    EXPECT_TRUE(math::acos<whole>(ratio{-0.5, one}) == just<120> * si::degree);
+    EXPECT_TRUE(math::atan<half>(ratio{1, one}) == just<45> * si::degree);
+    EXPECT_TRUE(math::atan2<deg>(len{-1, si::metre}, len{-1, si::metre}) == just<-135> * si::degree);
+    // A unit C that may not hold every angle: an expected.
+    using narrow = quantity<si::degree, inside<{{-45, 45}, per<10>}, round_half_away>>;
+    static_assert(ud::is_expected_v<decltype(math::atan2<narrow>(len{}, len{}))>);
+    EXPECT_EQ(math::atan2<narrow>(len{1, si::metre}, len{-1, si::metre}).error(), error::overflow);
+    EXPECT_TRUE((*math::atan2<narrow>(len{1, si::metre}, len{2, si::metre}) == just<266, 10> * si::degree));
+}
+
+// tan of a degree angle: rounded once, exact at 0 and ±45°, its bound from the lattice point nearest a pole.
+TEST(PiTierTest, tan_of_degrees_rounds_once) {
+    using deg = quantity<si::degree, inside<{{-89.75, 89.75}, per<4>}>>;
+    using out = inside<{{-512, 512}, per<(1 << 12)>}, round_half_away>;
+    static_assert(std::same_as<decltype(math::tan<out>(deg{})), out>); // |tan| ≤ 1/(2·¼·(1/180)) = 360
+    int bad = 0;
+    for (const auto v : values<typename deg::rep>) {
+        const long double a = v.template to<double>() * 3.14159265358979323846264338327950288L / 180;
+        const out         t = math::tan<out>(deg{v, si::degree});
+        bad += !(std::fabs(static_cast<long double>(t.template to<double>()) - std::tan(a)) <=
+                 0x1p-13L + 1e-12L * (1 + std::fabs(std::tan(a))));
+    }
+    EXPECT_EQ(bad, 0);
+    EXPECT_TRUE(math::tan<out>(deg{45, si::degree}) == 1 && math::tan<out>(deg{-45, si::degree}) == -1);
+    EXPECT_TRUE(math::tan<out>(deg{0, si::degree}) == 0);
+    // A result that may not hold every value: an expected.
+    using small = inside<{{-100, 100}, per<1000>}, round_half_away>;
+    static_assert(ud::is_expected_v<decltype(math::tan<small>(deg{}))>);
+    EXPECT_EQ(math::tan<small>(deg{89.5, si::degree}).error(), error::overflow);
+    EXPECT_TRUE((*math::tan<small>(deg{30, si::degree}) == just<577, 1000>));
 }
 } // namespace pi_tier_tests
