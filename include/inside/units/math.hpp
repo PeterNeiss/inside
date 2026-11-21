@@ -11,7 +11,7 @@
 //   asin, acos, atan(x), atan2(y, x)   an angle in radians (x a dimensionless quantity; atan2 of two that add)
 //   hypot(x, y), gcd(x, y), lcm(x, y)  in the common unit (gcd and lcm exact)
 //   exp … atanh, pow_base<B>, pow      of numbers: dimensionless quantities (and insides): a number
-//   math::exp(x) of a multivector      units/detail/geoalg_exp.hpp
+//   math::exp(x) of a multivector      units/detail/geoalg_exp.hpp; log(x), sqrt(x) in geoalg_log.hpp
 //   value_cast<si::radian, Out>(q)     degree → radian (a pi factor): the exact x·π/180, rounded once onto Out
 //
 // fn<L>(q) names only the result's number L (the unit follows), fn<C>(q) the whole quantity, whose unit must be
@@ -703,5 +703,7 @@ namespace ins::math
 
 // exp of multivectors (units/detail/geoalg_exp.hpp).
 #include <inside/units/detail/geoalg_exp.hpp>
+// log of multivectors (units/detail/geoalg_log.hpp).
+#include <inside/units/detail/geoalg_log.hpp>
 
 #endif // INSIDE_UNITS_MATH_HPP

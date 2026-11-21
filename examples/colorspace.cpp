@@ -83,7 +83,7 @@ int main()
   // (cos 60° and sin 60° / √3 are both ½), and it moves red to green, green to blue, blue to red.
   const auto   v     {(orange * R) * e1 + (orange * G) * e2 + (orange * B) * e3};
   const auto   rotor {just<1, 2> - just<1, 2> * e1 * e2 - just<1, 2> * e2 * e3 - just<1, 2> * e3 * e1};
-  const auto   w     {grade<1>(rotor * v * reverse(rotor))};
+  const auto   w     {rotate(rotor, v)};
   const colour turned{part(w, e1) * R + part(w, e2) * G + part(w, e3) * B, clamp};
   std::cout << "orange turned 120° = " << turned << '\n';
   if (!(turned == G + just<1, 2> * B))

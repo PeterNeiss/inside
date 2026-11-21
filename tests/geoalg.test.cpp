@@ -57,6 +57,10 @@ template <class A, class B>
 concept can_equal = requires(const A& a, const B& b) { a == b; } || requires(const A& a, const B& b) { b == a; };
 template <class X>
 concept can_invert = requires(const X& v) { inverse(v); };
+template <class V, class X>
+concept can_sandwich = requires(const V& v, const X& x) { sandwich(v, x); };
+template <class R, class X>
+concept can_rotate = requires(const R& r, const X& x) { rotate(r, x); };
 
 // A basis vector for the reference: its unit and its square.
 struct basis_ref {
@@ -301,6 +305,39 @@ TEST(GeoalgTest, duals_and_complements) {
     static_assert(multivector_like<decltype(line)>);
     EXPECT_TRUE(regressive(line, pa, i) == 0);
     EXPECT_TRUE(regressive(line, pb, i) == 0);
+}
+
+TEST(GeoalgTest, sandwich_and_rotate_keep_the_grades) {
+    const auto v = just<4> * si::metre * x + just<5> * si::metre * y + just<6> * si::metre * z;
+    // A reflection: sandwich(n, v) is -n v n⁻¹ without its grade-3 part, which is 0.
+    const auto n = x + y;
+    static_assert(std::same_as<decltype(sandwich(n, v)), decltype(grade<1>(-n * v * inverse(n)))>);
+    EXPECT_TRUE(sandwich(n, v) == grade<1>(-n * v * inverse(n)));
+    EXPECT_TRUE(grade<3>(-n * v * inverse(n)) == multivector<>{});
+    // A rotor of norm 2 turns by 90° about z, exactly: V v V⁻¹.
+    const auto r = just<1> - x * y;
+    EXPECT_TRUE(sandwich(r, v) == just<-5> * si::metre * x + just<4> * si::metre * y + just<6> * si::metre * z);
+    // A unit rotor: rotate is R v R̃, no division; the 120° turn about the grey axis.
+    const auto t = just<1, 2> - just<1, 2> * x * y - just<1, 2> * y * z - just<1, 2> * z * x;
+    EXPECT_TRUE(rotate(t, v) == just<6> * si::metre * x + just<4> * si::metre * y + just<5> * si::metre * z);
+    EXPECT_TRUE(rotate(t, v) == sandwich(t, v));
+    // A rotor whose norm's grid holds 0: sandwich is an expected, rotate scales by |q|² (here ½).
+    using unit_part = inside<{{-1, 1}, per<1024>}>;
+    const multivector<unit_part, quantity<xy, unit_part>> q{unit_part{0.5}, quantity<xy, unit_part>{0.5, xy}};
+    const auto s = sandwich(q, v);
+    static_assert(detail::is_expected_v<decltype(s)>);
+    ASSERT_TRUE(s.has_value());
+    EXPECT_TRUE(*s == just<5> * si::metre * x + just<-4> * si::metre * y + just<6> * si::metre * z);
+    EXPECT_TRUE((rotate(q, v) == just<5, 2> * si::metre * x - just<2> * si::metre * y + just<3> * si::metre * z));
+    // A boost in G(1,3), 2 + γ₀γ₁ of norm 3: the vector stays a vector, its grade-3 part is exactly 0.
+    const auto b = just<2> + g0 * g1;
+    const auto u = just<1> * g0 + just<2> * g2;
+    EXPECT_TRUE(grade<3>(b * u * inverse(b)) == multivector<>{});
+    EXPECT_TRUE(sandwich(b, u) == grade<1>(b * u * inverse(b)));
+    // No versor: mixed parity, inner vectors; rotate takes even ones only.
+    static_assert(!can_sandwich<decltype(just<1> + x), decltype(v)>);
+    static_assert(!can_sandwich<decltype(b1 + b2), decltype(b1)>);
+    static_assert(!can_rotate<decltype(n), decltype(v)> && can_rotate<decltype(t), decltype(v)>);
 }
 
 TEST(GeoalgTest, inner_basis_vectors_multiply_by_the_dot_product) {

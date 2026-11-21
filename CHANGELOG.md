@@ -30,9 +30,25 @@ own can be declared the same way with `defined_by`.
   either side, so `quantity<percent, …>{5, percent} == 5` compiled with it and
   not without. Compare with a quantity, or with a unit as one of itself:
   `i * i == -one`, `q * inverse(q) == one`, `u * u == just<5> * one`.
+- `math::exp<C>(x)` of a multivector returns `std::expected<C, error>` where a
+  part of C may not hold its value (`error::overflow` when one misses), as
+  `f<C>(x)` of an inside does; it reached the error handler before. Where
+  every part holds every value, C stays plain: a rotor's parts on [-1, 1] do
+  (|cos|, |sin| ≤ 1 exactly).
 
 ### Added
 
+- `sandwich(V, x)`: a versor acting on x with x's grades kept, V x V⁻¹ for a
+  rotor and V x̂ V⁻¹ for an odd versor, so `sandwich(n, v)` is the reflection
+  in the plane orthogonal to n (an `expected` when V's norm can be 0, as
+  `inverse`). `rotate(R, x)` is R x R̃ for a unit rotor, plain. Both replace
+  `grade<1>(R * v * reverse(R))`.
+- `math::log(x)` and `math::sqrt(x)` of a multivector on exp's domain
+  (complex numbers, quaternions, rotors, boosts, dual numbers), every part
+  rounded once on the exact engine: log(3 + 4i) = log 5 + atan2(4, 3) i,
+  √(3 + 4i) = 2 + i exactly, the principal values log(−r) = log r + π i and
+  √(−r) = √r i. A `std::expected` with `error::domain_error` where the type
+  does not prove the domain (a negative quaternion scalar has no axis).
 - Quantities and points read from text with their units: `parse<Q>(text)`,
   `parse<Q>(number, unit)`, `parse<Q>(number, u)` and the `parse_exact`
   forms, and `>>` into a `std::expected<Q, error>` (only there). The unit may

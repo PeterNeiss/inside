@@ -47,13 +47,14 @@ int main()
       || to_string(p * q) != "-4 + 1 i + 3 j + 2 k")
     return 1;
 
-  // 3. q turns a vector in metres a third of a turn about (1, 1, 1): e₁ → e₃ → e₂ → e₁, exactly,
-  // and the grade-3 part of q v q⁻¹ is 0.
-  const auto v{si::metre * e1 + just<2> * si::metre * e2 + just<3> * si::metre * e3};
-  const auto r{q * v * inverse(q)};
+  // 3. q turns a vector in metres a third of a turn about (1, 1, 1): e₁ → e₃ → e₂ → e₁, exactly.
+  // q v q⁻¹ has a grade-3 part, 0 for a rotor; sandwich(q, v) keeps v's grade.
+  const auto v   {si::metre * e1 + just<2> * si::metre * e2 + just<3> * si::metre * e3};
+  const auto r   {sandwich(q, v)};
+  const auto full{q * v * inverse(q)};
   std::cout << "q⁻¹ = " << inverse(q) << '\n';
-  std::cout << "v = " << v << ", q v q⁻¹ = " << grade<1>(r) << " (and " << part(r, e1 * e2 * e3) << " e₁e₂e₃)\n";
-  if (to_string(grade<1>(r)) != "2 m·e₁ + 3 m·e₂ + 1 m·e₃" || !(grade<3>(r) == multivector<>{}))
+  std::cout << "v = " << v << ", q v q⁻¹ = " << r << " (and " << part(full, e1 * e2 * e3) << " e₁e₂e₃)\n";
+  if (to_string(r) != "2 m·e₁ + 3 m·e₂ + 1 m·e₃" || !(grade<3>(full) == multivector<>{}))
     return 1;
 
   // 4. q³ = -1: three turns of 120° make a full turn, which a rotor represents by -1.
