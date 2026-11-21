@@ -663,4 +663,25 @@ namespace ins::math::detail
   };
 } // namespace ins::math::detail
 
+namespace ins::math
+{
+  // Two parts of the argument that commute: no closed form.
+#define INSIDE_WHY_not_closed(fn)                                                                              \
+  "math::" fn ": no closed form - two parts of the argument commute (e12 and e34 in 4-D), so its square is no " \
+  "scalar"
+  template <auto... Spec, class D>
+    requires(detail::rank_of<D> == 3 && !ins::detail::gaexp::domain_closed<D>())
+  void log(const D&) = delete (INSIDE_WHY_not_closed("log"));
+  template <class C, class D>
+    requires(detail::rank_of<D> == 3 && !ins::detail::gaexp::domain_closed<D>())
+  void log(const D&) = delete (INSIDE_WHY_not_closed("log"));
+  template <auto... Spec, class D>
+    requires(detail::rank_of<D> == 3 && !ins::detail::gaexp::domain_closed<D>())
+  void sqrt(const D&) = delete (INSIDE_WHY_not_closed("sqrt"));
+  template <class C, class D>
+    requires(detail::rank_of<D> == 3 && !ins::detail::gaexp::domain_closed<D>())
+  void sqrt(const D&) = delete (INSIDE_WHY_not_closed("sqrt"));
+#undef INSIDE_WHY_not_closed
+} // namespace ins::math
+
 #endif // INSIDE_UNITS_DETAIL_GEOALG_LOG_HPP
