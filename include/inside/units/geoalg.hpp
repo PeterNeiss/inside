@@ -518,7 +518,7 @@ namespace ins
     consteval unit_value blade_atoms(const unit_value& u)
     {
       unit_value b{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         if (is_basis_atom(u.Atoms[i]))
           unit_add(b, u.Atoms[i]);
       return b;
@@ -541,7 +541,7 @@ namespace ins
     {
       unit_value r{};
       r.Scale = u.Scale;
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         if (!is_basis_atom(u.Atoms[i]))
           unit_add(r, u.Atoms[i]);
       return r;

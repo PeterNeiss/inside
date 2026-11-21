@@ -293,7 +293,7 @@ namespace ins
     consteval unit_value unit_root(const unit_value& u, int n)
     {
       unit_value r{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
       {
         if (u.Atoms[i].Exp % n != 0)
           ins::detail::constexpr_error<"units: the root of a unit needs exponents it divides (m², not m)">();

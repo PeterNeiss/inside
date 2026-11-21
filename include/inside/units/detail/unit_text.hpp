@@ -68,7 +68,7 @@ namespace ins::detail
         else if (std::meta::has_template_arguments(t) && std::meta::template_of(t) == ^^unit_t)
         {
           const unit_value u{std::meta::extract<unit_value>(std::meta::template_arguments_of(t)[0])};
-          for (std::int8_t i = 0; i < u.Size; ++i)
+          for (std::int8_t i = 0; i < u.size(); ++i)
             add_text_unit(out, u.Atoms[i].U);
         }
       }

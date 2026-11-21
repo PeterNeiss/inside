@@ -894,21 +894,32 @@ namespace ins
 
   // unit: a product of named units to integer powers, each with an optional decimal prefix (k, m, µ…),
   // times a scale (mag<1000> * m; the common unit of a sum). A structural value: it is the template argument.
+  // The atoms in use come first, sorted; an unused one is zero (exponent 0), so the count needs no member of its own
+  // and a type name spells none.
   struct unit_value
   {
-    unit_atom   Atoms[detail::max_unit_atoms]{};
-    std::int8_t Size{0};
-    magnitude   Scale{};
+    unit_atom Atoms[detail::max_unit_atoms]{};
+    magnitude Scale{};
 
     constexpr unit_value() = default;
-    constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}}, Size{1} {}
-    constexpr explicit unit_value(unit_atom a) : Atoms{a}, Size{1} {} // (by value: see reference)
+    constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}} {}
+    constexpr explicit unit_value(unit_atom a) : Atoms{a} {} // (by value: see reference)
     // (Assigned as an lvalue only: an assignment to reference::unit() would change nothing.)
     constexpr unit_value& operator=(const unit_value&) & = default;
 
+    // The number of atoms in use.
+    [[nodiscard]] constexpr std::int8_t size() const
+    {
+      std::int8_t n{0};
+      while (n < static_cast<std::int8_t>(detail::max_unit_atoms) && Atoms[n].Exp != 0)
+        ++n;
+      return n;
+    }
+
     friend constexpr bool operator==(const unit_value& a, const unit_value& b)
     {
-      return a.Size == b.Size && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + a.Size, b.Atoms);
+      const std::int8_t n{a.size()};
+      return n == b.size() && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + n, b.Atoms);
     }
   };
 
@@ -1014,8 +1025,9 @@ namespace ins
 
     consteval void unit_add(unit_value& u, unit_atom a)
     {
+      std::int8_t size{u.size()};
       if (!sorted_add(
-            u.Atoms, u.Size, a, a.Exp,
+            u.Atoms, size, a, a.Exp,
             [](const unit_atom& x, const unit_atom& y) { return same(x.U, y.U) && x.Prefix == y.Prefix; },
             atom_before))
         ins::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with unit<\"sym\", …>">();
@@ -1026,7 +1038,7 @@ namespace ins
     constexpr bool is_basis_atom(const unit_atom& a) { return has_basis(a.U->Dim); }
     constexpr bool has_blade_atoms(const unit_value& u)
     {
-      return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
+      return std::any_of(u.Atoms, u.Atoms + u.size(), [](const unit_atom& a) { return is_blade_atom(a); });
     }
 
     consteval unit_value blade_unit_mul(const unit_value& a, const unit_value& b, int sign);
@@ -1035,7 +1047,7 @@ namespace ins
     {
       if (has_blade_atoms(a) || has_blade_atoms(b))
         return blade_unit_mul(a, b, sign);
-      for (std::int8_t i = 0; i < b.Size; ++i)
+      for (std::int8_t i = 0; i < b.size(); ++i)
       {
         unit_atom t{b.Atoms[i]};
         t.Exp = static_cast<std::int8_t>(t.Exp * sign);
@@ -1055,7 +1067,7 @@ namespace ins
         return r;
       }
       unit_value r{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, dimension::exponent(u.Atoms[i].Exp * n)});
       r.Scale = u.Scale.pow(n);
       return r;
@@ -1082,10 +1094,10 @@ namespace ins
   // A unit's dimension, magnitude (relative to the coherent unit of its dimension) and kind.
   consteval dimension dimension_of(const unit_value& u)
   {
-    if (u.Size == 1 && u.Atoms[0].Exp == 1) // a named unit: its dimension, interned already
+    if (u.size() == 1 && u.Atoms[0].Exp == 1) // a named unit: its dimension, interned already
       return u.Atoms[0].U->Dim;
     detail::exponents d;
-    for (std::int8_t i = 0; i < u.Size; ++i)
+    for (std::int8_t i = 0; i < u.size(); ++i)
     {
       const dimension& a{u.Atoms[i].U->Dim};
       for (std::size_t j = 0; j < a.Size; ++j)
@@ -1101,7 +1113,7 @@ namespace ins
     {
       blade acc;
       int   s{1};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
       {
         if (!is_blade_atom(u.Atoms[i]))
           continue;
@@ -1120,7 +1132,7 @@ namespace ins
   consteval magnitude magnitude_of(const unit_value& u)
   {
     magnitude m{u.Scale};
-    for (std::int8_t i = 0; i < u.Size; ++i)
+    for (std::int8_t i = 0; i < u.size(); ++i)
       m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
     if (detail::has_blade_atoms(u))
       m = m * magnitude{grid_number{detail::atoms_blade_sign(u)}};
@@ -1154,7 +1166,7 @@ namespace ins
       std::vector<unit_atom> blades;
       const auto take = [&](const unit_value& u, int sgn)
       {
-        for (std::int8_t i = 0; i < u.Size; ++i)
+        for (std::int8_t i = 0; i < u.size(); ++i)
         {
           unit_atom t{u.Atoms[i]};
           if (is_blade_atom(t))
@@ -1194,7 +1206,7 @@ namespace ins
     // One named unit (with a prefix too) to the power 1, unscaled: its kind, origin and spacing are the unit's.
     consteval bool is_single_named(const unit_value& u)
     {
-      return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
+      return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
     }
     // Whether a quantity's text puts a space before the unit (not before °).
     consteval bool space_before(const unit_value& u)
@@ -1214,7 +1226,7 @@ namespace ins
     // The kind a unit defined by U inherits: its one factor's (min: 60 s).
     consteval kind_ref inherited_kind(const unit_value& u)
     {
-      return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : &no_kind;
+      return u.size() == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : &no_kind;
     }
   } // namespace detail
 
@@ -1333,7 +1345,7 @@ namespace ins
     template <unit_value U>
     consteval auto operator()(unit_t<U>) const
     {
-      static_assert(U.Size == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
+      static_assert(U.size() == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
                     "units: a prefix applies to a named unit without a prefix (kilo(metre), not kilo(m/s))");
       return unit_t<detail::unit_prefixed(U, P)>{};
     }
@@ -1402,7 +1414,7 @@ namespace ins
     // Whether the parts are one named unit (detail::is_single_named) and its own kind.
     static constexpr bool atom_form(kind_ref k, bool any_of_kind, const recipe& derived, const unit_value& u)
     {
-      return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() && derived.Size == 0
+      return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() && derived.Size == 0
           && any_of_kind == detail::has(u.Atoms[0].U->Kind) && detail::same(k, u.Atoms[0].U->Kind);
     }
   };
@@ -1451,7 +1463,7 @@ namespace ins
   template <class U>
   consteval auto kind_t<S>::operator[](U) const
   {
-    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Size; }, "units: kind[unit] takes a unit");
+    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Atoms; }, "units: kind[unit] takes a unit");
     constexpr unit_value u{U::value};
     static_assert(dimension_of(u) == S->Dim, "units: kind[unit] - the unit has another dimension than the kind");
     constexpr kind_ref k{kind_of(u)};
@@ -1615,10 +1627,10 @@ namespace ins
     // A fixed order of units: fewer atoms first, then by symbol and exponent.
     consteval bool unit_before(const unit_value& a, const unit_value& b)
     {
-      if (a.Size != b.Size)
-        return a.Size < b.Size;
+      if (a.size() != b.size())
+        return a.size() < b.size();
       return std::lexicographical_compare(
-        a.Atoms, a.Atoms + a.Size, b.Atoms, b.Atoms + b.Size,
+        a.Atoms, a.Atoms + a.size(), b.Atoms, b.Atoms + b.size(),
         [](const unit_atom& x, const unit_atom& y)
         {
           if (atom_before(x, y) || atom_before(y, x))

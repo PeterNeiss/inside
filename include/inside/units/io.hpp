@@ -152,7 +152,7 @@ namespace ins
     {
       bool first{true};
       for (const bool blades : {false, true})
-        for (std::int8_t i = 0; i < u.Size; ++i)
+        for (std::int8_t i = 0; i < u.size(); ++i)
         {
           const unit_atom& a{u.Atoms[i]};
           if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_basis_atom(a) != blades)
@@ -173,8 +173,8 @@ namespace ins
   {
     std::string s;
     const int   num{
-      static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.Size, [](const auto& a) { return a.Exp > 0; }))};
-    const int   den{u.Size - num};
+      static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.size(), [](const auto& a) { return a.Exp > 0; }))};
+    const int   den{u.size() - num};
     if (num == 0) // only a denominator: s⁻¹, m⁻¹ s⁻¹
       detail::append_atoms(s, u, 0, enc);
     else
