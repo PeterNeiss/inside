@@ -29462,7 +29462,7 @@ namespace ins::detail
     if (has_blade(u->Dim))
       return;
     for (const unit_def* v : out)
-      if (v == u || same(v, u))
+      if (same(v, u))
         return;
     out.push_back(u);
   }
@@ -29824,9 +29824,9 @@ namespace ins::detail
         u.Scale = *w;
       }
       const std::string_view rest{s.substr(i)};
-      const std::size_t      pi{rest.starts_with("π") || rest.starts_with("pi") ? 2
-                                : i > 0 && rest.starts_with("*pi")             ? 3
-                                                                                : 0};
+      const std::size_t      pi{rest.starts_with("π") || rest.starts_with("pi") ? std::size_t{2}
+                                : i > 0 && rest.starts_with("*pi")             ? std::size_t{3}
+                                                                                : std::size_t{0}};
       if (pi != 0)
       {
         i += pi;
