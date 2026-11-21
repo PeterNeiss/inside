@@ -62,6 +62,7 @@ target_sources(
                 units/core.hpp
                 units/detail/algebra.hpp
                 units/detail/geoalg_exp.hpp
+                units/detail/geoalg_log.hpp
                 units/detail/point.hpp
                 units/detail/define.hpp
                 units/detail/quantity.hpp

@@ -417,4 +417,112 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
     EXPECT_EQ(bad4, 0);
     EXPECT_EQ(driver.Guesses.load(), 0u);
 }
+// log, part by part, against the closed form in long double.
+TEST(GeoalgLogTest, complex_quaternion_boost_and_dual) {
+    using I = in_t<round_half_away>;
+    using O = out_t<round_half_away>;
+    int bad = 0;
+    // log(a + b i) = ½ log(a² + b²) + atan2(b, a) i; at b = 0, a < 0 the principal value π i.
+    using cdom = multivector<I, quantity<i, I>>;
+    using ccod = multivector<O, quantity<i, O>>;
+    for (int ra = -256; ra <= 256; ra += 8)
+        for (int rb = -256; rb <= 256; rb += 9) {
+            const auto r = math::log<ccod>(cdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * i});
+            if (ra == 0 && rb == 0) {
+                bad += r.has_value();
+                continue;
+            }
+            const long double a = ra / 64.0L, b = rb / 64.0L;
+            bad += !r.has_value() ||
+                   !rounded_ok<O, round_half_away>(coef(std::get<0>(r->parts())), 0.5L * std::log(a * a + b * b)) ||
+                   !rounded_ok<O, round_half_away>(coef(std::get<1>(r->parts())), std::atan2(b, a));
+        }
+    EXPECT_EQ(bad, 0);
+    // Quaternions: log(s + v) = ½ log(s² + |v|²) + v·atan2(|v|, s)/|v|; a negative scalar has no axis.
+    using qdom = multivector<I, quantity<i, I>, quantity<j, I>, quantity<k, I>>;
+    using qcod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
+    int bad_q = 0;
+    for (int s = -192; s <= 192; s += 48)
+        for (int u = -128; u <= 128; u += 64)
+            for (int v = -128; v <= 128; v += 64)
+                for (int w = -128; w <= 128; w += 64) {
+                    const auto r = math::log<qcod>(qdom{test::store<I>(rational{s, 64}) +
+                                                        test::store<I>(rational{u, 64}) * i +
+                                                        test::store<I>(rational{v, 64}) * j +
+                                                        test::store<I>(rational{w, 64}) * k});
+                    const long double a = s / 64.0L, y[] = {u / 64.0L, v / 64.0L, w / 64.0L};
+                    const long double n = std::sqrt(y[0] * y[0] + y[1] * y[1] + y[2] * y[2]);
+                    if (n == 0 && a <= 0) {
+                        bad_q += !(!r.has_value() && r.error() == error::domain_error);
+                        continue;
+                    }
+                    const long double f = n == 0 ? 1 / a : std::atan2(n, a) / n;
+                    bad_q += !r.has_value() ||
+                             !rounded_ok<O, round_half_away>(coef(std::get<0>(r->parts())), 0.5L * std::log(a * a + n * n));
+                    if (r.has_value()) {
+                        bad_q += !rounded_ok<O, round_half_away>(coef(std::get<1>(r->parts())), y[0] * f);
+                        bad_q += !rounded_ok<O, round_half_away>(coef(std::get<2>(r->parts())), y[1] * f);
+                        bad_q += !rounded_ok<O, round_half_away>(coef(std::get<3>(r->parts())), y[2] * f);
+                    }
+                }
+    EXPECT_EQ(bad_q, 0);
+    // A boost, e₁² = +1: log(a + b e₁) = ½ log(a² − b²) + atanh(b/a) e₁ for a > |b|, else no value.
+    using hdom = multivector<I, quantity<e1, I>>;
+    using hcod = multivector<O, quantity<e1, O>>;
+    int bad_h  = 0;
+    for (int ra = -256; ra <= 256; ra += 8)
+        for (int rb = -256; rb <= 256; rb += 9) {
+            const auto r = math::log<hcod>(hdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * e1});
+            const long double a = ra / 64.0L, b = rb / 64.0L;
+            if (!(a > std::fabs(b))) {
+                bad_h += !(!r.has_value() && r.error() == error::domain_error);
+                continue;
+            }
+            bad_h += !r.has_value() ||
+                     !rounded_ok<O, round_half_away>(coef(std::get<0>(r->parts())), 0.5L * std::log(a * a - b * b)) ||
+                     !rounded_ok<O, round_half_away>(coef(std::get<1>(r->parts())), std::atanh(b / a));
+        }
+    EXPECT_EQ(bad_h, 0);
+    // Dual numbers, ε² = 0: log(a + b ε) = log a + (b/a) ε, the second part exact before its rounding.
+    using ndom = multivector<I, quantity<eps, I>>;
+    using ncod = multivector<O, quantity<eps, O>>;
+    int bad_n  = 0;
+    for (int ra = 8; ra <= 256; ra += 8)
+        for (int rb = -256; rb <= 256; rb += 9) {
+            const auto r = math::log<ncod>(ndom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * eps});
+            const long double a = ra / 64.0L, b = rb / 64.0L;
+            bad_n += !r.has_value() || !rounded_ok<O, round_half_away>(coef(std::get<0>(r->parts())), std::log(a)) ||
+                     !rounded_ok<O, round_half_away>(coef(std::get<1>(r->parts())), b / a);
+        }
+    EXPECT_EQ(bad_n, 0);
+}
+
+TEST(GeoalgLogTest, domain_types_and_compile_time) {
+    using I    = in_t<round_half_away>;
+    using O    = out_t<round_half_away>;
+    using P    = inside<{{1, 4}, per<64>}, round_half_away>;
+    using ccod = multivector<O, quantity<i, O>>;
+    // s on [1, 4] proves the domain, and the parts fit: plain. Where s can be ≤ 0: an expected.
+    using pdom = multivector<P, quantity<i, I>>;
+    using cdom = multivector<I, quantity<i, I>>;
+    static_assert(std::same_as<decltype(math::log<ccod>(pdom{})), ccod>);
+    static_assert(std::same_as<decltype(math::log<ccod>(cdom{})), std::expected<ccod, error>>);
+    EXPECT_EQ(math::log<ccod>(cdom{}).error(), error::domain_error); // log 0
+    // The principal value: log(-1) = π i.
+    const auto m = math::log<ccod>(cdom{I{-1} + I{0} * i});
+    ASSERT_TRUE(m.has_value());
+    EXPECT_TRUE((rounded_ok<O, round_half_away>(coef(std::get<1>(m->parts())), 3.14159265358979323846L)));
+    // A named output too narrow for a part is an expected with error::overflow (π > 2).
+    using narrow = inside<{{-2, 2}, per<1024>}, round_half_away>;
+    using ncod   = multivector<narrow, quantity<i, narrow>>;
+    EXPECT_EQ(math::log<ncod>(cdom{I{-4} + I{1} * i}).error(), error::overflow); // atan2(1, -4) ≈ 2.9
+    EXPECT_TRUE(math::log<ncod>(cdom{I{1} - I{4} * i}).has_value());             // atan2(-4, 1) ≈ -1.33
+    static_assert(std::same_as<decltype(math::log<ncod>(pdom{})), std::expected<ncod, error>>);
+    // The deduced output takes the argument's notch, and log 1 is 0 exactly, at compile time too.
+    constexpr auto one_plus = math::log<ccod>(pdom{P{1} + I{0} * i});
+    static_assert(std::get<0>(one_plus.parts()) == 0 && std::get<1>(one_plus.parts()) == just<0> * i);
+    static_assert(notch_of<std::tuple_element_t<0, std::remove_cvref_t<decltype(math::log(pdom{}).parts())>>> ==
+                  rational{1, 64});
+}
+
 } // namespace geoalg_exp_tests

@@ -703,5 +703,7 @@ namespace ins::math
 
 // exp of multivectors (units/detail/geoalg_exp.hpp).
 #include <inside/units/detail/geoalg_exp.hpp>
+// log of multivectors (units/detail/geoalg_log.hpp).
+#include <inside/units/detail/geoalg_log.hpp>
 
 #endif // INSIDE_UNITS_MATH_HPP
