@@ -27,6 +27,15 @@ using namespace ins;
 using ins::math::driver;
 
 namespace {
+// A named output that can miss is a std::expected; the sweeps here stay inside its range.
+template <class R>
+auto unwrap(const R& r) {
+    if constexpr (requires { r.has_value(); })
+        return r.value();
+    else
+        return r;
+}
+
 // G(3,0)
 inline constexpr auto e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>;
 inline constexpr auto e2 = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>;
@@ -175,7 +184,7 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
             const long double a = ra / 64.0L, b = rb / 64.0L;
             {
                 const hcod r =
-                    math::exp<hcod>(hdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * e1});
+                    unwrap(math::exp<hcod>(hdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * e1}));
                 const int    sq[] = {1};
                 const closed c    = reference(a, &b, sq, 1);
                 bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), c.E * c.C);
@@ -183,16 +192,20 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
             }
             {
                 const ncod r =
-                    math::exp<ncod>(ndom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * eps});
+                    unwrap(math::exp<ncod>(ndom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * eps}));
                 bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), std::exp(a));
                 bad += !rounded_ok<O, round_half_away>(coef(std::get<1>(r.parts())), std::exp(a) * b);
             }
         }
-    // Past CoDomain's range: a named multivector output does not report as
-    // an expected yet - the store reaches the handler (a known gap).
-    // e³·cosh 4 ≈ 548 > 64.
-    EXPECT_DEATH((void)(math::exp<hcod>(hdom{I{3} + I{4} * e1})), "ins");
-    EXPECT_DEATH((void)(math::exp<ncod>(ndom{I{3} + I{4} * eps})), "ins");
+    // A named output whose parts do not hold every value is an expected: e³·cosh 4 ≈ 548 > 64 misses,
+    // e·cosh 1 fits; a rotor's parts on [-1, 1] hold every value (|cos|, |sin| ≤ 1 exactly), so it stays plain.
+    static_assert(std::same_as<decltype(math::exp<hcod>(hdom{})), std::expected<hcod, error>>);
+    EXPECT_EQ(math::exp<hcod>(hdom{I{3} + I{4} * e1}).error(), error::overflow);
+    EXPECT_EQ(math::exp<ncod>(ndom{I{3} + I{4} * eps}).error(), error::overflow);
+    EXPECT_TRUE(math::exp<hcod>(hdom{I{1} + I{1} * e1}).has_value());
+    using unit_part = inside<{{-1, 1}, per<1024>}, round_half_away>;
+    using rcod1     = multivector<unit_part, quantity<i, unit_part>>;
+    static_assert(std::same_as<decltype(math::exp<rcod1>(quantity<i, I>{})), rcod1>);
     // A boost and a rotation that share γ₁: they anticommute, and z changes sign.
     using mdom = multivector<quantity<g0 * g1, I>, quantity<g1 * g2, I>>;
     using mcod = multivector<O, quantity<g0 * g1, O>, quantity<g1 * g2, O>>;
@@ -201,8 +214,8 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
             const long double y[2]  = {u / 64.0L, v / 64.0L};
             const int         sq[2] = {1, -1};
             const closed      c     = reference(0, y, sq, 2);
-            const mcod        r     = math::exp<mcod>(
-                mdom{test::store<I>(rational{u, 64}) * (g0 * g1) + test::store<I>(rational{v, 64}) * (g1 * g2)});
+            const mcod        r     = unwrap(math::exp<mcod>(
+                mdom{test::store<I>(rational{u, 64}) * (g0 * g1) + test::store<I>(rational{v, 64}) * (g1 * g2)}));
             bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), c.C);
             bad += !rounded_ok<O, round_half_away>(coef(std::get<1>(r.parts())), c.S * y[0]);
             bad += !rounded_ok<O, round_half_away>(coef(std::get<2>(r.parts())), c.S * y[1]);
@@ -302,9 +315,9 @@ int same_as_integer(int U, int V, int step, Make make) {
         for (int v = -V; v <= V; v += step) {
             const Dom x        = make(rational{u, 16}, rational{v, 16});
             driver.IntegerOnly = false;
-            const Cod f        = math::exp<Cod>(x);
+            const Cod f        = unwrap(math::exp<Cod>(x));
             driver.IntegerOnly = true;
-            const Cod s        = math::exp<Cod>(x);
+            const Cod s        = unwrap(math::exp<Cod>(x));
             driver.IntegerOnly = false;
             bad += !(f == s);
         }
@@ -357,9 +370,9 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
         for (int v = -48; v <= 48; ++v) {
             const mdom x{test::store<I>(rational{u, 16}) * (g0 * g1) + test::store<I>(rational{v, 16}) * (g1 * g2)};
             driver.IntegerOnly = false;
-            const mcod f       = math::exp<mcod>(x);
+            const mcod f       = unwrap(math::exp<mcod>(x));
             driver.IntegerOnly = true;
-            const mcod s       = math::exp<mcod>(x);
+            const mcod s       = unwrap(math::exp<mcod>(x));
             driver.IntegerOnly = false;
             bad2 += !(f == s);
         }

@@ -30,6 +30,11 @@ own can be declared the same way with `defined_by`.
   either side, so `quantity<percent, …>{5, percent} == 5` compiled with it and
   not without. Compare with a quantity, or with a unit as one of itself:
   `i * i == -one`, `q * inverse(q) == one`, `u * u == just<5> * one`.
+- `math::exp<C>(x)` of a multivector returns `std::expected<C, error>` where a
+  part of C may not hold its value (`error::overflow` when one misses), as
+  `f<C>(x)` of an inside does; it reached the error handler before. Where
+  every part holds every value, C stays plain: a rotor's parts on [-1, 1] do
+  (|cos|, |sin| ≤ 1 exactly).
 
 ### Added
 
