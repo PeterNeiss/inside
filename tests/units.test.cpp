@@ -666,7 +666,7 @@ inline constexpr kind_def         named_angle_def{"angular_measure", isq::dimens
                                                   {.distinct = true, .recipe = isq::arc_length / isq::radius}};
 inline constexpr origin_def       named_ice_def{"ice", si::absolute_zero + just<27315, 100> * si::kelvin};
 inline constexpr origin_def       named_zero_def{"zero", base_dimension<"thermodynamic_temperature">};
-inline constexpr basis_vector_def named_e1_def{"e1", +1};
+inline constexpr basis_vector_def named_e1_def{"e1", geometric<+1>};
 } // namespace
 
 TEST(UnitsApiTest, named_definitions) {
@@ -676,7 +676,7 @@ TEST(UnitsApiTest, named_definitions) {
     static_assert(defined_by<named_watt_def> == si::watt);
     static_assert(defined_by<named_velocity_def> == isq::velocity);
     static_assert(defined_by<named_angle_def> == isq::angular_measure);
-    static_assert(defined_by<named_e1_def> == basis_vector<"e1", +1>);
+    static_assert(defined_by<named_e1_def> == basis_vector<"e1", geometric<+1>>);
     static_assert(ins::detail::same(origin_ref{defined_by<named_ice_def>},
                                     origin_ref{origin<"ice", si::absolute_zero + just<27315, 100> * si::kelvin>}));
     static_assert(ins::detail::same(origin_ref{defined_by<named_zero_def>},

@@ -15,9 +15,9 @@ using namespace ins;
 
 namespace
 {
-  inline constexpr auto e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
-  inline constexpr auto e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>;
-  inline constexpr auto e3 = basis_vector<"e₃", +1, {.ascii = "e3"}>;
+  inline constexpr auto e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>;
+  inline constexpr auto e2 = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>;
+  inline constexpr auto e3 = basis_vector<"e₃", geometric<+1>, {.ascii = "e3"}>;
 
   inline constexpr auto i = unit<"i", e1 * e2>;
   inline constexpr auto j = unit<"j", e3 * e1>; // -e₁e₃: the unit tracks the sign

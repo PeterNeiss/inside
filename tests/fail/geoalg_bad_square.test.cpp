@@ -3,6 +3,6 @@
 // A basis vector squares to +1, -1 or 0, nothing else.
 #include <inside/units.hpp>
 
-inline constexpr auto e1 = ins::basis_vector<"e1", 2>;
+inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<2>>;
 
 int main() {}

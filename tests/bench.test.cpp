@@ -1470,9 +1470,9 @@ static void bench_cmath() {
 // tier).
 //---------------------------------------------------------------------------
 namespace ga {
-inline constexpr auto e1 = ins::basis_vector<"e₁", +1, {.ascii = "e1"}>;
-inline constexpr auto e2 = ins::basis_vector<"e₂", +1, {.ascii = "e2"}>;
-inline constexpr auto e3 = ins::basis_vector<"e₃", +1, {.ascii = "e3"}>;
+inline constexpr auto e1 = ins::basis_vector<"e₁", ins::geometric<+1>, {.ascii = "e1"}>;
+inline constexpr auto e2 = ins::basis_vector<"e₂", ins::geometric<+1>, {.ascii = "e2"}>;
+inline constexpr auto e3 = ins::basis_vector<"e₃", ins::geometric<+1>, {.ascii = "e3"}>;
 inline constexpr auto i  = ins::unit<"i", e1 * e2>;
 inline constexpr auto j  = ins::unit<"j", e3 * e1>;
 inline constexpr auto k  = ins::unit<"k", e2 * e3>;

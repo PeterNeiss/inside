@@ -11,14 +11,14 @@ Complex numbers and quaternions are two special cases, not two features.
 
 ```cpp
 // e₁ e₁ = 1
-inline constexpr auto         e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
-inline constexpr auto         e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>;
+inline constexpr auto         e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>;
+inline constexpr auto         e2 = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>;
 // a blade, named
 inline constexpr auto         i = unit<"i", e1 * e2>;
 ```
 
 A `basis_vector` is a base dimension of your own and its unit, in one static
-object. Its square is +1, −1 or 0 (a null vector); its options are `.ascii`
+object. `geometric<S>` gives its square S: +1, −1 or 0 (a null vector); its options are `.ascii`
 and `.space_before`, as for a named unit. Two different basis vectors
 anticommute: the basis is orthogonal. That is all the algebra needs, and every
 signature G(p, q, r) has such a basis. A non-orthogonal vector, such as the

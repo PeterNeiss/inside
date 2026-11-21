@@ -22,23 +22,23 @@ using namespace ins;
 
 namespace {
 // G(3,0): x, y, z.
-inline constexpr auto x = basis_vector<"x", +1>;
-inline constexpr auto y = basis_vector<"y", +1>;
-inline constexpr auto z = basis_vector<"z", +1>;
+inline constexpr auto x = basis_vector<"x", geometric<+1>>;
+inline constexpr auto y = basis_vector<"y", geometric<+1>>;
+inline constexpr auto z = basis_vector<"z", geometric<+1>>;
 // -(x z)
 inline constexpr auto zx = unit<"zx", z * x>;
 inline constexpr auto xy = unit<"xy", x * y>;
 
 // G(1,3), spacetime: γ₀ squares to +1, γ₁ γ₂ γ₃ to -1.
-inline constexpr auto g0 = basis_vector<"γ₀", +1, {.ascii = "g0"}>;
-inline constexpr auto g1 = basis_vector<"γ₁", -1, {.ascii = "g1"}>;
-inline constexpr auto g2 = basis_vector<"γ₂", -1, {.ascii = "g2"}>;
-inline constexpr auto g3 = basis_vector<"γ₃", -1, {.ascii = "g3"}>;
+inline constexpr auto g0 = basis_vector<"γ₀", geometric<+1>, {.ascii = "g0"}>;
+inline constexpr auto g1 = basis_vector<"γ₁", geometric<-1>, {.ascii = "g1"}>;
+inline constexpr auto g2 = basis_vector<"γ₂", geometric<-1>, {.ascii = "g2"}>;
+inline constexpr auto g3 = basis_vector<"γ₃", geometric<-1>, {.ascii = "g3"}>;
 
 // G(2,0,1), the projective plane: p₀ is a null vector.
-inline constexpr auto p0 = basis_vector<"p₀", 0, {.ascii = "p0"}>;
-inline constexpr auto p1 = basis_vector<"p₁", +1, {.ascii = "p1"}>;
-inline constexpr auto p2 = basis_vector<"p₂", +1, {.ascii = "p2"}>;
+inline constexpr auto p0 = basis_vector<"p₀", geometric<0>, {.ascii = "p0"}>;
+inline constexpr auto p1 = basis_vector<"p₁", geometric<+1>, {.ascii = "p1"}>;
+inline constexpr auto p2 = basis_vector<"p₂", geometric<+1>, {.ascii = "p2"}>;
 
 constexpr auto km = si::kilo(si::metre);
 

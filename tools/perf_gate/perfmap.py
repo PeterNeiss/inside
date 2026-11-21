@@ -864,9 +864,9 @@ struct unexp<std::expected<T, E>> {
 };
 template <class T>
 using unexp_t = typename unexp<std::remove_cvref_t<T>>::type;
-inline constexpr auto e1 = iu::basis_vector<"e1", +1>;
-inline constexpr auto e2 = iu::basis_vector<"e2", +1>;
-inline constexpr auto e3 = iu::basis_vector<"e3", +1>;
+inline constexpr auto e1 = iu::basis_vector<"e1", geometric<+1>>;
+inline constexpr auto e2 = iu::basis_vector<"e2", geometric<+1>>;
+inline constexpr auto e3 = iu::basis_vector<"e3", geometric<+1>>;
 '''
 
 

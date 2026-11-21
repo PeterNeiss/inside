@@ -8,8 +8,8 @@
 
 int main() {
     using namespace ins;
-    constexpr auto e1 = ins::basis_vector<"e1", 1>;
-    constexpr auto e2 = ins::basis_vector<"e2", 1>;
+    constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<1>>;
+    constexpr auto e2 = ins::basis_vector<"e2", ins::geometric<1>>;
     using I           = inside<{{-4, 4}, per<64>}, round_half_away>;
     using dom         = multivector<I, quantity<e1 * e2, I>>;
     using cod         = quantity<e1 * e2, I>;

@@ -15,8 +15,8 @@ using namespace ins;
 
 namespace
 {
-  inline constexpr auto e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>; // e₁e₁ = 1
-  inline constexpr auto e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>; // e₂e₂ = 1
+  inline constexpr auto e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>; // e₁e₁ = 1
+  inline constexpr auto e2 = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>; // e₂e₂ = 1
   inline constexpr auto i  = unit<"i", e1 * e2>;
 } // namespace
 

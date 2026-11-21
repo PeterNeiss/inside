@@ -7,8 +7,8 @@
 
 int main() {
     using namespace ins;
-    constexpr auto p0 = ins::basis_vector<"p0", 0>;
-    constexpr auto p1 = ins::basis_vector<"p1", 1>;
+    constexpr auto p0 = ins::basis_vector<"p0", ins::geometric<0>>;
+    constexpr auto p1 = ins::basis_vector<"p1", ins::geometric<1>>;
     auto           d  = dual(just<1> * p1, p0 * p1);
     (void)d;
 }

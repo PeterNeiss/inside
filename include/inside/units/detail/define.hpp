@@ -22,7 +22,7 @@
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
 //   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
 //   inline constexpr auto ice     = origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>;
-//   inline constexpr auto e1      = basis_vector<"e₁", +1>;
+//   inline constexpr auto e1      = basis_vector<"e₁", geometric<+1>>;
 //
 // The name is a template argument and the definition a static member of a class template,
 // so a declaration is its own identity: the same declaration in two places is the same unit.
@@ -187,9 +187,10 @@ namespace ins
     return detail::mag_pi * v;
   }
 
-  // basis_vector<"e₁", +1>: a basis vector of a geometric algebra, by its square (+1, -1 or 0).
-  template <symbol_text Sym, int Square, unit_options O = {}>
-  inline constexpr auto basis_vector = detail::unit_tag<definition<basis_vector_def, Sym, Square, O>::value>;
+  // basis_vector<"e₁", geometric<+1>>: a basis vector, by how it multiplies: geometric<S> for a geometric algebra,
+  // by its square S (+1, -1 or 0).
+  template <symbol_text Sym, basis_rule Rule, unit_options O = {}>
+  inline constexpr auto basis_vector = detail::unit_tag<definition<basis_vector_def, Sym, Rule, O>::value>;
 } // namespace ins
 
 #endif // INSIDE_UNITS_DETAIL_DEFINE_HPP

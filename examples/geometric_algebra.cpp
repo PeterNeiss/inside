@@ -14,10 +14,10 @@ using namespace ins;
 
 namespace
 {
-  inline constexpr auto e1  = basis_vector<"e₁", +1, {.ascii = "e1"}>;
-  inline constexpr auto e2  = basis_vector<"e₂", +1, {.ascii = "e2"}>;
-  inline constexpr auto e3  = basis_vector<"e₃", +1, {.ascii = "e3"}>;
-  inline constexpr auto eps = basis_vector<"ε" , 0 , {.ascii = "eps"}>; // ε ε = 0
+  inline constexpr auto e1  = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>;
+  inline constexpr auto e2  = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>;
+  inline constexpr auto e3  = basis_vector<"e₃", geometric<+1>, {.ascii = "e3"}>;
+  inline constexpr auto eps = basis_vector<"ε" , geometric<0> , {.ascii = "eps"}>; // ε ε = 0
   inline constexpr auto m   = si::metre;
 
   template <class X>

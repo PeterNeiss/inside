@@ -148,14 +148,15 @@ tax.
 
 ## Geometric algebra
 
-A **basis vector** is a unit of your own whose square you state: +1, −1 or 0.
+A **basis vector** is a unit of your own whose square you state:
+`geometric<+1>`, `geometric<-1>` or `geometric<0>`.
 Two different ones anticommute (e₂ e₁ = −e₁ e₂), and the units track the
 sign. With `<inside/units/geoalg.hpp>`, a sum of different blades is a
 multivector, and complex numbers, quaternions and vectors follow:
 
 ```cpp
-inline constexpr auto         e1 = basis_vector<"e₁", +1>;
-inline constexpr auto         e2 = basis_vector<"e₂", +1>;
+inline constexpr auto         e1 = basis_vector<"e₁", geometric<+1>>;
+inline constexpr auto         e2 = basis_vector<"e₂", geometric<+1>>;
 // i·i = -1 follows
 inline constexpr auto         i = unit<"i", e1 * e2>;
 

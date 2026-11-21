@@ -38,16 +38,41 @@ namespace ins
   // information) alike. Angle is dimensionless, as in SI.
   struct unit_def;
 
+  // How a basis vector multiplies (basis_vector<"e₁", geometric<+1>>).
+  // A geometric one squares to Square (+1, -1 or 0), and two of them anticommute.
+  enum class basis_product : std::int8_t { none, geometric };
+  struct basis_rule
+  {
+    basis_product Product{basis_product::none};
+    std::int8_t   Square{0};
+
+    friend constexpr bool operator==(const basis_rule&, const basis_rule&) = default;
+  };
+
+  namespace detail
+  {
+    consteval basis_rule geometric_rule(int square)
+    {
+      if (square != 1 && square != -1 && square != 0)
+        ins::detail::constexpr_error<"units: a basis vector squares to +1, -1 or 0">();
+      return {basis_product::geometric, static_cast<std::int8_t>(square)};
+    }
+  } // namespace detail
+
+  // geometric<S>: the rule of a basis vector of a geometric algebra, by its square S (+1, -1 or 0).
+  template <int Square>
+  inline constexpr basis_rule geometric = detail::geometric_rule(Square);
+
   // A base dimension: base_dimension<"currency"> (units/detail/define.hpp).
-  // A basis vector of a geometric algebra is one too (see basis_vector): its exponent is 0 or 1,
-  // it squares to Square (+1, -1 or 0), two of them anticommute, and Vector is its unit.
-  // Vector is read only when Basis is set.
+  // A basis vector is one too (see basis_vector): its Rule says how it multiplies, its exponent is 0 or 1,
+  // and Vector is its unit. Vector is read only for a basis vector.
   struct base_dimension_def
   {
     std::string_view Name;
-    std::int8_t      Square{0};
-    bool             Basis{false};
+    basis_rule       Rule{};
     const unit_def*  Vector{};
+
+    [[nodiscard]] constexpr bool basis() const { return Rule.Product != basis_product::none; }
   };
 
   struct dimension;
@@ -88,13 +113,13 @@ namespace ins
       return static_cast<std::int8_t>(e);
     }
 
-    // By content: a base dimension is its name (and, for a basis vector, its square).
+    // By content: a base dimension is its name (and, for a basis vector, its rule).
     friend constexpr bool operator==(const dimension& a, const dimension& b)
     {
       if (a.Size != b.Size)
         return false;
       for (std::size_t i = 0; i < a.Size; ++i)
-        if (a.Base[i]->Name != b.Base[i]->Name || a.Base[i]->Square != b.Base[i]->Square || a.Exp[i] != b.Exp[i])
+        if (a.Base[i]->Name != b.Base[i]->Name || a.Base[i]->Rule != b.Base[i]->Rule || a.Exp[i] != b.Exp[i])
           return false;
       return true;
     }
@@ -148,7 +173,7 @@ namespace ins
 
     constexpr void exponents::add(const base_dimension_def* b, int e)
     {
-      if (b->Basis)
+      if (b->basis())
         e = basis_exponent(e);
       if (e == 0)
         return;
@@ -157,9 +182,9 @@ namespace ins
         ++i;
       if (i < D.size() && D[i]->Name == b->Name)
       {
-        if (D[i]->Basis != b->Basis || D[i]->Square != b->Square)
+        if (D[i]->Rule != b->Rule)
           ins::detail::constexpr_error<"units: two base dimensions of one name differ">();
-        E[i] = b->Basis ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
+        E[i] = b->basis() ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
         if (E[i] == 0)
         {
           D.erase(D.begin() + i);
@@ -242,14 +267,14 @@ namespace ins
     {
       blade b;
       for (std::size_t i = 0; i < d.Size; ++i)
-        if (d.Base[i]->Basis)
+        if (d.Base[i]->basis())
           b.push_back(d.Base[i]);
       return b;
     }
     constexpr bool has_blade(const dimension& d)
     {
       for (std::size_t i = 0; i < d.Size; ++i)
-        if (d.Base[i]->Basis)
+        if (d.Base[i]->basis())
           return true;
       return false;
     }
@@ -259,9 +284,9 @@ namespace ins
       std::size_t i{0}, j{0};
       for (;;)
       {
-        while (i < a.Size && a.Base[i]->Basis)
+        while (i < a.Size && a.Base[i]->basis())
           ++i;
-        while (j < b.Size && b.Base[j]->Basis)
+        while (j < b.Size && b.Base[j]->basis())
           ++j;
         if (i == a.Size || j == b.Size)
           return i == a.Size && j == b.Size;
@@ -283,7 +308,7 @@ namespace ins
           if (x->Name > y->Name)
             s = -s;
           else if (x->Name == y->Name)
-            s *= x->Square;
+            s *= x->Rule.Square;
         }
       return s;
     }
@@ -827,20 +852,20 @@ namespace ins
       : Utf8{sym}, Ascii{o.ascii}, SpaceBefore{o.space_before} {}
   };
 
-  // basis_vector_def: the definition of a basis vector of a geometric algebra (basis_vector<"e₁", +1>):
-  // a base dimension of your own and its unit in one static object, with its square, v·v: +1, -1 or 0 (a null
-  // vector). Two different basis vectors anticommute, so a product of units is again a unit, up to a sign:
-  // e₂e₁ = -e₁e₂.
+  // basis_vector_def: the definition of a basis vector (basis_vector<"e₁", geometric<+1>>):
+  // a base dimension of your own and its unit in one static object, with its rule. A geometric one squares to
+  // +1, -1 or 0 (a null vector), and two different ones anticommute, so a product of units is again a unit, up to
+  // a sign: e₂e₁ = -e₁e₂.
   struct basis_vector_def
   {
     unit_def           Unit;
     base_dimension_def Self;
 
-    consteval basis_vector_def(std::string_view sym, int square, unit_options o = {})
-      : Unit{sym, o}, Self{sym, static_cast<std::int8_t>(square), true, &Unit}
+    consteval basis_vector_def(std::string_view sym, basis_rule rule, unit_options o = {})
+      : Unit{sym, o}, Self{sym, rule, &Unit}
     {
-      if (square != 1 && square != -1 && square != 0)
-        ins::detail::constexpr_error<"units: a basis vector squares to +1, -1 or 0">();
+      if (rule.Product == basis_product::none)
+        ins::detail::constexpr_error<"units: a basis vector has a rule - geometric<S>">();
       if (o.kind || o.origin)
         ins::detail::constexpr_error<"units: a basis vector has no kind or origin">();
       Unit.Dim = dimension_of(Self);

@@ -244,8 +244,8 @@ division can fail ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).
 
 ### Basis vectors
 
-`basis_vector<"e₁", +1>` is a base dimension of your own together with its unit, and
-you state its square, +1, −1 or 0. Its exponent is 0 or 1, and two different
+`basis_vector<"e₁", geometric<+1>>` is a base dimension of your own together with its unit;
+`geometric<S>` states its square S, +1, −1 or 0. Its exponent is 0 or 1, and two different
 basis vectors anticommute, so a unit's magnitude carries a sign
 (`e2 * e1` is −1 times e₁ e₂), and a product of quantities moves that sign to
 the number. Sums of different blades are multivectors, in
@@ -253,14 +253,14 @@ the number. Sums of different blades are multivectors, in
 [geometric algebra](geometric-algebra.md) has the model and the operations.
 
 ```cpp
-inline constexpr auto         e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
+inline constexpr auto         e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>;
 ```
 
 ### Identity and limits
 
 Entries compare by content: a base dimension by its name, a kind by its name,
 dimension, recipe, kind boundary and parent chain; a unit by its symbols,
-dimension, magnitude, kind and origin; a basis vector also by its square. A
+dimension, magnitude, kind and origin; a basis vector also by its rule (`geometric<S>`). A
 one-line entry is also one type per content. A named definition, the
 catalog's or one of yours with `defined_by` (below), is one type per object:
 two with equal content compare equal and convert, but are different types. A
