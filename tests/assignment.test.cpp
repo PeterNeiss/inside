@@ -1830,7 +1830,7 @@ TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
 // up, toward zero went down, half_even picked odd value indices.
 TEST(AssignmentTest, rounding_on_a_grid_whose_lower_index_passes_int64) {
     constexpr grid R{{-3074457345618258603LL, -3074457345618258593LL}, per<3>}; // Lower/Notch = −2^63 − 1
-    using halves  = inside<grid{R.Interval, per<2>}>;
+    using halves  = inside<grid{R.interval(), per<2>}>;
     const auto at = []<policy_flag F>(std::integral_constant<policy_flag, F>, int raw) {
         return inside<R, F>{halves::from_raw(test::at_run_time(raw), unsafe)}.raw();
     };

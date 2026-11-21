@@ -291,7 +291,7 @@ namespace ins::detail
         return grid{integer_quotient_range(), rational{1}};
       else if constexpr (native_div_fixed)
       {
-        constexpr interval q{(*(grid_of<L> / grid_of<R>)).Interval};
+        constexpr interval q{(*(grid_of<L> / grid_of<R>)).interval()};
         // An endpoint on the notch stays; one off it rounds onto it.
         constexpr rational n{notch64<L>}, k{rational{1} / n};
         auto on = [&](const grid_number& x, bool up)
@@ -304,7 +304,7 @@ namespace ins::detail
       else if constexpr (notch_div)
       {
         // The exact quotient's limits rounded the same way (rounding is monotone), onto multiples of n.
-        constexpr interval    q{(*(grid_of<L> / grid_of<R>)).Interval};
+        constexpr interval    q{(*(grid_of<L> / grid_of<R>)).interval()};
         constexpr grid_number n{notch_of<L>};
         return grid{interval{grid_round<rmode>(q.Lower / n) * n, grid_round<rmode>(q.Upper / n) * n}, n};
       }
@@ -671,7 +671,7 @@ namespace ins::detail
     // invoker.)
     static consteval grid lattice_quotient_grid_of()
     {
-      const interval q{(*(grid_of<L> / grid_of<R>)).Interval};
+      const interval q{(*(grid_of<L> / grid_of<R>)).interval()};
       return grid{grid_round<rmode>(q.Lower), grid_round<rmode>(q.Upper)};
     }
     static constexpr grid lattice_quotient_grid = lattice_quotient_grid_of();

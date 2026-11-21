@@ -74,7 +74,7 @@ namespace ins
     {
       constexpr auto neutral = []<class B>(std::type_identity<B>)
       {
-        return grid_of<B>.Interval.Lower == grid_of<B>.Interval.Upper && policy_of<B> == 0;
+        return grid_of<B>.Lower == grid_of<B>.Upper && policy_of<B> == 0;
       };
       constexpr policy_flag f{neutral(std::type_identity<L>{}) ? policy_of<R>
                             : neutral(std::type_identity<R>{}) ? policy_of<L>
@@ -88,15 +88,15 @@ namespace ins
   inline constexpr interval interval_of = {0, 0};
 
   template <insidable B>
-  inline constexpr interval interval_of<B> = grid_of<B>.Interval;
+  inline constexpr interval interval_of<B> = grid_of<B>.interval();
 
   template <std::integral I>
   inline constexpr interval interval_of<I> = {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
   template <insidable B>
-  inline constexpr grid_number lower_of = grid_of<B>.Interval.Lower;
+  inline constexpr grid_number lower_of = grid_of<B>.Lower;
   template <insidable B>
-  inline constexpr grid_number upper_of = grid_of<B>.Interval.Upper;
+  inline constexpr grid_number upper_of = grid_of<B>.Upper;
   template <insidable B>
   inline constexpr grid_number notch_of = grid_of<B>.Notch;
 

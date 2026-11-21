@@ -36,9 +36,9 @@ using namespace ins::detail;
 TEST(GridTest, grid_structured_binding) {
 
     grid g{{0, 100}, 2};
-    auto [iv, notch, max_den] = g;
-    ASSERT_EQ(iv.Lower, 0);
-    ASSERT_EQ(iv.Upper, 100);
+    auto [lower, upper, notch, max_den] = g;
+    ASSERT_EQ(lower, 0);
+    ASSERT_EQ(upper, 100);
     ASSERT_EQ(notch, 2);
     ASSERT_EQ(max_den, 0); // a lattice bounds its denominators itself
 }
@@ -93,8 +93,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid a{{0, 10}, 1};
         constexpr grid b{{0, 5}, 1};
         constexpr auto r = a + b;
-        ASSERT_TRUE(r.Interval.Lower == 0);
-        ASSERT_TRUE(r.Interval.Upper == 15);
+        ASSERT_TRUE(r.Lower == 0);
+        ASSERT_TRUE(r.Upper == 15);
         ASSERT_TRUE(r.Notch == 1);
     }
 
@@ -103,8 +103,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid a{{0, 10}, 1};
         constexpr grid b{{0, 5}, 1};
         constexpr auto r = a * b;
-        ASSERT_TRUE(r.Interval.Lower == 0);
-        ASSERT_TRUE(r.Interval.Upper == 50);
+        ASSERT_TRUE(r.Lower == 0);
+        ASSERT_TRUE(r.Upper == 50);
     }
 
     {
@@ -130,8 +130,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid b{{0, 5}, 1}; // includes zero, positive upper
         constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
-        ASSERT_TRUE(r->Interval.Lower == 0);
-        ASSERT_TRUE(r->Interval.Upper == 10); // 10 / 1 = 10
+        ASSERT_TRUE(r->Lower == 0);
+        ASSERT_TRUE(r->Upper == 10); // 10 / 1 = 10
         ASSERT_TRUE(r->Notch == 0);
     }
 
@@ -142,7 +142,7 @@ TEST(GridTest, grid_arithmetic) {
         constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
         // dividing positives by negatives gives non-positive result
-        ASSERT_TRUE(r->Interval.Upper <= 0);
+        ASSERT_TRUE(r->Upper <= 0);
         ASSERT_TRUE(r->Notch == 0);
     }
 
@@ -153,8 +153,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
         // result must span both signs once we exclude zero
-        ASSERT_TRUE(r->Interval.Lower < 0);
-        ASSERT_TRUE(r->Interval.Upper > 0);
+        ASSERT_TRUE(r->Lower < 0);
+        ASSERT_TRUE(r->Upper > 0);
         ASSERT_TRUE(r->Notch == 0);
     }
 
@@ -166,8 +166,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid c{{-5, 5}, max_denominator{4}}; // nonzero values are at least 1/4 in magnitude
         constexpr auto r = a / c;
         ASSERT_TRUE(r.has_value());
-        ASSERT_TRUE(r->Interval.Lower == -40);
-        ASSERT_TRUE(r->Interval.Upper == 40);
+        ASSERT_TRUE(r->Lower == -40);
+        ASSERT_TRUE(r->Upper == 40);
     }
 }
 
@@ -216,7 +216,7 @@ constexpr bool derived_notch_is_coarsest() {
     if (n.Num != 1)
         return false; // always 1/k
     auto on = [](rational v, rational step) { return divides_evenly(v, step); };
-    if (!on(1, n) || !on(G.Interval.Lower, n) || !on(G.Interval.Upper, n))
+    if (!on(1, n) || !on(G.Lower, n) || !on(G.Upper, n))
         return false;
     const std::uint64_t k    = abs_den(n.Den);
     std::uint64_t       rest = k;
@@ -228,7 +228,7 @@ constexpr bool derived_notch_is_coarsest() {
         while (rest % p == 0)
             rest /= p;
         const rational coarser{std::uint64_t{1}, static_cast<std::int64_t>(k / p)};
-        if (on(G.Interval.Lower, coarser) && on(G.Interval.Upper, coarser))
+        if (on(G.Lower, coarser) && on(G.Upper, coarser))
             return false; // a coarser step works
     }
     return true;
@@ -236,7 +236,7 @@ constexpr bool derived_notch_is_coarsest() {
 
 template <grid G>
 constexpr bool max_index_matches() {
-    const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower));
+    const rational span = (detail::to_rational(G.Upper) - detail::to_rational(G.Lower));
     return rational{detail::max_index(G)} == (span / detail::to_rational(G.Notch));
 }
 } // namespace
@@ -284,7 +284,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     // A whole number written as a fraction stays an integer grid.
     constexpr grid g{just<6, 3>, just<20, 4>};
     static_assert(g.Notch == 1);
-    static_assert(g.Interval.Lower == 2 && g.Interval.Upper == 5);
+    static_assert(g.Lower == 2 && g.Upper == 5);
 
     // Equal limits: a point; the two-limit form still derives a valid notch.
     constexpr grid h{just<3, 10>, just<3, 10>};
@@ -402,7 +402,7 @@ using namespace ins::formats;
 using namespace ins::detail;
 
 TEST(GridConstructionTest, well_formed_grids) {
-    static_assert(grid{interval{0, 100}, 1_r}.Interval == interval{0, 100} && grid{interval{0, 100}, 1_r}.Notch == 1);
+    static_assert(grid{interval{0, 100}, 1_r}.interval() == interval{0, 100} && grid{interval{0, 100}, 1_r}.Notch == 1);
     static_assert(grid{interval{0, 0}, 0_r}.Notch == 0); // a point
     static_assert(grid{interval{0, 1}, max_denominator{1000}}.Notch == 0 &&
                   grid{interval{0, 1}, max_denominator{1000}}.MaxDenominator == 1000);

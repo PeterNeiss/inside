@@ -21,7 +21,7 @@ namespace ins
     template <insidable T>
     consteval grid cursor_grid(const auto& step)
     {
-      const grid_number s{grid{step}.Interval.Lower};
+      const grid_number s{grid{step}.Lower};
       if (!(s > 0))
         constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
       if (notch_of<T> == 0)

@@ -937,10 +937,10 @@ TEST(BigGridTest, predicates_at_run_time) {
     EXPECT_FALSE(G.representable(test::at_run_time(0x1p101)));
     EXPECT_TRUE(H.representable(test::at_run_time(0x1p100)));
     EXPECT_FALSE(H.representable(test::at_run_time(5.0)));
-    EXPECT_TRUE(includes(G.Interval, test::at_run_time(1e30)));
-    EXPECT_FALSE(includes(G.Interval, test::at_run_time(-1.0)));
-    EXPECT_TRUE(includes(G.Interval, test::at_run_time(7)));
-    EXPECT_FALSE(includes(H.Interval, test::at_run_time(7)));
+    EXPECT_TRUE(includes(G.interval(), test::at_run_time(1e30)));
+    EXPECT_FALSE(includes(G.interval(), test::at_run_time(-1.0)));
+    EXPECT_TRUE(includes(G.interval(), test::at_run_time(7)));
+    EXPECT_FALSE(includes(H.interval(), test::at_run_time(7)));
 }
 
 // sum's block loop over narrow raws held Lower and the notch in 64 bits: a

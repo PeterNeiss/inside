@@ -47,7 +47,7 @@ constexpr grid byte_off{{0.5_r, 255.5_r}, 1};                   // 256 slots: a 
 
 // The exact rounding of v onto g's lattice by mode m (the oracle).
 rational oracle_round(rational v, const grid& g, round_mode m) {
-    const exact lo{to_rational(g.Interval.Lower)}, n{to_rational(g.Notch)};
+    const exact lo{to_rational(g.Lower)}, n{to_rational(g.Notch)};
     const exact q = (exact{v} - lo) / n;
     const exact k = floor(q), f = q - k;
     const auto  c0 = static_cast<rational>(lo + k * n), c1 = static_cast<rational>(lo + k * n + n);
@@ -81,7 +81,7 @@ constexpr round_mode mode_of = F == round_floor       ? round_mode::floor
 // Every multiple of notch/8 from one notch below Lower to one above Upper.
 std::vector<rational> sweep(const grid& g) {
     std::vector<rational> v;
-    const exact n{to_rational(g.Notch)}, lo{to_rational(g.Interval.Lower)}, hi{to_rational(g.Interval.Upper)};
+    const exact n{to_rational(g.Notch)}, lo{to_rational(g.Lower)}, hi{to_rational(g.Upper)};
     const exact step = n / exact{8};
     for (exact x = lo - n; x <= hi + n; x = x + step)
         v.push_back(static_cast<rational>(x));
@@ -93,7 +93,7 @@ std::vector<rational> slots() {
     std::vector<rational> v;
     for (std::uint64_t k = 0; k <= detail::max_index(G); ++k)
         v.push_back(
-            static_cast<rational>(exact{to_rational(G.Interval.Lower)} + exact{k} * exact{to_rational(G.Notch)}));
+            static_cast<rational>(exact{to_rational(G.Lower)} + exact{k} * exact{to_rational(G.Notch)}));
     return v;
 }
 } // namespace
@@ -148,7 +148,7 @@ void check_decode() {
     using B = inside<G>;
     for (std::uint64_t k = 0; k <= detail::max_index(G); ++k) {
         const auto want =
-            static_cast<rational>(exact{to_rational(G.Interval.Lower)} + exact{k} * exact{to_rational(G.Notch)});
+            static_cast<rational>(exact{to_rational(G.Lower)} + exact{k} * exact{to_rational(G.Notch)});
         const B b = test::store<B>(want);
         EXPECT_EQ(static_cast<rational>(b), want) << to_string(want);
         EXPECT_EQ(b.raw(), static_cast<raw_t<B>>(k));
@@ -179,7 +179,7 @@ void check_store_rational() {
     for (const rational v : sweep(G)) {
         SCOPED_TRACE(::testing::Message() << "v=" << to_string(v) << " grid=" << to_string(G));
         const rational want = oracle_round(v, G, mode_of<F>);
-        if (!includes(G.Interval, want)) {
+        if (!includes(G.interval(), want)) {
             EXPECT_NE(test::store_error<B>(v), error{});
             continue;
         }
@@ -248,7 +248,7 @@ void check_convert() {
         SCOPED_TRACE(::testing::Message()
                      << "v=" << to_string(v) << " " << to_string(From) << " -> " << to_string(To));
         const rational want = oracle_round(v, To, mode_of<F>);
-        if (!includes(To.Interval, want))
+        if (!includes(To.interval(), want))
             continue;
         EXPECT_EQ(static_cast<rational>(test::store<T>(test::store<S>(v))), want);
     }
@@ -360,7 +360,7 @@ TEST(UnanchoredGridTest, compound_assignment) {
             half       a = test::store<half>(x);
             error      ea{}; // (the sum may leave half's range: a reported store)
             a.on_error(ea) += test::store<ints>(y);
-            if (includes(half_off.Interval, s)) {
+            if (includes(half_off.interval(), s)) {
                 EXPECT_EQ(ea, error{});
                 EXPECT_EQ(static_cast<rational>(a), s);
             } else
@@ -369,7 +369,7 @@ TEST(UnanchoredGridTest, compound_assignment) {
             const auto d = static_cast<rational>(exact{x} - exact{y});
             error      eb{};
             b.on_error(eb) -= test::store<ints>(y);
-            if (includes(half_off.Interval, d)) {
+            if (includes(half_off.interval(), d)) {
                 EXPECT_EQ(eb, error{});
                 EXPECT_EQ(static_cast<rational>(b), d);
             } else
@@ -526,14 +526,14 @@ template <insidable Out>
 void expect_rounded(rational got, double value, round_mode m) {
     constexpr grid g = grid_of<Out>;
     const double   pos =
-        2 * (value - static_cast<double>(to_rational(g.Interval.Lower))) / static_cast<double>(to_rational(g.Notch));
+        2 * (value - static_cast<double>(to_rational(g.Lower))) / static_cast<double>(to_rational(g.Notch));
     const double f = pos - std::floor(pos);
     if (f < 1e-7 || f > 1 - 1e-7)
         return; // a lattice point or half point: double cannot decide
     // Far from every boundary, 2^-30 precision decides the same.
     const rational v{static_cast<std::int64_t>(std::round(std::ldexp(value, 30))), std::int64_t{1} << 30};
     const rational want = oracle_round(v, g, m);
-    if (!includes(g.Interval, want))
+    if (!includes(g.interval(), want))
         return;
     EXPECT_EQ(got, want) << "value " << value;
 }
@@ -556,7 +556,7 @@ void check_math_mode() {
         expect_rounded<dec_t>(static_cast<rational>(math::atan<dec_t>(x)), std::atan(d), m);
         expect_rounded<dec_t>(static_cast<rational>(math::tanh<dec_t>(x)), std::tanh(d), m);
         expect_rounded<dec_t>(static_cast<rational>(math::cbrt<dec_t>(x)), std::cbrt(d), m);
-        if (includes(grid_of<tan_t>.Interval, r)) // tan on one branch
+        if (includes(grid_of<tan_t>.interval(), r)) // tan on one branch
             expect_rounded<out_t>(static_cast<rational>(math::tan<out_t>(test::store<tan_t>(r))), std::tan(d), m);
         for (const rational s : slots<grid_of<pos_t>>()) {
             const pos_t  y = test::store<pos_t>(s);

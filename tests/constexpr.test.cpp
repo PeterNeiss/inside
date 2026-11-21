@@ -145,11 +145,11 @@ TEST(ConstexprTest, constexpr_grid_arithmetic_produces_expected_result_grids) {
     constexpr grid g_b{{0, 5}, 1};
 
     constexpr auto sum = g_a + g_b;
-    static_assert(sum.Interval == interval{0, 15});
+    static_assert(sum.interval() == interval{0, 15});
     static_assert(sum.Notch == 1);
 
     constexpr auto prod = g_a * g_b;
-    static_assert(prod.Interval == interval{0, 50});
+    static_assert(prod.interval() == interval{0, 50});
 
     // div by a zero-only divisor grid is division_by_zero
     constexpr grid g_zero{{0, 0}, 0};

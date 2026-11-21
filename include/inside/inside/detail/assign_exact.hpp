@@ -161,15 +161,15 @@ namespace ins::detail
   constexpr grid wrap_carry_grid()
   {
     constexpr grid        G{grid_of<L>};
-    constexpr grid_number period{G.Interval.Upper - G.Interval.Lower + G.Notch};
+    constexpr grid_number period{G.Upper - G.Lower + G.Notch};
     if constexpr (period == grid_number{0})
       return grid{grid_number{0}};
     else
     {
-      constexpr interval source{overshoot_source_grid<R>().Interval};
+      constexpr interval source{overshoot_source_grid<R>().interval()};
       const auto carry_of = [&](const grid_number& v)
       {
-        return grid_round<round_mode::floor>((v - G.Interval.Lower) / period);
+        return grid_round<round_mode::floor>((v - G.Lower) / period);
       };
       return grid{carry_of(source.Lower), carry_of(source.Upper)};
     }

@@ -49,7 +49,7 @@ namespace ins::math::detail::entry
       if constexpr (anchored<In>)
         return x;
       else
-        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
+        return inside<grid{grid_of<In>.interval(), grid_of<In>.value_unit()},
                       policy_of<In> & ~::ins::detail::cursor_marker>{x};
     }
 

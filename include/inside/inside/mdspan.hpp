@@ -406,9 +406,9 @@ namespace ins
     consteval grid n_fold_grid(const grid& g, std::size_t n)
     {
       const grid_number k{n};
-      if (n == 0 || g.Interval.Lower == g.Interval.Upper)
-        return grid{g.Interval.Lower * k};
-      return grid{interval{g.Interval.Lower * k, g.Interval.Upper * k}, g.Notch};
+      if (n == 0 || g.Lower == g.Upper)
+        return grid{g.Lower * k};
+      return grid{interval{g.Lower * k, g.Upper * k}, g.Notch};
     }
     template <insidable N, std::size_t Count>
       requires notched<N> || point_grid<N>

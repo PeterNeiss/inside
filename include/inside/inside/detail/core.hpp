@@ -52,7 +52,7 @@ namespace ins
     // which assigns into T.
     template <grid G, policy_flag P>
     using cursor_value_t =
-      inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
+      inside<grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 
     // (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
 
@@ -123,8 +123,8 @@ namespace ins
     // On an integer lattice (D = 1) that is g's interval. A point's parts are points.
     consteval grid denominator_grid(const grid& g)
     {
-      if (g.Interval.Lower == g.Interval.Upper)
-        return grid{grid_number{grid_denominator(g.Interval.Lower)}};
+      if (g.Lower == g.Upper)
+        return grid{grid_number{grid_denominator(g.Lower)}};
       const grid_int d{den_bound(g)};
       if (d == grid_int{1})
         return grid{grid_number{1}};
@@ -132,8 +132,8 @@ namespace ins
     }
     consteval grid numerator_grid(const grid& g)
     {
-      const grid_number& lo{g.Interval.Lower};
-      const grid_number& hi{g.Interval.Upper};
+      const grid_number& lo{g.Lower};
+      const grid_number& hi{g.Upper};
       if (lo == hi)
         return grid{grid_number{grid_numerator(lo)}};
       const grid_number d{den_bound(g)};
@@ -202,7 +202,7 @@ namespace ins
       constexpr private_raw(R r) noexcept : Raw{r} {}
     };
     template <grid G, policy_flag P>
-    using raw_holder = std::conditional_t<G.Interval.Lower == G.Interval.Upper,
+    using raw_holder = std::conditional_t<G.Lower == G.Upper,
                                           public_raw<raw_for_t<G>>,
                                           private_raw<raw_for_t<G>, inside<G, P>>>;
   } // namespace detail
@@ -504,8 +504,8 @@ namespace ins
     constexpr operator detail::rational() const
       requires(detail::rational_readable<inside>)
     {
-      if constexpr (G.Interval.Lower == G.Interval.Upper)
-        return G.Interval.Lower;
+      if constexpr (G.Lower == G.Upper)
+        return G.Lower;
       else if constexpr (detail::value_storage<inside>)
         return Raw;
       // The Q-format fast path (an integer Lower) skips the generic path's three rational ops.
@@ -713,7 +713,7 @@ namespace ins
     // Its raw has this raw's type, so on an index raw it is a copy; on a value raw, one subtraction.
     // T::from_step(i) goes back.
     [[nodiscard]] constexpr auto step() const noexcept
-      requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires(G.Notch != 0 || G.Lower == G.Upper)
     {
       using I = inside<detail::index_grid(G)>;
       if constexpr (detail::point_storage<inside>)
@@ -729,7 +729,7 @@ namespace ins
 
 #define INSIDE_WHY_step_of "inside: step() counts notches - a continuous grid has none to count"
     auto step() const
-      requires(G.Notch == 0 && G.Interval.Lower != G.Interval.Upper)
+      requires(G.Notch == 0 && G.Lower != G.Upper)
     = delete (INSIDE_WHY_step_of);
 #undef INSIDE_WHY_step_of
 
@@ -739,7 +739,7 @@ namespace ins
     static constexpr auto step_value(const I& i)
     {
       constexpr grid_number unit_value{G.Notch != 0 ? G.Notch : grid_number{1}};
-      constexpr auto        lower{inside<grid{G.Interval.Lower}>::from_raw({}, unsafe)};
+      constexpr auto        lower{inside<grid{G.Lower}>::from_raw({}, unsafe)};
       constexpr auto        step{inside<grid{unit_value}>::from_raw({}, unsafe)};
       return lower + i * step;
     }
@@ -757,7 +757,7 @@ namespace ins
     // else a store checked by T's policy, or by a one-shot policy
     // (clamp saturates at the ends, wrap folds onto the indices).
     template <insidable I>
-      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Lower == G.Upper)
     // (A step that may fall outside 0 … step_count: a std::expected.)
     [[nodiscard]] static constexpr auto from_step(const I& i)
     {
@@ -774,7 +774,7 @@ namespace ins
         return detail::stored<inside>(step_value(i));
     }
     template <insidable I, typename Pol>
-      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Lower == G.Upper)
             && (detail::flag_like<Pol> || detail::policy_like<Pol>)
     [[nodiscard]] static constexpr auto from_step(const I& i, Pol&& pol)
     {
@@ -795,7 +795,7 @@ namespace ins
     static inside from_step(const I&, Pol&&) = delete (INSIDE_WHY_from_index);
 #undef INSIDE_WHY_from_index
     template <std::integral T>
-      requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires(G.Notch != 0 || G.Lower == G.Upper)
     [[nodiscard]] static constexpr auto from_step(T i)
     {
       // A builtin step: compare it with the step count, then it is the slot.
@@ -812,7 +812,7 @@ namespace ins
         return from_step(as_step_inside(i));
     }
     template <std::integral T, typename Pol>
-      requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires(G.Notch != 0 || G.Lower == G.Upper)
            && (detail::flag_like<Pol> || detail::policy_like<Pol>)
     [[nodiscard]] static constexpr auto from_step(T i, Pol&& pol)
     {

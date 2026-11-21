@@ -30,7 +30,7 @@ Every `inside<G, P>` carries a `grid G` value. `grid::validate` (`grid.hpp`)
 checks these when the type is instantiated:
 
 - **Lower ≤ Upper**.
-- **The notch divides the interval** (`Interval.divides_evenly(Notch)`): a
+- **The notch divides the interval** (`interval().divides_evenly(Notch)`): a
   whole number of notches lies between Lower and Upper. The count is
   `max_index_of<B>` (`inside/detail/storage.hpp`).
 - **Notch 0 is legal** and means any fraction in the interval whose

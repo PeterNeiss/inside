@@ -88,7 +88,7 @@ namespace ins::detail
 
   template <insidable B>
   inline constexpr bool wide_grid_numbers =
-    !fits_rational(grid_of<B>.Interval.Lower) || !fits_rational(grid_of<B>.Interval.Upper)
+    !fits_rational(grid_of<B>.Lower) || !fits_rational(grid_of<B>.Upper)
     || !fits_rational(grid_of<B>.Notch);
 
   // A lattice whose values pass the 64-bit rational between limits that fit:
@@ -215,14 +215,14 @@ namespace ins::detail
   // ({{0.5, 10.5}, 1} has an integer notch but not integer values).
   template <grid G>
   inline constexpr bool integer_notch =
-    grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
+    grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Lower) == grid_int{1};
 
   // An index grid: every value an integer from 0 up, within int64.
   template <grid G>
   inline constexpr bool index_shaped =
     (integer_notch<G>
-     || (G.Interval.Lower == G.Interval.Upper && grid_denominator(G.Interval.Lower) == grid_int{1}))
-    && !(G.Interval.Lower < 0) && fits_int64(G.Interval);
+     || (G.Lower == G.Upper && grid_denominator(G.Lower) == grid_int{1}))
+    && !(G.Lower < 0) && fits_int64(G.interval());
 
   // Every value an integer: an integer lattice or an integer point (see integer_limits below).
   template <insidable B>

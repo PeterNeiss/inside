@@ -914,13 +914,13 @@ namespace ins
         grid_number hi{upper_of<A> < upper_of<B> ? upper_of<B> : upper_of<A>};
         if (g.Notch != 0) // onto the lattice, inward
         {
-          const grid_number base{g.Interval.Lower}, n{g.Notch};
+          const grid_number base{g.Lower}, n{g.Notch};
           lo = base + n * grid_round<round_mode::ceil>((lo - base) / n);
           hi = base + n * grid_round<round_mode::floor>((hi - base) / n);
         }
         // Only ever narrower: a point (the lerp of constants) stays a point.
-        g.Interval = interval{g.Interval.Lower < lo ? lo : g.Interval.Lower,
-                              hi < g.Interval.Upper ? hi : g.Interval.Upper};
+        g.Lower = g.Lower < lo ? lo : g.Lower;
+        g.Upper = hi < g.Upper ? hi : g.Upper;
       }
       return g;
     }
@@ -976,12 +976,13 @@ namespace ins
     template <insidable Lhs, insidable Rhs, bool Max>
     consteval grid extreme_grid()
     {
-      grid           h{hull(grid_of<Lhs>, grid_of<Rhs>)};
-      const interval a{grid_of<Lhs>.Interval}, b{grid_of<Rhs>.Interval};
+      grid        h{hull(grid_of<Lhs>, grid_of<Rhs>)};
+      const grid& a{grid_of<Lhs>};
+      const grid& b{grid_of<Rhs>};
       if constexpr (Max)
-        h.Interval = interval{a.Lower < b.Lower ? b.Lower : a.Lower, h.Interval.Upper};
+        h.Lower = a.Lower < b.Lower ? b.Lower : a.Lower;
       else
-        h.Interval = interval{h.Interval.Lower, a.Upper < b.Upper ? a.Upper : b.Upper};
+        h.Upper = a.Upper < b.Upper ? a.Upper : b.Upper;
       return h;
     }
     template <insidable Lhs, insidable Rhs, bool Max>

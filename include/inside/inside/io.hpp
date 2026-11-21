@@ -306,7 +306,7 @@ namespace ins
   {
     std::string str{"{"};
 
-    str += ins::to_string(g.Interval);
+    str += ins::to_string(g.interval());
     str += ", ";
     str += ins::to_string(g.Notch);
     if (g.MaxDenominator != 0)
