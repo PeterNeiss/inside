@@ -29590,10 +29590,10 @@ namespace ins::detail
     return name != "std" && name != "detail" && name != "si2019" && !name.starts_with('_');
   }
 
-  // A named unit a text can name (no basis vector), once: units equal by content are one.
+  // A named unit a text can name (no basis vector or polynomial variable), once: units equal by content are one.
   consteval void add_text_unit(std::vector<const unit_def*>& out, const unit_def* u)
   {
-    if (has_blade(u->Dim))
+    if (has_basis(u->Dim))
       return;
     for (const unit_def* v : out)
       if (same(v, u))
