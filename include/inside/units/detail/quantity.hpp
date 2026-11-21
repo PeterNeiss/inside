@@ -90,15 +90,16 @@ namespace ins
       if constexpr (From == To)
         return true;
       else
-        return exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
+        return exact_rescale_v<From.unit(), To.unit()> && dimension_of(From.unit()) == dimension_of(To.unit())
+            && kind_converts(From, To);
     }
     template <reference From, reference To>
     inline constexpr bool implicit_v = implicit_conversion<From, To>();
     // A quantity of From on V that converts implicitly to To; one of R that converts to unit U (q.in<U>()).
     template <reference From, reference To, class V>
-    concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V>;
+    concept implicit_rescalable = implicit_v<From, To> && rescalable<From.unit(), To.unit(), V>;
     template <reference R, unit_value U, class V>
-    concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
+    concept in_rescalable = in_error_of<R.unit(), U>() == in_error::none && rescalable<R.unit(), U, V>;
 
     // A dimensionless quantity that is a plain number: no distinct kind (an angle), and an exact factor to unit one.
     // (A branch: a quantity type names number_like_v<R> in a declaration, so every quantity forms it, and the factor
@@ -106,11 +107,11 @@ namespace ins
     template <reference R>
     consteval bool number_like()
     {
-      if constexpr (!(dimension_of(R.U) == dim_one))
+      if constexpr (!(dimension_of(R.unit()) == dim_one))
         return false;
       else
-        return exact_factor_v<conversion_factor<R.U, unit_value{}>>
-            && (!has(R.Kind) || !kind_root(R.Kind)->Distinct);
+        return exact_factor_v<conversion_factor<R.unit(), unit_value{}>>
+            && (!has(R.kind()) || !kind_root(R.kind())->Distinct);
     }
     template <reference R>
     inline constexpr bool number_like_v = number_like<R>();
@@ -125,19 +126,19 @@ namespace ins
     template <reference R, class V>
     struct number_type<R, V, true>
     {
-      using type = decltype(rescale<conversion_factor<R.U, unit_value{}>>(std::declval<const V&>()));
+      using type = decltype(rescale<conversion_factor<R.unit(), unit_value{}>>(std::declval<const V&>()));
     };
     template <reference R, class V>
     using number_t = typename number_type<R, V>::type;
 
     template <reference From, reference To, insidable V>
-    using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
+    using rescaled_t = decltype(rescale<conversion_factor<From.unit(), To.unit()>>(std::declval<const V&>()));
 
     // q's number in unit U: exact, its grid rescaled.
     template <unit_value U, reference R, class V>
     constexpr auto number_in_unit(const quantity<R, V>& q)
     {
-      return rescale<conversion_factor<R.U, U>>(value_of(q));
+      return rescale<conversion_factor<R.unit(), U>>(value_of(q));
     }
 
     // A one-shot store's source (Q{x, clamp}, exact_cast<Q>(x)): a quantity, converted to Q's unit exactly first.
@@ -145,11 +146,12 @@ namespace ins
     template <class Q, class X>
     constexpr auto number_in(const X& x)
     {
-      return number_in_unit<Q::reference.U>(x);
+      return number_in_unit<Q::reference.unit()>(x);
     }
     template <class Q, class X>
     concept castable_quantity =
-      quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
+      quantity_like<X> && implicit_v<X::reference, Q::reference>
+      && exact_rescale_v<X::reference.unit(), Q::reference.unit()>;
     template <class Q, class X>
     concept castable_from = quantity_like<Q> && castable_quantity<Q, X>;
     // A number: an inside, a built-in, a rational or a grid number.
@@ -173,7 +175,7 @@ namespace ins
     concept unit_tag_of = is_reference_tag_v<std::remove_cvref_t<Tag>>
                        && implicit_v<reference_of_tag<std::remove_cvref_t<Tag>>, std::remove_cvref_t<Q>::reference>;
     template <class Q, class Tag>
-    inline constexpr bool own_unit_v = reference_of_tag<std::remove_cvref_t<Tag>>.U == Q::reference.U;
+    inline constexpr bool own_unit_v = reference_of_tag<std::remove_cvref_t<Tag>>.unit() == Q::reference.unit();
     template <class Q, class V, class Tag>
     concept number_in_tag =
       unit_tag_of<Q, Tag> && !quantity_like<V>
@@ -188,7 +190,7 @@ namespace ins
       if constexpr (own_unit_v<Q, Tag>)
         return std::forward<V>(v);
       else
-        return rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.U, Q::reference.U>>(v);
+        return rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.unit(), Q::reference.unit()>>(v);
     }
     template <class Q, class V, class Tag>
     using number_from_tag_t = decltype(number_from_tag<Q, Tag>(std::declval<V>()));
@@ -198,10 +200,12 @@ namespace ins
       unit_tag_of<Q, Tag> && !own_unit_v<Q, Tag> && number_value<V> && !insidable<std::remove_cvref_t<V>>;
     // Rep's twin in the unit of Tag (unit_tag_of: the factor holds no pi).
     template <class Q, class Tag>
-    concept twin_forms = rescalable<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U, typename Q::rep>;
+    concept twin_forms =
+      rescalable<Q::reference.unit(), reference_of_tag<std::remove_cvref_t<Tag>>.unit(), typename Q::rep>;
     template <class Q, class Tag>
-    using twin_t = decltype(rescale<conversion_factor<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U>>(
-      std::declval<const typename Q::rep&>()));
+    using twin_t =
+      decltype(rescale<conversion_factor<Q::reference.unit(), reference_of_tag<std::remove_cvref_t<Tag>>.unit()>>(
+        std::declval<const typename Q::rep&>()));
     template <class Q, class V, class Tag>
     concept raw_in_twin = raw_in_other_unit<Q, V, Tag> && twin_forms<Q, Tag>;
     // The twin's value as Q's number: the same value on the same grid, or an expected of it (try_make).
@@ -212,7 +216,8 @@ namespace ins
       if constexpr (is_expected_v<T>)
         return t.transform([](const auto& x) { return from_twin<Q, Tag>(x); });
       else
-        return Rep(rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.U, Q::reference.U>>(t));
+        return Rep(
+          rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.unit(), Q::reference.unit()>>(t));
     }
     // A unit of another quantity than Q's.
     template <class Q, class Tag>
@@ -235,9 +240,9 @@ namespace ins
     template <reference R>
     consteval reference unsigned_reference()
     {
-      reference r{R};
-      r.U.Scale.Ratio = abs(r.U.Scale.Ratio);
-      return r;
+      unit_value u{R.unit()};
+      u.Scale.Ratio = abs(u.Scale.Ratio);
+      return R.with_unit(u);
     }
 
     // A quantity of reference R on a number that inside's arithmetic returned:
@@ -247,9 +252,9 @@ namespace ins
     template <reference R, class V>
     constexpr auto make_quantity(V&& v)
     {
-      if constexpr (R.U.Scale.Ratio.is_zero())
+      if constexpr (R.unit().Scale.Ratio.is_zero())
         return multivector<>{};
-      else if constexpr (R.U.Scale.Ratio.negative())
+      else if constexpr (R.unit().Scale.Ratio.negative())
       {
         constexpr reference P{unsigned_reference<R>()};
         if constexpr (is_expected_v<std::remove_cvref_t<V>>)
@@ -340,21 +345,21 @@ namespace ins
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r = v; }
       constexpr Q& operator=(const quantity<R2, V2>& q)
       {
-        NumRef = number_in_unit<R.U>(q);
+        NumRef = number_in_unit<R.unit()>(q);
         return Self;
       }
       template <reference R2, class V2>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r += v; }
       constexpr Q& operator+=(const quantity<R2, V2>& q)
       {
-        NumRef += number_in_unit<R.U>(q);
+        NumRef += number_in_unit<R.unit()>(q);
         return Self;
       }
       template <reference R2, class V2>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
       constexpr Q& operator-=(const quantity<R2, V2>& q)
       {
-        NumRef -= number_in_unit<R.U>(q);
+        NumRef -= number_in_unit<R.unit()>(q);
         return Self;
       }
       template <insidable V>
@@ -419,7 +424,7 @@ namespace ins
   template <reference R, insidable Rep>
   class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>>
   {
-    static_assert(!R.U.Scale.Ratio.negative() && !R.U.Scale.Ratio.is_zero(),
+    static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
     using holder = detail::member_holder<Rep, Rep, quantity<R, Rep>>;
@@ -428,16 +433,16 @@ namespace ins
   public:
     using rep = Rep;
     static constexpr ins::reference  reference = R;
-    static constexpr ins::unit_value unit      = R.U;
-    static constexpr ins::dimension  dimension = dimension_of(R.U);
+    static constexpr ins::unit_value unit      = R.unit();
+    static constexpr ins::dimension  dimension = dimension_of(R.unit());
     // The kind as a value: its tag for a named kind (isq::height), else the expression of its recipe.
     // Compare with ==: q.kind == isq::length.
     static constexpr auto kind = []
     {
-      if constexpr (detail::has(R.Kind))
-        return kind_t<R.Kind>{};
+      if constexpr (detail::has(R.kind()))
+        return kind_t<R.kind()>{};
       else
-        return kind_expr{R.Derived, dimension_of(R.U)};
+        return kind_expr{R.derived(), dimension_of(R.unit())};
     }();
 
     constexpr quantity() = default;
@@ -492,7 +497,7 @@ namespace ins
     template <ins::reference R2, class V2>
       requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
-      : holder(Rep(detail::number_in_unit<R.U>(q))) {}
+      : holder(Rep(detail::number_in_unit<R.unit()>(q))) {}
     // Any other quantity names why it does not convert.
     template <ins::reference R2, class V2>
       requires detail::implicit_rescalable<R2, R, V2> && (!std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>)
@@ -500,13 +505,13 @@ namespace ins
                                                 "- store it with Q{q, round_half_away} or Q{q, clamp}, or check it "
                                                 "with exact_cast<Q>(q)");
     template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::dimension)
     quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another dimension");
     template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::pi)
     quantity(const quantity<R2, V2>&) = delete (INSIDE_UNITS_WHY_PI);
     template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::none && !detail::kind_converts(R2, R))
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::none && !detail::kind_converts(R2, R))
     quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another kind - read it as this kind with "
                                                 "kind_cast<K>(q)");
 
@@ -517,8 +522,8 @@ namespace ins
       requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in() const
     {
-      constexpr ins::reference to{R.Kind, R.KindOf, R.Derived, U};
-      return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Value));
+      constexpr ins::reference to{R.kind(), R.kind_of(), R.derived(), U};
+      return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.unit(), U>>(Value));
     }
     template <ins::unit_value U>
       requires detail::in_rescalable<R, U, Rep>
@@ -531,22 +536,22 @@ namespace ins
       requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto numerical_value_in(ins::unit_t<U>) const
     {
-      if constexpr (U == R.U)
+      if constexpr (U == R.unit())
         return Value;
       else
         return detail::value_of(in<U>());
     }
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::dimension)
     void in() const = delete ("units: in() - the unit has another dimension");
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::dimension)
     void in(ins::unit_t<U>) const = delete ("units: in() - the unit has another dimension");
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::pi)
     void in() const = delete (INSIDE_UNITS_WHY_PI);
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::pi)
     void in(ins::unit_t<U>) const = delete (INSIDE_UNITS_WHY_PI);
 
     // A dimensionless quantity is a number: its value in unit one (km/m is ×1000, % is ×1/100),
@@ -556,10 +561,10 @@ namespace ins
       requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const
     {
-      return T(detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
+      return T(detail::rescale<detail::conversion_factor<R.unit(), ins::unit_value{}>>(Value));
     }
     template <insidable T>
-      requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
+      requires(dimension_of(R.unit()) == dim_one && !detail::number_like_v<R>)
     operator T() const = delete ("units: an angle (a distinct kind) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value_in(si::radian), or value_cast it first");
 
@@ -569,7 +574,7 @@ namespace ins
       requires detail::number_like_v<R> && requires(const detail::number_t<R, Rep>& n) { ins::to<T, Round>(n); }
     [[nodiscard]] constexpr auto to() const
     {
-      return ins::to<T, Round>(detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
+      return ins::to<T, Round>(detail::rescale<detail::conversion_factor<R.unit(), ins::unit_value{}>>(Value));
     }
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
@@ -581,7 +586,7 @@ namespace ins
             && requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n += r; }
     constexpr quantity& operator+=(const quantity<R2, V2>& q)
     {
-      Value += detail::number_in_unit<R.U>(q);
+      Value += detail::number_in_unit<R.unit()>(q);
       return *this;
     }
     template <ins::reference R2, class V2>
@@ -589,7 +594,7 @@ namespace ins
             && requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n -= r; }
     constexpr quantity& operator-=(const quantity<R2, V2>& q)
     {
-      Value -= detail::number_in_unit<R.U>(q);
+      Value -= detail::number_in_unit<R.unit()>(q);
       return *this;
     }
     template <insidable V>
@@ -797,10 +802,9 @@ namespace ins
   // (π is never rounded; value_cast to a plain unit rounds it once, units/math.hpp). q / pi likewise.
   namespace detail
   {
-    consteval reference scaled_reference(reference r, const magnitude& m)
+    consteval reference scaled_reference(const reference& r, const magnitude& m)
     {
-      r.U = unit_scaled(r.U, m);
-      return r;
+      return r.with_unit(unit_scaled(r.unit(), m));
     }
   } // namespace detail
   template <magnitude M, reference R, class V>
@@ -837,13 +841,11 @@ namespace ins
     template <reference A, reference B>
     consteval reference sum_reference()
     {
-      static_assert(dimension_of(A.U) == dimension_of(B.U),
+      static_assert(dimension_of(A.unit()) == dimension_of(B.unit()),
                     "units: adding or comparing quantities of different dimensions");
       constexpr kind_result s{common_kind(A, B)};
       static_assert(s.Ok, "units: adding or comparing quantities of different kinds");
-      reference r{s.R};
-      r.U = common_unit(A.U, B.U);
-      return r;
+      return s.R.with_unit(common_unit(A.unit(), B.unit()));
     }
 
     // Why a sum or comparison of A and B is a unit error, if it is: other dimensions or kinds, or no common unit.
@@ -854,11 +856,12 @@ namespace ins
     template <reference A, reference B>
     consteval sum_error sum_error_of()
     {
-      if (dimension_of(A.U) != dimension_of(B.U))
-        return same_outside_blade(dimension_of(A.U), dimension_of(B.U)) ? sum_error::blades : sum_error::dimensions;
+      if (dimension_of(A.unit()) != dimension_of(B.unit()))
+        return same_outside_blade(dimension_of(A.unit()), dimension_of(B.unit())) ? sum_error::blades
+                                                                                   : sum_error::dimensions;
       if (!common_kind(A, B).Ok)
         return sum_error::kinds;
-      const magnitude ma{magnitude_of(A.U)}, mb{magnitude_of(B.U)};
+      const magnitude ma{magnitude_of(A.unit())}, mb{magnitude_of(B.unit())};
       if (ma.Pi != mb.Pi)
         return sum_error::pi;
       return sum_error::none;
@@ -874,12 +877,12 @@ namespace ins
     concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
     // A number and a quantity of a blade without a unit (3 + 4 i).
     template <reference A>
-    concept number_blade_sum = has_basis(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
+    concept number_blade_sum = has_basis(dimension_of(A.unit())) && same_outside_blade(dimension_of(A.unit()), dim_one);
 
     // Whether the two quantities have a common unit (no sum diagnostic) and both numbers rescale to it.
     template <reference A, class VA, reference B, class VB>
-    concept common_rescalable = (!sum_diagnosed<A, B>()) && rescalable<A.U, sum_reference<A, B>().U, VA>
-                             && rescalable<B.U, sum_reference<A, B>().U, VB>;
+    concept common_rescalable = (!sum_diagnosed<A, B>()) && rescalable<A.unit(), sum_reference<A, B>().unit(), VA>
+                             && rescalable<B.unit(), sum_reference<A, B>().unit(), VB>;
     // The number of a quantity of A on V, in A and B's common unit.
     template <reference A, class V, reference B>
     using common_number_t = rescaled_t<A, sum_reference<A, B>(), V>;
@@ -891,7 +894,7 @@ namespace ins
     template <reference A, reference B, int Sign>
     consteval reference product_reference()
     {
-      const unit_value u{unit_mul(A.U, B.U, Sign)};
+      const unit_value u{unit_mul(A.unit(), B.unit(), Sign)};
       return kind_product(A, B, Sign, u);
     }
 
@@ -899,7 +902,7 @@ namespace ins
     template <reference A, reference B, reference R, class V>
     constexpr auto in_common_unit(const quantity<R, V>& q)
     {
-      return number_in_unit<sum_reference<A, B>().U>(q);
+      return number_in_unit<sum_reference<A, B>().unit()>(q);
     }
   } // namespace detail
 
@@ -1200,7 +1203,7 @@ namespace ins
     template <reference R, const kind_def* To>
     consteval cast_error cast_error_of()
     {
-      if (!(To->Dim == dimension_of(R.U)))
+      if (!(To->Dim == dimension_of(R.unit())))
         return cast_error::dimension;
       return kind_casts(R, To) ? cast_error::none : cast_error::distinct;
     }
@@ -1210,7 +1213,7 @@ namespace ins
     requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::none)
   [[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q)
   {
-    return detail::quantity_access::make<quantity<reference{KindTag::value, false, {}, R.U}, V>>(
+    return detail::quantity_access::make<quantity<reference{KindTag::value, false, {}, R.unit()}, V>>(
       ins::detail::value_of(q));
   }
   template <auto Kind, reference R, class V>
@@ -1257,13 +1260,13 @@ namespace ins
   // value_cast<U, Rep2>(q): in unit U with representation Rep2, the exact value in U, stored by Rep2's constructor.
   // (A pi factor, degree ↔ radian, rounds once: units/math.hpp.)
   template <auto U, insidable Rep2, reference R, class V>
-    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value>
+    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.unit(), decltype(U)::value>
           && requires(const quantity<R, V>& q) { Rep2::try_make(ins::detail::value_of(q.in(U))); }
   [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
   {
     constexpr ins::unit_value u{decltype(U)::value};
-    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
-    constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
+    static_assert(dimension_of(u) == dimension_of(R.unit()), "units: value_cast - the unit has another dimension");
+    constexpr reference to{R.kind(), R.kind_of(), R.derived(), u};
     return detail::cast_number<quantity<to, Rep2>, Rep2>(ins::detail::value_of(q.in(U)));
   }
 
@@ -1272,18 +1275,18 @@ namespace ins
   namespace detail
   {
     template <class Q, reference R>
-    concept value_castable_to = quantity_like<Q> && dimension_of(Q::reference.U) == dimension_of(R.U)
-                             && kind_converts(R, Q::reference) && exact_rescale_v<R.U, Q::reference.U>;
+    concept value_castable_to = quantity_like<Q> && dimension_of(Q::reference.unit()) == dimension_of(R.unit())
+                             && kind_converts(R, Q::reference) && exact_rescale_v<R.unit(), Q::reference.unit()>;
   } // namespace detail
   template <class Q, reference R, class V>
     requires detail::value_castable_to<Q, R>
           && requires(const quantity<R, V>& q)
              {
-               Q::rep::try_make(ins::detail::value_of(q.template in<Q::reference.U>()));
+               Q::rep::try_make(ins::detail::value_of(q.template in<Q::reference.unit()>()));
              }
   [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
   {
-    return detail::cast_number<Q, typename Q::rep>(ins::detail::value_of(q.template in<Q::reference.U>()));
+    return detail::cast_number<Q, typename Q::rep>(ins::detail::value_of(q.template in<Q::reference.unit()>()));
   }
   // inside's algorithms on quantities:
   // the number goes through the inside function in the target's unit, so each still rounds once and checks once.
@@ -1342,15 +1345,15 @@ namespace ins
            requires implicit_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>(),
                                out_reference<Out>()>;
          }
-      && rescalable<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>().U,
-                    out_reference<Out>().U,
+      && rescalable<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>().unit(),
+                    out_reference<Out>().unit(),
                     typename as_quantity_t<A>::rep>;
     template <class Out, int E, class A>
     constexpr auto into_scaled(const A& a, const auto& b)
     {
       constexpr reference P{
         product_reference<as_quantity_t<A>::reference, std::remove_cvref_t<decltype(as_quantity(b))>::reference, E>()};
-      return rescale<conversion_factor<P.U, out_reference<Out>().U>>(ins::detail::value_of(as_quantity(a)));
+      return rescale<conversion_factor<P.unit(), out_reference<Out>().unit()>>(ins::detail::value_of(as_quantity(a)));
     }
     // The output of mul<C> / div<C> (E = ±1) of a and b:
     // C, a quantity type or a plain number for a dimensionless result;
@@ -1424,13 +1427,14 @@ namespace ins
   template <class Q, std::ranges::input_range Rng>
     requires quantity_like<Q> && quantity_like<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
           && detail::implicit_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference, Q::reference>
-          && detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.U,
-                                     Q::reference.U>
+          && detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.unit(),
+                                     Q::reference.unit()>
   [[nodiscard]] constexpr auto sum(Rng&& r)
   {
     return detail::lift_to<Q>(ins::sum<typename Q::rep>(
       std::forward<Rng>(r)
-      | std::views::transform([](const auto& q) { return ins::detail::value_of(q.template in<Q::reference.U>()); })));
+      | std::views::transform([](const auto& q)
+                              { return ins::detail::value_of(q.template in<Q::reference.unit()>()); })));
   }
 
   // conversion_overflows<Q>(v, u) / conversion_rounds / conversion_loses: v, a number in unit u, against Q's grid
@@ -1517,7 +1521,7 @@ namespace ins
     }
   } // namespace detail
   template <reference A, class VA, reference B, class VB, class... Args>
-    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.U)))
+    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.unit())))
           && requires(const detail::common_number_t<A, VA, B>& x,
                       const detail::common_number_t<B, VB, A>& y,
                       Args&&... args) { ins::divmod(x, y, std::forward<Args>(args)...); }

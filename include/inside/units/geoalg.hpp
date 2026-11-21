@@ -80,7 +80,7 @@ namespace ins
     consteval dimension part_dim()
     {
       if constexpr (quantity_like<P>)
-        return dimension_of(P::reference.U);
+        return dimension_of(P::reference.unit());
       else
         return dim_one;
     }
@@ -528,7 +528,7 @@ namespace ins
     constexpr auto part_in(const P& p)
     {
       if constexpr (quantity_like<P>)
-        return p.template in<unit_mul(U, blade_atoms(P::reference.U), 1)>();
+        return p.template in<unit_mul(U, blade_atoms(P::reference.unit()), 1)>();
       else
         return quantity_access::make<quantity<reference_of(unit_value{}), P>>(p).template in<U>();
     }
@@ -554,7 +554,7 @@ namespace ins
     consteval unit_value unit_of_part()
     {
       if constexpr (quantity_like<P>)
-        return P::reference.U;
+        return P::reference.unit();
       else
         return unit_value{};
     }

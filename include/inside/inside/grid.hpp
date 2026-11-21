@@ -106,9 +106,8 @@ namespace ins
     constexpr grid(ins::interval val, max_denominator d)
       : Lower{val.Lower}, Upper{val.Upper}, Notch{0}, MaxDenominator{check_bound(val, d.Value)} {}
 
-    // The limits as an interval, for the interval arithmetic.
-    // (A const value, so that assigning to it, which would change nothing, does not compile: set Lower and Upper.)
-    [[nodiscard]] constexpr const ins::interval interval() const { return {Lower, Upper}; }
+    // The limits as an interval, for the interval arithmetic (a value: set Lower and Upper to change them).
+    [[nodiscard]] constexpr ins::interval interval() const { return {Lower, Upper}; }
 
   private:
     // A bound is a positive integer at least the limits' denominators (each limit is a value).

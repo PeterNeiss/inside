@@ -20,6 +20,8 @@ namespace ins
     grid_number Upper;
 
     interval() = default;
+    // (Assigned as an lvalue only: an assignment to grid::interval() would change nothing.)
+    constexpr interval& operator=(const interval&) & = default;
 
     constexpr interval(grid_number lower, grid_number upper) : Lower{lower}, Upper{upper} {}
     constexpr interval(detail::plain_number auto lower, detail::plain_number auto upper)

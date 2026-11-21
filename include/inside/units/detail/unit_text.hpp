@@ -255,7 +255,7 @@ namespace ins::detail
     bool                            Scaled{false};
   };
 
-  // ---- What each unit says, for a quantity (unit R.U) or a point (and its origin O) ----
+  // ---- What each unit says, for a quantity (unit R.unit()) or a point (and its origin O) ----
 
   struct text_atom
   {
@@ -281,7 +281,7 @@ namespace ins::detail
           if (std::ranges::none_of(b, [&](const base_dimension_def* x) { return x->Name == d.Base[i]->Name; }))
             b.push_back(d.Base[i]);
       };
-      add(dimension_of(R.U));
+      add(dimension_of(R.unit()));
       for (std::size_t a = 0; a < S.Size; ++a)
         add(S.Data[a]->Dim);
       return b;
@@ -298,8 +298,8 @@ namespace ins::detail
             e[j] = d.Exp[i];
       return e;
     }
-    static constexpr std::array<std::int8_t, B> target_dim = exponents_of(dimension_of(R.U));
-    static constexpr magnitude                  target_mag = magnitude_of(R.U);
+    static constexpr std::array<std::int8_t, B> target_dim = exponents_of(dimension_of(R.unit()));
+    static constexpr magnitude                  target_mag = magnitude_of(R.unit());
 
     static consteval std::array<std::int8_t, S.Size * B> atom_dims_of()
     {
@@ -322,7 +322,7 @@ namespace ins::detail
     static consteval text_atom atom_of(const unit_def* u)
     {
       text_atom t{u->Utf8, u->ascii(), u->Mag.Ratio, u->Mag.Pi, false, false, grid_number{0}};
-      if (u->Dim == dimension_of(R.U))
+      if (u->Dim == dimension_of(R.unit()))
         t.KindOk = common_kind(reference_of(unit_value{*u}), R).Ok;
       if constexpr (Point)
         if (target_mag.Pi == 0 && same(absolute_of(u->Origin), absolute_of(O)))
@@ -612,7 +612,7 @@ namespace ins::detail
     if (unit.empty())
     {
       // Only a quantity of unit one prints no unit.
-      if constexpr (T::reference.U == unit_value{})
+      if constexpr (T::reference.unit() == unit_value{})
         return store_quantity_text<Q, F, Exact, 1>(number, wide_rational<1>{1, 1}, wide_rational<1>{0, 1});
       else
         return std::unexpected{number.empty() ? error::invalid_format : error::missing_unit};
@@ -632,10 +632,11 @@ namespace ins::detail
   consteval bool text_unit_converts()
   {
     using T = typename text_target<Q>::type;
-    if (!(dimension_of(U) == dimension_of(T::reference.U)) || magnitude_of(U).Pi != magnitude_of(T::reference.U).Pi)
+    if (!(dimension_of(U) == dimension_of(T::reference.unit()))
+        || magnitude_of(U).Pi != magnitude_of(T::reference.unit()).Pi)
       return false;
     if constexpr (text_target<Q>::point)
-      return magnitude_of(T::reference.U).Pi == 0 && same(absolute_of(origin_of_unit(U)), absolute_of(Q::origin));
+      return magnitude_of(T::reference.unit()).Pi == 0 && same(absolute_of(origin_of_unit(U)), absolute_of(Q::origin));
     else
       return true;
   }
@@ -645,7 +646,7 @@ namespace ins::detail
   constexpr std::expected<Q, error> parse_quantity_in(std::string_view number)
   {
     using T = typename text_target<Q>::type;
-    constexpr magnitude   from{magnitude_of(U)}, to{magnitude_of(T::reference.U)};
+    constexpr magnitude   from{magnitude_of(U)}, to{magnitude_of(T::reference.unit())};
     constexpr grid_number factor{from.Ratio / to.Ratio};
     constexpr grid_number shift{text_target<Q>::point
                                   ? (offset_of(origin_of_unit(U)) - offset_of(text_target<Q>::origin)) / to.Ratio

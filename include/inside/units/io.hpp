@@ -48,10 +48,10 @@ namespace ins
   }
   template <class Q, policy_flag F = detail::none, class Tag>
     requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
-         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, Tag)
   {
-    return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).U>(number);
+    return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).unit()>(number);
   }
   template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
     requires quantity_like<Q> || detail::is_quantity_point_v<Q>
@@ -68,10 +68,10 @@ namespace ins
   }
   template <class Q, class Tag>
     requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
-         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, Tag)
   {
-    return detail::parse_quantity_in<Q, detail::none, true, reference_of(Tag{}).U>(number);
+    return detail::parse_quantity_in<Q, detail::none, true, reference_of(Tag{}).unit()>(number);
   }
 
   // is >> e for e a std::expected of a quantity or a point: a number token, then a unit token unless the number's
@@ -95,7 +95,7 @@ namespace ins
       return stream;
     }
     std::string unit;
-    if constexpr (!(detail::text_target<Q>::type::reference.U == unit_value{}))
+    if constexpr (!(detail::text_target<Q>::type::reference.unit() == unit_value{}))
       if (!(stream >> unit))
       {
         e = std::unexpected{error::missing_unit};
@@ -212,10 +212,10 @@ namespace ins
   std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8)
   {
     std::string       s  {ins::to_string(ins::detail::value_of(q))};
-    const std::string sym{unit_symbol(R.U, enc)};
+    const std::string sym{unit_symbol(R.unit(), enc)};
     if (sym.empty())
       return s;
-    return s + (detail::space_before(R.U) ? " " : "") + sym;
+    return s + (detail::space_before(R.unit()) ? " " : "") + sym;
   }
 
   template <reference R, class V>
@@ -281,10 +281,10 @@ struct std::formatter<ins::quantity<R, V>> : std::formatter<V>
   {
     namespace u = ins;
     auto              out{std::formatter<V>::format(ins::detail::value_of(q), ctx)};
-    const std::string sym{u::unit_symbol(R.U)};
+    const std::string sym{u::unit_symbol(R.unit())};
     if (sym.empty())
       return out;
-    if constexpr (u::detail::space_before(R.U))
+    if constexpr (u::detail::space_before(R.unit()))
       *out++ = ' ';
     return std::ranges::copy(sym, out).out;
   }

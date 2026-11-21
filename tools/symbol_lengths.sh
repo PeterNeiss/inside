@@ -19,6 +19,7 @@ TYPES=(
   'inside 1/100, half away|inside<{{0, 1}, per<100>}, round_half_away>'
   'inside continuous|inside<{{0, 1}, max_denominator{1000}}>'
   'm|quantity<si::metre, inside<{0, 100}>>'
+  'km|quantity<si::kilo(si::metre), inside<{0, 100}>>'
   'km/h|quantity<si::kilo(si::metre) / si::hour, inside<{0, 100}>>'
   'J|quantity<si::joule, inside<{0, 100}>>'
   'N|quantity<si::newton, inside<{0, 100}>>'

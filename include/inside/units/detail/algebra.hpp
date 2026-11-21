@@ -526,6 +526,8 @@ namespace ins
   {
     kind_factor F[detail::max_kind_factors]{};
     std::int8_t Size{0};
+    // (Assigned as an lvalue only: an assignment to reference::derived() would change nothing.)
+    constexpr recipe& operator=(const recipe&) & = default;
     friend constexpr bool operator==(const recipe& a, const recipe& b)
     {
       return a.Size == b.Size && std::equal(a.F, a.F + a.Size, b.F);
@@ -900,6 +902,9 @@ namespace ins
 
     constexpr unit_value() = default;
     constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}}, Size{1} {}
+    constexpr explicit unit_value(unit_atom a) : Atoms{a}, Size{1} {} // (by value: see reference)
+    // (Assigned as an lvalue only: an assignment to reference::unit() would change nothing.)
+    constexpr unit_value& operator=(const unit_value&) & = default;
 
     friend constexpr bool operator==(const unit_value& a, const unit_value& b)
     {
@@ -1335,27 +1340,70 @@ namespace ins
   };
 
   // reference: what a quantity's number means, a unit plus a kind.
-  //   Kind named, KindOf false   isq::height[m]: exactly that kind
-  //   Kind named, KindOf true    a unit's kind (si::hertz): any kind of its kind
-  //   Kind none, Derived set     a product of kinds (width * height)
-  //   Kind none, Derived empty   any quantity of the unit's dimension (m/s)
-  struct reference
+  // Its parts (unit(), kind(), kind_of(), derived()):
+  //   kind named, kind_of false   isq::height[m]: exactly that kind
+  //   kind named, kind_of true    a unit's kind (si::hertz): any kind of its kind
+  //   kind none, derived set      a product of kinds (width * height)
+  //   kind none, derived empty    any quantity of the unit's dimension (m/s)
+  // The most common reference, one named unit (with a prefix too) and its own kind (si::metre, si::kilogram), holds
+  // that unit alone, so a quantity's type spells it short: reference{ref_form{unit_atom{(& si::metre_def), 0, 1}},
+  // false}. Any other holds its parts. Each reference has one form, so equal references are one template argument.
+  struct ref_parts
   {
     kind_ref   Kind{&no_kind};
-    bool       KindOf{false};
-    recipe     Derived{};
     unit_value U{};
+    bool       KindOf{false};
+    recipe     Derived{}; // (KindOf and Derived last: false and empty drop out of a mangled name)
+  };
 
-    constexpr reference() = default;
-    constexpr reference(kind_ref s, bool kind_of, recipe derived, unit_value u)
-      : Kind{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
+  union ref_form
+  {
+    unit_atom Atom; // a named unit and its own kind
+    ref_parts Parts;
+  };
+
+  struct reference
+  {
+    ref_form Form;
+    bool     HasParts{false}; // which member of Form holds the reference
+
+    constexpr reference() : reference{&no_kind, false, recipe{}, unit_value{}} {}
+    // (By value: a member copied from a const object through a reference keeps its const in GCC's template
+    // argument, which then differs from an equal one.)
+    constexpr reference(kind_ref k, bool any_of_kind, recipe derived, unit_value u)
+      : Form{atom_form(k, any_of_kind, derived, u) ? ref_form{.Atom = u.Atoms[0]}
+                                                   : ref_form{.Parts = {k, u, any_of_kind, derived}}},
+        HasParts{!atom_form(k, any_of_kind, derived, u)} {}
     // A unit tag as a reference: quantity<si::metre, …>.
     template <unit_value V>
-    constexpr reference(unit_t<V>) : Kind{kind_of(V)}, KindOf{detail::has(kind_of(V))}, U{V} {}
+    constexpr reference(unit_t<V>) : reference{ins::kind_of(V), detail::has(ins::kind_of(V)), recipe{}, V} {}
+
+    // The parts, whichever form holds them (values: a reference on another unit is with_unit's).
+    [[nodiscard]] constexpr unit_value unit() const { return HasParts ? Form.Parts.U : unit_value{Form.Atom}; }
+    [[nodiscard]] constexpr kind_ref   kind() const { return HasParts ? Form.Parts.Kind : Form.Atom.U->Kind; }
+    [[nodiscard]] constexpr bool       kind_of() const
+    {
+      return HasParts ? Form.Parts.KindOf : detail::has(Form.Atom.U->Kind);
+    }
+    [[nodiscard]] constexpr recipe derived() const { return HasParts ? Form.Parts.Derived : recipe{}; }
+    // The same kind facts on another unit.
+    [[nodiscard]] constexpr reference with_unit(const unit_value& u) const
+    {
+      return reference{kind(), kind_of(), derived(), u};
+    }
 
     friend constexpr bool operator==(const reference& a, const reference& b)
     {
-      return detail::same(a.Kind, b.Kind) && a.KindOf == b.KindOf && a.Derived == b.Derived && a.U == b.U;
+      return detail::same(a.kind(), b.kind()) && a.kind_of() == b.kind_of() && a.derived() == b.derived()
+          && a.unit() == b.unit();
+    }
+
+  private:
+    // Whether the parts are one named unit (detail::is_single_named) and its own kind.
+    static constexpr bool atom_form(kind_ref k, bool any_of_kind, const recipe& derived, const unit_value& u)
+    {
+      return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() && derived.Size == 0
+          && any_of_kind == detail::has(u.Atoms[0].U->Kind) && detail::same(k, u.Atoms[0].U->Kind);
     }
   };
 
@@ -1415,51 +1463,51 @@ namespace ins
   namespace detail
   {
     // Which kind facts a reference carries.
-    consteval bool is_generic(const reference& r) { return !has(r.Kind) && r.Derived.Size == 0; }
+    consteval bool is_generic(const reference& r) { return !has(r.kind()) && r.derived().Size == 0; }
 
     // Whether a reference's quantity may convert implicitly to a named kind `to`.
     consteval bool derived_converts_to(const reference& from, const kind_def* to)
     {
-      if (to->Distinct && !from.KindOf)
+      if (to->Distinct && !from.kind_of())
         return false;
       // Any quantity of the dimension names a kind root: m/s → speed, N·m → energy.
       if (!has(to->Parent) && !to->Distinct)
         return true;
-      if (from.KindOf)
-        return derived_converts_to(reference{&no_kind, false, from.Derived, from.U}, kind_root(to))
-               || recipe_matches(from.Derived, recipe_of(kind_root(to)));
-      return to->Recipe.Size > 0 && recipe_matches(from.Derived, to->Recipe);
+      if (from.kind_of())
+        return derived_converts_to(reference{&no_kind, false, from.derived(), from.unit()}, kind_root(to))
+               || recipe_matches(from.derived(), recipe_of(kind_root(to)));
+      return to->Recipe.Size > 0 && recipe_matches(from.derived(), to->Recipe);
     }
 
     // Implicit conversion between the kinds of two references of one dimension.
     consteval bool kind_converts(const reference& from, const reference& to)
     {
       if (is_generic(to)) // a dimension's quantity takes any of its kinds but an Distinct one
-        return !has(from.Kind) || !kind_root(from.Kind)->Distinct;
+        return !has(from.kind()) || !kind_root(from.kind())->Distinct;
       if (is_generic(from))
-        return !has(to.Kind) || !kind_root(to.Kind)->Distinct;
-      if (!has(to.Kind)) // a derived target: the source's recipe, by kind
+        return !has(to.kind()) || !kind_root(to.kind())->Distinct;
+      if (!has(to.kind())) // a derived target: the source's recipe, by kind
       {
-        const recipe have{has(from.Kind) ? recipe_of(from.Kind) : from.Derived};
-        return recipe_by_kind(have) == recipe_by_kind(to.Derived);
+        const recipe have{has(from.kind()) ? recipe_of(from.kind()) : from.derived()};
+        return recipe_by_kind(have) == recipe_by_kind(to.derived());
       }
-      if (!has(from.Kind))
-        return derived_converts_to(from, to.KindOf ? kind_root(to.Kind) : to.Kind);
-      if (to.KindOf || from.KindOf) // a unit's kind takes and gives any kind of that kind
-        return same(kind_root(from.Kind), kind_root(to.Kind));
-      return is_within_kind_ancestor(from.Kind, to.Kind);
+      if (!has(from.kind()))
+        return derived_converts_to(from, to.kind_of() ? kind_root(to.kind()) : to.kind());
+      if (to.kind_of() || from.kind_of()) // a unit's kind takes and gives any kind of that kind
+        return same(kind_root(from.kind()), kind_root(to.kind()));
+      return is_within_kind_ancestor(from.kind(), to.kind());
     }
 
     // Explicit conversion (kind_cast): any kind of the same dimension, but not across Distinct kinds.
     consteval bool kind_casts(const reference& from, const kind_def* to)
     {
-      const kind_ref  fk{has(from.Kind) ? kind_root(from.Kind) : &no_kind};
+      const kind_ref  fk{has(from.kind()) ? kind_root(from.kind()) : &no_kind};
       const kind_def* tk{kind_root(to)};
       if (same(fk, tk))
         return true;
       if (has(fk) && fk->Distinct)
         return false;
-      return !tk->Distinct || !has(from.Kind);
+      return !tk->Distinct || !has(from.kind());
     }
 
     // The kind part of a sum's reference; ok = false when the two cannot add.
@@ -1471,30 +1519,31 @@ namespace ins
 
     consteval kind_result common_kind(const reference& a, const reference& b)
     {
-      if (same(a.Kind, b.Kind) && a.KindOf == b.KindOf && a.Derived == b.Derived)
+      if (same(a.kind(), b.kind()) && a.kind_of() == b.kind_of() && a.derived() == b.derived())
         return {true, a};
       if (kind_converts(a, b) && !kind_converts(b, a))
         return {true, b};
       if (kind_converts(b, a) && !kind_converts(a, b))
         return {true, a};
-      if (has(a.Kind) && has(b.Kind))
+      if (has(a.kind()) && has(b.kind()))
       {
-        if (a.KindOf && b.KindOf && same(kind_root(a.Kind), kind_root(b.Kind)))
-          return {true, reference{kind_root(a.Kind), true, {}, a.U}};
-        if (a.KindOf != b.KindOf && same(kind_root(a.Kind), kind_root(b.Kind))) // kind_of + a named kind of it
-          return {true, a.KindOf ? b : a};
+        if (a.kind_of() && b.kind_of() && same(kind_root(a.kind()), kind_root(b.kind())))
+          return {true, reference{kind_root(a.kind()), true, {}, a.unit()}};
+        // A unit's kind and a named kind of it.
+        if (a.kind_of() != b.kind_of() && same(kind_root(a.kind()), kind_root(b.kind())))
+          return {true, a.kind_of() ? b : a};
         // The nearest common ancestor within one kind.
-        for (const kind_def* s = a.Kind;; s = s->Parent)
+        for (const kind_def* s = a.kind();; s = s->Parent)
         {
-          if (is_within_kind_ancestor(b.Kind, s))
-            return {true, reference{s, false, {}, a.U}};
+          if (is_within_kind_ancestor(b.kind(), s))
+            return {true, reference{s, false, {}, a.unit()}};
           if (s->Distinct || !has(s->Parent))
             break;
         }
         return {};
       }
       if (kind_converts(a, b) && kind_converts(b, a)) // e.g. two recipes of one kind
-        return {true, reference{&no_kind, false, {}, a.U}};
+        return {true, reference{&no_kind, false, {}, a.unit()}};
       return {};
     }
 
@@ -1504,22 +1553,22 @@ namespace ins
     {
       const auto empty = [](const reference& r) consteval
       {
-        return !has(r.Kind) && r.KindOf && r.Derived.Size == 0;
+        return !has(r.kind()) && r.kind_of() && r.derived().Size == 0;
       };
       if ((is_generic(a) && !empty(a)) || (is_generic(b) && !empty(b)))
         return reference{&no_kind, false, {}, u};
       const auto factors = [](const reference& r) consteval
       {
-        if (!has(r.Kind))
-          return r.Derived;
+        if (!has(r.kind()))
+          return r.derived();
         recipe f{};
-        recipe_add(f, r.KindOf ? kind_root(r.Kind) : r.Kind, 1);
+        recipe_add(f, r.kind_of() ? kind_root(r.kind()) : r.kind(), 1);
         return f;
       };
       recipe f{factors(a)};
       if (!recipe_merge(f, factors(b), sign) || f.Size == 0) // too many factors, or a pure ratio
         return reference{&no_kind, false, {}, u};
-      const bool kind_of{(a.KindOf || empty(a)) && (b.KindOf || empty(b))};
+      const bool kind_of{(a.kind_of() || empty(a)) && (b.kind_of() || empty(b))};
       if (f.Size == 1 && f.F[0].Exp == 1)
         return reference{f.F[0].Kind, kind_of, {}, u};
       return reference{&no_kind, kind_of, f, u};
@@ -1529,8 +1578,7 @@ namespace ins
     {
       if (is_generic(a) || n == 0)
         return reference{&no_kind, false, {}, u};
-      reference r{a};
-      r.U = u;
+      reference r{a.with_unit(u)};
       for (int i = 1; i < (n < 0 ? -n : n); ++i)
         r = kind_product(r, a, 1, u);
       return n < 0 ? kind_product(reference{&no_kind, true, {}, u}, r, -1, u) : r;

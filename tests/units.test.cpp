@@ -218,7 +218,7 @@ TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {
     static_assert(std::is_convertible_v<height_m, quantity<si::metre, inside<{0, 100}>>>);
     // width + height: their common ancestor, length.
     const auto s = width_m{1, isq::width[si::metre]} + h;
-    static_assert(std::remove_cvref_t<decltype(s)>::reference.Kind->Name == "length");
+    static_assert(std::remove_cvref_t<decltype(s)>::reference.kind()->Name == "length");
 }
 
 TEST(UnitsTest, derived_kinds_follow_their_recipes) {
@@ -651,7 +651,7 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
     const auto seven = both / gold_u;
     EXPECT_EQ(to_string(both + both), "12 loot·net");
     EXPECT_EQ(to_string(both / (just<2> * si::second)), "3 loot·net/s");
-    static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.U).Size == 7); // gold⁰ drops out
+    static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.unit()).Size == 7); // gold⁰ drops out
     static_assert(!can_add<decltype(both), decltype(seven)>);
 }
 
@@ -728,6 +728,30 @@ TEST(UnitsApiTest, named_definitions) {
     EXPECT_EQ(to_string(point<si::degree_Celsius>(inside<{-5, 5}>{1}).point_for(ice).quantity_from_origin()), "1 ℃");
     constexpr auto e1 = defined_by<named_e1_def>;
     static_assert(dimension_of((e1 * e1).value) == dim_one);
+}
+
+// A named unit (with a prefix too) and its own kind is held as that unit alone, any other reference as its parts.
+// Each reference has one form, however it is reached, so equal references are one type.
+TEST(UnitsApiTest, a_reference_has_one_form) {
+    using num = inside<{0, 100}>;
+    using m_t = quantity<si::metre, num>;
+    static_assert(!m_t::reference.HasParts && !quantity<si::kilogram, num>::reference.HasParts);
+    static_assert(!quantity<si::kilo(si::metre), num>::reference.HasParts);
+    static_assert(m_t::reference.kind()->Name == "length" && m_t::reference.kind_of());
+    static_assert(m_t::reference.unit() == unit_value{si::metre_def} && m_t::reference.derived().Size == 0);
+    // Reached by arithmetic: the same type.
+    static_assert(std::is_same_v<decltype(num{} * si::metre), m_t>);
+    static_assert(std::is_same_v<decltype(num{} * si::metre * si::second / si::second), m_t>);
+    static_assert(m_t::reference == reference{&isq::length_def, true, recipe{}, unit_value{si::metre_def}});
+    // Exactly a kind, a product of units, and a scaled unit: the parts.
+    static_assert(quantity<isq::length[si::metre], num>::reference.HasParts);
+    static_assert(!std::is_same_v<quantity<isq::length[si::metre], num>, m_t>);
+    static_assert(quantity<si::metre / si::second, num>::reference.HasParts);
+    static_assert(quantity<si::metre * si::metre, num>::reference.HasParts);
+    // A named unit without a kind: the unit alone too, and kind() is no_kind.
+    constexpr auto metre_second = unit<"m·s", si::metre * si::second>;
+    static_assert(!quantity<metre_second, num>::reference.HasParts);
+    static_assert(quantity<metre_second, num>::reference.kind()->Name.empty());
 }
 
 TEST(UnitsApiTest, adc_counts) {
@@ -989,7 +1013,7 @@ TEST(UnitsMathTest, roots_take_the_units_root) {
     using area_t = quantity<isq::area[square(si::metre)], inside<{{0, 100}, per<1000>}, round_half_away>>;
     const auto s = math::sqrt(area_t{2, isq::area[square(si::metre)]});
     static_assert(std::remove_cvref_t<decltype(s)>::unit == si::metre.value);
-    static_assert(std::remove_cvref_t<decltype(s)>::reference.Kind->Name == "length");
+    static_assert(std::remove_cvref_t<decltype(s)>::reference.kind()->Name == "length");
     EXPECT_EQ(rational{s.numerical_value_in(si::metre)}, rational(1414, 1000));
     const auto c =
         math::cbrt(quantity<cubic(si::metre), inside<{{0, 1000}, per<100>}, round_half_away>>{27, cubic(si::metre)});
@@ -1294,12 +1318,12 @@ TEST(PiTierTest, sin_and_cos_of_degrees_match_the_exact_engine) {
 template <auto U, class Out, class Q>
 void cast_sweep(auto unit) {
     static_assert(
-        ud::pi_scaled<ud::conversion_factor<Q::reference.U, decltype(U)::value>.Ratio, typename Q::rep>::ints,
+        ud::pi_scaled<ud::conversion_factor<Q::reference.unit(), decltype(U)::value>.Ratio, typename Q::rep>::ints,
         "the double tier applies");
     for (const auto v : values<typename Q::rep>) {
         const Q q = Q{v, unit};
         EXPECT_EQ((value_cast<U, Out>(q).numerical_value_in(U).raw()),
-                  (ud::pi_cast_exact<ud::conversion_factor<Q::reference.U, decltype(U)::value>, Out>(q).raw()))
+                  (ud::pi_cast_exact<ud::conversion_factor<Q::reference.unit(), decltype(U)::value>, Out>(q).raw()))
             << to_string(v);
     }
 }
