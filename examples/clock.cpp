@@ -52,8 +52,8 @@ struct clock24
   static clock24 from(const auto& since_midnight)
   {
     const day_seconds s{since_midnight, wrap};
-    const auto [h, rest] = divmod(s, just<1> * si::hour);
-    const auto [m, sec]  = divmod(rest, just<1> * si::minute);
+    const auto [h, rest] = divmod(s, si::hour);
+    const auto [m, sec]  = divmod(rest, si::minute);
     clock24 c;
     c.hours   = h * si::hour;
     c.minutes = m * si::minute;
@@ -121,7 +121,7 @@ int main()
   std::cout << "+20 s:      " << t << "\n";
   t.add_minutes(just<90> * si::minute);
   std::cout << "+90 min:    " << t << "\n";
-  t.add_seconds(just<1> * si::hour + just<30> * si::minute + just<30> * si::second); // 5430 s
+  t.add_seconds(si::hour + just<30> * si::minute + just<30> * si::second); // 5430 s
   std::cout << "+1 h 30 min 30 s: " << t << "\n";
   if (to_string(t.hours) != "3 h" || to_string(t.minutes) != "0 min" || to_string(t.seconds) != "35 s")
     return 1;
@@ -130,7 +130,7 @@ int main()
   {
     const auto end{just<23> * si::hour + just<59> * si::minute + just<45> * si::second
                    + just<20> * si::second + just<90> * si::minute + just<5430> * si::second}; // past midnight
-    if (t.seconds_since_midnight() != end % (just<1> * si::day))
+    if (t.seconds_since_midnight() != end % si::day)
       return 1;
     const clock24 back{clock24::from(t.seconds_since_midnight())};
     if (back.hours != t.hours || back.minutes != t.minutes || back.seconds != t.seconds)
@@ -156,7 +156,7 @@ int main()
   // Weeks and the day of the week by one divmod: a week's grid excludes 0, so it cannot fail.
   using day_number = quantity<si::day, inside<{0, 1'000'000}, round_toward_zero>>;
   // The quotient counts whole weeks: a number, times the week a duration again.
-  const auto [weeks, dow] = divmod(day_number{14003, si::day}, just<1> * week);
+  const auto [weeks, dow] = divmod(day_number{14003, si::day}, week);
   std::cout << "day 14003 is " << weeks * week << " + " << dow << " (0 d = the reference day's weekday)\n";
   if (weeks * week != just<2000> * week || dow != just<3> * si::day)
     return 1;
@@ -164,7 +164,7 @@ int main()
   // With 1970-01-01 (a Thursday, 4 days after a Sunday) as day 0: 2008-05-04, a Sunday.
   constexpr std::array<const char*, 7> names{
     "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-  const auto our{(just<4> * si::day + dow) % (just<1> * week)};
+  const auto our{(just<4> * si::day + dow) % week};
   std::cout << "1970-01-01 + 14003 d is a " << names[our.numerical_value_in(si::day)] << "\n";
   if (our != just<0> * si::day)
     return 1;

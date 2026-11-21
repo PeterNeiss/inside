@@ -64,9 +64,13 @@ own can be declared the same way with `defined_by`.
   `celsius{21.5, si::degree_Celsius}`, `celsius{v, si::degree_Celsius, clamp}`,
   so `std::vector<celsius> t = {{21.5, si::degree_Celsius}, …}`. A number in
   another unit does not compile (from which origin?).
-- A unit compares as one of itself, under the rule of two quantities:
-  `len > si::metre` is `len > 1 m`, `p == percent` is `p == 1 %`; a plain
-  inside or a point takes no unit. `-u` is the quantity −1 u.
+- A unit is one of itself, under the rule of two quantities: it compares
+  (`len > si::metre` is `len > 1 m`, `p == percent` is `p == 1 %`), adds and
+  subtracts (`jar += international::pound`, `just<3> + x * x`, `R + G`),
+  takes `%` and `divmod` (`divmod(t, si::hour)`), and multiplies a quantity,
+  a point or a multivector from the left (`e1 * v`), so `just<1> *` is
+  rarely needed. A plain inside takes no unit, a point compares with none,
+  and a quantity is still made as number * unit. `-u` is the quantity −1 u.
 - `defined_by<d>`: the unit, kind or origin that a named definition object
   defines. `unit_def`, `kind_def`, `origin_def` and `basis_vector_def` take
   the arguments of `unit<…>`, `kind<…>`, `origin<…>` and `basis_vector<…>`

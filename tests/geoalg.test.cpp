@@ -160,23 +160,23 @@ TEST(GeoalgTest, named_blades_convert_with_their_sign) {
     const auto q = just<5> * zx;
     EXPECT_EQ(to_string(q.in(x * z)), "-5 x·z");
     // A sum runs in the shorter spelling of one size.
-    EXPECT_EQ(to_string(q + just<1> * x * z), "4 zx");
+    EXPECT_EQ(to_string(q + x * z), "4 zx");
     EXPECT_TRUE(q == just<-5> * x * z);
-    EXPECT_TRUE(just<1> * x * y == just<1> * xy);
+    EXPECT_TRUE(just<1> * x * y == xy);
 }
 
 TEST(GeoalgTest, multivectors_sum_per_blade_in_order) {
-    const auto a = just<1> * y + just<2> * x + just<3>;
-    const auto b = just<3> + just<2> * x + just<1> * y;
+    const auto a = y + just<2> * x + just<3>;
+    const auto b = just<3> + just<2> * x + y;
     static_assert(std::same_as<decltype(a), decltype(b)>);
     EXPECT_EQ(to_string(a), "3 + 2 x + 1 y");
-    EXPECT_EQ(to_string(a - just<1> * xy), "3 + 2 x + 1 y - 1 xy");
+    EXPECT_EQ(to_string(a - xy), "3 + 2 x + 1 y - 1 xy");
     EXPECT_EQ(to_string(-a), "-3 - 2 x - 1 y");
     EXPECT_EQ(to_string(a + a), "6 + 4 x + 2 y");
     EXPECT_EQ(to_string(a - a), "0 + 0 x + 0 y");
     EXPECT_TRUE(a - a == multivector<>{});
     // The parts of one blade add in their common unit.
-    const auto d = just<1> * km * x + just<500> * si::metre * x + just<2> * si::metre * y;
+    const auto d = km * x + just<500> * si::metre * x + just<2> * si::metre * y;
     EXPECT_EQ(to_string(d), "1500 m·x + 2 m·y");
     // The zero is the identity of +.
     static_assert(std::same_as<decltype(multivector<>{} + a), std::remove_cvref_t<decltype(a)>>);
@@ -189,9 +189,9 @@ TEST(GeoalgTest, multivectors_sum_per_blade_in_order) {
 }
 
 TEST(GeoalgTest, the_algebra_holds) {
-    const auto a = just<1> + just<2> * x - just<1> * y + just<3> * xy + just<1, 2> * z;
-    const auto b = just<2> - just<1> * x + just<4> * zx + just<1> * x * y * z;
-    const auto c = just<-1> * y + just<2> * z + just<1> * xy;
+    const auto a = just<1> + just<2> * x - y + just<3> * xy + just<1, 2> * z;
+    const auto b = just<2> - x + just<4> * zx + x * y * z;
+    const auto c = just<-1> * y + just<2> * z + xy;
     EXPECT_TRUE((a * b) * c == a * (b * c));
     EXPECT_TRUE(a * (b + c) == a * b + a * c);
     EXPECT_TRUE(reverse(a * b) == reverse(b) * reverse(a));
@@ -201,7 +201,7 @@ TEST(GeoalgTest, the_algebra_holds) {
     EXPECT_TRUE(scalar_product(a, b) == grade<0>(a * b));
     EXPECT_TRUE(wedge(wedge(a, b), c) == wedge(a, wedge(b, c)));
 
-    const auto u = just<1> * x + just<2> * y + just<3> * z;
+    const auto u = x + just<2> * y + just<3> * z;
     const auto v = just<4> * x - just<5> * y + just<6> * z;
     const auto w = just<-7> * x + just<8> * y + just<9> * z;
     EXPECT_TRUE(u * v == left_contraction(u, v) + wedge(u, v));
@@ -222,7 +222,7 @@ TEST(GeoalgTest, the_algebra_holds) {
 }
 
 TEST(GeoalgTest, results_collapse) {
-    const auto u = just<1> * x + just<2> * y;
+    const auto u = x + just<2> * y;
     static_assert(std::same_as<decltype(grade<0>(u * u)), decltype(part(u * u, one))>);
     static_assert(insidable<decltype(grade<0>(u * u))>);
     static_assert(quantity_like<decltype(wedge(just<1> * x, just<1> * y))>);
@@ -233,7 +233,7 @@ TEST(GeoalgTest, results_collapse) {
     // The coefficient of a named blade has its spelling's sign.
     const auto t = just<3> * x * z + just<1>;
     EXPECT_TRUE(part(t, zx) == -3);
-    EXPECT_TRUE(part(just<2> * si::metre * x + just<1> * si::metre * y, x) == just<2> * si::metre);
+    EXPECT_TRUE(part(just<2> * si::metre * x + si::metre * y, x) == just<2> * si::metre);
 }
 
 TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
@@ -242,11 +242,11 @@ TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
     const auto q = just<1> + just<2> * xy + just<3> * zx + just<4> * y * z;
     EXPECT_TRUE(q * inverse(q) == one);
     EXPECT_TRUE(inverse(q) * q == one);
-    const auto u = just<1> * x + just<2> * y + just<2> * z;
+    const auto u = x + just<2> * y + just<2> * z;
     EXPECT_TRUE(u * inverse(u) == one);
     const auto dual_number = just<2> + just<3> * p0;
     EXPECT_TRUE(dual_number * inverse(dual_number) == one);
-    const auto split = just<2> + just<1> * x; // G(1,0): the conjugate
+    const auto split = just<2> + x; // G(1,0): the conjugate
     EXPECT_TRUE(split * inverse(split) == one);
     static_assert(can_invert<decltype(q)>);
     // An even element of G(1,3) with two commuting bivectors: x x~ has a
@@ -284,19 +284,19 @@ TEST(GeoalgTest, declared_multivectors_convert) {
 }
 
 TEST(GeoalgTest, duals_and_complements) {
-    const auto u = just<1> * x + just<2> * y + just<3> * z;
+    const auto u = x + just<2> * y + just<3> * z;
     const auto v = just<4> * x + just<5> * y + just<6> * z;
     EXPECT_EQ(to_string(dual(wedge(u, v), x * y * z)), "-3 x + 6 y - 3 z"); // u × v
     EXPECT_EQ(to_string(complement(u, x * y * z)), "3 x·y - 2 x·z + 1 y·z");
-    const auto a = just<1> + just<2> * x - just<1> * y + just<3> * xy + just<5> * x * y * z;
+    const auto a = just<1> + just<2> * x - y + just<3> * xy + just<5> * x * y * z;
     EXPECT_TRUE(uncomplement(complement(a, x * y * z), x * y * z) == a);
     // In the projective plane: the pseudoscalar is the identity of the join.
     const auto i = p0 * p1 * p2;
-    const auto b = just<1> * p0 + just<2> * p1 * p2 - just<3> * p0 * p2 + just<4>;
+    const auto b = p0 + just<2> * p1 * p2 - just<3> * p0 * p2 + just<4>;
     EXPECT_TRUE(regressive(just<1> * i, b, i) == b);
     // Two points of the plane (grade 2): their join is the line through them.
-    const auto pa   = just<1> * p1 * p2 + just<1> * p0 * p2; // (1, 0) up to the sign convention
-    const auto pb   = just<1> * p1 * p2 - just<2> * p0 * p1; // (0, 2)
+    const auto pa   = p1 * p2 + p0 * p2; // (1, 0) up to the sign convention
+    const auto pb   = p1 * p2 - just<2> * p0 * p1; // (0, 2)
     const auto line = regressive(pa, pb, i);
     static_assert(multivector_like<decltype(line)>);
     EXPECT_TRUE(regressive(line, pa, i) == 0);
@@ -309,7 +309,7 @@ TEST(GeoalgTest, inner_basis_vectors_multiply_by_the_dot_product) {
     static_assert(magnitude_of((b1 * b2).value) == magnitude{grid_number{0}});
     static_assert(std::same_as<decltype((just<1> * b1) * (just<1> * b2)), multivector<>>);
     // The product of two vectors is their dot product, a number.
-    const auto u = just<1> * b1 + just<2> * b2 + just<3> * b3;
+    const auto u = b1 + just<2> * b2 + just<3> * b3;
     const auto v = just<4> * b1 + just<5> * b2 + just<6> * b3;
     static_assert(insidable<decltype(u * v)>);
     EXPECT_TRUE(u * v == 32);
@@ -317,11 +317,11 @@ TEST(GeoalgTest, inner_basis_vectors_multiply_by_the_dot_product) {
     EXPECT_EQ(to_string(u, text_encoding::ascii), "1 b1 + 2 b2 + 3 b3");
     EXPECT_TRUE(part(u, b2) == 2);
     // With units: the dot product of two lengths is an area.
-    const auto w = just<2> * si::metre * b1 + just<1> * si::metre * b2;
+    const auto w = just<2> * si::metre * b1 + si::metre * b2;
     EXPECT_TRUE(w * w == just<5> * square(si::metre));
     EXPECT_TRUE((u * v) * w == just<64> * si::metre * b1 + just<32> * si::metre * b2);
     // Not associative: (b₁b₁)b₂ = b₂, but b₁(b₁b₂) = 0.
-    EXPECT_TRUE(((just<1> * b1) * (just<1> * b1)) * (just<1> * b2) == just<1> * b2);
+    EXPECT_TRUE(((just<1> * b1) * (just<1> * b1)) * (just<1> * b2) == b2);
     static_assert(std::same_as<decltype((just<1> * b1) * ((just<1> * b1) * (just<1> * b2))), multivector<>>);
     // The inverse is w / (w·w): w·w⁻¹ = 1.
     EXPECT_TRUE(w * inverse(w) == 1);
@@ -333,28 +333,28 @@ TEST(GeoalgTest, polynomial_variables_add_powers_and_commute) {
     static_assert(dimension_of((q * t).value) == dimension_of((t * q).value));
     static_assert(magnitude_of((q * t).value).is_one());
     // Sums across powers are polynomials, in order of degree.
-    const auto p = just<1> * t * t + just<2> * t + just<3>;
+    const auto p = t * t + just<2> * t + just<3>;
     static_assert(std::same_as<std::remove_const_t<decltype(p)>, decltype(just<3> + just<2> * t + just<1> * t * t)>);
     EXPECT_EQ(to_string(p), "3 + 2 t + 1 t²");
     EXPECT_TRUE(part(p, t * t) == 1);
     // Products multiply out; a cancelled term stays in the type.
-    const auto a = just<1> + just<1> * t;
-    EXPECT_TRUE(a * a == just<1> + just<2> * t + just<1> * t * t);
-    EXPECT_EQ(to_string(a * (just<1> - just<1> * t)), "1 + 0 t - 1 t²");
+    const auto a = just<1> + t;
+    EXPECT_TRUE(a * a == just<1> + just<2> * t + t * t);
+    EXPECT_EQ(to_string(a * (just<1> - t)), "1 + 0 t - 1 t²");
     // Two variables, by total degree, then the higher power of the first variable first.
-    const auto b = just<1> * t + just<1> * q;
-    EXPECT_TRUE(b * b == just<1> * q * q + just<2> * q * t + just<1> * t * t);
+    const auto b = t + q;
+    EXPECT_TRUE(b * b == q * q + just<2> * q * t + t * t);
     // Coefficients with units: one dimension but for the variables.
     const auto s = just<2> * si::metre + just<3> * si::metre * t;
     EXPECT_EQ(to_string(s), "2 m + 3 m·t");
     static_assert(!can_add<decltype(s), decltype(just<1> * si::second * t)>);
     EXPECT_TRUE(s.in(si::centi(si::metre)) == just<200> * si::centi(si::metre) + just<300> * si::centi(si::metre) * t);
     // Vector coefficients: a polynomial curve in G(3,0), (x + 2 t x)² = 1 + 4 t + 4 t².
-    const auto c = just<1> * x + just<2> * t * x;
+    const auto c = x + just<2> * t * x;
     EXPECT_TRUE(c * c == just<1> + just<4> * t + just<4> * t * t);
     EXPECT_TRUE(reverse(c) == c);
     // A negative power: 1 / t.
-    EXPECT_EQ(to_string(just<1> / (just<1> * t)), "1 t⁻¹");
+    EXPECT_EQ(to_string(just<1> / t), "1 t⁻¹");
 }
 
 TEST(GeoalgTest, text) {

@@ -15,8 +15,8 @@ all of it exact.
 inline constexpr auto x = basis_vector<"x", polynomial>;
 inline constexpr auto y = basis_vector<"y", polynomial>;
 
-auto p = just<3> + just<2> * x + just<1> * x * x;   // 3 + 2 x + 1 x²
-auto s = (just<1> + just<1> * x) * (just<1> - just<1> * x);   // 1 + 0 x - 1 x²
+auto p = just<3> + just<2> * x + x * x;   // 3 + 2 x + 1 x²
+auto s = (just<1> + x) * (just<1> - x);   // 1 + 0 x - 1 x²
 ```
 
 A term that cancels stays in the type with the value 0, as `0 x` above: the
@@ -34,7 +34,7 @@ type is fixed before the values are known.
 
 ```cpp
 auto v = substitute(p, x, just<2>);                      // 11
-auto c = substitute(p, x, just<1> * y + just<1>);        // 6 + 4 y + 1 y²
+auto c = substitute(p, x, y + just<1>);                  // 6 + 4 y + 1 y²
 auto F = antiderivative(p, x);                           // 3 x + 1 x² + 1/3 x³
 auto I = substitute(F, x, just<2>) - substitute(F, x, just<0>);   // 38/3
 auto [q, r] = divmod(p, just<1> + just<2> * x);          // 0.75 + 0.5 x, 2.25

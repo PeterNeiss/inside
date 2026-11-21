@@ -31,7 +31,7 @@ int main()
 {
   // 1. In G(3,0) with lengths: u v = u⌋v + u∧v,
   // a scalar in m² (the dot product) plus an oriented area.
-  const auto u{just<1> * m * e1 + just<2> * m * e2 + just<3> * m * e3};
+  const auto u{m * e1 + just<2> * m * e2 + just<3> * m * e3};
   const auto v{just<4> * m * e1 + just<5> * m * e2 + just<6> * m * e3};
   std::cout << "u v = " << u * v << '\n';
   std::cout << "u⌋v = " << left_contraction(u, v) << ", u∧v = " << wedge(u, v) << '\n';
@@ -41,7 +41,7 @@ int main()
 
   // 2. Reflection in the plane orthogonal to n = e₁ + e₂: -n v n⁻¹,
   // exact (n⁻¹ = n / 2; its grade 3 is 0).
-  const auto n{just<1> * e1 + just<1> * e2};
+  const auto n{e1 + e2};
   const auto w{grade<1>(-n * v * inverse(n))};
   std::cout << "n⁻¹ = " << inverse(n) << ", -n v n⁻¹ = " << w << '\n';
   if (to_string(w) != "-5 m·e₁ - 4 m·e₂ + 6 m·e₃")
@@ -58,7 +58,7 @@ int main()
   // 4. Dual numbers a + b ε: ε ε drops out of products,
   // so f(3 + ε) = f(3) + f′(3) ε, the exact derivative.
   static_assert(std::same_as<decltype(just<1> * eps * (just<1> * eps)), multivector<>>);
-  const auto fx{f(just<3> + just<1> * eps)};
+  const auto fx{f(just<3> + eps)};
   std::cout << "f(3 + ε) = " << fx << " (f(3) = 21, f′(3) = 25)\n";
   if (!(fx == just<21> + just<25> * eps))
     return 1;

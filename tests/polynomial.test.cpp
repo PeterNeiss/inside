@@ -25,7 +25,7 @@ using digit = inside<{0, 10}>;
 using small = inside<{0, 3}>;
 
 // 3 + 2 x + x²
-inline constexpr auto p = just<3> + just<2> * x + just<1> * x * x;
+inline constexpr auto p = just<3> + just<2> * x + x * x;
 } // namespace
 
 TEST(PolynomialTest, substitute_evaluates_by_horner) {
@@ -45,13 +45,13 @@ TEST(PolynomialTest, substitute_evaluates_by_horner) {
 
 TEST(PolynomialTest, substitute_composes) {
     // p(y + 1) = 6 + 4 y + y².
-    EXPECT_TRUE(substitute(p, x, just<1> * y + just<1>) == just<6> + just<4> * y + just<1> * y * y);
+    EXPECT_TRUE(substitute(p, x, y + just<1>) == just<6> + just<4> * y + y * y);
     // In two variables, the other stays: (x + y)² at x = 2 is 4 + 4 y + y².
-    const auto b = just<1> * x + just<1> * y;
-    EXPECT_TRUE(substitute(b * b, x, just<2>) == just<4> + just<4> * y + just<1> * y * y);
+    const auto b = x + y;
+    EXPECT_TRUE(substitute(b * b, x, just<2>) == just<4> + just<4> * y + y * y);
     // Vector coefficients: the curve e₁ + t e₂ at t = 3.
-    const auto c = just<1> * e1 + just<1> * x * e2;
-    EXPECT_TRUE(substitute(c, x, just<3>) == just<1> * e1 + just<3> * e2);
+    const auto c = e1 + x * e2;
+    EXPECT_TRUE(substitute(c, x, just<3>) == e1 + just<3> * e2);
 }
 
 TEST(PolynomialTest, derivative_and_antiderivative) {
@@ -68,19 +68,19 @@ TEST(PolynomialTest, derivative_and_antiderivative) {
     EXPECT_TRUE((substitute(F, x, just<2>) - substitute(F, x, just<0>) == just<38, 3>));
     // In a variable p does not have: 0, and p y.
     static_assert(std::same_as<decltype(derivative(p, y)), multivector<>>);
-    EXPECT_TRUE(antiderivative(p, y) == p * (just<1> * y));
+    EXPECT_TRUE(antiderivative(p, y) == p * y);
     // With units: the derivative of a position in m is in m (x is a number).
     const auto s = just<2> * si::metre + just<3> * si::metre * x;
     EXPECT_TRUE(derivative(s, x) == just<3> * si::metre);
     // Negative powers: (1/x)' = -1/x².
-    EXPECT_TRUE(derivative(just<1> / (just<1> * x), x) == just<-1> / (just<1> * x * x));
+    EXPECT_TRUE(derivative(just<1> / x, x) == just<-1> / (x * x));
 }
 
 TEST(PolynomialTest, divmod_divides_with_a_remainder) {
     // x² + 2 x + 3 = (x + 1)(x + 1) + 2.
-    const auto d       = just<1> + just<1> * x;
+    const auto d       = just<1> + x;
     const auto [q, r]  = divmod(p, d);
-    EXPECT_TRUE(q == just<1> + just<1> * x);
+    EXPECT_TRUE(q == just<1> + x);
     EXPECT_TRUE(r == 2);
     // A leading coefficient of 2: exact fractions.
     const auto d2      = just<1> + just<2> * x;
@@ -93,7 +93,7 @@ TEST(PolynomialTest, divmod_divides_with_a_remainder) {
     static_assert(std::same_as<std::remove_const_t<decltype(q3)>, multivector<>>);
     EXPECT_TRUE(r3 == d);
     // Single terms are polynomials too: 3 x² / x = 3 x.
-    const auto [q4, r4] = divmod(just<3> * x * x, just<1> * x);
+    const auto [q4, r4] = divmod(just<3> * x * x, x);
     EXPECT_TRUE(q4 == just<3> * x);
     static_assert(std::same_as<std::remove_const_t<decltype(r4)>, multivector<>>);
     // Coefficients with units: (6 m + 4 m x) / (2 + 2 x) = 2 m, remainder 2 m.

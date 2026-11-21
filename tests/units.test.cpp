@@ -111,15 +111,15 @@ TEST(UnitsTest, sums_run_in_the_common_unit) {
     static_assert(lower_of<C> == 0 && upper_of<C> == 20000);
     EXPECT_EQ(c.numerical_value_in(si::metre), 2500);
     // Neither divides the other: ft + m runs in 1/1250 m (= 1/381 ft).
-    const auto f = just<1> * international::foot + just<1> * si::metre;
+    const auto f = international::foot + si::metre;
     EXPECT_EQ(rational{f.numerical_value_in(si::metre)}, rational(1631, 1250)); // 1.3048 m
     EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(f)>::unit), "[1/381·ft]");
     // The smaller unit is scaled, whichever side it is on: one type.
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(f)>,
                                  decltype(just<1> * si::metre + just<1> * international::foot)>);
     // Comparisons across units.
-    EXPECT_TRUE(just<1> * km == just<1000> * si::metre);
-    EXPECT_TRUE(just<999> * si::metre < just<1> * km);
+    EXPECT_TRUE(km == just<1000> * si::metre);
+    EXPECT_TRUE(just<999> * si::metre < km);
 }
 
 TEST(UnitsTest, products_and_quotients) {
@@ -184,7 +184,7 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
 TEST(UnitsTest, compound_assignment_and_casts) {
     quantity<si::metre, inside<{0, 10000}>> d{100, si::metre};
     error                                   ec{}; // (a sum the grids cannot prove: reported)
-    d.on_error(ec) += just<1> * km;
+    d.on_error(ec) += km;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1100);
     d.on_error(ec) -= just<100> * si::metre;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1000);
@@ -195,7 +195,7 @@ TEST(UnitsTest, compound_assignment_and_casts) {
     // In another unit: 1000 m is 1 km; 1001 m rounds onto whole km by F, and
     // is past a {0, 1} km grid.
     EXPECT_EQ((value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value_in(km)), 1);
-    d.on_error(ec) += just<1> * si::metre;
+    d.on_error(ec) += si::metre;
     EXPECT_EQ((value_cast<km, inside<{0, 5}, round_half_away>>(d)->numerical_value_in(km)), 1);
     EXPECT_EQ((value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), error::overflow);
 }
@@ -440,6 +440,8 @@ inline constexpr auto token_u     = unit<"tok", token_kind>;
 template <class A, class B>
 concept can_add = requires(const A& a, const B& b) { a + b; };
 template <class A, class B>
+concept can_times = requires(const A& a, const B& b) { a * b; };
+template <class A, class B>
 consteval bool addable_units() {
     return can_add<A, B>;
 }
@@ -523,6 +525,30 @@ TEST(UnitsApiTest, quantities_compare_only_with_compatible_quantities) {
     EXPECT_TRUE(metres(1, si::metre) == si::metre && si::metre == metres(1, si::metre));
     EXPECT_TRUE(-si::metre < metres(0, si::metre) && kilometres(1, km) > si::metre);
     static_assert(-si::metre == just<-1> * si::metre);
+}
+
+TEST(UnitsApiTest, a_unit_is_one_of_itself_in_arithmetic) {
+    using clamped_seconds = quantity<si::second, inside<{0, 100000}, clamp>>;
+    using plain           = inside<{0, 10}>;
+    const auto len        = just<3> * si::metre;
+    EXPECT_TRUE(len + si::metre == just<4> * si::metre && si::metre + len == just<4> * si::metre);
+    EXPECT_TRUE(len - si::metre == just<2> * si::metre && si::metre - len == just<-2> * si::metre);
+    EXPECT_TRUE(si::metre + si::metre == just<2> * si::metre && km - si::metre == just<999> * si::metre);
+    EXPECT_TRUE(si::metre * (just<2> * si::second) == just<2> * si::metre * si::second);
+    clamped_seconds t{100, si::second};
+    t += si::minute;
+    t -= si::second;
+    EXPECT_TRUE(t == just<159> * si::second);
+    const auto [h, rest] = divmod(just<5430> * si::second, si::hour);
+    EXPECT_TRUE(h == 1 && rest == just<1830> * si::second);
+    EXPECT_TRUE(just<5430> * si::second % si::hour == just<1830> * si::second);
+    // A point moves by a unit.
+    EXPECT_TRUE(point<si::kelvin>(just<5>) + si::kelvin == point<si::kelvin>(just<6>));
+    // The rule of two quantities holds: no other dimension, no plain number; a quantity is still made as
+    // number * unit.
+    static_assert(!can_add<decltype(len), decltype(si::second)> && !can_subtract<decltype(si::second), decltype(len)>);
+    static_assert(!can_add<plain, decltype(si::metre)> && !can_add<decltype(si::metre), decltype(si::second)>);
+    static_assert(!can_scale_raw<decltype(si::metre)> && !can_times<decltype(si::metre), decltype(just<2>)>);
 }
 
 TEST(UnitsApiTest, tags_for_your_own_entries) {
@@ -621,7 +647,7 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
     static_assert(dimension_of((loot * net / si::second).value) == eight / base_dimension<"time">);
 
     const auto both  = (just<2> * loot) * (just<3> * net);
-    const auto seven = both / (just<1> * gold_u);
+    const auto seven = both / gold_u;
     EXPECT_EQ(to_string(both + both), "12 loot·net");
     EXPECT_EQ(to_string(both / (just<2> * si::second)), "3 loot·net/s");
     static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.U).Size == 7); // gold⁰ drops out
@@ -696,7 +722,7 @@ TEST(UnitsApiTest, named_definitions) {
     // Prefixes, conversions, products, points and text, as for any unit.
     EXPECT_EQ(to_string(quantity<si::kilo(named_fathom), I>{2, si::kilo(named_fathom)}), "2 kftm");
     EXPECT_EQ(to_string(b.in(si::metre)), "21.9456 m");
-    EXPECT_EQ(to_string(quantity<named_cts, I>{7, named_cts} / (just<1> * si::second)), "7 cts/s");
+    EXPECT_EQ(to_string(quantity<named_cts, I>{7, named_cts} / si::second), "7 cts/s");
     constexpr auto ice = defined_by<named_ice_def>;
     EXPECT_EQ(to_string(point<si::degree_Celsius>(inside<{-5, 5}>{1}).point_for(ice).quantity_from_origin()), "1 ℃");
     constexpr auto e1 = defined_by<named_e1_def>;
@@ -892,7 +918,7 @@ TEST(UnitsAlgorithmsTest, trig_of_a_pi_angle_with_a_factor_past_64_bits) {
 
 TEST(UnitsAlgorithmsTest, divmod_in_the_common_unit_and_percent) {
     const quantity<si::second, inside<{0, 86399}>> s{3725, si::second};
-    const auto [h, rest] = divmod(s, just<1> * si::hour);
+    const auto [h, rest] = divmod(s, si::hour);
     EXPECT_EQ(h, 1);
     EXPECT_EQ(to_string(rest), "125 s");
     const auto [q, r] =
@@ -916,10 +942,10 @@ TEST(UnitsAlgorithmsTest, math_of_a_dimensionless_quantity_and_lifted_chains) {
     const auto d = math::log10<decade_t>(just<1> * si::metre / (just<1> * si::metre));
     EXPECT_EQ(d, 0);
     // An expected quantity chains through +, *, as an expected inside does.
-    const auto chained = just<1> * si::volt / inside<{0, 4}>{0} * just<2> + just<1> * si::volt;
+    const auto chained = just<1> * si::volt / inside<{0, 4}>{0} * just<2> + si::volt;
     ASSERT_FALSE(chained);
     EXPECT_EQ(chained.error(), error::division_by_zero);
-    const auto fine = just<1> * si::volt / inside<{0, 4}>{2} * just<2> + just<1> * si::volt;
+    const auto fine = just<1> * si::volt / inside<{0, 4}>{2} * just<2> + si::volt;
     ASSERT_TRUE(fine);
     EXPECT_EQ(to_string(*fine), "2 V");
 }

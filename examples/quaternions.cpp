@@ -49,7 +49,7 @@ int main()
 
   // 3. q turns a vector in metres a third of a turn about (1, 1, 1): e₁ → e₃ → e₂ → e₁, exactly,
   // and the grade-3 part of q v q⁻¹ is 0.
-  const auto v{just<1> * si::metre * e1 + just<2> * si::metre * e2 + just<3> * si::metre * e3};
+  const auto v{si::metre * e1 + just<2> * si::metre * e2 + just<3> * si::metre * e3};
   const auto r{q * v * inverse(q)};
   std::cout << "q⁻¹ = " << inverse(q) << '\n';
   std::cout << "v = " << v << ", q v q⁻¹ = " << grade<1>(r) << " (and " << part(r, e1 * e2 * e3) << " e₁e₂e₃)\n";

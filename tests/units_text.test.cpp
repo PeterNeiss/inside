@@ -75,7 +75,7 @@ TEST(UnitsTextTest, to_string_reads_back) {
     check(quantity_point<international::degree_Fahrenheit, international::zeroth_degree_Fahrenheit,
                          inside<{0, 600}>>{350, international::degree_Fahrenheit});
     // The common unit of a sum: a scaled unit, [1/381 ft].
-    check(just<1> * international::foot + just<1> * si::metre);
+    check(international::foot + si::metre);
     // Unit one prints no unit, and reads a bare number.
     check(ones{2.25, one});
 }

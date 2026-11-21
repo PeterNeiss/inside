@@ -55,22 +55,22 @@ int main()
 {
   // 1. Lights add as vectors (Grassmann's law of colour mixing), and each channel's range is proved:
   // two colours sum to [0, 2] per channel, and the store into a colour clamps the sum to the gamut.
-  const colour orange{just<1> * R + just<1, 2> * G};
-  const colour sky   {just<1, 5> * R + just<1, 2> * G + just<1> * B};
+  const colour orange{R + just<1, 2> * G};
+  const colour sky   {just<1, 5> * R + just<1, 2> * G + B};
   const auto   sum   {orange + sky};
   static_assert(upper_of<decltype(part(sum, R))> == grid_number{2});
   const colour shown {sum, clamp};
   std::cout << "orange + sky = " << sum << ", shown " << shown << '\n';
-  if (!(shown == just<1> * R + just<1> * G + just<1> * B))
+  if (!(shown == R + G + B))
     return 1;
 
   // 2. The product of two colours is their dot product: c·R is c's red channel, c·ry its luminance.
   // RGB to XYZ is three dot products; white goes to D65's white point, exactly.
-  const colour white{just<1> * R + just<1> * G + just<1> * B};
+  const colour white{R + G + B};
   std::cout << "orange·R = " << orange * R << ", luminance " << orange * ry << ", XYZ(white) = " << to_xyz(white)
             << '\n';
   if (!(orange * R == 1) || !(orange * ry == 0.5702_ins)
-      || !(to_xyz(white) == 0.9505_ins * X + just<1> * Y + 1.089_ins * Z))
+      || !(to_xyz(white) == 0.9505_ins * X + Y + 1.089_ins * Z))
     return 1;
 
   // 3. A filter passes a share of each channel: a diagonal map, ρ_R (c·R) R + ρ_G (c·G) G + ρ_B (c·B) B,
@@ -86,7 +86,7 @@ int main()
   const auto   w     {grade<1>(rotor * v * reverse(rotor))};
   const colour turned{part(w, e1) * R + part(w, e2) * G + part(w, e3) * B, clamp};
   std::cout << "orange turned 120° = " << turned << '\n';
-  if (!(turned == just<1> * G + just<1, 2> * B))
+  if (!(turned == G + just<1, 2> * B))
     return 1;
 
   // Any angle: the chroma a + b i of an opponent space (Lab) turns by e^(iθ), i·i = -1. A quarter turn is i,

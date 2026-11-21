@@ -298,7 +298,7 @@ the numbers, so it still rounds once and checks once.
 
 ```cpp
 quantity<si::second, inside<{0, 86399}>> t{3725, si::second};
-auto [h, rest] = divmod(t, just<1> * si::hour);   // 1, 125 s: the remainder keeps its unit
+auto [h, rest] = divmod(t, si::hour);             // 1, 125 s: the remainder keeps its unit
 ```
 
 An `expected` quantity, from a division by a grid that holds 0, chains

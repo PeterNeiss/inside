@@ -959,6 +959,79 @@ namespace ins
     return just<-1> * t;
   }
 
+  // The same in arithmetic: x + u is x + 1 u, and so are x - u, u ± x, u ± v, x += u, x -= u, x % u, divmod(x, u)
+  // and u * x for a quantity, a point or a multivector x (a number times a unit stays the way to make a quantity):
+  // jar += international::pound, divmod(t, si::hour), just<3> + x * x, e1 * v. An expected runs its own operators,
+  // which apply these to its value.
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t) { x + just<1> * t; }
+  [[nodiscard]] constexpr auto operator+(const X& x, Tag t)
+  {
+    return x + just<1> * t;
+  }
+  template <class Tag, class X>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(Tag t, const X& x) { just<1> * t + x; }
+  [[nodiscard]] constexpr auto operator+(Tag t, const X& x)
+  {
+    return just<1> * t + x;
+  }
+  template <class A, class B>
+    requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
+          && requires(A a, B b) { just<1> * a + just<1> * b; }
+  [[nodiscard]] constexpr auto operator+(A a, B b)
+  {
+    return just<1> * a + just<1> * b;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t) { x - just<1> * t; }
+  [[nodiscard]] constexpr auto operator-(const X& x, Tag t)
+  {
+    return x - just<1> * t;
+  }
+  template <class Tag, class X>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(Tag t, const X& x) { just<1> * t - x; }
+  [[nodiscard]] constexpr auto operator-(Tag t, const X& x)
+  {
+    return just<1> * t - x;
+  }
+  template <class A, class B>
+    requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
+          && requires(A a, B b) { just<1> * a - just<1> * b; }
+  [[nodiscard]] constexpr auto operator-(A a, B b)
+  {
+    return just<1> * a - just<1> * b;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) += just<1> * t; }
+  constexpr decltype(auto) operator+=(X&& x, Tag t) // an action ref too: q.on_wrap(f) += u
+  {
+    return std::forward<X>(x) += just<1> * t;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) -= just<1> * t; }
+  constexpr decltype(auto) operator-=(X&& x, Tag t)
+  {
+    return std::forward<X>(x) -= just<1> * t;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t) { x % (just<1> * t); }
+  [[nodiscard]] constexpr auto operator%(const X& x, Tag t)
+  {
+    return x % (just<1> * t);
+  }
+  template <class Tag, class X>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!insidable<X>)
+          && (!detail::is_expected_v<X>) && requires(Tag t, const X& x) { just<1> * t * x; }
+  [[nodiscard]] constexpr auto operator*(Tag t, const X& x)
+  {
+    return just<1> * t * x;
+  }
+
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
   // the number is inside's min, max or midpoint (exact).
   template <reference A, class VA, reference B, class VB>
@@ -1452,6 +1525,14 @@ namespace ins
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::quantity_divmod<C>(
       ins::divmod(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
+  }
+  // By a unit, one of itself: divmod(t, si::hour).
+  template <class X, class Tag, class... Args>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t, Args&&... args) { divmod(x, just<1> * t, std::forward<Args>(args)...); }
+  [[nodiscard]] constexpr auto divmod(const X& x, Tag t, Args&&... args)
+  {
+    return divmod(x, just<1> * t, std::forward<Args>(args)...);
   }
 
   // add / sub / mod(a, b, args...) of two quantities of one kind, in their common unit as + takes it,

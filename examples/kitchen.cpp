@@ -19,7 +19,7 @@ namespace
 int main()
 {
   // 1. Flour 1 lb + 200 g, butter 4 oz, milk 0.5 L + 150 mL: each sum runs in the common unit, exactly.
-  const auto flour {just<1> * international::pound + just<200> * si::gram};
+  const auto flour {international::pound + just<200> * si::gram};
   const auto butter{just<4> * international::ounce};
   const auto milk  {just<1, 2> * si::litre + just<150> * ml};
   std::cout << "flour  " << flour.in(si::gram) << ", butter " << butter.in(si::gram) << ", milk " << milk << '\n';
@@ -68,9 +68,9 @@ int main()
   // a pound fits (rounded to the gram), and its clamp policy stops the second pound at 2 kg.
   using jar_kilograms = quantity<si::kilogram, inside<{{0, 2}, per<1000>}, clamp | round_half_away>>;
   jar_kilograms jar{just<3, 2> * si::kilogram};
-  jar += just<1> * international::pound;
+  jar += international::pound;
   const auto after_one{to_string(jar)};
-  jar += just<1> * international::pound;
+  jar += international::pound;
   std::cout << "jar    " << after_one << ", then " << jar << '\n';
   if (after_one != "1.954 kg" || to_string(jar) != "2.000 kg")
     return 1;

@@ -62,15 +62,17 @@ and then add: km + m runs in metres, EUR + ct in cents. A valid mixed-unit sum
 cannot overflow, and its result is exact. `*` and `/` multiply the units:
 metres over minutes is m/min, and `.in(km / si::hour)` turns it into km/h.
 
-A quantity compares only with a quantity it could be added to, and a unit
-compares as one of itself (`len > si::metre` is `len > 1 m`, `-si::metre` is
-−1 m). Only a plain inside compares with a number: not even a percentage or a
-quantity of unit `one` takes `== 5`; write `p == just<5> * percent`.
+A quantity compares only with a quantity it could be added to. A unit is one
+of itself, in comparisons and in arithmetic: `len > si::metre` is
+`len > 1 m`, `jar += international::pound` adds a pound, `divmod(t, si::hour)`
+counts hours, and `-si::metre` is −1 m. Only a plain inside compares with a
+number: not even a percentage or a quantity of unit `one` takes `== 5`; write
+`p == just<5> * percent`.
 
 Quantities of different dimensions never mix:
 
 ```cpp
-// total + just<1> * si::second;   // does not compile: a length and a duration
+// total + si::second;             // does not compile: a length and a duration
 // total > 1000;                   // does not compile: a length is no number
 ```
 
@@ -161,7 +163,7 @@ inline constexpr auto         e2 = basis_vector<"e₂", geometric<+1>>;
 inline constexpr auto         i = unit<"i", e1 * e2>;
 
 auto z = (just<3> + just<4> * i) * (just<1> - just<2> * i);      // 11 - 2 i
-auto v = (just<2> * si::metre * e1 + just<1> * si::metre * e2) * i;   // -1 m·e₁ + 2 m·e₂
+auto v = (just<2> * si::metre * e1 + si::metre * e2) * i;        // -1 m·e₁ + 2 m·e₂
 ```
 
 Two other rules share the machinery: `basis_vector<"R", inner>` is a vector

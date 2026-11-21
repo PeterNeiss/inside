@@ -46,7 +46,7 @@ inline constexpr auto         x = basis_vector<"x", polynomial>;   // x·x = x²
 
 auto c = just<4, 5> * R + just<1, 2> * G;
 auto l = c * (just<1, 5> * R + just<7, 10> * G);   // 0.51: the dot product, a number
-auto p = just<3> + just<2> * x + just<1> * x * x;  // 3 + 2 x + 1 x²
+auto p = just<3> + just<2> * x + x * x;            // 3 + 2 x + 1 x²
 ```
 
 | Rule | v·v | two different ones | exponent |
@@ -112,7 +112,7 @@ A sum of quantities of different blades is a `multivector`:
 
 ```cpp
 auto z = just<3> + just<4> * i;                                    // 3 + 4 i
-auto v = just<2> * si::metre * e1 + just<1> * si::metre * e2;      // 2 m·e₁ + 1 m·e₂
+auto v = just<2> * si::metre * e1 + si::metre * e2;                // 2 m·e₁ + 1 m·e₂
 ```
 
 - Its **parts** are insides (the scalar part, when it is a plain number) and
