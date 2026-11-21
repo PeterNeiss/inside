@@ -4,7 +4,7 @@
 #
 #   cmake -D INSIDE_AMALGAMATE_INCLUDE_DIR=<repo>/include \
 #         -D INSIDE_AMALGAMATE_OUTPUT=<repo>/single_include/inside/inside.hpp \
-#         -D INSIDE_AMALGAMATE_VERSION=0.10.0 \
+#         -D INSIDE_AMALGAMATE_VERSION=0.11.0 \
 #         [-D INSIDE_AMALGAMATE_COMPARE=<committed header>] \
 #         -P tools/amalgamate.cmake
 #

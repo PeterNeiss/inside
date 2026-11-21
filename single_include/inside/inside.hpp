@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //---------------------------------------------------------------------------
-// inside 0.10.0 — single-header amalgamation
+// inside 0.11.0 — single-header amalgamation
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
