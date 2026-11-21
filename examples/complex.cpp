@@ -15,14 +15,14 @@ using namespace ins;
 
 namespace
 {
-  inline constexpr auto e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>; // e₁e₁ = 1
-  inline constexpr auto e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>; // e₂e₂ = 1
+  inline constexpr auto e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>; // e₁e₁ = 1
+  inline constexpr auto e2 = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>; // e₂e₂ = 1
   inline constexpr auto i  = unit<"i", e1 * e2>;
 } // namespace
 
 int main()
 {
-  static_assert(just<1> * i * (just<1> * i) == -one);
+  static_assert(i * i == -one);
 
   // 1. (3 + 4i)(1 - 2i) = 11 - 2i, the conjugate is the reverse, |z|² = z z̃ = 25,
   // and z / w is exact.
@@ -36,11 +36,11 @@ int main()
 
   // 2. A vector of the plane in metres: v·i turns it by +90°,
   // and e₁·v is v as a complex number, in metres.
-  const auto v{just<2> * si::metre * e1 + just<1> * si::metre * e2};
-  std::cout << "v = " << v << ", v i = " << v * i << ", e₁ v = " << just<1> * e1 * v << '\n';
-  if (to_string(v * i) != "-1 m·e₁ + 2 m·e₂" || !(part(just<1> * e1 * v, i) == just<1> * si::metre))
+  const auto v{just<2> * si::metre * e1 + si::metre * e2};
+  std::cout << "v = " << v << ", v i = " << v * i << ", e₁ v = " << e1 * v << '\n';
+  if (to_string(v * i) != "-1 m·e₁ + 2 m·e₂" || !(part(e1 * v, i) == si::metre))
     return 1;
-  const auto one_plus_i{just<1> + just<1> * i};
+  const auto one_plus_i{just<1> + i};
   const auto fourth    {one_plus_i * one_plus_i * one_plus_i * one_plus_i};
   std::cout << "(1 + i)⁴ = " << fourth << '\n';
   if (!(fourth == just<-4> * one))
@@ -49,8 +49,8 @@ int main()
   // 3. Gaussian integers with parts in [-10, 10]:
   // a product's real part ac - bd is in [-200, 200], by its type.
   using gaussian = multivector<inside<{-10, 10}>, quantity<i, inside<{-10, 10}>>>;
-  const gaussian a{just<2> + just<1> * i};
-  const gaussian b{just<2> - just<1> * i};
+  const gaussian a{just<2> + i};
+  const gaussian b{just<2> - i};
   const auto     p{a * b};
   static_assert(std::same_as<decltype(part(p, one)), inside<{-200, 200}>>);
   std::cout << "(" << a << ")(" << b << ") = " << p << '\n';

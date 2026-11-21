@@ -80,7 +80,7 @@ int main()
   std::cout << "lossy (off-notch): " << lossy << "\n";
   std::cout << "bin capacity (numeric_limits<bar_height>::max()): " << std::numeric_limits<bar_height>::max()
             << "\n";
-  if (rejected != just<2> * smp || lossy != just<7> * smp || bins[9] != just<1> * smp)
+  if (rejected != just<2> * smp || lossy != just<7> * smp || bins[9] != smp)
     return 1;
   return 0;
 }

@@ -28,19 +28,19 @@ using ins::math::driver;
 
 namespace {
 // G(3,0)
-inline constexpr auto e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
-inline constexpr auto e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>;
-inline constexpr auto e3 = basis_vector<"e₃", +1, {.ascii = "e3"}>;
+inline constexpr auto e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>;
+inline constexpr auto e2 = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>;
+inline constexpr auto e3 = basis_vector<"e₃", geometric<+1>, {.ascii = "e3"}>;
 // -(e₁e₃)
 inline constexpr auto i = unit<"i", e1 * e2>;
 inline constexpr auto j = unit<"j", e3 * e1>;
 inline constexpr auto k = unit<"k", e2 * e3>;
 // A null vector, and spacetime: γ₀ (+1), γ₁ γ₂ (−1).
-inline constexpr auto eps = basis_vector<"ε", 0, {.ascii = "eps"}>;
-inline constexpr auto g0  = basis_vector<"γ₀", +1, {.ascii = "g0"}>;
-inline constexpr auto g1  = basis_vector<"γ₁", -1, {.ascii = "g1"}>;
-inline constexpr auto g2  = basis_vector<"γ₂", -1, {.ascii = "g2"}>;
-inline constexpr auto g3  = basis_vector<"γ₃", -1, {.ascii = "g3"}>;
+inline constexpr auto eps = basis_vector<"ε", geometric<0>, {.ascii = "eps"}>;
+inline constexpr auto g0  = basis_vector<"γ₀", geometric<+1>, {.ascii = "g0"}>;
+inline constexpr auto g1  = basis_vector<"γ₁", geometric<-1>, {.ascii = "g1"}>;
+inline constexpr auto g2  = basis_vector<"γ₂", geometric<-1>, {.ascii = "g2"}>;
+inline constexpr auto g3  = basis_vector<"γ₃", geometric<-1>, {.ascii = "g3"}>;
 
 template <policy_flag M>
 using in_t = inside<{{-4, 4}, per<64>}, M>;

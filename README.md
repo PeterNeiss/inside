@@ -113,7 +113,7 @@ the ideas. Then:
 
 ## Examples
 
-[`examples/`](examples/) holds 44 programs; each checks its own output and
+[`examples/`](examples/) holds 46 programs; each checks its own output and
 runs as a test (`ctest --preset gcc-debug -L example`). A few to start with:
 
 - [`basics.cpp`](examples/basics.cpp): clamp, wrap and bounded loops.

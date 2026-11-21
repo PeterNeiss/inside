@@ -5,9 +5,9 @@
 #include <inside/units.hpp>
 #include <inside/units/geoalg.hpp>
 
-inline constexpr auto e1 = ins::basis_vector<"e1", 1>;
-inline constexpr auto e2 = ins::basis_vector<"e2", 1>;
-inline constexpr auto e3 = ins::basis_vector<"e3", 1>;
+inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<1>>;
+inline constexpr auto e2 = ins::basis_vector<"e2", ins::geometric<1>>;
+inline constexpr auto e3 = ins::basis_vector<"e3", ins::geometric<1>>;
 
 int main() {
     using namespace ins;

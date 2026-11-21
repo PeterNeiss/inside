@@ -128,7 +128,7 @@ constexpr auto km = si::kilo(si::metre);
 quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5, km};   // 12.5 km, to the metre
 auto total = leg + just<800> * si::metre;                    // 13300 m, exact
 total.in(km);                                                // 13.300 km
-// leg + just<1> * si::second;                               // does not compile
+// leg + si::second;                                         // does not compile
 // quantity<km, inside<{0, 500}>> bad{12};                   // does not compile: name the unit
 ```
 

@@ -873,7 +873,7 @@ namespace ins
     concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
     // A number and a quantity of a blade without a unit (3 + 4 i).
     template <reference A>
-    concept number_blade_sum = has_blade(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
+    concept number_blade_sum = has_basis(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
 
     // Whether the two quantities have a common unit (no sum diagnostic) and both numbers rescale to it.
     template <reference A, class VA, reference B, class VB>
@@ -957,6 +957,79 @@ namespace ins
   [[nodiscard]] constexpr auto operator-(Tag t)
   {
     return just<-1> * t;
+  }
+
+  // The same in arithmetic: x + u is x + 1 u, and so are x - u, u ± x, u ± v, x += u, x -= u, x % u, divmod(x, u)
+  // and u * x for a quantity, a point or a multivector x (a number times a unit stays the way to make a quantity):
+  // jar += international::pound, divmod(t, si::hour), just<3> + x * x, e1 * v. An expected runs its own operators,
+  // which apply these to its value.
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t) { x + just<1> * t; }
+  [[nodiscard]] constexpr auto operator+(const X& x, Tag t)
+  {
+    return x + just<1> * t;
+  }
+  template <class Tag, class X>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(Tag t, const X& x) { just<1> * t + x; }
+  [[nodiscard]] constexpr auto operator+(Tag t, const X& x)
+  {
+    return just<1> * t + x;
+  }
+  template <class A, class B>
+    requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
+          && requires(A a, B b) { just<1> * a + just<1> * b; }
+  [[nodiscard]] constexpr auto operator+(A a, B b)
+  {
+    return just<1> * a + just<1> * b;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t) { x - just<1> * t; }
+  [[nodiscard]] constexpr auto operator-(const X& x, Tag t)
+  {
+    return x - just<1> * t;
+  }
+  template <class Tag, class X>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(Tag t, const X& x) { just<1> * t - x; }
+  [[nodiscard]] constexpr auto operator-(Tag t, const X& x)
+  {
+    return just<1> * t - x;
+  }
+  template <class A, class B>
+    requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
+          && requires(A a, B b) { just<1> * a - just<1> * b; }
+  [[nodiscard]] constexpr auto operator-(A a, B b)
+  {
+    return just<1> * a - just<1> * b;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) += just<1> * t; }
+  constexpr decltype(auto) operator+=(X&& x, Tag t) // an action ref too: q.on_wrap(f) += u
+  {
+    return std::forward<X>(x) += just<1> * t;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) -= just<1> * t; }
+  constexpr decltype(auto) operator-=(X&& x, Tag t)
+  {
+    return std::forward<X>(x) -= just<1> * t;
+  }
+  template <class X, class Tag>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t) { x % (just<1> * t); }
+  [[nodiscard]] constexpr auto operator%(const X& x, Tag t)
+  {
+    return x % (just<1> * t);
+  }
+  template <class Tag, class X>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!insidable<X>)
+          && (!detail::is_expected_v<X>) && requires(Tag t, const X& x) { just<1> * t * x; }
+  [[nodiscard]] constexpr auto operator*(Tag t, const X& x)
+  {
+    return just<1> * t * x;
   }
 
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
@@ -1424,7 +1497,7 @@ namespace ins
   }
 
   // divmod(a, b, args...) of two quantities of one dimension, in their common unit:
-  // the quotient is a plain number, the remainder a quantity.
+  // the quotient is a plain number, the remainder a quantity. (Of a polynomial variable: units/polynomial.hpp.)
   namespace detail
   {
     // The remainder as a quantity in C (an expected's error passed on).
@@ -1443,7 +1516,7 @@ namespace ins
     }
   } // namespace detail
   template <reference A, class VA, reference B, class VB, class... Args>
-    requires detail::common_rescalable<A, VA, B, VB>
+    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.U)))
           && requires(const detail::common_number_t<A, VA, B>& x,
                       const detail::common_number_t<B, VB, A>& y,
                       Args&&... args) { ins::divmod(x, y, std::forward<Args>(args)...); }
@@ -1452,6 +1525,14 @@ namespace ins
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::quantity_divmod<C>(
       ins::divmod(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
+  }
+  // By a unit, one of itself: divmod(t, si::hour).
+  template <class X, class Tag, class... Args>
+    requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
+          && requires(const X& x, Tag t, Args&&... args) { divmod(x, just<1> * t, std::forward<Args>(args)...); }
+  [[nodiscard]] constexpr auto divmod(const X& x, Tag t, Args&&... args)
+  {
+    return divmod(x, just<1> * t, std::forward<Args>(args)...);
   }
 
   // add / sub / mod(a, b, args...) of two quantities of one kind, in their common unit as + takes it,

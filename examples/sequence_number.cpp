@@ -56,7 +56,7 @@ int main()
       return 1;
   }
 
-  if (epochs != just<1> * epoch || to_string(seq) != "764 pkt")
+  if (epochs != epoch || to_string(seq) != "764 pkt")
     return 1;
   return 0;
 }

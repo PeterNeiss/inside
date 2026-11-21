@@ -91,7 +91,7 @@ void player::pull_trigger()
       ++weapon.reloads;
       if (shortfall > just<0> * rd)
         m = magazine::capacity - shortfall;
-    }) -= just<1> * rd;
+    }) -= rd;
 }
 
 void player::combat_reload()

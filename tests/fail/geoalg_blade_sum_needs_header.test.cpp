@@ -4,7 +4,7 @@
 // units/geoalg.hpp; the message names it.
 #include <inside/units.hpp>
 
-inline constexpr auto e1 = ins::basis_vector<"e1", 1>;
+inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<1>>;
 
 int main() {
     using namespace ins;

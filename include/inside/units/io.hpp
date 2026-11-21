@@ -147,7 +147,7 @@ namespace ins
     }
 
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
-    // The blade atoms come last, in their order: 2 m·e₁.
+    // The blade atoms and polynomial variables come last, in their order: 2 m·e₁, 3 m·x².
     inline void append_atoms(std::string& s, const unit_value& u, int sign, text_encoding enc)
     {
       bool first{true};
@@ -155,7 +155,7 @@ namespace ins
         for (std::int8_t i = 0; i < u.Size; ++i)
         {
           const unit_atom& a{u.Atoms[i]};
-          if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_blade_atom(a) != blades)
+          if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_basis_atom(a) != blades)
             continue;
           if (!first)
             s += enc == text_encoding::utf8 ? "·" : "*";

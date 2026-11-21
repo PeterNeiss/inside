@@ -57,7 +57,7 @@ int main()
   const square_metres floor = width{6, isq::width[si::metre]} * height{3, isq::height[si::metre]};
   const length_metres l     = height{3, isq::height[si::metre]};
   // height h = l;                        // would not compile: a length is not a height
-  // auto bad = l + just<1> * si::second; // would not compile: another dimension
+  // auto bad = l + si::second; // would not compile: another dimension
   std::cout << "wall:    " << floor << ", " << l << '\n';
   if (floor.numerical_value_in(square(si::metre)) != 18)
     return 1;

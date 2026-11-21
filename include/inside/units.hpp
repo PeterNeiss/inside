@@ -27,8 +27,9 @@
 //   kind_cast, value_cast                        kinds and representations
 //   unit<>, base_unit<>, kind<>, origin<>,       units, kinds, origins and
 //   base_dimension<>                             dimensions of your own
-//   basis_vector                                 a basis vector of a geometric
-//                                                algebra: you state its square
+//   basis_vector                                 a basis vector, by its rule:
+//                                                geometric<S> (its square S),
+//                                                inner (Rⁿ), polynomial (x)
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make(v, u)
 //   mul<C>, div<C>, add_all, mul_all, sum<Q>, divmod,
 //   conversion_overflows / rounds / loses<Q>(v, u), Q{v, u, clamp} / Q{q, wrap},
@@ -37,7 +38,8 @@
 // The catalog: isq, si, si2019, international.
 // The derived physical constants are in units/constants.hpp;
 // text (to_string, <<, std::format, parse<Q>) in units/io.hpp;
-// multivectors and the products of geometric algebra (3 + 4 i, wedge, reverse, inverse, dual) in units/geoalg.hpp.
+// multivectors and the products of geometric algebra (3 + 4 i, wedge, reverse, inverse, dual) in units/geoalg.hpp;
+// the calculus of polynomials (substitute, derivative, antiderivative, divmod) in units/polynomial.hpp.
 //
 // This umbrella is units/core.hpp (the machinery: units/detail/algebra.hpp, quantity.hpp, point.hpp)
 // plus units/systems.hpp (the catalog). For units of your own without the SI catalog, include units/core.hpp.

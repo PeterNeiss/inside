@@ -33,8 +33,8 @@ using qty                = ins::quantity<ins::si::metre, bi::inside<{0, 100}>>;
 using pt                 = ins::quantity_point<ins::si::kelvin, ins::si::absolute_zero, bi::inside<{0, 400}>>;
 using cur                = bi::cursor<bi::inside<{0, 10}>>;
 using rng                = bi::inside_range<bi::grid{0, 10}>;
-inline constexpr auto e1 = ins::basis_vector<"e1", +1>;
-inline constexpr auto e2 = ins::basis_vector<"e2", +1>;
+inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<+1>>;
+inline constexpr auto e2 = ins::basis_vector<"e2", ins::geometric<+1>>;
 using mv                 = ins::multivector<bi::inside<{0, 10}>, ins::quantity<e1 * e2, bi::inside<{0, 10}>>>;
 
 template <std::meta::info Scope, bool Members>

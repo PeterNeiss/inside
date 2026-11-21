@@ -39,7 +39,7 @@ int main()
             << "double   " << std::format("{:.17g}", std::stod(text)) << "\n";
   if (to_string(balance) != text)
     return 1;
-  static_assert(just<1> * wei == 1e-18_ins * ETH); // one wei is the notch of the grid
+  static_assert(wei == 1e-18_ins * ETH); // one wei is the notch of the grid
 
   // 2. A fee is gas × price: 21000 gas at 30 gwei/gas is 630000 gwei, exactly 0.00063 ETH.
   using gas_amount   = quantity<gas       , inside<{0, 30'000'000}>>; // units of work

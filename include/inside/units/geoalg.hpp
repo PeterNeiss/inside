@@ -92,14 +92,18 @@ namespace ins
       }(std::make_index_sequence<std::tuple_size_v<Tuple>>{});
     }
 
-    // The order of parts: by grade, then by the names of the basis vectors.
+    // The order of parts: by grade, then by the names of the basis vectors, then by monomial (monomial_less).
     consteval bool blade_less(const dimension& a, const dimension& b)
     {
       const blade x = blade_of(a), y = blade_of(b);
       if (x.size() != y.size())
         return x.size() < y.size();
       const auto name = [](const base_dimension_def* v) { return v->Name; };
-      return std::ranges::lexicographical_compare(x, y, std::ranges::less{}, name, name);
+      if (std::ranges::lexicographical_compare(x, y, std::ranges::less{}, name, name))
+        return true;
+      if (std::ranges::lexicographical_compare(y, x, std::ranges::less{}, name, name))
+        return false;
+      return monomial_less(a, b);
     }
     consteval bool blade_equal(const dimension& a, const dimension& b)
     {
@@ -289,6 +293,10 @@ namespace ins
       constexpr std::size_t NA{std::tuple_size_v<PA>}, NB{std::tuple_size_v<PB>};
       static constexpr auto da = dims_of<PA>();
       static constexpr auto db = dims_of<PB>();
+      static_assert(Rule == product_rule::geometric
+                      || (std::ranges::none_of(da, has_inner) && std::ranges::none_of(db, has_inner)),
+                    "units: the wedge, the contractions and the scalar product take geometric basis vectors - "
+                    "inner ones multiply by their dot product (*)");
       const PA              pa = parts_of(a);
       const PB              pb = parts_of(b);
       return [&]<std::size_t... K>(std::index_sequence<K...>)
@@ -445,10 +453,18 @@ namespace ins
         unit_add(u, unit_atom{v->Vector, 0, 1});
       return u;
     }
-    // d's blade outside the blade of I (I ∖ A).
+    // The polynomial variables of d, as a dimension: x² of m x² e₁.
+    consteval dimension polynomial_part(const dimension& d)
+    {
+      exponents u;
+      for (const monomial_factor& f : monomial_of(d))
+        u.add(f.Var, f.Exp);
+      return u.intern();
+    }
+    // d's blade outside the blade of I (I ∖ A), with A's polynomial variables.
     consteval dimension blade_rest(const dimension& i, const dimension& a)
     {
-      return dimension_of(canonical_blade_unit(i)) / dimension_of(canonical_blade_unit(a));
+      return dimension_of(canonical_blade_unit(i)) / dimension_of(canonical_blade_unit(a)) * polynomial_part(a);
     }
     consteval bool blade_within(const dimension& a, const dimension& i)
     {
@@ -497,12 +513,12 @@ namespace ins
         return std::convertible_to<decltype(just<0>), typename part_number<T>::type>;
     }
 
-    // The blade atoms of a unit, unscaled: e₁ e₂ of m e₁ e₂.
+    // The blade atoms and polynomial variables of a unit, unscaled: e₁ e₂ of m e₁ e₂, x² of m x².
     consteval unit_value blade_atoms(const unit_value& u)
     {
       unit_value b{};
       for (std::int8_t i = 0; i < u.Size; ++i)
-        if (is_blade_atom(u.Atoms[i]))
+        if (is_basis_atom(u.Atoms[i]))
           unit_add(b, u.Atoms[i]);
       return b;
     }
@@ -518,14 +534,14 @@ namespace ins
     template <unit_value U, class P>
     concept part_in_unit = requires(const P& p) { part_in<U>(p); };
 
-    // u without its blade atoms (its scale kept), and the sign and size of the blade's spelling:
-    // u = factor · physical_atoms(u) · canonical blade.
+    // u without its blade atoms and polynomial variables (its scale kept), and the sign and size of the blade's
+    // spelling: u = factor · physical_atoms(u) · canonical blade · polynomial variables.
     consteval unit_value physical_atoms(const unit_value& u)
     {
       unit_value r{};
       r.Scale = u.Scale;
       for (std::int8_t i = 0; i < u.Size; ++i)
-        if (!is_blade_atom(u.Atoms[i]))
+        if (!is_basis_atom(u.Atoms[i]))
           unit_add(r, u.Atoms[i]);
       return r;
     }
@@ -549,8 +565,8 @@ namespace ins
       else
         return p;
     }
-    // p's coefficient times F on the canonical blade B, in p's unit without its blade:
-    // no division, so a blade with a null vector moves too.
+    // p's coefficient times F on B (a canonical blade and polynomial variables), in p's unit without its blade and
+    // variables: no division, so a blade with a null vector moves too.
     template <dimension B, grid_number F, class P>
     constexpr auto move_to_blade(const P& p)
     {
@@ -560,6 +576,8 @@ namespace ins
         unit_value t{physical_atoms(u)};
         for (const base_dimension_def* v : blade_of(B))
           unit_add(t, unit_atom{v->Vector, 0, 1});
+        for (const monomial_factor& f : monomial_of(B))
+          unit_add(t, unit_atom{f.Var->Vector, 0, static_cast<std::int8_t>(f.Exp)});
         return t;
       }();
       constexpr grid_number f{blade_factor(u) * F};
@@ -568,7 +586,8 @@ namespace ins
 
     // A pseudoscalar argument: a unit of a blade only.
     template <unit_value I>
-    concept pseudoscalar = has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one);
+    concept pseudoscalar =
+      has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one) && geometric_only(dimension_of(I));
   } // namespace detail
 
   // multivector<Parts...>: a sum of parts of different blades, insides (the scalar part, when it is a plain number)
@@ -660,7 +679,7 @@ namespace ins
 
     // Each part in unit U (a unit without blades), its blade kept, exactly: (V / Z).in(si::ampere).
     template <ins::unit_value U>
-      requires(!detail::has_blade(dimension_of(U))) && (detail::part_in_unit<U, Parts> && ...)
+      requires(!detail::has_basis(dimension_of(U))) && (detail::part_in_unit<U, Parts> && ...)
     [[nodiscard]] constexpr auto in(unit_t<U>) const
     {
       return std::apply([](const auto&... p) { return detail::collapse(detail::part_in<U>(p)...); }, P);
@@ -883,6 +902,9 @@ namespace ins
       return detail::divide_parts(a, b);
     else
     {
+      static_assert(std::ranges::none_of(detail::dims_of<detail::parts_t<B>>(), detail::has_polynomial),
+                    "units: the divisor is a polynomial - divmod(p, d) of units/polynomial.hpp divides with a "
+                    "remainder");
       static_assert(detail::invertible<B>, "units: the divisor has no inverse of the form x~ / (x x~)");
       const auto inv{inverse(b)};
       if constexpr (detail::is_expected_v<std::remove_cvref_t<decltype(inv)>>)
