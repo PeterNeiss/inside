@@ -18,6 +18,9 @@ own can be declared the same way with `defined_by`.
   `kg·m²/s²`, `J/(K·kg)`, `[1/381·ft]`, a multivector's `2 m·e₁ + 1 m·e₂`.
   A quantity's text is then one number and one unit token, so `>>` reads
   what `<<` writes; `parse` still accepts a space between factors.
+- A basis vector names its rule: `basis_vector<"e₁", +1>` is now
+  `basis_vector<"e₁", geometric<+1>>` (and `basis_vector_def{"e1", +1}` is
+  `{"e1", geometric<+1>}`), beside the new rules `inner` and `polynomial`.
 - A unit or kind that re-declares a catalog entry by its content
   (`base_unit<"m", "length">` for `si::metre`) still compares equal to it and
   converts, but is now another type. A sum of the two may run in either unit.
@@ -41,6 +44,20 @@ own can be declared the same way with `defined_by`.
   then Q's number type stores the value. New error codes: `missing_unit`,
   `unknown_unit`, `incompatible_unit`. `json_io.cpp` carries units in its
   keys (`"price[USD/item]": 19.99`).
+- Inner basis vectors, `basis_vector<"R", inner>`: the vectors of Rⁿ with the
+  dot product (b·b = 1, b₁b₂ = 0), so the product of two vectors is a number
+  (with units, two lengths give an area). It is not associative:
+  (b₁b₁)b₂ = b₂, but b₁(b₁b₂) = 0. `inverse(c)` is c / (c·c); the wedge, the
+  contractions, duals and `exp` take geometric basis vectors only.
+- Polynomial variables, `basis_vector<"x", polynomial>`: x·x = x², and sums of
+  different powers are multivectors (3 + 2 x + 1 x²), with coefficients that
+  carry units or blades. `<inside/units/polynomial.hpp>` adds
+  `substitute(p, x, a)` (a value by Horner's rule with its range proved, or the
+  composition p∘a), `derivative`, `antiderivative` and `divmod(p, d)` (exact
+  fractions; a `std::expected` when d's leading coefficient can be 0).
+- Examples `colorspace` (colours as vectors of inner basis vectors: mixing
+  clamped to the gamut, luminance, RGB to CIE XYZ and filters as dot
+  products, a 120° hue rotor) and `polynomials`.
 - `math::gcd` and `math::lcm` take two quantities that add, in their common
   unit, exactly: `lcm(12 min, 18 min)` is 36 min, `gcd(3 cm, 4 mm)` 2 mm.
 - A point type takes a number in its own unit, as a quantity does:

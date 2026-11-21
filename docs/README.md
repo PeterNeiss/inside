@@ -28,7 +28,8 @@ The details behind the guides, and topics most programs never need.
 | [Hooks and errors](advanced/hooks-and-errors.md) | `on_wrap`, `on_clamp`, `on_error`, the error codes, the handler, which channel reports what |
 | [Text in detail](advanced/text.md) | the printed forms, format specs, the parse grammar |
 | [The units model](advanced/units-model.md) | dimensions, magnitudes, kinds, origins, the catalog, inside's algorithms on quantities |
-| [Geometric algebra](advanced/geometric-algebra.md) | basis vectors as units, the signs of their products, multivectors, wedge, contractions, inverses, duals, exp |
+| [Geometric algebra](advanced/geometric-algebra.md) | basis vectors as units, the signs of their products, multivectors, wedge, contractions, inverses, duals, exp; inner (Rⁿ) and polynomial basis vectors |
+| [Polynomials](advanced/polynomials.md) | variables as basis vectors, `substitute`, `derivative`, `antiderivative`, `divmod` |
 | [The math engine](advanced/math-engine.md) | how results are rounded correctly, what is guaranteed, speed, angles over many turns |
 | [Constants](advanced/constants.md) | the mathematical and physical constants |
 | [For fixed-point users](advanced/fixed-point.md) | Qm.n formats as grids, which grids are fast |
@@ -72,12 +73,13 @@ and the [certified math pairs](certified.md).
 | `<inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `view_in` |
 | `<inside/units/constants.hpp>` | the physical constants as quantities |
 | `<inside/units/geoalg.hpp>` | geometric algebra: `multivector`, `wedge`, the contractions, `reverse`, `grade<K>`, `inverse`, `dual`, `regressive` |
+| `<inside/units/polynomial.hpp>` | polynomials: `substitute`, `derivative`, `antiderivative`, `divmod` |
 
 The [single header](advanced/single-header.md) holds all of them.
 
 ## Examples
 
-Each of the 44 programs in [`examples/`](../examples/) checks its own output
+Each of the 46 programs in [`examples/`](../examples/) checks its own output
 and runs as a test (`ctest --preset gcc-debug -L example`).
 
 | Theme | Programs |
@@ -88,7 +90,7 @@ and runs as a test (`ctest --preset gcc-debug -L example`).
 | units of your own | [`own_units`](../examples/own_units.cpp) (fathoms, °R, EUR, bytes), [`money`](../examples/money.cpp) (USD and ¢, a tax), [`wei`](../examples/wei.cpp) (ETH to the wei), [`adc_calibration`](../examples/adc_calibration.cpp) (ADC counts), [`json_io`](../examples/json_io.cpp) (exact JSON numbers) |
 | wrap, clamp and hooks | [`clock`](../examples/clock.cpp) (s → min → h → months), [`game_hp`](../examples/game_hp.cpp) (hit points), [`rifle`](../examples/rifle.cpp) (rounds), [`torus_map`](../examples/torus_map.cpp) (pixels), [`sequence_number`](../examples/sequence_number.cpp) and [`jitter_buffer`](../examples/jitter_buffer.cpp) (packets) |
 | signal and control | [`audio_mixer`](../examples/audio_mixer.cpp), [`oscillator`](../examples/oscillator.cpp) (a phase counter), [`decibels`](../examples/decibels.cpp), [`pid_controller`](../examples/pid_controller.cpp), [`sensor_fusion`](../examples/sensor_fusion.cpp) (a mean of ℃ points), [`histogram`](../examples/histogram.cpp), [`fixed_point`](../examples/fixed_point.cpp) (Q formats) |
-| math | [`navigation`](../examples/navigation.cpp) (range and bearing), [`audio_math`](../examples/audio_math.cpp), [`huge_angles`](../examples/huge_angles.cpp) (the sine of 10¹⁸ rad), [`geometry`](../examples/geometry.cpp) (`dot`, `cross`, `lerp`), [`expected_pipeline`](../examples/expected_pipeline.cpp) (errors with their cause) |
-| geometric algebra | [`complex`](../examples/complex.cpp) (z·w, z / w, an impedance, e^(iπ)), [`quaternions`](../examples/quaternions.cpp) (Hamilton's rules, an exact rotation, a rotor from its angle), [`geometric_algebra`](../examples/geometric_algebra.cpp) (wedge, reflection, cross product, dual numbers) |
+| math | [`navigation`](../examples/navigation.cpp) (range and bearing), [`audio_math`](../examples/audio_math.cpp), [`huge_angles`](../examples/huge_angles.cpp) (the sine of 10¹⁸ rad), [`geometry`](../examples/geometry.cpp) (`dot`, `cross`, `lerp`), [`expected_pipeline`](../examples/expected_pipeline.cpp) (errors with their cause), [`polynomials`](../examples/polynomials.cpp) (values, composition, calculus, divmod) |
+| geometric algebra | [`complex`](../examples/complex.cpp) (z·w, z / w, an impedance, e^(iπ)), [`quaternions`](../examples/quaternions.cpp) (Hamilton's rules, an exact rotation, a rotor from its angle), [`geometric_algebra`](../examples/geometric_algebra.cpp) (wedge, reflection, cross product, dual numbers), [`colorspace`](../examples/colorspace.cpp) (colours as vectors with the dot product, a hue rotor) |
 | arrays | [`image`](../examples/image.cpp) (a blur with indices proven in bounds, a heat map from raw codes), [`matrix`](../examples/matrix.cpp) (exact rotations in Q1.14, Fibonacci by matrix powers) |
 | big numbers | [`solar_system`](../examples/solar_system.cpp) (nanometres across ±10¹³ m), [`planck_to_cosmos`](../examples/planck_to_cosmos.cpp) (10⁻⁴¹ m to 10²⁷ m), [`combinatorics`](../examples/combinatorics.cpp) (factorials, binomials, odds as exact fractions), [`rsa`](../examples/rsa.cpp) (RSA-1024 on residues) |

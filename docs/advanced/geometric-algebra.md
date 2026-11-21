@@ -5,6 +5,8 @@ basis vector is a unit of your own, and you state only its square. Sums of
 different blades are multivectors, and the products, involutions, duals and
 inverses of the algebra work on them, with physical units and exact numbers.
 Complex numbers and quaternions are two special cases, not two features.
+Two other rules share the machinery: the vectors of Rⁿ with the dot product,
+and the variables of [polynomials](polynomials.md).
 [Units](../guide/units.md#geometric-algebra) has the short version.
 
 ## Basis vectors
@@ -18,11 +20,12 @@ inline constexpr auto         i = unit<"i", e1 * e2>;
 ```
 
 A `basis_vector` is a base dimension of your own and its unit, in one static
-object. `geometric<S>` gives its square S: +1, −1 or 0 (a null vector); its options are `.ascii`
-and `.space_before`, as for a named unit. Two different basis vectors
-anticommute: the basis is orthogonal. That is all the algebra needs, and every
-signature G(p, q, r) has such a basis. A non-orthogonal vector, such as the
-e₀ and e∞ of conformal GA, is a multivector over e₊ and e₋.
+object. Its second argument is its rule: `geometric<S>` gives its square S,
++1, −1 or 0 (a null vector). Its options are `.ascii` and `.space_before`, as
+for a named unit. Two different basis vectors anticommute: the basis is
+orthogonal. That is all the algebra needs, and every signature G(p, q, r) has
+such a basis. A non-orthogonal vector, such as the e₀ and e∞ of conformal GA,
+is a multivector over e₊ and e₋.
 
 | Algebra | Basis vectors | |
 |---|---|---|
@@ -33,6 +36,42 @@ e₀ and e∞ of conformal GA, is a multivector over e₊ and e₋.
 | the projective plane | e₀ (0), e₁, e₂ (+1) | G(2,0,1), points and lines of PGA |
 | dual numbers | ε (0) | a + b ε with ε² = 0: exact derivatives |
 | split-complex numbers | j (+1) | G(1,0) |
+
+## Two other rules: `inner` and `polynomial`
+
+```cpp
+inline constexpr auto         R = basis_vector<"R", inner>;        // R·R = 1, R·G = 0
+inline constexpr auto         G = basis_vector<"G", inner>;
+inline constexpr auto         x = basis_vector<"x", polynomial>;   // x·x = x²
+
+auto c = just<4, 5> * R + just<1, 2> * G;
+auto l = c * (just<1, 5> * R + just<7, 10> * G);   // 0.51: the dot product, a number
+auto p = just<3> + just<2> * x + just<1> * x * x;  // 3 + 2 x + 1 x²
+```
+
+| Rule | v·v | two different ones | exponent |
+|---|---|---|---|
+| `geometric<S>` | S (+1, −1, 0) | anticommute: a blade | 0 or 1 |
+| `inner` | 1 | 0 | 0 or 1 |
+| `polynomial` | x² | commute: a monomial | any, as a unit's |
+
+An **inner** basis vector is a vector of Rⁿ with the dot product: the product
+of two vectors is a number (with units, two lengths give an area), and the
+product of two different inner vectors is the zero multivector. The product is
+not associative: (b₁b₁)b₂ = b₂, but b₁(b₁b₂) = 0, as (u·v)w ≠ u(v·w), and
+`u * v * w` groups from the left. `inverse(c)` is c / (c·c). The wedge, the
+contractions, the scalar product, duals and `exp` take geometric basis vectors
+only, and an inner vector and a geometric one do not multiply.
+[`colorspace.cpp`](../../examples/colorspace.cpp) makes R, G and B inner: a
+channel, the luminance, the map to CIE XYZ and a filter are dot products.
+
+A **polynomial** basis vector is a variable: its exponent adds as a unit's
+does, and it commutes with everything. A sum of different powers is a
+multivector, its parts in order of total degree (then the higher power of the
+first variable first: 1, x, y, x², x y, y²). Coefficients may carry units or
+blades, `1 / x` is x⁻¹, and `part(p, x * x)` is x²'s coefficient. Dividing by a
+polynomial of several terms is `divmod`, and the rest of the calculus is in
+[polynomials](polynomials.md).
 
 ## Products of units carry a sign
 
@@ -196,6 +235,12 @@ auto r  = v * i;                     // -1 m·e₁ + 2 m·e₂: a quarter turn
   - a reflection;
   - the volume and the cross product as a dual;
   - the exact derivative from the dual numbers.
+- [`colorspace.cpp`](../../examples/colorspace.cpp) covers four things:
+  - lights that add as vectors of inner basis vectors, clamped to the gamut;
+  - the luminance and the map to CIE XYZ as dot products;
+  - a filter as a diagonal map;
+  - a turn of hue: the exact 120° rotor about the grey axis, and e^(iθ) on
+    the chroma plane.
 
 ## Limits
 

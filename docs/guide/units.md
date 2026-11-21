@@ -164,6 +164,10 @@ auto z = (just<3> + just<4> * i) * (just<1> - just<2> * i);      // 11 - 2 i
 auto v = (just<2> * si::metre * e1 + just<1> * si::metre * e2) * i;   // -1 m·e₁ + 2 m·e₂
 ```
 
+Two other rules share the machinery: `basis_vector<"R", inner>` is a vector
+of Rⁿ whose products are dot products, and `basis_vector<"x", polynomial>` a
+polynomial's variable ([polynomials](../advanced/polynomials.md)).
+
 [Geometric algebra](../advanced/geometric-algebra.md) has the model, the
 operations and the limits; [`complex.cpp`](../../examples/complex.cpp),
 [`quaternions.cpp`](../../examples/quaternions.cpp) and
