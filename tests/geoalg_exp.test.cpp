@@ -18,6 +18,7 @@
 
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <tuple>
 #include <type_traits>
@@ -523,6 +524,77 @@ TEST(GeoalgLogTest, domain_types_and_compile_time) {
     static_assert(std::get<0>(one_plus.parts()) == 0 && std::get<1>(one_plus.parts()) == just<0> * i);
     static_assert(notch_of<std::tuple_element_t<0, std::remove_cvref_t<decltype(math::log(pdom{}).parts())>>> ==
                   rational{1, 64});
+}
+
+// √, part by part, against std::complex and the closed form in long double.
+TEST(GeoalgSqrtTest, complex_quaternion_boost_and_exact_roots) {
+    using I = in_t<round_half_away>;
+    using O = out_t<round_half_away>;
+    int bad = 0;
+    // Complex numbers: every value has a root (the principal one), so the result is plain.
+    using cdom = multivector<I, quantity<i, I>>;
+    using ccod = multivector<O, quantity<i, O>>;
+    static_assert(std::same_as<decltype(math::sqrt<ccod>(cdom{})), ccod>);
+    for (int ra = -256; ra <= 256; ra += 8)
+        for (int rb = -256; rb <= 256; rb += 9) {
+            const ccod r = math::sqrt<ccod>(cdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * i});
+            const std::complex<long double> w = std::sqrt(std::complex<long double>(ra / 64.0L, rb / 64.0L));
+            bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), w.real()) ||
+                   !rounded_ok<O, round_half_away>(coef(std::get<1>(r.parts())), w.imag());
+        }
+    EXPECT_EQ(bad, 0);
+    // Exact roots: √(3 + 4i) = 2 + i, √(-4) = 2i, √0 = 0; in the quaternions √(2i) = 1 + i.
+    EXPECT_TRUE(math::sqrt<ccod>(cdom{I{3} + I{4} * i}) == just<2> + i);
+    EXPECT_TRUE(math::sqrt<ccod>(cdom{I{-4} + I{0} * i}) == just<2> * i);
+    EXPECT_TRUE(math::sqrt<ccod>(cdom{}) == multivector<>{});
+    using qdom = multivector<I, quantity<i, I>, quantity<j, I>, quantity<k, I>>;
+    using qcod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
+    EXPECT_TRUE(*math::sqrt<qcod>(qdom{I{0} + I{2} * i + I{0} * j + I{0} * k}) == just<1> + i);
+    // A quaternion's negative scalar has no axis; √x · √x = x elsewhere, within the roundings.
+    EXPECT_EQ(math::sqrt<qcod>(qdom{I{-1} + I{0} * i + I{0} * j + I{0} * k}).error(), error::domain_error);
+    int bad_q = 0;
+    for (int s = -192; s <= 192; s += 48)
+        for (int u = -128; u <= 128; u += 64)
+            for (int v = -128; v <= 128; v += 64)
+                for (int w = -128; w <= 128; w += 64) {
+                    const auto r = math::sqrt<qcod>(qdom{test::store<I>(rational{s, 64}) +
+                                                         test::store<I>(rational{u, 64}) * i +
+                                                         test::store<I>(rational{v, 64}) * j +
+                                                         test::store<I>(rational{w, 64}) * k});
+                    const long double a = s / 64.0L, y[] = {u / 64.0L, v / 64.0L, w / 64.0L};
+                    const long double z = y[0] * y[0] + y[1] * y[1] + y[2] * y[2];
+                    if (z == 0 && a < 0) {
+                        bad_q += r.has_value();
+                        continue;
+                    }
+                    const long double m = std::sqrt(a * a + z), ww = std::sqrt(2 * (a + m));
+                    bad_q += !r.has_value() || !rounded_ok<O, round_half_away>(coef(std::get<0>(r->parts())), ww / 2);
+                    if (r.has_value() && ww > 0)
+                        for (int n = 0; n < 3; ++n) {
+                            const long double got = n == 0   ? coef(std::get<1>(r->parts()))
+                                                    : n == 1 ? coef(std::get<2>(r->parts()))
+                                                             : coef(std::get<3>(r->parts()));
+                            bad_q += !rounded_ok<O, round_half_away>(got, y[n] / ww);
+                        }
+                }
+    EXPECT_EQ(bad_q, 0);
+    // A boost: √(a + b e₁) = (√(a + b) + √(a − b))/2 + e₁·b/(√(a + b) + √(a − b)) for a ≥ |b|, else no value.
+    using hdom = multivector<I, quantity<e1, I>>;
+    using hcod = multivector<O, quantity<e1, O>>;
+    int bad_h  = 0;
+    for (int ra = -256; ra <= 256; ra += 8)
+        for (int rb = -256; rb <= 256; rb += 9) {
+            const auto r = math::sqrt<hcod>(hdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * e1});
+            const long double a = ra / 64.0L, b = rb / 64.0L;
+            if (a < std::fabs(b) || (a == 0 && b == 0)) {
+                bad_h += (a == 0 && b == 0) ? !r.has_value() : r.has_value();
+                continue;
+            }
+            const long double p = std::sqrt(a + b), q = std::sqrt(a - b);
+            bad_h += !r.has_value() || !rounded_ok<O, round_half_away>(coef(std::get<0>(r->parts())), (p + q) / 2) ||
+                     !rounded_ok<O, round_half_away>(coef(std::get<1>(r->parts())), b / (p + q));
+        }
+    EXPECT_EQ(bad_h, 0);
 }
 
 } // namespace geoalg_exp_tests

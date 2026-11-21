@@ -43,6 +43,12 @@ own can be declared the same way with `defined_by`.
   in the plane orthogonal to n (an `expected` when V's norm can be 0, as
   `inverse`). `rotate(R, x)` is R x R̃ for a unit rotor, plain. Both replace
   `grade<1>(R * v * reverse(R))`.
+- `math::log(x)` and `math::sqrt(x)` of a multivector on exp's domain
+  (complex numbers, quaternions, rotors, boosts, dual numbers), every part
+  rounded once on the exact engine: log(3 + 4i) = log 5 + atan2(4, 3) i,
+  √(3 + 4i) = 2 + i exactly, the principal values log(−r) = log r + π i and
+  √(−r) = √r i. A `std::expected` with `error::domain_error` where the type
+  does not prove the domain (a negative quaternion scalar has no axis).
 - Quantities and points read from text with their units: `parse<Q>(text)`,
   `parse<Q>(number, unit)`, `parse<Q>(number, u)` and the `parse_exact`
   forms, and `>>` into a `std::expected<Q, error>` (only there). The unit may

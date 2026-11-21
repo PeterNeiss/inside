@@ -214,6 +214,37 @@ A rotor of G(3,0) onto a grid of 2^-20 costs about what `std::sqrt`,
 `std::sin`, `std::cos` and three products in `double` cost
 ([performance](../performance.md)).
 
+## log and sqrt
+
+`math::log(x)` and `math::sqrt(x)` take what `exp` takes, x = s + y with
+y·y = −z a scalar, and round every part of the output once, as `exp` does:
+
+  log x = ½·log(s² + z) + y·atan2(√z, s)/√z     for z > 0 (complex, quaternions, rotors),
+  log x = ½·log(s² + z) + y·atanh(√−z/s)/√−z    for z < 0 (boosts, √−z < s),
+  log x = log s + y/s                           for z = 0 (dual numbers),
+  √x = w/2 + y/w,  w = √(2(s + m)), m = √(s² + z).
+
+The domain: s² + z > 0 for log (≥ 0 for √), and s > 0 where z ≤ 0; a
+negative complex number has its principal values, log(−r) = log r + π i and
+√(−r) = √r i, but a negative quaternion scalar has no axis to turn about.
+Where the argument's type proves the domain, the result is plain (√ of any
+complex number, log of one whose scalar part is positive); else a
+`std::expected` with `error::domain_error`. The output is deduced as for
+`exp`, or named; a named part that may not hold its value makes it an
+`expected` too.
+
+```cpp
+using part  = inside<{{-4, 4}, per<64>}, round_half_away>;
+using coef  = inside<{{-8, 8}, per<1024>}, round_half_away>;
+using cplx  = multivector<part, quantity<i, part>>;
+using roots = multivector<coef, quantity<i, coef>>;
+math::sqrt<roots>(cplx{part{3} + part{4} * i});   // 2 + 1 i, exactly
+math::log<roots>(cplx{part{3} + part{4} * i});    // an expected: 1.609375 + 0.927734375 i
+```
+
+The parts are computed on the exact engine only, so log and √ cost
+microseconds where `exp` takes nanoseconds.
+
 ## Examples
 
 ```cpp
@@ -255,8 +286,8 @@ auto r  = v * i;                     // -1 m·e₁ + 2 m·e₂: a quarter turn
   together, as everywhere in the units. A blade spelled by its basis vectors
   uses one per vector, so m·e₁·e₂·e₃·e₄·e₅ fits, and CGA's pseudoscalar times
   N·m does not.
-- **exp only.** There is no log or sqrt of a rotor, and exp needs the closed
-  form: its argument's non-scalar parts must anticommute.
+- **exp, log and sqrt only.** They need the closed form: their argument's
+  non-scalar parts must anticommute.
 - **No hooks on whole multivectors.** inside's store hooks (`on_wrap`, …) and
   the algorithms on quantities work on the parts, not on a whole multivector.
 - **Compile time.** Each multivector operation forms its result type part by

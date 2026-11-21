@@ -32,9 +32,11 @@ change, not an example workaround:
 
 ### Geometric algebra
 
-- **log and sqrt of rotors**, rounded once (exp is there:
-  [`math::exp`](advanced/geometric-algebra.md#exp)), and exp of an argument
-  without the closed form (e₁e₂ + e₃e₄ in 4-D, as a product of two).
+- **exp, log and sqrt of an argument without the closed form** (e₁e₂ + e₃e₄
+  in 4-D, as a product of two); exp, log and sqrt with it are there
+  ([geometric algebra](advanced/geometric-algebra.md#exp)).
+- **Fast tiers for log and sqrt of multivectors**: they run on the exact
+  engine only, where exp has double and double-double tiers.
 
 ### Declined or parked
 
