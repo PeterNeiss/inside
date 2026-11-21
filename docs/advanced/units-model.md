@@ -67,7 +67,10 @@ A degree is π/180 rad, so no grid can represent that conversion, and `.in()`
 refuses it with a message. `value_cast<si::radian, Out>(q)` (units/math.hpp)
 computes the exact x·π/180 with π to as many bits as `Out` needs, and rounds
 once onto `Out`, which needs a rounding mode. Only factors of π and 1/π are
-supported.
+supported. The trigonometric functions round once across π too: `sin`,
+`cos` and `tan` take an angle in degrees, and `asin`, `acos`, `atan` and
+`atan2` give one when the named result is in degrees
+([Math](../guide/math.md#quantities)).
 
 π can scale a quantity too: `pi * q` multiplies the **unit**, not the
 number. `pi * just<2> * si::second` is the number 2 in the unit [π·s], so

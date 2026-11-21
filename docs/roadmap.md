@@ -23,9 +23,8 @@ C++20's transient [P0784]) has stalled.
 The gaps found while moving the examples to units. Each one is a library
 change, not an example workaround:
 
-- **`atan2` and `asin` straight into degrees or turns,** with one rounding. Today
-  the angle rounds onto a fine radian grid, then `value_cast` rounds again.
-- **`tan` of a π-scaled angle**, which would need an exact pole at 90°.
+- **A double tier for `tan` of a π-scaled angle**: it runs on the exact engine
+  (sin, cos and the arcs into degrees have one).
 - The [differences from mp-units](advanced/units-model.md#differences-from-mp-units): no
   representation other than an inside, no logarithmic units. Vectors are
   [multivectors](advanced/geometric-algebra.md), not vector characters.

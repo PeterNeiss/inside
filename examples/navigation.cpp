@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Polar coordinates, range and bearing with hypot, atan2, asin and acos:
 // every result is the correctly rounded point of its output grid, the same on every platform.
-// atan2 of two lengths is an angle in rad, and so are asin and acos of a ratio.
+// atan2 of two lengths is an angle in rad, and so are asin and acos of a ratio; named in degrees, it rounds once there.
 
 #include <iostream>
 
@@ -37,24 +37,22 @@ int main()
   }
 
   // 2. Range and compass bearing (from north, clockwise) on a local east/north plane in metres.
-  // The bearing atan2(east, north) is on 2^-20 rad;
-  // degrees are a factor of π away, so value_cast rounds once onto 0.1°.
-  using metres = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_half_away>>;
-  using tenths = inside<{{-180, 180}, per<10>}, round_half_away>;
+  // The bearing atan2(east, north) goes straight into degrees, rounded once onto 0.1°.
+  using metres  = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_half_away>>;
+  using bearing = quantity<si::degree, inside<{{-180, 180}, per<10>}, round_half_away>>;
   std::cout << "\ntarget (east, north)   range       bearing\n";
   for (auto [e, n] : {std::pair{metres{30 , si::metre}, metres{40 , si::metre}},
                                {metres{0  , si::metre}, metres{50 , si::metre}},
                                {metres{-30, si::metre}, metres{-40, si::metre}}})
   {
-    const auto range  {math::hypot(e, n)};
-    const auto bearing{math::atan2<per<(1 << 20)>>(e, n)};
-    const auto deg    {value_cast<si::degree, tenths>(bearing)};
-    std::cout << "  (" << e << ", " << n << ")" << "\t" << range << "\t" << bearing << " = " << deg << "\n";
+    const auto range{math::hypot(e, n)};
+    const auto to   {math::atan2<bearing>(e, n)};
+    std::cout << "  (" << e << ", " << n << ")" << "\t" << range << "\t" << to << "\n";
     if (range != just<50> * si::metre) // 3-4-5 triangles: exact
       return 1;
   }
-  const auto south_west{math::atan2<per<(1 << 20)>>(metres{-30, si::metre}, metres{-40, si::metre})};
-  if (to_string(value_cast<si::degree, tenths>(south_west)) != "-143.1°")
+  const auto south_west{math::atan2<bearing>(metres{-30, si::metre}, metres{-40, si::metre})};
+  if (to_string(south_west) != "-143.1°")
     return 1;
 
   // 3. asin and acos recover an angle in rad from a ratio in [-1, 1], a dimensionless quantity (a sine: m/m).

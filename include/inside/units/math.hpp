@@ -212,6 +212,77 @@ namespace ins::math::detail::engine
       return approx<limbs_of<I>>{static_cast<I>(y), a.Scale, e < 0x1p62 ? static_cast<std::uint64_t>(e) : ~std::uint64_t{0}};
     }
   };
+
+  // tan of an angle x·(n/d)·π: t = x·n/d half turns reduced exactly by k = round(2t) quarter turns,
+  // r = π·(2t − k)/2 with |r| ≤ π/4, then tan = sin r/cos r for an even k and −cos r/sin r for an odd one
+  // (sin r is not 0: the input grid holds no pole). The quotient's bound as trig_core's tan. Exact by Niven at tan 0
+  // and ±1 (t ≡ 0, ±¼ mod 1).
+  template <std::size_t E, int KMax>
+  struct pi_tan_core
+  {
+    wide_rational<E> X;
+    std::uint64_t    N; // the unit's factor n/d
+    std::uint64_t    D;
+    bool             Negative;
+
+    template <class J>
+    constexpr J numerator() const
+    {
+      const J num{J{X.Num} * J{N}};
+      return Negative ? -num : num;
+    }
+    constexpr maybe_exact<E> exact() const
+    {
+      using J = wide_sint<limbs_for_bits(64 * static_cast<int>(E + 1) + 8)>;
+      const J four{numerator<J>() * J{4}}, den{J{X.Den} * J{D}};
+      if (!(four % den).is_zero())
+        return std::nullopt;
+      J q{(four / den) % J{4}}; // 4t mod 4
+      if (q.negative())
+        q += J{4};
+      const int v{static_cast<int>(q.Word[0])};
+      if (v == 2) // a pole: none is on the grid
+        return std::nullopt;
+      return wide_rational<E>{wide_sint<E>{v == 0 ? 0 : v == 1 ? 1 : -1}, wide_sint<E>{1}};
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S{W + KMax + 14};
+      constexpr int P{S + 4};
+      using J = wide_sint<limbs_for_bits(64 * static_cast<int>(E + 1) + P + 16)>;
+      using I = fixed_t<S + KMax + 4>;
+      constexpr std::size_t K{limbs_of<I>};
+      const J               two_num{J{2} * numerator<J>()}, den{J{X.Den} * J{D}};
+      const J               k{nearest_div(two_num, den)}; // quarter turns
+      const I r{static_cast<I>(nearest_div((two_num - k * den) * static_cast<J>(pi_q<P>), den << (P - S + 1)))};
+      const bool            odd{(k.Word[0] & 1u) != 0};
+      const fixed_approx<K> sn{sin_series<S>(r, 2)}, cs{cos_series<S>(r, 2)};
+      const fixed_approx<K> nu{odd ? fixed_approx<K>{-cs.Value, cs.Error} : sn};
+      const fixed_approx<K> de{odd ? sn : cs};
+      // (δn + |t|·δd)/(|d| − δd) + 2 units, and the test for a value past 2^KMax: bounds, in doubles widened a hair.
+      const double nd{static_cast<double>(nu.Value)}, dd{static_cast<double>(de.Value)};
+      const double ad{dd < 0 ? -dd : dd}, an{nd < 0 ? -nd : nd};
+      const double ed{static_cast<double>(de.Error)}, en{static_cast<double>(nu.Error)};
+      if (ed < ad && (an - en) / (ad + ed) * (1 - 0x1p-40) > ::ins::detail::ldexp(1.0, KMax))
+        return approx<K>::beyond(nu.Value.negative() != de.Value.negative(), KMax);
+      if (!(2 * ed < ad))
+        return approx<K>::unresolved(S);
+      const double unit_value{::ins::detail::ldexp(1.0, S)};
+      const I      t  {div_q(nu.Value, de.Value, S)};
+      const double at {(an + en) / (ad - ed)};
+      double       err{((en + at * ed) / (ad - ed) * unit_value + 2) * (1 + 0x1p-40) + 1};
+      int          sh{0};
+      while (!(err < 0x1p62))
+      {
+        err *= 0.5;
+        ++sh;
+      }
+      if (sh == 0)
+        return approx<K>{t, S, static_cast<std::uint64_t>(err)};
+      return approx<K>{round_shift(t, sh), S - sh, static_cast<std::uint64_t>(err) + 2};
+    }
+  };
 } // namespace ins::math::detail::engine
 
 namespace ins
@@ -506,6 +577,83 @@ namespace ins
         return engine::evaluate_checked<NO, engine::start_bits<NO>>(pi_arc_core_of<F, C>(x...))
           .transform([](const NO& v) { return quantity_access::make<C>(v); });
     }
+
+    // tan of an angle x·r·π (r = n/d) over V's lattice: the poles sit at x·r ≡ ½ (mod 1). None may be on the lattice,
+    // and the lattice point nearest one (δ in x) bounds |tan| by 1/(2·δ·r), as |sin πu| ≥ 2|u| for |u| ≤ ½
+    // (an end of the grid counts with its distance to the poles beyond it).
+    template <grid_number Ratio, class V>
+    struct pi_tan_facts
+    {
+      static_assert(notch_of<V> != 0, "units: tan of an angle with a factor of pi - the angle's grid has a notch");
+      static_assert(grid_number{0} < Ratio, "units: tan of an angle with a factor of pi - a positive factor");
+      static consteval grid_number floor_of(const grid_number& v)
+      {
+        return ins::detail::grid_round<ins::detail::round_mode::floor>(v);
+      }
+      struct scan_result
+      {
+        bool        Pole;
+        grid_number Distance;
+      };
+      static consteval scan_result scan()
+      {
+        const grid_number lo{lower_of<V>}, hi{upper_of<V>}, n{notch_of<V>}, half{grid_number{1} / grid_number{2}};
+        const grid_number m0{floor_of(lo * Ratio - half) - grid_number{1}}, m1{floor_of(hi * Ratio - half) + grid_number{1}};
+        if (grid_number{1000000} < m1 - m0)
+          ins::detail::constexpr_error<"units: tan of an angle with a factor of pi - the grid spans too many turns">();
+        grid_number best{-1};
+        for (grid_number m{m0}; m <= m1; m = m + grid_number{1})
+        {
+          const grid_number p{(half + m) / Ratio};
+          grid_number       dist;
+          if (p < lo)
+            dist = lo - p;
+          else if (hi < p)
+            dist = p - hi;
+          else
+          {
+            const grid_number off{p - lo};
+            const grid_number rem{off - floor_of(off / n) * n};
+            if (rem == grid_number{0})
+              return {true, grid_number{0}};
+            dist = rem < n - rem ? rem : n - rem;
+          }
+          if (best < grid_number{0} || dist < best)
+            best = dist;
+        }
+        return {false, best};
+      }
+      static constexpr scan_result s{scan()};
+      static constexpr bool        pole{s.Pole};
+      static constexpr grid_number bound{pole ? grid_number{0} : grid_number{1} / (grid_number{2} * s.Distance * Ratio)};
+      static constexpr int         kmax{
+        pole ? 0
+             : ins::detail::grid_numerator(ins::detail::grid_round<ins::detail::round_mode::ceil>(bound)).bit_width() + 2};
+    };
+
+    // tan of an angle with a factor of π (°, a turn), rounded once onto Out: Out where its range holds every value tan
+    // takes over the angle's grid, else std::expected<Out, error>.
+    template <insidable Out, reference R, class V>
+    constexpr auto pi_tan(const quantity<R, V>& q)
+    {
+      namespace engine = ins::math::detail::engine;
+      ins::math::detail::entry::require_rounding<Out>();
+      constexpr grid_number f{magnitude_of(R.U).Ratio};
+      static_assert(ins::detail::fits_rational(f), "units: tan of an angle with a factor of pi - a 64-bit factor");
+      using T = pi_tan_facts<f, V>;
+      static_assert(!T::pole, "units: tan of an angle whose grid holds a pole (an odd multiple of 90°)");
+      constexpr policy_flag p{policy_of<Out>};
+      constexpr bool fits{!is_checked(p) || has_any_flag(p, clamp | wrap)
+                          || (lower_of<Out> <= -T::bound && T::bound <= upper_of<Out>)};
+      constexpr grid_int n{ins::detail::grid_numerator(f)}, d{ins::detail::grid_denominator(f)};
+      const engine::pi_tan_core<engine::input_limbs<V>, T::kmax> core{
+        engine::exact_input(ins::detail::value_of(q)), static_cast<std::uint64_t>(n), static_cast<std::uint64_t>(d),
+        false};
+      if constexpr (fits)
+        return engine::evaluate<Out, engine::start_bits<Out>>(core);
+      else
+        return engine::evaluate_checked<Out, engine::start_bits<Out>>(core);
+    }
   } // namespace detail
 
   namespace detail
@@ -737,9 +885,9 @@ namespace ins
       requires(Rule == math_rule::trig || Rule == math_rule::tan)
     struct quantity_rule<Rule, F, quantity<R, V>>
     {
-      static_assert(radians_v<R> || (Rule == math_rule::trig && pi_angle_v<R>),
-                    "units: sin, cos and tan take an angle in radians, sin and cos one in a unit with a factor of pi "
-                    "too - value_cast<si::radian, Out>(q) first");
+      static_assert(radians_v<R> || pi_angle_v<R>,
+                    "units: sin, cos and tan take an angle in radians, or in a unit with a factor of pi (°, a turn) - "
+                    "value_cast<si::radian, Out>(q) first");
       using NK = m::kind<F, 1, V>;
       static constexpr bool      takes  = NK::takes;
       static constexpr bool      number = true;
@@ -752,6 +900,9 @@ namespace ins
       template <m::out_spec S>
       struct spec<m::specs<S>>
       {
+        static_assert(radians_v<R> || Rule == math_rule::trig,
+                      "units: tan of an angle with a factor of pi (°, a turn) - name the result: tan<C>(q), C a number "
+                      "whose range holds the tangent over the angle's grid (else an expected)");
         static_assert(radians_v<R> || S.HasNotch,
                       "units: sin and cos of an angle with a factor of pi (°, a turn) - name the result's notch: "
                       "sin<per<K>>(q)");
@@ -870,6 +1021,8 @@ namespace ins::math::detail
         constexpr ins::reference R{Args...[0]::reference};
         if constexpr (ins::detail::radians_v<R>)
           return named(ins::detail::value_of(x...[0]));
+        else if constexpr (r == ins::detail::math_rule::tan) // a degree input: one rounding, an expected where NO can miss
+          return ins::detail::pi_tan<NO>(x...[0]);
         else // (a degree input: the pi-scaled engine, into NO as named)
           return ins::detail::pi_trig<NO, std::same_as<F, entry::cos_fn>>(x...[0]);
       }

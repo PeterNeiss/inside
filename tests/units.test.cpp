@@ -1364,4 +1364,26 @@ TEST(PiTierTest, arcs_into_degrees_round_once) {
     EXPECT_EQ(math::atan2<narrow>(len{1, si::metre}, len{-1, si::metre}).error(), error::overflow);
     EXPECT_TRUE((*math::atan2<narrow>(len{1, si::metre}, len{2, si::metre}) == just<266, 10> * si::degree));
 }
+
+// tan of a degree angle: rounded once, exact at 0 and ±45°, its bound from the lattice point nearest a pole.
+TEST(PiTierTest, tan_of_degrees_rounds_once) {
+    using deg = quantity<si::degree, inside<{{-89.75, 89.75}, per<4>}>>;
+    using out = inside<{{-512, 512}, per<(1 << 12)>}, round_half_away>;
+    static_assert(std::same_as<decltype(math::tan<out>(deg{})), out>); // |tan| ≤ 1/(2·¼·(1/180)) = 360
+    int bad = 0;
+    for (const auto v : values<typename deg::rep>) {
+        const long double a = v.template to<double>() * 3.14159265358979323846264338327950288L / 180;
+        const out         t = math::tan<out>(deg{v, si::degree});
+        bad += !(std::fabs(static_cast<long double>(t.template to<double>()) - std::tan(a)) <=
+                 0x1p-13L + 1e-12L * (1 + std::fabs(std::tan(a))));
+    }
+    EXPECT_EQ(bad, 0);
+    EXPECT_TRUE(math::tan<out>(deg{45, si::degree}) == 1 && math::tan<out>(deg{-45, si::degree}) == -1);
+    EXPECT_TRUE(math::tan<out>(deg{0, si::degree}) == 0);
+    // A result that may not hold every value: an expected.
+    using small = inside<{{-100, 100}, per<1000>}, round_half_away>;
+    static_assert(ud::is_expected_v<decltype(math::tan<small>(deg{}))>);
+    EXPECT_EQ(math::tan<small>(deg{89.5, si::degree}).error(), error::overflow);
+    EXPECT_TRUE((*math::tan<small>(deg{30, si::degree}) == just<577, 1000>));
+}
 } // namespace pi_tier_tests

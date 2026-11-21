@@ -49,6 +49,13 @@ own can be declared the same way with `defined_by`.
   √(3 + 4i) = 2 + i exactly, the principal values log(−r) = log r + π i and
   √(−r) = √r i. A `std::expected` with `error::domain_error` where the type
   does not prove the domain (a negative quaternion scalar has no axis).
+- `asin`, `acos`, `atan` and `atan2` straight into degrees or turns, rounded
+  once: a named quantity result whose unit has a factor of π takes the angle
+  in that unit (`math::atan2<bearing>(east, north)`), exact at Niven's angles
+  (30°, 45°, 90°, …), with a double tier; an `expected` where the result may
+  not hold every angle. `tan<C>(q)` of an angle in degrees, rounded once:
+  a grid that holds a pole does not compile, and C's range is checked
+  against the tangent's bound over the grid.
 - Quantities and points read from text with their units: `parse<Q>(text)`,
   `parse<Q>(number, unit)`, `parse<Q>(number, u)` and the `parse_exact`
   forms, and `>>` into a `std::expected<Q, error>` (only there). The unit may

@@ -154,17 +154,22 @@ in every form above:
 |---|---|---|
 | `abs`, `floor`, `ceil`, `round`, `trunc` | any quantity | the same unit |
 | `sqrt`, `cbrt` | a unit with that root | the root of the unit: m² → m |
-| `sin`, `cos`, `tan` | an angle in rad (`sin`, `cos`: or degrees, or any unit with a factor of π, reduced exactly) | a plain inside |
-| `asin`, `acos`, `atan` | a dimensionless quantity | rad |
-| `atan2(y, x)`, `hypot(x, y)`, `gcd(x, y)`, `lcm(x, y)` | two quantities of one dimension | rad; their common unit |
+| `sin`, `cos`, `tan` | an angle in rad, or in degrees or any unit with a factor of π, reduced exactly (`tan`: into a named `C`) | a plain inside |
+| `asin`, `acos`, `atan` | a dimensionless quantity | rad, or straight into degrees (a named quantity in a unit with a factor of π), rounded once |
+| `atan2(y, x)`, `hypot(x, y)`, `gcd(x, y)`, `lcm(x, y)` | two quantities of one dimension | rad (or degrees, as `asin`); their common unit |
 | `exp`, `exp2`, `log`, …, `atanh`, `pow_base<B>`, `pow` | dimensionless quantities | a plain inside |
 | `exp` | a multivector, or a quantity of one blade, whose non-scalar parts anticommute | a multivector: each part rounded once |
 | `value_cast<si::radian, Out>(q)` | an angle in degrees or turns | rad, rounded once |
 
 `fn<L>(q)`, with `L` an inside, names only the result's number: the unit
 follows (`math::sqrt<L>(area)` is a length on `L`). `fn<Q>(q)` names the
-whole quantity, whose unit must be the result's. Of a plain inside, `asin`,
-`acos` and `atan` give a plain inside, as in `<cmath>`.
+whole quantity, whose unit must be the result's; for `asin`, `acos`, `atan`
+and `atan2` it may also be degrees or turns, and the angle rounds once in
+that unit: `math::atan2<bearing>(east, north)` with `bearing` a quantity in
+°. Where `Q` may not hold every angle the result is an `expected`, as is
+`tan<C>` of degrees where `C` may not hold the tangent over the angle's grid
+(a grid that holds 90° does not compile). Of a plain inside, `asin`, `acos`
+and `atan` give a plain inside, as in `<cmath>`.
 
 A level in dB converts to a gain with
 `math::pow_base<10, gain_t>(level / (just<20> * dB))`
