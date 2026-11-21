@@ -51,16 +51,16 @@ type never has one:
 ```cpp
 auto a = just<3> * e1;
 auto b = just<4> * e2;
-auto p = b * a;                      // -12 e₁ e₂
+auto p = b * a;                      // -12 e₁·e₂
 auto q = (just<2> * i) * (just<3> * i);   // -6: i i is a number
 ```
 
 A product keeps its factors' spelling when their blades share no basis vector
-(1·i stays i, and 2 m · e₁ is 2 m e₁). Otherwise the blade of the product is
+(1·i stays i, and 2 m times e₁ is 2 m·e₁). Otherwise the blade of the product is
 spelled by its basis vectors in name order: i·i is a number, and the
 quaternions' i·j (both hold e₁) is 1 e₂ e₃, which is k. A sum picks the shorter of two spellings of one size, so the k part
 of a product of two quaternions prints as k. A physical unit commutes with
-everything and prints first: `2 m e₁`. A product that vanishes (ε ε) is the
+everything and prints first: `2 m·e₁`. A product that vanishes (ε ε) is the
 zero, `multivector<>`.
 
 Basis vectors divide too: B⁻¹ = B B² for a blade whose square is ±1, so
@@ -73,7 +73,7 @@ A sum of quantities of different blades is a `multivector`:
 
 ```cpp
 auto z = just<3> + just<4> * i;                                    // 3 + 4 i
-auto v = just<2> * si::metre * e1 + just<1> * si::metre * e2;      // 2 m e₁ + 1 m e₂
+auto v = just<2> * si::metre * e1 + just<1> * si::metre * e2;      // 2 m·e₁ + 1 m·e₂
 ```
 
 - Its **parts** are insides (the scalar part, when it is a plain number) and
@@ -101,7 +101,7 @@ auto v = just<2> * si::metre * e1 + just<1> * si::metre * e2;      // 2 m e₁ +
 | `scalar_product(a, b)` | ⟨a b⟩₀ |
 | `reverse(x)`, `involute(x)`, `conjugate(x)` | each grade k times (−1)^(k(k−1)/2), (−1)^k, (−1)^(k(k+1)/2) |
 | `grade<K>(x)` | the parts of grade K |
-| `part(x, u)` | the coefficient of blade u (a unit of a blade, or `one`), with the sign of u's spelling: 2 m for 2 m e₁; the zero when x has no such part |
+| `part(x, u)` | the coefficient of blade u (a unit of a blade, or `one`), with the sign of u's spelling: 2 m for 2 m·e₁; the zero when x has no such part |
 | `x * u`, `x.in(u)` | each part times a unit; each part in unit u, its blade kept: `(V / Z).in(si::ampere)` |
 | `squared_norm(x)` | ⟨x x̃⟩₀ = Σ partᵢ · reverse(partᵢ): \|z\|², \|q\|², \|v\|² |
 | `inverse(x)`, `a / b` | α(x) / (x α(x)), α the reverse or the Clifford conjugate, when that is a scalar (below) |
@@ -110,7 +110,7 @@ auto v = just<2> * si::metre * e1 + just<1> * si::metre * e2;      // 2 m e₁ +
 | `complement(x, I)`, `uncomplement(x, I)` | the right complement within I's blade, A ∧ c(A) = I, without the metric, and its inverse |
 | `regressive(a, b, I)` | the regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA |
 | `==` | per blade; a missing part compares as 0. With multivectors and quantities only, never a number: `q * inverse(q) == one`, `i * i == -one`, `z * reverse(z) == just<25> * one` |
-| `to_string`, `<<`, `std::format` | units/io.hpp: `3 - 4 i`, `2 m e₁ + 1 m e₂`, `0` |
+| `to_string`, `<<`, `std::format` | units/io.hpp: `3 - 4 i`, `2 m·e₁ + 1 m·e₂`, `0` |
 
 A division by a grid that holds 0 gives an `std::expected`, as `/` does
 everywhere: `inverse` of a multivector whose norm's grid holds 0 is an
@@ -176,7 +176,7 @@ A rotor of G(3,0) onto a grid of 2^-20 costs about what `std::sqrt`,
 auto w  = just<1> - just<2> * i;
 auto zw = z * w;                     // 11 - 2 i
 auto zq = z / w;                     // -1 + 2 i, exactly
-auto r  = v * i;                     // -1 m e₁ + 2 m e₂: a quarter turn
+auto r  = v * i;                     // -1 m·e₁ + 2 m·e₂: a quarter turn
 ```
 
 - [`complex.cpp`](../../examples/complex.cpp) covers five things:
@@ -203,8 +203,8 @@ auto r  = v * i;                     // -1 m e₁ + 2 m e₂: a quarter turn
   off-diagonal terms is a change of basis away.
 - **Six atoms per unit.** A unit holds at most 6 atoms, physical and blade
   together, as everywhere in the units. A blade spelled by its basis vectors
-  uses one per vector, so m e₁ e₂ e₃ e₄ e₅ fits, and CGA's pseudoscalar times
-  N m does not.
+  uses one per vector, so m·e₁·e₂·e₃·e₄·e₅ fits, and CGA's pseudoscalar times
+  N·m does not.
 - **exp only.** There is no log or sqrt of a rotor, and exp needs the closed
   form: its argument's non-scalar parts must anticommute.
 - **No sandwich helper.** R v R̃ keeps every grade the product can have. A

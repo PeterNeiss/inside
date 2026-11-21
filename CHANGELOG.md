@@ -9,6 +9,15 @@ own can be declared the same way with `defined_by`.
 
 ### Upgrading from 0.10.0
 
+- `parse<Q>(text)` of a quantity reads the number **with its unit**:
+  `parse<metres>("5")` is now `error::missing_unit`. Write the unit in the
+  text (`"5 m"`, or any unit that converts exactly: `"5 km"`), pass it apart
+  (`parse<Q>("5", "km")`), or name it in code (`parse<Q>("5", si::metre)`).
+  `to_string(q)` reads back: `parse<Q>(to_string(q)) == q`.
+- A unit's factors print joined by `·` (ASCII `*`) instead of a space:
+  `kg·m²/s²`, `J/(K·kg)`, `[1/381·ft]`, a multivector's `2 m·e₁ + 1 m·e₂`.
+  A quantity's text is then one number and one unit token, so `>>` reads
+  what `<<` writes; `parse` still accepts a space between factors.
 - A unit or kind that re-declares a catalog entry by its content
   (`base_unit<"m", "length">` for `si::metre`) still compares equal to it and
   converts, but is now another type. A sum of the two may run in either unit.
@@ -21,6 +30,17 @@ own can be declared the same way with `defined_by`.
 
 ### Added
 
+- Quantities and points read from text with their units: `parse<Q>(text)`,
+  `parse<Q>(number, unit)`, `parse<Q>(number, u)` and the `parse_exact`
+  forms, and `>>` into a `std::expected<Q, error>` (only there). The unit may
+  be any unit visible at the call that converts exactly to Q's, the catalog's
+  and your own (found by reflection; each call site gets the set it sees as a
+  template argument), with prefixes, products, quotients, powers and scales,
+  in UTF-8 or ASCII: `"1.5 h"` into minutes is 90 min, `"36 km/h"` into m/s
+  10 m/s, `"350 ℉"` into a ℃ point 530/3 ℃. The factor is applied exactly,
+  then Q's number type stores the value. New error codes: `missing_unit`,
+  `unknown_unit`, `incompatible_unit`. `json_io.cpp` carries units in its
+  keys (`"price[USD/item]": 19.99`).
 - `math::gcd` and `math::lcm` take two quantities that add, in their common
   unit, exactly: `lcm(12 min, 18 min)` is 36 min, `gcd(3 cm, 4 mm)` 2 mm.
 - A point type takes a number in its own unit, as a quantity does:

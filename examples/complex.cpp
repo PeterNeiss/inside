@@ -38,7 +38,7 @@ int main()
   // and e₁·v is v as a complex number, in metres.
   const auto v{just<2> * si::metre * e1 + just<1> * si::metre * e2};
   std::cout << "v = " << v << ", v i = " << v * i << ", e₁ v = " << just<1> * e1 * v << '\n';
-  if (to_string(v * i) != "-1 m e₁ + 2 m e₂" || !(part(just<1> * e1 * v, i) == just<1> * si::metre))
+  if (to_string(v * i) != "-1 m·e₁ + 2 m·e₂" || !(part(just<1> * e1 * v, i) == just<1> * si::metre))
     return 1;
   const auto one_plus_i{just<1> + just<1> * i};
   const auto fourth    {one_plus_i * one_plus_i * one_plus_i * one_plus_i};
@@ -62,7 +62,7 @@ int main()
   const auto V{just<10> * si::volt};
   const auto I{(V / Z).in(si::ampere)};
   std::cout << "Z = " << Z << ", I = V / Z = " << I << '\n';
-  if (to_string(I) != "1.2 A - 1.6 A i")
+  if (to_string(I) != "1.2 A - 1.6 A·i")
     return 1;
 
   // 5. Euler's identity: exp rounds each part once onto 2^-20,

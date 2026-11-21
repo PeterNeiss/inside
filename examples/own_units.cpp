@@ -50,6 +50,12 @@ int main()
   if (to_string(sounding.in(si::metre)) != "21.9456 m"
       || to_string((just<1> * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
     return 1;
+  // Text names it too: parse finds every unit declared where it is called.
+  using metres = quantity<si::metre, inside<{{0, 1000}, per<10'000>}>>;
+  const auto read{parse<metres>("12 ftm")};
+  std::cout << "read       12 ftm = " << *read << '\n';
+  if (to_string(*read) != "21.9456 m")
+    return 1;
   static_assert(sounding.kind == depth);
 
   // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.

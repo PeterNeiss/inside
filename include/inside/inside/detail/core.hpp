@@ -1357,6 +1357,33 @@ namespace ins
   // (io.hpp adds std::string_view overloads and operator>>.)
   namespace detail
   {
+    // An exact value read from text, stored into B: by B's policy and the call's flags F (parse),
+    // or only where B holds it exactly (parse_exact: out of range is overflow, off the grid rounding_error).
+    template <insidable B, policy_flag F, bool Exact, std::size_t K>
+    constexpr std::expected<B, error> store_text_value(const wide_rational<K>& w)
+    {
+      if constexpr (Exact)
+      {
+        if (w < exact_of_grid<K>(lower_of<B>) || exact_of_grid<K>(upper_of<B>) < w)
+          return std::unexpected{error::overflow};
+        if constexpr (notched<B>)
+        {
+          if (!exact_index<B, round_mode::trunc>(w).Exact)
+            return std::unexpected{error::rounding_error};
+        }
+        else if constexpr (grid_of<B>.MaxDenominator != 0)
+        {
+          // A continuous grid holds denominators up to its bound only.
+          if (static_cast<wide_sint<K>>(grid_numerator(grid_of<B>.MaxDenominator)) < reduced(w).Den)
+            return std::unexpected{error::rounding_error};
+        }
+        return try_store<B, policy_of<B>>([&](B& b, auto&& pol) { assign_exact<rational>(b, w, pol, no_action{}); });
+      }
+      else
+        return try_store<B, policy_of<B> | F>(
+          [&](B& b, auto&& pol) { assign_exact<rational>(b, w, pol, no_action{}); });
+    }
+
     // parse past the 64-bit rational (a long decimal, a wide grid's value, 1e-200):
     // the text parsed exactly, or past that width as a tiny or huge value's stand-in.
     // Out of line: the common parse stays small.
@@ -1370,8 +1397,7 @@ namespace ins
           w = *t;
       if (!w)
         return std::unexpected{w.error()};
-      return try_store<B, policy_of<B> | F>(
-        [&](B& b, auto&& pol) { assign_exact<rational>(b, *w, pol, no_action{}); });
+      return store_text_value<B, F, false>(*w);
     }
     // The full grammar (separators, exponents, bases, N/D):
     // out of line, so the plain decimals' path keeps no frame for it.
@@ -1444,22 +1470,7 @@ namespace ins
         w = *t; // never on the grid: rounding_error, or overflow outside it
     if (!w)
       return std::unexpected{w.error()};
-    if (*w < detail::exact_of_grid<K>(lower_of<B>) || detail::exact_of_grid<K>(upper_of<B>) < *w)
-      return std::unexpected{error::overflow};
-    if constexpr (detail::notched<B>)
-    {
-      if (!detail::exact_index<B, detail::round_mode::trunc>(*w).Exact)
-        return std::unexpected{error::rounding_error};
-    }
-    else if constexpr (grid_of<B>.MaxDenominator != 0)
-    {
-      // A continuous grid holds denominators up to its bound only.
-      if (static_cast<detail::wide_sint<K>>(detail::grid_numerator(grid_of<B>.MaxDenominator))
-          < detail::reduced(*w).Den)
-        return std::unexpected{error::rounding_error};
-    }
-    return detail::try_store<B, policy_of<B>>(
-      [&](B& b, auto&& pol) { detail::assign_exact<detail::rational>(b, *w, pol, detail::no_action{}); });
+    return detail::store_text_value<B, detail::none, true>(*w);
   }
 
   // just<N, D>: the point grid holds the value, so no value constructor is needed,

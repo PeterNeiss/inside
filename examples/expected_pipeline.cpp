@@ -21,7 +21,8 @@ using volts         = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round
 
 constexpr reading_volts offset{just<1, 4000> * si::volt}; // 0.25 mV
 
-// One sample, a reading and the channel's gain as text.
+// One sample, a reading with its unit and the channel's gain as text.
+// The reading may come in any unit of voltage (mV, µV): parse converts it exactly, or reports why not.
 // k's grid holds 0, so div<volts> (one rounding into volts) is an expected
 // carrying a zero gain or a failed store.
 std::expected<volts, error> calibrate(std::string_view r, std::string_view g)
@@ -41,24 +42,26 @@ int main()
     error            expect; // error{} for success
   };
   const sample samples[] = {
-    {"0.0125",    "2",    error{}},                 // (12.5 − 0.25) mV / 2 = 0.006125 V
-    {"0.0125x",   "2",    error::invalid_format},   // not a number
-    {"0.0000001", "2",    error::rounding_error},   // 0.1 µV: off the 1 µV grid
-    {"0.25",      "2",    error::overflow},         // past ±100 mV
-    {"0.0125",    "0",    error::division_by_zero}, // a dead channel
-    {"-0.09",     "0.01", error::overflow},         // −9.025 V: past ±1 V
+    {"12.5 mV",   "2",    error{}},                  // (12.5 − 0.25) mV / 2 = 0.006125 V
+    {"12.5x mV",  "2",    error::invalid_format},    // not a number
+    {"12.5",      "2",    error::missing_unit},      // a number without its unit
+    {"12.5 mA",   "2",    error::incompatible_unit}, // a current, no voltage
+    {"0.1 µV",    "2",    error::rounding_error},    // off the 1 µV grid
+    {"250 mV",    "2",    error::overflow},          // past ±100 mV
+    {"12.5 mV",   "0",    error::division_by_zero},  // a dead channel
+    {"-90 mV",    "0.01", error::overflow},          // −9.025 V: past ±1 V
   };
   for (const auto& s : samples)
   {
     const auto v{calibrate(s.r, s.g)};
-    std::cout << "(" << s.r << " - 0.00025) / " << s.g << " -> "
+    std::cout << "(" << s.r << " - 0.25 mV) / " << s.g << " -> "
               << (v ? to_string(*v) : std::string{"error: "} + error_message(v.error())) << "\n";
     if (v ? s.expect != error{} : v.error() != s.expect)
       return 1;
   }
 
   // or_else supplies a fallback for one cause and passes the rest on.
-  const auto fallback{calibrate("0.0125", "0").or_else(
+  const auto fallback{calibrate("12.5 mV", "0").or_else(
     [](error e) -> std::expected<volts, error>
     {
       if (e == error::division_by_zero)

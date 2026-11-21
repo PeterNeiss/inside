@@ -89,12 +89,64 @@ writes a JSON document byte for byte this way.
 ## Quantities
 
 `to_string(q)`, `<<` and `std::format` write the number and then the unit's
-symbol: `5 km`, `10.5 m/s`, `kg m²/s²`, `90°`, `20 ℃`. A unit with only a
-denominator shows negative exponents: `2 s⁻¹`, `1 m⁻¹ s⁻¹`. A format spec
+symbol: `5 km`, `10.5 m/s`, `kg·m²/s²`, `90°`, `20 ℃`. A unit's factors are
+joined by `·`, so a quantity's text is one number and one unit token (which
+`>>` reads back). A unit with only a
+denominator shows negative exponents: `2 s⁻¹`, `1 m⁻¹·s⁻¹`. A format spec
 applies to the number (`{:.2f}`, `{:>8}`), and
 `unit_symbol(u, text_encoding::ascii)` gives the ASCII spelling:
-`kg m^2/s^2`, `um`, `ohm`.
+`kg*m^2/s^2`, `um`, `ohm`.
 
-`ins::parse<Q, F>(text)` and `ins::parse_exact<Q>(text)` read a number in
-Q's unit; there is no `>>` for quantities. A JSON or wire format holds the
-bare number: write `q.numerical_value_in(u)`, which also documents the unit.
+### Reading a quantity with its unit
+
+Text names its unit, and reads back what `to_string` writes, in either
+encoding: `parse<Q>(to_string(q)) == q` for every quantity and point.
+
+```cpp
+using minutes = quantity<si::minute, inside<{{0, 600}, per<10>}>>;
+parse<minutes>("1.5 h");          // 90.0 min: any unit that converts exactly
+parse<minutes>("90 s");           // 1.5 min
+parse<minutes>("90");             // error::missing_unit: a number alone names no unit
+parse<minutes>("90 m");           // error::incompatible_unit: a length
+parse<minutes>("90 zz");          // error::unknown_unit
+parse<minutes>("90", "s");        // the two apart: a JSON key "wait[s]", a CSV header
+parse<minutes>("90", si::second); // a unit named in code
+```
+
+| Form | Reads |
+|---|---|
+| `parse<Q, F>(text)`, `parse_exact<Q>(text)` | the number, then its unit after a space or against it (`90°`, `90deg`) |
+| `parse<Q, F>(number, unit)` | the two apart |
+| `parse<Q, F>(number, u)` | a bare number in the unit `u`, named in code; a `u` that does not convert exactly does not compile |
+| `is >> e`, `e` a `std::expected<Q, error>` | a number token and a unit token; `e` holds the value or the error, and the stream stays good on a parse error (only running out of input sets failbit). There is no `>>` into a plain quantity. |
+
+**Which units.** Any unit visible where `parse` is called that converts
+**exactly** to Q's: the factor between them is a rational (km→m ×1000,
+h→min ×60, ‰→% ×1/10, ℉→℃ ×5/9 and a shift), so the value in Q's unit is
+computed with no rounding, and Q's number type then stores it (by its
+policy and the flags `F`; `parse_exact` only where it is on the grid). A
+factor of π (° into rad) is not exact. The units are the catalog's and
+every unit of your own declared at namespace scope before the call, in any
+namespace (unnamed ones too), found by reflection. Each call site gets the
+set it sees as a template argument, so two translation units that see
+different units get different specializations.
+
+**The unit's text.** A symbol with an optional SI prefix (`k`, `µ`, ASCII
+`u`) and exponent (`²`, `⁻¹`, `^2`, `^-1`); factors joined by a space, `·`
+or `*`; one `/` before a symbol or a parenthesized product (`J/(kg K)`),
+or `1/s`; a scaled unit as printed (`[1/381·ft]`). An exact symbol wins
+over a prefix reading (`min` is the minute, `mm` the millimetre); at most
+6 symbols and exponents up to 9.
+
+**Kinds and origins.** A single unit's kind must add to Q's: `"5 Hz"` is no
+activity in Bq, `"15 %"` no level in dB. A compound unit names no kind, so
+the type gives it: `"5 1/s"` reads as 5 Hz. A point reads the number from
+the unit's origin and shifts it exactly into its own: `"350 ℉"` into a ℃
+point is 530/3 ℃; a quantity is a difference, so `"5 ℃"` into kelvins is
+5 K.
+
+Errors: `missing_unit`, `unknown_unit`, `incompatible_unit`, then the
+number's (`invalid_format`) and the store's (`rounding_error`,
+`overflow`). A JSON document carries units in its keys
+(`"price[USD/item]": 19.99`), as
+[`json_io.cpp`](../../examples/json_io.cpp) reads and writes them.

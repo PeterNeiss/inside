@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Physical units on insides: every conversion is exact, and the grid of every result is known at compile time.
+// Physical units on insides: every conversion is exact, and the grid of every result is known at compile time;
+// text reads back with its unit, in any unit that converts exactly.
 
 #include <iostream>
 
@@ -71,6 +72,24 @@ int main()
   std::cout << "bearing: " << bearing << ", east " << east.in(si::metre) << ", north " << north.in(si::metre)
             << '\n'; // 0.523599 rad, east 750.0000 m, north 1299.0375 m
   if (to_string(bearing) != "0.523599 rad" || to_string(east.in(si::metre)) != "750.0000 m")
+    return 1;
+
+  // 5. Text names its unit, any that converts exactly: 1.5 h and 90 s into minutes, 36 km/h into m/s,
+  // 350 ℉ into a ℃ point. A bare number, another dimension or a unit nothing defines is an error, not a guess.
+  using read_minutes = quantity<si::minute, inside<{{0, 600}, per<10>}>>;
+  using read_speed   = quantity<si::metre / si::second, inside<{{0, 100}, per<100>}>>;
+  using oven         = quantity_point<si::degree_Celsius, si::ice_point, inside<{{0, 300}, max_denominator{9}}>>;
+  const auto hours  {parse<read_minutes>("1.5 h")};
+  const auto seconds{parse<read_minutes>("90 s")};
+  const auto pace   {parse<read_speed>("36 km/h")};
+  const auto baking {parse<oven>("350 ℉")};
+  std::cout << "read:    " << *hours << ", " << *seconds << ", " << *pace << ", " << *baking
+            << '\n'; // 90.0 min, 1.5 min, 10.00 m/s, 530/3 ℃
+  std::cout << "errors:  " << error_message(parse<read_minutes>("90").error()) << "; "
+            << error_message(parse<read_minutes>("90 m").error()) << "; "
+            << error_message(parse<read_minutes>("90 zz").error()) << '\n';
+  if (to_string(*hours) != "90.0 min" || to_string(*seconds) != "1.5 min" || to_string(*pace) != "10.00 m/s"
+      || to_string(*baking) != "530/3 ℃" || parse<read_minutes>("90").error() != error::missing_unit)
     return 1;
   return 0;
 }

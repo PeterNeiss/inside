@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Opt-in: text for quantities, as io.hpp is for insides: a unit's symbol (unit_symbol), a quantity or point as
-// "5 km" (to_string, <<, std::format) and parse<Q>.
+// "5 km" (to_string, <<, std::format), and read back with its unit (parse<Q>, >> into an expected).
 // Brings <string>, <ostream> and <format> through io.hpp; units.hpp alone does not.
 #ifndef INSIDE_UNITS_IO_HPP
 #define INSIDE_UNITS_IO_HPP
@@ -9,11 +9,13 @@
 
 #include <inside/inside/io.hpp>
 #include <inside/units.hpp>
+#include <inside/units/detail/unit_text.hpp>
 
 #include <algorithm>
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <istream>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -21,21 +23,89 @@
 
 namespace ins
 {
-  // parse<Q, F>(text) / parse_exact<Q>(text): the number, in Q's unit.
-  template <class Q, policy_flag F = ins::detail::none>
-    requires quantity_like<Q>
+  // Reading a quantity or a point from text, with its unit (the inverse of to_string):
+  //   parse<Q, F>(text)           "12.5 km", "1.5 h", "21.5 ℃": the number, then its unit
+  //   parse<Q, F>(number, unit)   the two apart: a JSON key price[USD/item], a CSV header
+  //   parse<Q, F>(number, u)      a bare number in a unit named in code (u a unit tag)
+  //   parse_exact<Q>(…)           the same, accepting only a value Q holds exactly
+  // The unit may be any unit visible at the call that converts exactly to Q's (a rational factor): the catalog's
+  // and your own, with SI prefixes, products, quotients and powers ("km/h", "kg m²/s²"). The number is multiplied
+  // by that factor exactly (a point also shifted between origins), then stored by Q's number type and the flags F.
+  // A single unit's kind must add to Q's (Hz is no Bq); a compound unit's kind is Q's.
+  // Errors: missing_unit, unknown_unit, incompatible_unit, then the number's and the store's own.
+  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::visible_units<Q>()>
+    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view text)
   {
-    return detail::wrap_out<Q>(ins::parse<typename Q::rep, F>(text));
+    const auto t{detail::split_quantity_text(text)};
+    return detail::parse_quantity_text<Q, F, false, Units>(t.Number, t.Unit);
   }
-  template <class Q>
-    requires quantity_like<Q>
+  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::visible_units<Q>()>
+    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, std::string_view unit)
+  {
+    return detail::parse_quantity_text<Q, F, false, Units>(number, unit);
+  }
+  template <class Q, policy_flag F = detail::none, class Tag>
+    requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+  [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, Tag)
+  {
+    return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).U>(number);
+  }
+  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
+    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view text)
   {
-    return detail::wrap_out<Q>(ins::parse_exact<typename Q::rep>(text));
+    const auto t{detail::split_quantity_text(text)};
+    return detail::parse_quantity_text<Q, detail::none, true, Units>(t.Number, t.Unit);
+  }
+  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
+    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, std::string_view unit)
+  {
+    return detail::parse_quantity_text<Q, detail::none, true, Units>(number, unit);
+  }
+  template <class Q, class Tag>
+    requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+  [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, Tag)
+  {
+    return detail::parse_quantity_in<Q, detail::none, true, reference_of(Tag{}).U>(number);
   }
 
-  // Text: a unit's symbol (kg m²/s², km/h, 1/s), a quantity as "5 km".
+  // is >> e for e a std::expected of a quantity or a point: a number token, then a unit token unless the number's
+  // token carries it (90°). e holds the value or the error; the stream stays good on a parse error, and only
+  // running out of input sets failbit (e: invalid_format without a number, missing_unit without a unit).
+  // (No >> into a plain quantity: every way to read one reports through an expected.)
+  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
+    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  std::istream& operator>>(std::istream& stream, std::expected<Q, error>& e)
+  {
+    std::string number;
+    if (!(stream >> number))
+    {
+      e = std::unexpected{error::invalid_format};
+      return stream;
+    }
+    const auto t{detail::split_quantity_text(number)};
+    if (!t.Unit.empty())
+    {
+      e = detail::parse_quantity_text<Q, detail::none, false, Units>(t.Number, t.Unit);
+      return stream;
+    }
+    std::string unit;
+    if constexpr (!(detail::text_target<Q>::type::reference.U == unit_value{}))
+      if (!(stream >> unit))
+      {
+        e = std::unexpected{error::missing_unit};
+        return stream;
+      }
+    e = detail::parse_quantity_text<Q, detail::none, false, Units>(number, unit);
+    return stream;
+  }
+
+  // Text: a unit's symbol (kg·m²/s², km/h, 1/s), a quantity as "5 km".
   enum class text_encoding : unsigned char { utf8, ascii };
 
   namespace detail
@@ -77,7 +147,7 @@ namespace ins
     }
 
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
-    // The blade atoms come last, in their order: 2 m e₁.
+    // The blade atoms come last, in their order: 2 m·e₁.
     inline void append_atoms(std::string& s, const unit_value& u, int sign, text_encoding enc)
     {
       bool first{true};
@@ -88,7 +158,7 @@ namespace ins
           if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_blade_atom(a) != blades)
             continue;
           if (!first)
-            s += ' ';
+            s += enc == text_encoding::utf8 ? "·" : "*";
           first = false;
           s += prefix_symbol(a.Prefix, enc);
           s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->ascii();
@@ -97,7 +167,8 @@ namespace ins
     }
   } // namespace detail
 
-  // The symbol of a unit: "km", "kg m²/s²", "s⁻¹", "[1/381 ft]" (a scaled unit).
+  // The symbol of a unit: "km", "kg·m²/s²", "s⁻¹", "[1/381·ft]" (a scaled unit); ASCII joins with '*'.
+  // A symbol holds no space, so a quantity's text is a number and one unit token.
   inline std::string unit_symbol(const unit_value& u, text_encoding enc = text_encoding::utf8)
   {
     std::string s;
@@ -126,7 +197,7 @@ namespace ins
         scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
         detail::append_exponent(scale, u.Scale.Pi, enc);
       }
-      s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
+      s = "[" + scale + (s.empty() ? "" : (enc == text_encoding::utf8 ? "·" : "*") + s) + "]";
     }
     return s;
   }
