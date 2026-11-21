@@ -24266,8 +24266,9 @@ namespace ins::math
 //   kind_cast, value_cast                        kinds and representations
 //   unit<>, base_unit<>, kind<>, origin<>,       units, kinds, origins and
 //   base_dimension<>                             dimensions of your own
-//   basis_vector                                 a basis vector of a geometric
-//                                                algebra: you state its square
+//   basis_vector                                 a basis vector, by its rule:
+//                                                geometric<S> (its square S),
+//                                                inner (Rⁿ), polynomial (x)
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make(v, u)
 //   mul<C>, div<C>, add_all, mul_all, sum<Q>, divmod,
 //   conversion_overflows / rounds / loses<Q>(v, u), Q{v, u, clamp} / Q{q, wrap},
@@ -24276,7 +24277,8 @@ namespace ins::math
 // The catalog: isq, si, si2019, international.
 // The derived physical constants are in units/constants.hpp;
 // text (to_string, <<, std::format, parse<Q>) in units/io.hpp;
-// multivectors and the products of geometric algebra (3 + 4 i, wedge, reverse, inverse, dual) in units/geoalg.hpp.
+// multivectors and the products of geometric algebra (3 + 4 i, wedge, reverse, inverse, dual) in units/geoalg.hpp;
+// the calculus of polynomials (substitute, derivative, antiderivative, divmod) in units/polynomial.hpp.
 //
 // This umbrella is units/core.hpp (the machinery: units/detail/algebra.hpp, quantity.hpp, point.hpp)
 // plus units/systems.hpp (the catalog). For units of your own without the SI catalog, include units/core.hpp.
@@ -24330,16 +24332,54 @@ namespace ins
   // information) alike. Angle is dimensionless, as in SI.
   struct unit_def;
 
+  // How a basis vector multiplies (basis_vector<"e₁", geometric<+1>>).
+  // A geometric one squares to Square (+1, -1 or 0), and two of them anticommute.
+  // An inner one squares to 1, and the product of two of them is 0.
+  // A polynomial one is a variable: its exponent adds as a unit's does, and it commutes with everything.
+  enum class basis_product : std::int8_t { none, geometric, inner, polynomial };
+  struct basis_rule
+  {
+    basis_product Product{basis_product::none};
+    std::int8_t   Square{0};
+
+    friend constexpr bool operator==(const basis_rule&, const basis_rule&) = default;
+  };
+
+  namespace detail
+  {
+    consteval basis_rule geometric_rule(int square)
+    {
+      if (square != 1 && square != -1 && square != 0)
+        ins::detail::constexpr_error<"units: a basis vector squares to +1, -1 or 0">();
+      return {basis_product::geometric, static_cast<std::int8_t>(square)};
+    }
+  } // namespace detail
+
+  // geometric<S>: the rule of a basis vector of a geometric algebra, by its square S (+1, -1 or 0).
+  template <int Square>
+  inline constexpr basis_rule geometric = detail::geometric_rule(Square);
+
+  // inner: the rule of a basis vector of Rⁿ with the dot product: b·b = 1 and b₁·b₂ = 0,
+  // so the product of two vectors is their dot product, a number.
+  // It is not associative: (b₁b₁)b₂ = b₂, but b₁(b₁b₂) = 0.
+  inline constexpr basis_rule inner{basis_product::inner, 1};
+
+  // polynomial: the rule of a polynomial's variable x: x·x = x², and x commutes with everything,
+  // so 3 + 2 x + x² is a sum of parts (units/geoalg.hpp); units/polynomial.hpp has its calculus.
+  inline constexpr basis_rule polynomial{basis_product::polynomial, 0};
+
   // A base dimension: base_dimension<"currency"> (units/detail/define.hpp).
-  // A basis vector of a geometric algebra is one too (see basis_vector): its exponent is 0 or 1,
-  // it squares to Square (+1, -1 or 0), two of them anticommute, and Vector is its unit.
-  // Vector is read only when Basis is set.
+  // A basis vector is one too (see basis_vector): its Rule says how it multiplies, and Vector is its unit.
+  // Vector is read only for a basis vector. A vector's exponent (a geometric or an inner one's) is 0 or 1;
+  // a polynomial variable's is any, as a unit's.
   struct base_dimension_def
   {
     std::string_view Name;
-    std::int8_t      Square{0};
-    bool             Basis{false};
+    basis_rule       Rule{};
     const unit_def*  Vector{};
+
+    [[nodiscard]] constexpr bool basis() const { return Rule.Product != basis_product::none; }
+    [[nodiscard]] constexpr bool vector() const { return basis() && Rule.Product != basis_product::polynomial; }
   };
 
   struct dimension;
@@ -24380,13 +24420,13 @@ namespace ins
       return static_cast<std::int8_t>(e);
     }
 
-    // By content: a base dimension is its name (and, for a basis vector, its square).
+    // By content: a base dimension is its name (and, for a basis vector, its rule).
     friend constexpr bool operator==(const dimension& a, const dimension& b)
     {
       if (a.Size != b.Size)
         return false;
       for (std::size_t i = 0; i < a.Size; ++i)
-        if (a.Base[i]->Name != b.Base[i]->Name || a.Base[i]->Square != b.Base[i]->Square || a.Exp[i] != b.Exp[i])
+        if (a.Base[i]->Name != b.Base[i]->Name || a.Base[i]->Rule != b.Base[i]->Rule || a.Exp[i] != b.Exp[i])
           return false;
       return true;
     }
@@ -24440,7 +24480,7 @@ namespace ins
 
     constexpr void exponents::add(const base_dimension_def* b, int e)
     {
-      if (b->Basis)
+      if (b->vector())
         e = basis_exponent(e);
       if (e == 0)
         return;
@@ -24449,9 +24489,9 @@ namespace ins
         ++i;
       if (i < D.size() && D[i]->Name == b->Name)
       {
-        if (D[i]->Basis != b->Basis || D[i]->Square != b->Square)
+        if (D[i]->Rule != b->Rule)
           ins::detail::constexpr_error<"units: two base dimensions of one name differ">();
-        E[i] = b->Basis ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
+        E[i] = b->vector() ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
         if (E[i] == 0)
         {
           D.erase(D.begin() + i);
@@ -24522,7 +24562,7 @@ namespace ins
   // The dimension of a number.
   inline constexpr dimension dim_one{};
 
-  // Blades: the basis vectors of a dimension.
+  // Blades: the basis vectors of a dimension (its polynomial variables are not in its blade).
   // A blade's canonical value is the product of its basis vectors in name order;
   // two different basis vectors anticommute and each squares to its Square.
   namespace detail
@@ -24534,26 +24574,90 @@ namespace ins
     {
       blade b;
       for (std::size_t i = 0; i < d.Size; ++i)
-        if (d.Base[i]->Basis)
+        if (d.Base[i]->vector())
           b.push_back(d.Base[i]);
       return b;
     }
     constexpr bool has_blade(const dimension& d)
     {
       for (std::size_t i = 0; i < d.Size; ++i)
-        if (d.Base[i]->Basis)
+        if (d.Base[i]->vector())
           return true;
       return false;
     }
-    // Whether a and b are equal but for their basis vectors.
+    // Whether d has a basis vector or a polynomial variable.
+    constexpr bool has_basis(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->basis())
+          return true;
+      return false;
+    }
+    constexpr bool has_inner(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Rule.Product == basis_product::inner)
+          return true;
+      return false;
+    }
+    constexpr bool has_polynomial(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Rule.Product == basis_product::polynomial)
+          return true;
+      return false;
+    }
+    // The polynomial variables of d and their exponents, by name: the monomial x² y.
+    struct monomial_factor
+    {
+      const base_dimension_def* Var;
+      int                       Exp;
+    };
+    using monomial = std::vector<monomial_factor>;
+    constexpr monomial monomial_of(const dimension& d)
+    {
+      monomial m;
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Rule.Product == basis_product::polynomial)
+          m.push_back({d.Base[i], d.Exp[i]});
+      return m;
+    }
+    // The order of monomials: by total degree, then by variable (the higher power of the first variable first):
+    // 1, x, y, x², x y, y².
+    constexpr bool monomial_less(const dimension& a, const dimension& b)
+    {
+      const monomial x{monomial_of(a)}, y{monomial_of(b)};
+      const auto     degree = [](const monomial& m)
+      {
+        int s{0};
+        for (const monomial_factor& f : m)
+          s += f.Exp;
+        return s;
+      };
+      if (degree(x) != degree(y))
+        return degree(x) < degree(y);
+      return std::ranges::lexicographical_compare(x, y,
+                                                  [](const monomial_factor& p, const monomial_factor& q)
+                                                  { return p.Var->Name != q.Var->Name ? p.Var->Name < q.Var->Name
+                                                                                      : p.Exp > q.Exp; });
+    }
+    // Whether every basis vector of d is a geometric one.
+    constexpr bool geometric_only(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->basis() && d.Base[i]->Rule.Product != basis_product::geometric)
+          return false;
+      return true;
+    }
+    // Whether a and b are equal but for their basis vectors and polynomial variables.
     constexpr bool same_outside_blade(const dimension& a, const dimension& b)
     {
       std::size_t i{0}, j{0};
       for (;;)
       {
-        while (i < a.Size && a.Base[i]->Basis)
+        while (i < a.Size && a.Base[i]->basis())
           ++i;
-        while (j < b.Size && b.Base[j]->Basis)
+        while (j < b.Size && b.Base[j]->basis())
           ++j;
         if (i == a.Size || j == b.Size)
           return i == a.Size && j == b.Size;
@@ -24565,17 +24669,23 @@ namespace ins
     }
 
     // The sign s of A·B = s·(A ⊕ B), A and B canonical: -1 for each pair out of name order,
-    // times the square of each basis vector in both. 0 when a null vector meets itself.
+    // times the square of each basis vector in both. 0 when a null vector meets itself
+    // or two different inner vectors meet.
     constexpr int blade_sign(const blade& a, const blade& b)
     {
       int s{1};
       for (const base_dimension_def* x : a)
         for (const base_dimension_def* y : b)
         {
-          if (x->Name > y->Name)
+          const bool inner_x{x->Rule.Product == basis_product::inner};
+          if (inner_x != (y->Rule.Product == basis_product::inner))
+            ins::detail::constexpr_error<"units: inner and geometric basis vectors do not multiply">();
+          if (x->Name == y->Name)
+            s *= x->Rule.Square;
+          else if (inner_x)
+            return 0;
+          else if (x->Name > y->Name)
             s = -s;
-          else if (x->Name == y->Name)
-            s *= x->Square;
         }
       return s;
     }
@@ -25119,20 +25229,20 @@ namespace ins
       : Utf8{sym}, Ascii{o.ascii}, SpaceBefore{o.space_before} {}
   };
 
-  // basis_vector_def: the definition of a basis vector of a geometric algebra (basis_vector<"e₁", +1>):
-  // a base dimension of your own and its unit in one static object, with its square, v·v: +1, -1 or 0 (a null
-  // vector). Two different basis vectors anticommute, so a product of units is again a unit, up to a sign:
-  // e₂e₁ = -e₁e₂.
+  // basis_vector_def: the definition of a basis vector (basis_vector<"e₁", geometric<+1>>):
+  // a base dimension of your own and its unit in one static object, with its rule. A geometric one squares to
+  // +1, -1 or 0 (a null vector), and two different ones anticommute, so a product of units is again a unit, up to
+  // a sign: e₂e₁ = -e₁e₂.
   struct basis_vector_def
   {
     unit_def           Unit;
     base_dimension_def Self;
 
-    consteval basis_vector_def(std::string_view sym, int square, unit_options o = {})
-      : Unit{sym, o}, Self{sym, static_cast<std::int8_t>(square), true, &Unit}
+    consteval basis_vector_def(std::string_view sym, basis_rule rule, unit_options o = {})
+      : Unit{sym, o}, Self{sym, rule, &Unit}
     {
-      if (square != 1 && square != -1 && square != 0)
-        ins::detail::constexpr_error<"units: a basis vector squares to +1, -1 or 0">();
+      if (rule.Product == basis_product::none)
+        ins::detail::constexpr_error<"units: a basis vector has a rule - geometric<S>">();
       if (o.kind || o.origin)
         ins::detail::constexpr_error<"units: a basis vector has no kind or origin">();
       Unit.Dim = dimension_of(Self);
@@ -25176,6 +25286,7 @@ namespace ins
 
     // An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
     constexpr bool is_blade_atom(const unit_atom& a) { return has_blade(a.U->Dim); }
+    constexpr bool is_basis_atom(const unit_atom& a) { return has_basis(a.U->Dim); }
     constexpr bool has_blade_atoms(const unit_value& u)
     {
       return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
@@ -25384,12 +25495,12 @@ namespace ins
       ins::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
     if (Origin && !(Origin->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
-    if (detail::has_blade(Dim) && !detail::same_outside_blade(Dim, dim_one))
+    if (detail::has_basis(Dim) && !detail::same_outside_blade(Dim, dim_one))
       ins::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
                                    "write si::metre * e1, not a unit of both">();
     if (Mag.Ratio == grid_number{0})
       ins::detail::constexpr_error<"units: a named unit of a product that vanishes (a null vector "
-                                   "squared)">();
+                                   "squared, or two inner basis vectors)">();
   }
   template <unit_value U, const kind_def* K>
   constexpr unit_def::unit_def(std::string_view sym, unit_t<U>, kind_t<K>, unit_options o)
@@ -26666,7 +26777,7 @@ namespace ins
     concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
     // A number and a quantity of a blade without a unit (3 + 4 i).
     template <reference A>
-    concept number_blade_sum = has_blade(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
+    concept number_blade_sum = has_basis(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
 
     // Whether the two quantities have a common unit (no sum diagnostic) and both numbers rescale to it.
     template <reference A, class VA, reference B, class VB>
@@ -27217,7 +27328,7 @@ namespace ins
   }
 
   // divmod(a, b, args...) of two quantities of one dimension, in their common unit:
-  // the quotient is a plain number, the remainder a quantity.
+  // the quotient is a plain number, the remainder a quantity. (Of a polynomial variable: units/polynomial.hpp.)
   namespace detail
   {
     // The remainder as a quantity in C (an expected's error passed on).
@@ -27236,7 +27347,7 @@ namespace ins
     }
   } // namespace detail
   template <reference A, class VA, reference B, class VB, class... Args>
-    requires detail::common_rescalable<A, VA, B, VB>
+    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.U)))
           && requires(const detail::common_number_t<A, VA, B>& x,
                       const detail::common_number_t<B, VB, A>& y,
                       Args&&... args) { ins::divmod(x, y, std::forward<Args>(args)...); }
@@ -27694,7 +27805,7 @@ namespace ins
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
 //   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
 //   inline constexpr auto ice     = origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>;
-//   inline constexpr auto e1      = basis_vector<"e₁", +1>;
+//   inline constexpr auto e1      = basis_vector<"e₁", geometric<+1>>;
 //
 // The name is a template argument and the definition a static member of a class template,
 // so a declaration is its own identity: the same declaration in two places is the same unit.
@@ -27859,9 +27970,10 @@ namespace ins
     return detail::mag_pi * v;
   }
 
-  // basis_vector<"e₁", +1>: a basis vector of a geometric algebra, by its square (+1, -1 or 0).
-  template <symbol_text Sym, int Square, unit_options O = {}>
-  inline constexpr auto basis_vector = detail::unit_tag<definition<basis_vector_def, Sym, Square, O>::value>;
+  // basis_vector<"e₁", geometric<+1>>: a basis vector, by how it multiplies: geometric<S> for a geometric algebra,
+  // by its square S (+1, -1 or 0).
+  template <symbol_text Sym, basis_rule Rule, unit_options O = {}>
+  inline constexpr auto basis_vector = detail::unit_tag<definition<basis_vector_def, Sym, Rule, O>::value>;
 } // namespace ins
 
 
@@ -28546,14 +28658,18 @@ namespace ins
       }(std::make_index_sequence<std::tuple_size_v<Tuple>>{});
     }
 
-    // The order of parts: by grade, then by the names of the basis vectors.
+    // The order of parts: by grade, then by the names of the basis vectors, then by monomial (monomial_less).
     consteval bool blade_less(const dimension& a, const dimension& b)
     {
       const blade x = blade_of(a), y = blade_of(b);
       if (x.size() != y.size())
         return x.size() < y.size();
       const auto name = [](const base_dimension_def* v) { return v->Name; };
-      return std::ranges::lexicographical_compare(x, y, std::ranges::less{}, name, name);
+      if (std::ranges::lexicographical_compare(x, y, std::ranges::less{}, name, name))
+        return true;
+      if (std::ranges::lexicographical_compare(y, x, std::ranges::less{}, name, name))
+        return false;
+      return monomial_less(a, b);
     }
     consteval bool blade_equal(const dimension& a, const dimension& b)
     {
@@ -28743,6 +28859,10 @@ namespace ins
       constexpr std::size_t NA{std::tuple_size_v<PA>}, NB{std::tuple_size_v<PB>};
       static constexpr auto da = dims_of<PA>();
       static constexpr auto db = dims_of<PB>();
+      static_assert(Rule == product_rule::geometric
+                      || (std::ranges::none_of(da, has_inner) && std::ranges::none_of(db, has_inner)),
+                    "units: the wedge, the contractions and the scalar product take geometric basis vectors - "
+                    "inner ones multiply by their dot product (*)");
       const PA              pa = parts_of(a);
       const PB              pb = parts_of(b);
       return [&]<std::size_t... K>(std::index_sequence<K...>)
@@ -28899,10 +29019,18 @@ namespace ins
         unit_add(u, unit_atom{v->Vector, 0, 1});
       return u;
     }
-    // d's blade outside the blade of I (I ∖ A).
+    // The polynomial variables of d, as a dimension: x² of m x² e₁.
+    consteval dimension polynomial_part(const dimension& d)
+    {
+      exponents u;
+      for (const monomial_factor& f : monomial_of(d))
+        u.add(f.Var, f.Exp);
+      return u.intern();
+    }
+    // d's blade outside the blade of I (I ∖ A), with A's polynomial variables.
     consteval dimension blade_rest(const dimension& i, const dimension& a)
     {
-      return dimension_of(canonical_blade_unit(i)) / dimension_of(canonical_blade_unit(a));
+      return dimension_of(canonical_blade_unit(i)) / dimension_of(canonical_blade_unit(a)) * polynomial_part(a);
     }
     consteval bool blade_within(const dimension& a, const dimension& i)
     {
@@ -28951,12 +29079,12 @@ namespace ins
         return std::convertible_to<decltype(just<0>), typename part_number<T>::type>;
     }
 
-    // The blade atoms of a unit, unscaled: e₁ e₂ of m e₁ e₂.
+    // The blade atoms and polynomial variables of a unit, unscaled: e₁ e₂ of m e₁ e₂, x² of m x².
     consteval unit_value blade_atoms(const unit_value& u)
     {
       unit_value b{};
       for (std::int8_t i = 0; i < u.Size; ++i)
-        if (is_blade_atom(u.Atoms[i]))
+        if (is_basis_atom(u.Atoms[i]))
           unit_add(b, u.Atoms[i]);
       return b;
     }
@@ -28972,14 +29100,14 @@ namespace ins
     template <unit_value U, class P>
     concept part_in_unit = requires(const P& p) { part_in<U>(p); };
 
-    // u without its blade atoms (its scale kept), and the sign and size of the blade's spelling:
-    // u = factor · physical_atoms(u) · canonical blade.
+    // u without its blade atoms and polynomial variables (its scale kept), and the sign and size of the blade's
+    // spelling: u = factor · physical_atoms(u) · canonical blade · polynomial variables.
     consteval unit_value physical_atoms(const unit_value& u)
     {
       unit_value r{};
       r.Scale = u.Scale;
       for (std::int8_t i = 0; i < u.Size; ++i)
-        if (!is_blade_atom(u.Atoms[i]))
+        if (!is_basis_atom(u.Atoms[i]))
           unit_add(r, u.Atoms[i]);
       return r;
     }
@@ -29003,8 +29131,8 @@ namespace ins
       else
         return p;
     }
-    // p's coefficient times F on the canonical blade B, in p's unit without its blade:
-    // no division, so a blade with a null vector moves too.
+    // p's coefficient times F on B (a canonical blade and polynomial variables), in p's unit without its blade and
+    // variables: no division, so a blade with a null vector moves too.
     template <dimension B, grid_number F, class P>
     constexpr auto move_to_blade(const P& p)
     {
@@ -29014,6 +29142,8 @@ namespace ins
         unit_value t{physical_atoms(u)};
         for (const base_dimension_def* v : blade_of(B))
           unit_add(t, unit_atom{v->Vector, 0, 1});
+        for (const monomial_factor& f : monomial_of(B))
+          unit_add(t, unit_atom{f.Var->Vector, 0, static_cast<std::int8_t>(f.Exp)});
         return t;
       }();
       constexpr grid_number f{blade_factor(u) * F};
@@ -29022,7 +29152,8 @@ namespace ins
 
     // A pseudoscalar argument: a unit of a blade only.
     template <unit_value I>
-    concept pseudoscalar = has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one);
+    concept pseudoscalar =
+      has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one) && geometric_only(dimension_of(I));
   } // namespace detail
 
   // multivector<Parts...>: a sum of parts of different blades, insides (the scalar part, when it is a plain number)
@@ -29114,7 +29245,7 @@ namespace ins
 
     // Each part in unit U (a unit without blades), its blade kept, exactly: (V / Z).in(si::ampere).
     template <ins::unit_value U>
-      requires(!detail::has_blade(dimension_of(U))) && (detail::part_in_unit<U, Parts> && ...)
+      requires(!detail::has_basis(dimension_of(U))) && (detail::part_in_unit<U, Parts> && ...)
     [[nodiscard]] constexpr auto in(unit_t<U>) const
     {
       return std::apply([](const auto&... p) { return detail::collapse(detail::part_in<U>(p)...); }, P);
@@ -29337,6 +29468,9 @@ namespace ins
       return detail::divide_parts(a, b);
     else
     {
+      static_assert(std::ranges::none_of(detail::dims_of<detail::parts_t<B>>(), detail::has_polynomial),
+                    "units: the divisor is a polynomial - divmod(p, d) of units/polynomial.hpp divides with a "
+                    "remainder");
       static_assert(detail::invertible<B>, "units: the divisor has no inverse of the form x~ / (x x~)");
       const auto inv{inverse(b)};
       if constexpr (detail::is_expected_v<std::remove_cvref_t<decltype(inv)>>)
@@ -30211,7 +30345,7 @@ namespace ins
     }
 
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
-    // The blade atoms come last, in their order: 2 m·e₁.
+    // The blade atoms and polynomial variables come last, in their order: 2 m·e₁, 3 m·x².
     inline void append_atoms(std::string& s, const unit_value& u, int sign, text_encoding enc)
     {
       bool first{true};
@@ -30219,7 +30353,7 @@ namespace ins
         for (std::int8_t i = 0; i < u.Size; ++i)
         {
           const unit_atom& a{u.Atoms[i]};
-          if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_blade_atom(a) != blades)
+          if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_basis_atom(a) != blades)
             continue;
           if (!first)
             s += enc == text_encoding::utf8 ? "·" : "*";
@@ -32331,6 +32465,8 @@ namespace ins::detail::gaexp
       static_assert((plain_part<std::tuple_element_t<I, DP>>() && ...),
                     "math::exp: the argument's parts are numbers times blades (rad allowed), with no other unit "
                     "and no factor of pi");
+      static_assert((geometric_only(part_dim<std::tuple_element_t<I, DP>>()) && ...),
+                    "math::exp: the argument's basis vectors are geometric ones");
     }(std::make_index_sequence<F::ND>{});
     []<std::size_t... P>(std::index_sequence<P...>)
     {
@@ -32717,6 +32853,262 @@ namespace ins
 
 
 #endif // __STDC_HOSTED__ && !INSIDE_NO_MDSPAN && !INSIDE_NO_UNITS
+
+#ifndef INSIDE_NO_UNITS
+
+// ======================================================================
+//  inside/units/polynomial.hpp
+// ======================================================================
+// Polynomials: sums of parts in the powers of variables of your own (basis_vector<"x", polynomial>),
+// and their calculus, exact:
+//   - substitute(p, x, a): p with x replaced by a (a number, a quantity, or a polynomial: p∘a);
+//   - derivative(p, x), antiderivative(p, x);
+//   - divmod(p, d): the quotient and the remainder of p / d, in one variable.
+// +, -, * and the division by one term come from units/geoalg.hpp. Each coefficient keeps its own inside,
+// so every coefficient's range is proved.
+
+
+
+#include <algorithm>
+#include <cstdint>
+#include <expected>
+#include <type_traits>
+
+namespace ins
+{
+  namespace detail
+  {
+    // The variable X names: x of basis_vector<"x", polynomial>.
+    template <unit_value X>
+    consteval const base_dimension_def* variable_of()
+    {
+      const dimension d{dimension_of(X)};
+      if (d.Size != 1 || d.Exp[0] != 1 || d.Base[0]->Rule.Product != basis_product::polynomial
+          || !magnitude_of(X).is_one())
+        ins::detail::constexpr_error<"units: the variable is a polynomial basis vector - basis_vector<\"x\", "
+                                     "polynomial>">();
+      return d.Base[0];
+    }
+    // The power of v in d.
+    consteval int power_in(const dimension& d, const base_dimension_def* v)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Name == v->Name && d.Base[i]->Rule == v->Rule)
+          return d.Exp[i];
+      return 0;
+    }
+    template <unit_value X, class P>
+    consteval int power_of()
+    {
+      return power_in(part_dim<P>(), variable_of<X>());
+    }
+    // The highest and the lowest power of x in p's parts, 0 included.
+    template <unit_value X, class P>
+    consteval int max_power()
+    {
+      int m{0};
+      for (const dimension& d : dims_of<parts_t<P>>())
+        m = std::max(m, power_in(d, variable_of<X>()));
+      return m;
+    }
+    template <unit_value X, class P>
+    consteval int min_power()
+    {
+      int m{0};
+      for (const dimension& d : dims_of<parts_t<P>>())
+        m = std::min(m, power_in(d, variable_of<X>()));
+      return m;
+    }
+    template <class P>
+    consteval bool has_polynomial_parts()
+    {
+      return std::ranges::any_of(dims_of<parts_t<P>>(), has_polynomial);
+    }
+
+    // p times x^E.
+    template <unit_value X, int E, class P>
+    constexpr auto times_power(const P& p)
+    {
+      return each_part(
+        p,
+        [](const auto& q)
+        {
+          using Q = std::remove_cvref_t<decltype(q)>;
+          static constexpr unit_value u = []
+          {
+            unit_value t{unit_of_part<Q>()};
+            unit_add(t, unit_atom{variable_of<X>()->Vector, 0, static_cast<std::int8_t>(E)});
+            return t;
+          }();
+          return as_part(make_quantity<reference_of(u)>(number_of_part(q)));
+        });
+    }
+    // The coefficient of x^K in p: its parts with x to the power K, x taken out.
+    template <unit_value X, int K, class P>
+    constexpr auto coefficient(const P& p)
+    {
+      return each_part(
+        p,
+        [](const auto& q)
+        {
+          if constexpr (power_of<X, std::remove_cvref_t<decltype(q)>>() == K)
+            return times_power<X, -K>(q);
+          else
+            return multivector<>{};
+        });
+    }
+    // p's parts below x^K.
+    template <unit_value X, int K, class P>
+    constexpr auto below_power(const P& p)
+    {
+      return each_part(
+        p,
+        [](const auto& q)
+        {
+          if constexpr (power_of<X, std::remove_cvref_t<decltype(q)>>() < K)
+            return q;
+          else
+            return multivector<>{};
+        });
+    }
+
+    // Σ c_k a^(k - K) over k from K to Max, by Horner's rule.
+    template <unit_value X, int K, int Max, class P, class A>
+    constexpr auto horner(const P& p, const A& a)
+    {
+      if constexpr (K == Max)
+        return coefficient<X, K>(p);
+      else
+        return coefficient<X, K>(p) + horner<X, K + 1, Max>(p, a) * a;
+    }
+
+    // The one variable of p and d, as a unit.
+    template <class P, class D>
+    consteval unit_value one_variable()
+    {
+      const base_dimension_def* v{};
+      const auto                scan = [&](const auto& dims)
+      {
+        for (const dimension& d : dims)
+          for (const monomial_factor& f : monomial_of(d))
+          {
+            if (v && v->Name != f.Var->Name)
+              ins::detail::constexpr_error<"units: divmod - polynomials in one variable">();
+            v = f.Var;
+          }
+      };
+      scan(dims_of<parts_t<P>>());
+      scan(dims_of<parts_t<D>>());
+      unit_value u{};
+      unit_add(u, unit_atom{v->Vector, 0, 1});
+      return u;
+    }
+    // A quotient whose divisor is not 0 (proved by its grid, or checked).
+    template <class Q>
+    constexpr auto known_quotient(const Q& q)
+    {
+      if constexpr (is_expected_v<Q>)
+        return *q;
+      else
+        return q;
+    }
+    // One step per power of the quotient, from the highest, N + K, down: r's term of x^(N+K) over d's leading
+    // coefficient lc is the quotient's term of x^K, and that multiple of d comes off r; the term it cancels is 0,
+    // and drops out of r's type.
+    template <unit_value X, int N, int K, class LC, class Q, class R, class D>
+    constexpr auto long_division(const LC& lc, const Q& q, const R& r, const D& d)
+    {
+      const auto t   {times_power<X, K>(known_quotient(coefficient<X, N + K>(r) / lc))};
+      const auto rest{below_power<X, N + K>(r - t * d)};
+      if constexpr (K == 0)
+        return divmod_result<decltype(q + t), decltype(rest)>{q + t, rest};
+      else
+        return long_division<X, N, K - 1>(lc, q + t, rest, d);
+    }
+  } // namespace detail
+
+  // substitute(p, x, a): p with the variable x replaced by a: a number or a quantity gives p's value there, a
+  // polynomial the composition p∘a. Horner's rule, exact; x's powers in p are 0 or more.
+  template <multivector_like P, unit_value X, multivector_like A>
+  [[nodiscard]] constexpr auto substitute(const P& p, unit_t<X>, const A& a)
+  {
+    static_assert(detail::min_power<X, P>() >= 0, "units: substitute - p has a negative power of the variable");
+    return detail::horner<X, 0, detail::max_power<X, P>()>(p, a);
+  }
+
+  // derivative(p, x): c·xᵏ to k·c·xᵏ⁻¹, exact.
+  template <multivector_like P, unit_value X>
+  [[nodiscard]] constexpr auto derivative(const P& p, unit_t<X>)
+  {
+    return detail::each_part(
+      p,
+      [](const auto& q)
+      {
+        constexpr int k{detail::power_of<X, std::remove_cvref_t<decltype(q)>>()};
+        if constexpr (k == 0)
+          return multivector<>{};
+        else
+          return detail::times_power<X, -1>(detail::as_part(just<k> * q));
+      });
+  }
+
+  // antiderivative(p, x): the one with constant term 0, c·xᵏ to c/(k+1)·xᵏ⁺¹, exact.
+  template <multivector_like P, unit_value X>
+  [[nodiscard]] constexpr auto antiderivative(const P& p, unit_t<X>)
+  {
+    return detail::each_part(
+      p,
+      [](const auto& q)
+      {
+        constexpr int k{detail::power_of<X, std::remove_cvref_t<decltype(q)>>()};
+        if constexpr (k == -1)
+        {
+          static_assert(false, "units: antiderivative - the antiderivative of x⁻¹ is a logarithm, no polynomial");
+          return multivector<>{};
+        }
+        else
+        {
+          constexpr int sign{k + 1 > 0 ? 1 : -1};
+          return detail::times_power<X, 1>(detail::as_part(just<sign, sign * (k + 1)> * q));
+        }
+      });
+  }
+
+  // divmod(p, d): the quotient q and the remainder r of polynomials in one variable, p = q d + r with r's degree
+  // below d's, exact: auto [q, r] = divmod(p, d). A std::expected when d's leading coefficient's grid holds 0
+  // (error::division_by_zero when it is 0).
+  template <multivector_like P, multivector_like D>
+    requires(detail::has_polynomial_parts<P>() || detail::has_polynomial_parts<D>())
+  [[nodiscard]] constexpr auto divmod(const P& p, const D& d)
+  {
+    constexpr unit_value X{detail::one_variable<P, D>()};
+    static_assert(detail::min_power<X, P>() >= 0 && detail::min_power<X, D>() >= 0,
+                  "units: divmod - polynomials with no negative powers");
+    constexpr int M{detail::max_power<X, P>()}, N{detail::max_power<X, D>()};
+    const auto    lc{detail::coefficient<X, N>(d)};
+    static_assert(!detail::is_multivector_v<std::remove_cvref_t<decltype(lc)>>,
+                  "units: divmod - d's leading coefficient is one number or quantity");
+    const auto divide = [&]
+    {
+      if constexpr (M < N)
+        return divmod_result<multivector<>, P>{multivector<>{}, p};
+      else
+        return detail::long_division<X, N, M - N>(lc, multivector<>{}, p, d);
+    };
+    if constexpr (!detail::is_expected_v<decltype(lc / lc)>)
+      return divide();
+    else
+    {
+      using result = decltype(divide());
+      if (detail::number_of_part(lc) == 0)
+        return std::expected<result, error>{std::unexpect, error::division_by_zero};
+      return std::expected<result, error>{divide()};
+    }
+  }
+} // namespace ins
+
+
+#endif // INSIDE_NO_UNITS
 
 #if __STDC_HOSTED__ && !defined(INSIDE_MATH_NO_FP) && !defined(INSIDE_NO_UNITS)
 
