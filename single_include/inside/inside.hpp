@@ -32987,14 +32987,16 @@ namespace ins
     consteval unit_value one_variable()
     {
       const base_dimension_def* v{};
+      bool                      found{false}; // tested instead of v (no address test in a constant expression)
       const auto                scan = [&](const auto& dims)
       {
         for (const dimension& d : dims)
           for (const monomial_factor& f : monomial_of(d))
           {
-            if (v && v->Name != f.Var->Name)
+            if (found && v->Name != f.Var->Name)
               ins::detail::constexpr_error<"units: divmod - polynomials in one variable">();
-            v = f.Var;
+            v     = f.Var;
+            found = true;
           }
       };
       scan(dims_of<parts_t<P>>());
