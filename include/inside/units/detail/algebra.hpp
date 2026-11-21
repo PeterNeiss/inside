@@ -41,7 +41,8 @@ namespace ins
   // How a basis vector multiplies (basis_vector<"e₁", geometric<+1>>).
   // A geometric one squares to Square (+1, -1 or 0), and two of them anticommute.
   // An inner one squares to 1, and the product of two of them is 0.
-  enum class basis_product : std::int8_t { none, geometric, inner };
+  // A polynomial one is a variable: its exponent adds as a unit's does, and it commutes with everything.
+  enum class basis_product : std::int8_t { none, geometric, inner, polynomial };
   struct basis_rule
   {
     basis_product Product{basis_product::none};
@@ -69,9 +70,14 @@ namespace ins
   // It is not associative: (b₁b₁)b₂ = b₂, but b₁(b₁b₂) = 0.
   inline constexpr basis_rule inner{basis_product::inner, 1};
 
+  // polynomial: the rule of a polynomial's variable x: x·x = x², and x commutes with everything,
+  // so 3 + 2 x + x² is a sum of parts (units/geoalg.hpp); units/polynomial.hpp has its calculus.
+  inline constexpr basis_rule polynomial{basis_product::polynomial, 0};
+
   // A base dimension: base_dimension<"currency"> (units/detail/define.hpp).
-  // A basis vector is one too (see basis_vector): its Rule says how it multiplies, its exponent is 0 or 1,
-  // and Vector is its unit. Vector is read only for a basis vector.
+  // A basis vector is one too (see basis_vector): its Rule says how it multiplies, and Vector is its unit.
+  // Vector is read only for a basis vector. A vector's exponent (a geometric or an inner one's) is 0 or 1;
+  // a polynomial variable's is any, as a unit's.
   struct base_dimension_def
   {
     std::string_view Name;
@@ -79,6 +85,7 @@ namespace ins
     const unit_def*  Vector{};
 
     [[nodiscard]] constexpr bool basis() const { return Rule.Product != basis_product::none; }
+    [[nodiscard]] constexpr bool vector() const { return basis() && Rule.Product != basis_product::polynomial; }
   };
 
   struct dimension;
@@ -179,7 +186,7 @@ namespace ins
 
     constexpr void exponents::add(const base_dimension_def* b, int e)
     {
-      if (b->basis())
+      if (b->vector())
         e = basis_exponent(e);
       if (e == 0)
         return;
@@ -190,7 +197,7 @@ namespace ins
       {
         if (D[i]->Rule != b->Rule)
           ins::detail::constexpr_error<"units: two base dimensions of one name differ">();
-        E[i] = b->basis() ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
+        E[i] = b->vector() ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
         if (E[i] == 0)
         {
           D.erase(D.begin() + i);
@@ -261,7 +268,7 @@ namespace ins
   // The dimension of a number.
   inline constexpr dimension dim_one{};
 
-  // Blades: the basis vectors of a dimension.
+  // Blades: the basis vectors of a dimension (its polynomial variables are not in its blade).
   // A blade's canonical value is the product of its basis vectors in name order;
   // two different basis vectors anticommute and each squares to its Square.
   namespace detail
@@ -273,16 +280,72 @@ namespace ins
     {
       blade b;
       for (std::size_t i = 0; i < d.Size; ++i)
-        if (d.Base[i]->basis())
+        if (d.Base[i]->vector())
           b.push_back(d.Base[i]);
       return b;
     }
     constexpr bool has_blade(const dimension& d)
     {
       for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->vector())
+          return true;
+      return false;
+    }
+    // Whether d has a basis vector or a polynomial variable.
+    constexpr bool has_basis(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
         if (d.Base[i]->basis())
           return true;
       return false;
+    }
+    constexpr bool has_inner(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Rule.Product == basis_product::inner)
+          return true;
+      return false;
+    }
+    constexpr bool has_polynomial(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Rule.Product == basis_product::polynomial)
+          return true;
+      return false;
+    }
+    // The polynomial variables of d and their exponents, by name: the monomial x² y.
+    struct monomial_factor
+    {
+      const base_dimension_def* Var;
+      int                       Exp;
+    };
+    using monomial = std::vector<monomial_factor>;
+    constexpr monomial monomial_of(const dimension& d)
+    {
+      monomial m;
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->Rule.Product == basis_product::polynomial)
+          m.push_back({d.Base[i], d.Exp[i]});
+      return m;
+    }
+    // The order of monomials: by total degree, then by variable (the higher power of the first variable first):
+    // 1, x, y, x², x y, y².
+    constexpr bool monomial_less(const dimension& a, const dimension& b)
+    {
+      const monomial x{monomial_of(a)}, y{monomial_of(b)};
+      const auto     degree = [](const monomial& m)
+      {
+        int s{0};
+        for (const monomial_factor& f : m)
+          s += f.Exp;
+        return s;
+      };
+      if (degree(x) != degree(y))
+        return degree(x) < degree(y);
+      return std::ranges::lexicographical_compare(x, y,
+                                                  [](const monomial_factor& p, const monomial_factor& q)
+                                                  { return p.Var->Name != q.Var->Name ? p.Var->Name < q.Var->Name
+                                                                                      : p.Exp > q.Exp; });
     }
     // Whether every basis vector of d is a geometric one.
     constexpr bool geometric_only(const dimension& d)
@@ -292,7 +355,7 @@ namespace ins
           return false;
       return true;
     }
-    // Whether a and b are equal but for their basis vectors.
+    // Whether a and b are equal but for their basis vectors and polynomial variables.
     constexpr bool same_outside_blade(const dimension& a, const dimension& b)
     {
       std::size_t i{0}, j{0};
@@ -929,6 +992,7 @@ namespace ins
 
     // An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
     constexpr bool is_blade_atom(const unit_atom& a) { return has_blade(a.U->Dim); }
+    constexpr bool is_basis_atom(const unit_atom& a) { return has_basis(a.U->Dim); }
     constexpr bool has_blade_atoms(const unit_value& u)
     {
       return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
@@ -1137,7 +1201,7 @@ namespace ins
       ins::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
     if (Origin && !(Origin->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
-    if (detail::has_blade(Dim) && !detail::same_outside_blade(Dim, dim_one))
+    if (detail::has_basis(Dim) && !detail::same_outside_blade(Dim, dim_one))
       ins::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
                                    "write si::metre * e1, not a unit of both">();
     if (Mag.Ratio == grid_number{0})

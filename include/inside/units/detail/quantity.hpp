@@ -873,7 +873,7 @@ namespace ins
     concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
     // A number and a quantity of a blade without a unit (3 + 4 i).
     template <reference A>
-    concept number_blade_sum = has_blade(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
+    concept number_blade_sum = has_basis(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
 
     // Whether the two quantities have a common unit (no sum diagnostic) and both numbers rescale to it.
     template <reference A, class VA, reference B, class VB>

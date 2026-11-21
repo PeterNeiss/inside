@@ -45,6 +45,10 @@ inline constexpr auto b1 = basis_vector<"b₁", inner, {.ascii = "b1"}>;
 inline constexpr auto b2 = basis_vector<"b₂", inner, {.ascii = "b2"}>;
 inline constexpr auto b3 = basis_vector<"b₃", inner, {.ascii = "b3"}>;
 
+// Polynomials in t and q: t·t = t², and they commute with everything.
+inline constexpr auto t = basis_vector<"t", polynomial>;
+inline constexpr auto q = basis_vector<"q", polynomial>;
+
 constexpr auto km = si::kilo(si::metre);
 
 template <class A, class B>
@@ -322,6 +326,35 @@ TEST(GeoalgTest, inner_basis_vectors_multiply_by_the_dot_product) {
     // The inverse is w / (w·w): w·w⁻¹ = 1.
     EXPECT_TRUE(w * inverse(w) == 1);
     EXPECT_EQ(to_string(inverse(w)), "0.4 b₁/m + 0.2 b₂/m");
+}
+
+TEST(GeoalgTest, polynomial_variables_add_powers_and_commute) {
+    static_assert(dimension_of((t * t).value) == dimension_of(t.value).pow(2));
+    static_assert(dimension_of((q * t).value) == dimension_of((t * q).value));
+    static_assert(magnitude_of((q * t).value).is_one());
+    // Sums across powers are polynomials, in order of degree.
+    const auto p = just<1> * t * t + just<2> * t + just<3>;
+    static_assert(std::same_as<std::remove_const_t<decltype(p)>, decltype(just<3> + just<2> * t + just<1> * t * t)>);
+    EXPECT_EQ(to_string(p), "3 + 2 t + 1 t²");
+    EXPECT_TRUE(part(p, t * t) == 1);
+    // Products multiply out; a cancelled term stays in the type.
+    const auto a = just<1> + just<1> * t;
+    EXPECT_TRUE(a * a == just<1> + just<2> * t + just<1> * t * t);
+    EXPECT_EQ(to_string(a * (just<1> - just<1> * t)), "1 + 0 t - 1 t²");
+    // Two variables, by total degree, then the higher power of the first variable first.
+    const auto b = just<1> * t + just<1> * q;
+    EXPECT_TRUE(b * b == just<1> * q * q + just<2> * q * t + just<1> * t * t);
+    // Coefficients with units: one dimension but for the variables.
+    const auto s = just<2> * si::metre + just<3> * si::metre * t;
+    EXPECT_EQ(to_string(s), "2 m + 3 m t");
+    static_assert(!can_add<decltype(s), decltype(just<1> * si::second * t)>);
+    EXPECT_TRUE(s.in(si::centi(si::metre)) == just<200> * si::centi(si::metre) + just<300> * si::centi(si::metre) * t);
+    // Vector coefficients: a polynomial curve in G(3,0), (x + 2 t x)² = 1 + 4 t + 4 t².
+    const auto c = just<1> * x + just<2> * t * x;
+    EXPECT_TRUE(c * c == just<1> + just<4> * t + just<4> * t * t);
+    EXPECT_TRUE(reverse(c) == c);
+    // A negative power: 1 / t.
+    EXPECT_EQ(to_string(just<1> / (just<1> * t)), "1 t⁻¹");
 }
 
 TEST(GeoalgTest, text) {
