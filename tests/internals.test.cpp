@@ -605,8 +605,9 @@ TEST(BigRationalTest, runtime_overflow_is_reported) {
 }
 
 // grid_number: one form per value, so equal values are one template
-// argument - reduced, the sign on the denominator, inline while it fits the
-// 64-bit rational, an interned big_rational (Den == 0) past it.
+// argument - reduced, the sign on the denominator, zero all zero bits, inline
+// while it fits the 64-bit rational, an interned big_rational (Den == 0,
+// Num == 1) past it.
 using ins::grid_number, ins::inside, ins::per;
 template <grid_number V>
 struct gtag {};
@@ -615,7 +616,7 @@ static_assert(std::is_same_v<gtag<grid_number{rational{2, 4}}>, gtag<grid_number
 static_assert(std::is_same_v<gtag<grid_number{rational{3, 3}}>, gtag<grid_number{1}>>);
 static_assert(std::is_same_v<inside<{{0, 1}, grid_number{rational{2, 4}}}>, inside<{{0, 1}, per<2>}>>);
 static_assert(grid_number{-3}.Num == 3 && grid_number{-3}.Den == -1 && grid_number{-3}.negative());
-static_assert(-grid_number{0} == grid_number{0} && (-grid_number{0}).Den == 1); // no negative zero
+static_assert(-grid_number{0} == grid_number{0} && (-grid_number{0}).Den == 0); // no negative zero
 static_assert(std::is_same_v<gtag<-grid_number{0}>, gtag<grid_number{0}>>);
 static_assert(std::is_same_v<gtag<grid_number{big_int{6}, big_int{4}}>, gtag<grid_number{rational{3, 2}}>>);
 // Past 64 bits: interned, and back inline once a result fits.

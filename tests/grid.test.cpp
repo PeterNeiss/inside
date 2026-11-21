@@ -787,4 +787,33 @@ TEST(GridTest, spellings_past_64_bits) {
     ++c;
     EXPECT_TRUE(c == 0);
 }
+
+// Zero is all zero bits, grid_number{0, 0, 0}, however it is spelled or reached, so a mangled name leaves it out;
+// a value past 64 bits is marked by Num 1 and Den 0.
+TEST(GridTest, zero_is_all_zero_bits) {
+    constexpr auto zero_bits = [](const grid_number& g) { return g.Num == 0 && g.Den == 0; };
+    static_assert(zero_bits(grid_number{}) && zero_bits(grid_number{0}) && zero_bits(grid_number{0.0}));
+    static_assert(zero_bits(0_g) && zero_bits(grid_number{detail::rational{0, 5}}) && zero_bits(-grid_number{0}));
+    static_assert(zero_bits(two_70 - two_70) && zero_bits(grid_number{3} - grid_number{3}));
+    static_assert(zero_bits(abs(grid_number{0})) && zero_bits(lower_of<decltype(just<0>)>));
+    static_assert(zero_bits(grid{{0, 10}, 1}.MaxDenominator) && zero_bits(grid{{0, 10}, 1}.Lower));
+    static_assert(std::is_same_v<inside<{0, 10}>, inside<{0.0, 10}>>);
+    static_assert(std::is_same_v<inside<{0, 10}>, inside<{0_g, 10}>>);
+    static_assert(std::is_same_v<inside<{0, 10}>, inside<{just<0>, 10}>>);
+    // Zero takes the 64-bit paths.
+    static_assert(grid_number{0}.is_zero() && grid_number{0}.is_integer() && !grid_number{0}.negative());
+    static_assert(grid_number{0}.fits_rational() && detail::rational(grid_number{0}) == 0);
+    static_assert(grid_number{0} < grid_number{1} && grid_number{-1} < grid_number{0} && grid_number{0} == 0);
+    static_assert(grid_number{0} < detail::rational{1, 3} && grid_number{0} > detail::rational{-1, 3});
+    static_assert(grid_number{0}.big() == detail::big_rational{} && grid_number{0}.denominator() == detail::big_int{1});
+    // Past 64 bits.
+    constexpr grid_number tiny{grid_number{1} / two_70};
+    static_assert(tiny.Num == 1 && tiny.Den == 0 && !tiny.fits_rational() && !tiny.is_zero() && tiny != 0);
+    static_assert(grid_number{0} < tiny && -tiny < grid_number{0} && (-tiny).negative() && abs(-tiny) == tiny);
+    // At run time.
+    EXPECT_TRUE(includes(interval{0, 10}, test::at_run_time(0)));
+    EXPECT_FALSE(includes(interval{1, 10}, test::at_run_time(0)));
+    EXPECT_TRUE(grid_number{test::at_run_time(0)} == grid_number{0});
+    EXPECT_TRUE(grid_number{test::at_run_time(0)} < grid_number{test::at_run_time(1)});
+}
 } // namespace big_spelling_tests
