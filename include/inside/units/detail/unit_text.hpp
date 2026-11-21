@@ -314,7 +314,7 @@ namespace ins::detail
     static constexpr std::array<std::int8_t, S.Size * B> atom_dims = atom_dims_of();
 
     // A text in no single unit counts from the dimension's zero.
-    static constexpr bool        implicit_origin_ok = !Point || (!absolute_of(O) && target_mag.Pi == 0);
+    static constexpr bool        implicit_origin_ok = !Point || (!has(absolute_of(O)) && target_mag.Pi == 0);
     static constexpr grid_number implicit_shift     = implicit_origin_ok && Point
                                                         ? (grid_number{0} - offset_of(O)) / target_mag.Ratio
                                                         : grid_number{0};

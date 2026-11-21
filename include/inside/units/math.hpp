@@ -308,18 +308,18 @@ namespace ins
     consteval reference root_reference(const reference& a, int n, const unit_value& u)
     {
       if (is_generic(a))
-        return reference{nullptr, false, {}, u};
-      const recipe f{a.Kind ? recipe_of(a.KindOf ? kind_root(a.Kind.P) : a.Kind.P) : a.Derived};
+        return reference{&no_kind, false, {}, u};
+      const recipe f{detail::has(a.Kind) ? recipe_of(a.KindOf ? kind_root(a.Kind) : a.Kind) : a.Derived};
       recipe       r{};
       for (std::int8_t i = 0; i < f.Size; ++i)
       {
         if (f.F[i].Exp % n != 0)
-          return reference{nullptr, false, {}, u};
+          return reference{&no_kind, false, {}, u};
         recipe_add(r, f.F[i].Kind, f.F[i].Exp / n);
       }
       if (r.Size == 1 && r.F[0].Exp == 1)
         return reference{r.F[0].Kind, a.KindOf, {}, u};
-      return reference{nullptr, a.KindOf, r, u};
+      return reference{&no_kind, a.KindOf, r, u};
     }
 
     template <reference R, int N>

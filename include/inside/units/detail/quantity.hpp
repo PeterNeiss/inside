@@ -109,7 +109,8 @@ namespace ins
       if constexpr (!(dimension_of(R.U) == dim_one))
         return false;
       else
-        return exact_factor_v<conversion_factor<R.U, unit_value{}>> && (!R.Kind || !kind_root(R.Kind.P)->Distinct);
+        return exact_factor_v<conversion_factor<R.U, unit_value{}>>
+            && (!has(R.Kind) || !kind_root(R.Kind)->Distinct);
     }
     template <reference R>
     inline constexpr bool number_like_v = number_like<R>();
@@ -433,8 +434,8 @@ namespace ins
     // Compare with ==: q.kind == isq::length.
     static constexpr auto kind = []
     {
-      if constexpr (static_cast<bool>(R.Kind))
-        return kind_t<R.Kind.P>{};
+      if constexpr (detail::has(R.Kind))
+        return kind_t<R.Kind>{};
       else
         return kind_expr{R.Derived, dimension_of(R.U)};
     }();
@@ -1141,7 +1142,7 @@ namespace ins
     requires detail::number_op<V, VA, '/'>
   [[nodiscard]] constexpr auto operator/(const V& v, const quantity<A, VA>& a)
   {
-    constexpr reference R{detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&no_kind, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(v / ins::detail::value_of(a));
   }
   // A quantity times a unit: (5 * m) / s.
@@ -1585,7 +1586,7 @@ namespace ins
     requires requires(const V& x, const VA& y, Args&&... args) { ins::div(x, y, std::forward<Args>(args)...); }
   [[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args)
   {
-    constexpr reference R{detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&no_kind, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(ins::div(v, ins::detail::value_of(a), std::forward<Args>(args)...));
   }
 

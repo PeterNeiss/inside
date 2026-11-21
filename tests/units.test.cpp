@@ -354,7 +354,7 @@ TEST(UnitsTest, point_arithmetic) {
     EXPECT_TRUE(z > t);
     // A unit without an origin counts from the implicit zero.
     const auto x = point<si::metre>(inside<{0, 10}>{3});
-    static_assert(!std::remove_cvref_t<decltype(x)>::origin);
+    static_assert(std::remove_cvref_t<decltype(x)>::origin->Name.empty()); // no_origin
     EXPECT_EQ((x - point<si::metre>(just<1>)).numerical_value_in(si::metre), 2);
 }
 
@@ -617,7 +617,7 @@ TEST(UnitsApiTest, unit_options) {
     EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "R");
     EXPECT_EQ(to_string(point<rankine>(just<9>).point_in(si::kelvin)), "5 K"); // counted from absolute zero
     EXPECT_EQ(to_string(just<1> * turn_unit), "1tr");
-    static_assert(kind_of(rpm_unit.value).P->Name == "frequency");
+    static_assert(kind_of(rpm_unit.value)->Name == "frequency");
     static_assert(!addable_units<decltype(just<1> * rpm_unit), decltype(just<1> * si::becquerel)>());
 }
 

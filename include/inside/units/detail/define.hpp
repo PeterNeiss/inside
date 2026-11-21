@@ -87,7 +87,7 @@ namespace ins
     : origin_def{name, dimension_of(std::remove_cvref_t<decltype(p.quantity_from_origin())>::unit)}
   {
     using Q = std::remove_cvref_t<decltype(p.quantity_from_origin())>;
-    static_assert(static_cast<bool>(P::origin), "units: an origin at o + q - the point counts from an origin");
+    static_assert(detail::has(P::origin), "units: an origin at o + q - the point counts from an origin");
     static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
                   "units: an origin lies at a constant point - si::absolute_zero + 273.15_ins * si::kelvin");
     static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
