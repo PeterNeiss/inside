@@ -289,6 +289,10 @@ namespace ins
       constexpr std::size_t NA{std::tuple_size_v<PA>}, NB{std::tuple_size_v<PB>};
       static constexpr auto da = dims_of<PA>();
       static constexpr auto db = dims_of<PB>();
+      static_assert(Rule == product_rule::geometric
+                      || (std::ranges::all_of(da, geometric_only) && std::ranges::all_of(db, geometric_only)),
+                    "units: the wedge, the contractions and the scalar product take geometric basis vectors - "
+                    "inner ones multiply by their dot product (*)");
       const PA              pa = parts_of(a);
       const PB              pb = parts_of(b);
       return [&]<std::size_t... K>(std::index_sequence<K...>)
@@ -568,7 +572,8 @@ namespace ins
 
     // A pseudoscalar argument: a unit of a blade only.
     template <unit_value I>
-    concept pseudoscalar = has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one);
+    concept pseudoscalar =
+      has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one) && geometric_only(dimension_of(I));
   } // namespace detail
 
   // multivector<Parts...>: a sum of parts of different blades, insides (the scalar part, when it is a plain number)

@@ -1250,6 +1250,8 @@ namespace ins::detail::gaexp
       static_assert((plain_part<std::tuple_element_t<I, DP>>() && ...),
                     "math::exp: the argument's parts are numbers times blades (rad allowed), with no other unit "
                     "and no factor of pi");
+      static_assert((geometric_only(part_dim<std::tuple_element_t<I, DP>>()) && ...),
+                    "math::exp: the argument's basis vectors are geometric ones");
     }(std::make_index_sequence<F::ND>{});
     []<std::size_t... P>(std::index_sequence<P...>)
     {

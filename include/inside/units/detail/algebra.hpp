@@ -40,7 +40,8 @@ namespace ins
 
   // How a basis vector multiplies (basis_vector<"e₁", geometric<+1>>).
   // A geometric one squares to Square (+1, -1 or 0), and two of them anticommute.
-  enum class basis_product : std::int8_t { none, geometric };
+  // An inner one squares to 1, and the product of two of them is 0.
+  enum class basis_product : std::int8_t { none, geometric, inner };
   struct basis_rule
   {
     basis_product Product{basis_product::none};
@@ -62,6 +63,11 @@ namespace ins
   // geometric<S>: the rule of a basis vector of a geometric algebra, by its square S (+1, -1 or 0).
   template <int Square>
   inline constexpr basis_rule geometric = detail::geometric_rule(Square);
+
+  // inner: the rule of a basis vector of Rⁿ with the dot product: b·b = 1 and b₁·b₂ = 0,
+  // so the product of two vectors is their dot product, a number.
+  // It is not associative: (b₁b₁)b₂ = b₂, but b₁(b₁b₂) = 0.
+  inline constexpr basis_rule inner{basis_product::inner, 1};
 
   // A base dimension: base_dimension<"currency"> (units/detail/define.hpp).
   // A basis vector is one too (see basis_vector): its Rule says how it multiplies, its exponent is 0 or 1,
@@ -278,6 +284,14 @@ namespace ins
           return true;
       return false;
     }
+    // Whether every basis vector of d is a geometric one.
+    constexpr bool geometric_only(const dimension& d)
+    {
+      for (std::size_t i = 0; i < d.Size; ++i)
+        if (d.Base[i]->basis() && d.Base[i]->Rule.Product != basis_product::geometric)
+          return false;
+      return true;
+    }
     // Whether a and b are equal but for their basis vectors.
     constexpr bool same_outside_blade(const dimension& a, const dimension& b)
     {
@@ -298,17 +312,23 @@ namespace ins
     }
 
     // The sign s of A·B = s·(A ⊕ B), A and B canonical: -1 for each pair out of name order,
-    // times the square of each basis vector in both. 0 when a null vector meets itself.
+    // times the square of each basis vector in both. 0 when a null vector meets itself
+    // or two different inner vectors meet.
     constexpr int blade_sign(const blade& a, const blade& b)
     {
       int s{1};
       for (const base_dimension_def* x : a)
         for (const base_dimension_def* y : b)
         {
-          if (x->Name > y->Name)
-            s = -s;
-          else if (x->Name == y->Name)
+          const bool inner_x{x->Rule.Product == basis_product::inner};
+          if (inner_x != (y->Rule.Product == basis_product::inner))
+            ins::detail::constexpr_error<"units: inner and geometric basis vectors do not multiply">();
+          if (x->Name == y->Name)
             s *= x->Rule.Square;
+          else if (inner_x)
+            return 0;
+          else if (x->Name > y->Name)
+            s = -s;
         }
       return s;
     }
@@ -1122,7 +1142,7 @@ namespace ins
                                    "write si::metre * e1, not a unit of both">();
     if (Mag.Ratio == grid_number{0})
       ins::detail::constexpr_error<"units: a named unit of a product that vanishes (a null vector "
-                                   "squared)">();
+                                   "squared, or two inner basis vectors)">();
   }
   template <unit_value U, const kind_def* K>
   constexpr unit_def::unit_def(std::string_view sym, unit_t<U>, kind_t<K>, unit_options o)

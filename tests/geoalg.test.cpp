@@ -40,6 +40,11 @@ inline constexpr auto p0 = basis_vector<"p₀", geometric<0>, {.ascii = "p0"}>;
 inline constexpr auto p1 = basis_vector<"p₁", geometric<+1>, {.ascii = "p1"}>;
 inline constexpr auto p2 = basis_vector<"p₂", geometric<+1>, {.ascii = "p2"}>;
 
+// Rⁿ with the dot product: b·b = 1, b₁b₂ = 0.
+inline constexpr auto b1 = basis_vector<"b₁", inner, {.ascii = "b1"}>;
+inline constexpr auto b2 = basis_vector<"b₂", inner, {.ascii = "b2"}>;
+inline constexpr auto b3 = basis_vector<"b₃", inner, {.ascii = "b3"}>;
+
 constexpr auto km = si::kilo(si::metre);
 
 template <class A, class B>
@@ -292,6 +297,31 @@ TEST(GeoalgTest, duals_and_complements) {
     static_assert(multivector_like<decltype(line)>);
     EXPECT_TRUE(regressive(line, pa, i) == 0);
     EXPECT_TRUE(regressive(line, pb, i) == 0);
+}
+
+TEST(GeoalgTest, inner_basis_vectors_multiply_by_the_dot_product) {
+    static_assert(dimension_of((b1 * b1).value) == dim_one);
+    static_assert(magnitude_of((b1 * b1).value).is_one());
+    static_assert(magnitude_of((b1 * b2).value) == magnitude{grid_number{0}});
+    static_assert(std::same_as<decltype((just<1> * b1) * (just<1> * b2)), multivector<>>);
+    // The product of two vectors is their dot product, a number.
+    const auto u = just<1> * b1 + just<2> * b2 + just<3> * b3;
+    const auto v = just<4> * b1 + just<5> * b2 + just<6> * b3;
+    static_assert(insidable<decltype(u * v)>);
+    EXPECT_TRUE(u * v == 32);
+    EXPECT_EQ(to_string(u), "1 b₁ + 2 b₂ + 3 b₃");
+    EXPECT_EQ(to_string(u, text_encoding::ascii), "1 b1 + 2 b2 + 3 b3");
+    EXPECT_TRUE(part(u, b2) == 2);
+    // With units: the dot product of two lengths is an area.
+    const auto w = just<2> * si::metre * b1 + just<1> * si::metre * b2;
+    EXPECT_TRUE(w * w == just<5> * square(si::metre));
+    EXPECT_TRUE((u * v) * w == just<64> * si::metre * b1 + just<32> * si::metre * b2);
+    // Not associative: (b₁b₁)b₂ = b₂, but b₁(b₁b₂) = 0.
+    EXPECT_TRUE(((just<1> * b1) * (just<1> * b1)) * (just<1> * b2) == just<1> * b2);
+    static_assert(std::same_as<decltype((just<1> * b1) * ((just<1> * b1) * (just<1> * b2))), multivector<>>);
+    // The inverse is w / (w·w): w·w⁻¹ = 1.
+    EXPECT_TRUE(w * inverse(w) == 1);
+    EXPECT_EQ(to_string(inverse(w)), "0.4 b₁/m + 0.2 b₂/m");
 }
 
 TEST(GeoalgTest, text) {
