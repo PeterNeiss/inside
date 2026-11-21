@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <concepts>
 #include <cstdint>
 #include <format>
