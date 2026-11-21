@@ -129,6 +129,89 @@ namespace ins::math::detail::engine
       return approx<K>{v.Value, S, v.Error};
     }
   };
+
+  // asin, acos, atan or atan2 straight into a unit with a factor of π (°, a turn): with the unit x·(n/d)·π = θ,
+  // the value θ·d/(n·π) from the radian core's approximation, times d at T bits and over n·π: the arc's error grows by
+  // at most d/(n·π) < 2^Amp, π's and the quotient's add a unit. Exact where Niven's theorem allows a rational multiple
+  // of π: asin and acos of 0, ±½, ±1, atan of 0, ±1, atan2 where y or x is 0 or |y| = |x|.
+  enum class arc_fn : unsigned char { asin, acos, atan, atan2 };
+  template <arc_fn Fn, std::size_t E, int Bits, int Amp>
+  struct pi_arc_core
+  {
+    wide_rational<E> Y, X; // atan2(Y, X); the others take X
+    std::uint64_t    N, D; // the unit's factor n/d
+
+    constexpr auto radian_core() const
+    {
+      if constexpr (Fn == arc_fn::asin)
+        return asin_core<E, Bits>{X};
+      else if constexpr (Fn == arc_fn::acos)
+        return acos_core<E, Bits>{X};
+      else if constexpr (Fn == arc_fn::atan)
+        return atan_core<E>{X};
+      else
+        return atan2_core<E>{Y, X};
+    }
+
+    // θ/π as num/den where it is rational.
+    constexpr std::optional<std::pair<int, int>> half_turns() const
+    {
+      using I     = wide_sint<E>;
+      const auto is = [](const wide_rational<E>& a, int n, int d) { return a.Num * I{d} == a.Den * I{n}; };
+      if constexpr (Fn == arc_fn::asin || Fn == arc_fn::acos)
+      {
+        constexpr int v[5][2] = {{-1, 1}, {-1, 2}, {0, 1}, {1, 2}, {1, 1}};
+        // asin: -½, -⅙, 0, ⅙, ½ half turns; acos: 1, ⅔, ½, ⅓, 0.
+        constexpr int h[2][5][2] = {{{-1, 2}, {-1, 6}, {0, 1}, {1, 6}, {1, 2}}, {{1, 1}, {2, 3}, {1, 2}, {1, 3}, {0, 1}}};
+        for (int k = 0; k < 5; ++k)
+          if (is(X, v[k][0], v[k][1]))
+            return std::pair{h[Fn == arc_fn::acos][k][0], h[Fn == arc_fn::acos][k][1]};
+      }
+      else if constexpr (Fn == arc_fn::atan)
+      {
+        if (is_zero(X))
+          return std::pair{0, 1};
+        if (is(X, 1, 1))
+          return std::pair{1, 4};
+        if (is(X, -1, 1))
+          return std::pair{-1, 4};
+      }
+      else
+      {
+        const bool yn{Y.Num.negative()}, xn{X.Num.negative()};
+        if (is_zero(Y))
+          return xn ? std::pair{1, 1} : std::pair{0, 1};
+        if (is_zero(X))
+          return yn ? std::pair{-1, 2} : std::pair{1, 2};
+        const I yx{Y.Num * X.Den}, xy{X.Num * Y.Den};
+        if (yx == xy || yx == -xy)
+          return yn ? (xn ? std::pair{-3, 4} : std::pair{-1, 4}) : (xn ? std::pair{3, 4} : std::pair{1, 4});
+      }
+      return std::nullopt;
+    }
+    constexpr maybe_exact<3> exact() const
+    {
+      using R = wide_rational<3>;
+      using I = wide_sint<3>;
+      const auto h{half_turns()};
+      if (!h)
+        return std::nullopt;
+      return R{I{h->first} * I{D}, I{h->second} * I{N}};
+    }
+
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int         T {W + 2 * Amp + 64};
+      constexpr std::size_t KJ{limbs_for_bits(2 * T + 192)};
+      using J = wide_sint<KJ>;
+      const auto a{radian_core().template run<W + Amp + 4>()};
+      const J    y{(J{a.Value} * J{D} << T) / (J{N} * static_cast<J>(pi_q<T>))}; // at a's scale
+      using I = fixed_t<W + 2 * Amp + 40>;
+      const double e{static_cast<double>(a.Error) * ::ins::detail::ldexp(1.0, Amp) + 3};
+      return approx<limbs_of<I>>{static_cast<I>(y), a.Scale, e < 0x1p62 ? static_cast<std::uint64_t>(e) : ~std::uint64_t{0}};
+    }
+  };
 } // namespace ins::math::detail::engine
 
 namespace ins
@@ -302,6 +385,127 @@ namespace ins
 #endif
       return pi_trig_exact<Out, Cos>(q);
     }
+
+    // An angle unit with a factor of π as a named output of asin, acos, atan and atan2.
+    template <class C>
+    inline constexpr bool pi_angle_output_v = false;
+    template <reference R, class V>
+    inline constexpr bool pi_angle_output_v<quantity<R, V>> =
+      pi_angle_v<R> && grid_number{0} < magnitude_of(R.U).Ratio && ins::detail::fits_rational(magnitude_of(R.U).Ratio);
+
+#ifndef INSIDE_MATH_NO_FP
+    // The double tier of pi_arc: the radian kernel's value v within its bound, times c = fl(d/(n·π)) (within 3·2^-53
+    // of its value, the product within 2^-53 more), so v·c is within bound·c + 2^-51·|v·c| of the angle in C's unit.
+    template <ins::math::detail::engine::arc_fn Fn, insidable Out, class... In>
+    inline bool pi_arc_double(double c, Out& out, const In&... x) noexcept
+    {
+      namespace engine = ins::math::detail::engine;
+      namespace fpk    = ins::math::detail::fp;
+      double bound{0}, v{0};
+      if constexpr (Fn == engine::arc_fn::atan2)
+      {
+        v = fpk::atan_k<fpk::full_bits>::atan2(engine::input_double(x...[0]), engine::input_double(x...[1]), bound);
+        bound += engine::input_rel<In...[0]> + engine::input_rel<In...[1]>;
+      }
+      else if constexpr (Fn == engine::arc_fn::atan)
+        v = fpk::atan_k<fpk::full_bits>::atan(engine::input_double(x...[0]), bound);
+      else if constexpr (Fn == engine::arc_fn::asin)
+        v = fpk::asin_k<fpk::full_bits>::asin(engine::input_double(x...[0]), bound);
+      else
+        v = fpk::asin_k<fpk::full_bits>::acos(engine::input_double(x...[0]), bound);
+      const double y{v * c};
+      return engine::fp_decide<Out>(y, bound * c * (1 + 0x1p-50) + 0x1p-51 * __builtin_fabs(y) + fpk::tiny, out);
+    }
+#endif
+
+    // The core of asin, acos, atan (of x) or atan2 (of x…[0], x…[1]) into C's unit, and its constants.
+    template <class F, class C>
+    struct pi_arc_facts
+    {
+      static constexpr grid_number   ratio{magnitude_of(C::reference.U).Ratio}; // the unit is ratio·π
+      static constexpr std::uint64_t n{static_cast<std::uint64_t>(ins::detail::grid_numerator(ratio))};
+      static constexpr std::uint64_t d{static_cast<std::uint64_t>(ins::detail::grid_denominator(ratio))};
+      static constexpr int           amp{std::max(std::bit_width(d) - std::bit_width(n) + 1, 0)};
+      static constexpr auto          fn{std::same_as<F, ins::math::detail::entry::asin_fn>
+                                          ? ins::math::detail::engine::arc_fn::asin
+                                        : std::same_as<F, ins::math::detail::entry::acos_fn>
+                                          ? ins::math::detail::engine::arc_fn::acos
+                                        : std::same_as<F, ins::math::detail::entry::atan_fn>
+                                          ? ins::math::detail::engine::arc_fn::atan
+                                          : ins::math::detail::engine::arc_fn::atan2};
+    };
+    template <class F, class C, class... In>
+    constexpr auto pi_arc_core_of(const In&... x)
+    {
+      namespace engine = ins::math::detail::engine;
+      using P          = pi_arc_facts<F, C>;
+      constexpr std::size_t E{std::max({engine::input_limbs<In>...})};
+      constexpr int         bits{std::max({engine::input_bits<In>...})};
+      using W = ins::detail::wide_rational<E>;
+      engine::pi_arc_core<P::fn, E, bits, P::amp> core{};
+      core.N = P::n;
+      core.D = P::d;
+      if constexpr (sizeof...(In) == 2)
+      {
+        core.Y = W{engine::exact_input(x...[0])};
+        core.X = W{engine::exact_input(x...[1])};
+      }
+      else
+        core.X = W{engine::exact_input(x...[0])};
+      return core;
+    }
+    // On the exact engine alone: C's number.
+    template <class F, class C, class... In>
+    constexpr typename C::rep pi_arc_exact(const In&... x)
+    {
+      namespace engine = ins::math::detail::engine;
+      using NO         = typename C::rep;
+      return engine::evaluate<NO, engine::start_bits<NO>>(pi_arc_core_of<F, C>(x...));
+    }
+
+    // asin, acos, atan (of x) or atan2 (of x…[0], x…[1]) straight into C's unit, rounded once onto C's number:
+    // C itself where its range holds every angle the function gives (θ/π in [-½, ½], [0, 1] or [-1, 1]),
+    // else std::expected<C, error>.
+    template <class F, class C, class... In>
+    constexpr auto pi_arc(const In&... x)
+    {
+      namespace engine = ins::math::detail::engine;
+      namespace entry  = ins::math::detail::entry;
+      using NO         = typename C::rep;
+      using P          = pi_arc_facts<F, C>;
+      entry::require_rounding<NO>();
+      static_assert(ins::math::detail::in_domain<F, In...>(),
+                    "units: asin and acos take a number in [-1, 1] - the argument's grid lies outside");
+      // The angles in C's unit: θ/π times 1/ratio.
+      constexpr grid_number top{grid_number{1} / P::ratio};
+      constexpr grid_number lo{P::fn == engine::arc_fn::acos ? grid_number{0}
+                               : P::fn == engine::arc_fn::atan2 ? -top
+                                                                : -top / grid_number{2}};
+      constexpr grid_number hi{P::fn == engine::arc_fn::atan2 || P::fn == engine::arc_fn::acos ? top
+                                                                                                : top / grid_number{2}};
+      constexpr policy_flag p{policy_of<NO>};
+      constexpr bool fits{!is_checked(p) || has_any_flag(p, clamp | wrap) || (lower_of<NO> <= lo && hi <= upper_of<NO>)};
+#ifndef INSIDE_MATH_NO_FP
+      // The double tier where C holds every angle and the inputs read as doubles (asin, acos, atan: exactly).
+      if constexpr (fits && engine::fp_output<NO>
+                    && (P::fn == engine::arc_fn::atan2 ? ((engine::in_max<In> <= 0x1p500) && ...)
+                                                       : (engine::fp_exact_input<In> && ...)))
+        if !consteval
+        {
+          constexpr double c{static_cast<double>(P::d)
+                             / (static_cast<double>(P::n) * 3.141592653589793238462643383279502884)};
+          NO               out;
+          if (!engine::integer_only() && pi_arc_double<P::fn>(c, out, x...)) [[likely]]
+            return quantity_access::make<C>(out);
+          return quantity_access::make<C>(engine::cold_call([x...] { return pi_arc_exact<F, C>(x...); }));
+        }
+#endif
+      if constexpr (fits)
+        return quantity_access::make<C>(pi_arc_exact<F, C>(x...));
+      else
+        return engine::evaluate_checked<NO, engine::start_bits<NO>>(pi_arc_core_of<F, C>(x...))
+          .transform([](const NO& v) { return quantity_access::make<C>(v); });
+    }
   } // namespace detail
 
   namespace detail
@@ -457,7 +661,7 @@ namespace ins
     {
       using type = typename O::rep;
     };
-    template <class NK, bool Number, reference To>
+    template <class NK, bool Number, reference To, bool PiAngles = false>
     struct output_in
     {
       template <class N>
@@ -478,9 +682,10 @@ namespace ins
           {
             static_assert(!Number, "ins::math: f<C>(q) - the result is a number: C is an inside");
             static_assert(quantity_like<C>, "ins::math: f<C>(q) - C is a quantity or its number");
-            static_assert(C::reference.U == To.U && implicit_v<To, C::reference>,
+            static_assert((C::reference.U == To.U && implicit_v<To, C::reference>)
+                            || (PiAngles && pi_angle_output_v<C>),
                           "ins::math: f<C>(q) - C's unit must be exactly the result's (or name only "
-                          "the number)");
+                          "the number); asin, acos, atan and atan2 also give an angle in a unit with a factor of pi");
             return std::type_identity<C>{};
           }
         }
@@ -617,7 +822,9 @@ namespace ins::math::detail
   {
     using rule = ins::detail::quantity_rule<ins::detail::rule_of<F>, F, Args...>;
     static constexpr bool takes = rule::takes;
-    using io = ins::detail::output_in<typename rule::NK, rule::number, rule::to>;
+    using io = ins::detail::output_in<typename rule::NK, rule::number, rule::to,
+                                      ins::detail::rule_of<F> == ins::detail::math_rule::arc
+                                        || ins::detail::rule_of<F> == ins::detail::math_rule::arc2>;
 
     template <class S>
     using output = typename io::template out<typename rule::template number_spec<S>>::type;
@@ -669,9 +876,15 @@ namespace ins::math::detail
       else if constexpr (r == ins::detail::math_rule::arc2 || r == ins::detail::math_rule::common)
       {
         constexpr ins::reference A{Args...[0]::reference}, B{Args...[1]::reference};
-        return io::template make<O>(
-          named(ins::detail::in_common_unit<A, B>(x...[0]), ins::detail::in_common_unit<A, B>(x...[1])));
+        if constexpr (r == ins::detail::math_rule::arc2 && ins::detail::pi_angle_output_v<O>)
+          return ins::detail::pi_arc<F, O>(ins::detail::in_common_unit<A, B>(x...[0]),
+                                           ins::detail::in_common_unit<A, B>(x...[1]));
+        else
+          return io::template make<O>(
+            named(ins::detail::in_common_unit<A, B>(x...[0]), ins::detail::in_common_unit<A, B>(x...[1])));
       }
+      else if constexpr (r == ins::detail::math_rule::arc && ins::detail::pi_angle_output_v<O>)
+        return ins::detail::pi_arc<F, O>(ins::detail::number_of(x...[0]));
       else if constexpr (r == ins::detail::math_rule::arc || r == ins::detail::math_rule::number)
         return io::template make<O>(named(ins::detail::number_of(x)...));
       else
