@@ -207,6 +207,15 @@ namespace ins::detail::gaexp
           return false;
       return true;
     }();
+    // Every square -1 and e^a ≤ 1: each part of the result is at most 1 exactly (|cos λ| ≤ 1, |sin λ·yⱼ/λ| ≤ 1),
+    // where ea and ch above stay a hair over.
+    static constexpr bool unit_bound = []
+    {
+      if constexpr (has_scalar)
+        return all_neg && upper_of<num_t<std::tuple_element_t<scalar_index, DP>>> <= grid_number{0};
+      else
+        return all_neg;
+    }();
     static constexpr double scalar_bound = ea * ch;
     static constexpr auto   part_bound   = []<std::size_t... J>(std::index_sequence<J...>)
     {
@@ -287,6 +296,100 @@ namespace ins::detail::gaexp
   consteval bool domain_closed()
   {
     return domain_facts<Domain>::closed;
+  }
+
+  // A named output C: whether part Q holds every value it takes (a part y lacks is 0; a part that clamps, wraps or
+  // is unchecked stores under its own policy), compared exactly against the part's bound: an upper bound, 1 exactly
+  // under unit_bound. A correctly rounded value at most an endpoint on C's lattice rounds to at most it.
+  template <class F, std::size_t Q>
+  consteval double part_bound_of()
+  {
+    if constexpr (F::unit_bound)
+      return 1.0;
+    else if constexpr (F::src[Q].Kind == part_source::scalar)
+      return F::scalar_bound;
+    else
+      return F::part_bound[F::src[Q].Blade];
+  }
+  template <class F, std::size_t Q>
+  consteval bool part_fits()
+  {
+    using O = num_t<std::tuple_element_t<Q, typename F::CP>>;
+    constexpr policy_flag p{policy_of<O>};
+    if constexpr (F::src[Q].Kind == part_source::zero || !is_checked(p) || has_any_flag(p, clamp | wrap))
+      return true;
+    else
+    {
+      const grid_number m{part_bound_of<F, Q>()};
+      return m <= upper_of<O> && lower_of<O> <= -m;
+    }
+  }
+  template <class Domain, class CoDomain>
+  consteval bool named_fits()
+  {
+    using F = facts<Domain, CoDomain>;
+    return []<std::size_t... Q>(std::index_sequence<Q...>)
+    {
+      return (part_fits<F, Q>() && ...);
+    }(std::make_index_sequence<F::NC>{});
+  }
+
+  // C's twin: each part's number on C's notch and policy, its interval widened in whole notches to the part's bound,
+  // so the value rounds once there and only the store into C can miss.
+  template <class F, std::size_t Q>
+  consteval grid twin_grid()
+  {
+    using O = num_t<std::tuple_element_t<Q, typename F::CP>>;
+    constexpr grid_number n{notch_of<O>};
+    static_assert(n != 0, "math::exp: each CoDomain part's grid has a notch");
+    const grid_number lim{grid_round<round_mode::ceil>(grid_number{part_bound_of<F, Q>() * (1 + 0x1p-30)} / n) * n};
+    return grid{interval{lower_of<O> < -lim ? lower_of<O> : -lim, lim < upper_of<O> ? upper_of<O> : lim}, n};
+  }
+  // Part P on the number N: a quantity keeps its reference.
+  template <class P, class N>
+  struct with_number
+  {
+    using type = N;
+  };
+  template <reference R, class V, class N>
+  struct with_number<quantity<R, V>, N>
+  {
+    using type = quantity<R, N>;
+  };
+  template <class F, std::size_t Q>
+  using twin_part =
+    typename with_number<std::tuple_element_t<Q, typename F::CP>,
+                         inside<twin_grid<F, Q>(), policy_of<num_t<std::tuple_element_t<Q, typename F::CP>>>>>::type;
+  template <class Domain, class CoDomain>
+  consteval auto twin_of()
+  {
+    using F = facts<Domain, CoDomain>;
+    return []<std::size_t... Q>(std::index_sequence<Q...>)
+    {
+      if constexpr (sizeof...(Q) == 1)
+        return std::type_identity<twin_part<F, 0>>{};
+      else
+        return std::type_identity<multivector<twin_part<F, Q>...>>{};
+    }(std::make_index_sequence<F::NC>{});
+  }
+  template <class Domain, class CoDomain>
+  using twin_t = typename decltype(twin_of<Domain, CoDomain>())::type;
+
+  // The twin's parts stored into C's: C, or the first part's error.
+  template <class CoDomain, class T>
+  constexpr std::expected<CoDomain, error> store_named(const T& t)
+  {
+    using CP = parts_t<CoDomain>;
+    const auto tp{parts_of(t)};
+    return [&]<std::size_t... Q>(std::index_sequence<Q...>) -> std::expected<CoDomain, error>
+    {
+      const auto n{std::tuple{num_t<std::tuple_element_t<Q, CP>>::try_make(number_of_part(std::get<Q>(tp)))...}};
+      error e{};
+      const bool ok{((std::get<Q>(n) || (e = std::get<Q>(n).error(), false)) && ...)};
+      if (!ok)
+        return std::unexpected(e);
+      return CoDomain{part_of_number<std::tuple_element_t<Q, CP>>(*std::get<Q>(n))...};
+    }(std::make_index_sequence<std::tuple_size_v<CP>>{});
   }
 
   // The integer path: one part of the result at precision W.
@@ -1483,6 +1586,17 @@ namespace ins::math::detail
     [[nodiscard]] [[gnu::always_inline]] static constexpr O eval(const Domain& x)
     {
       return ins::detail::gaexp::run<Domain, O>(x);
+    }
+    // A named output: O itself where each part holds every value it takes, else std::expected<O, error>
+    // (the value rounded once onto O's twin, then stored into O: error::overflow when a part misses).
+    template <class O>
+    [[nodiscard]] [[gnu::always_inline]] static constexpr auto eval_named(const Domain& x)
+    {
+      namespace ge = ins::detail::gaexp;
+      if constexpr (ge::named_fits<Domain, O>())
+        return ge::run<Domain, O>(x);
+      else
+        return ge::store_named<O>(ge::run<Domain, ge::twin_t<Domain, O>>(x));
     }
   };
 } // namespace ins::math::detail
