@@ -39,10 +39,10 @@ int main()
       || !(wedge(u, v) == -wedge(v, u)))
     return 1;
 
-  // 2. Reflection in the plane orthogonal to n = e₁ + e₂: -n v n⁻¹,
-  // exact (n⁻¹ = n / 2; its grade 3 is 0).
+  // 2. Reflection in the plane orthogonal to n = e₁ + e₂: sandwich(n, v) is -n v n⁻¹,
+  // exact (n⁻¹ = n / 2), without its grade-3 part, which is 0.
   const auto n{e1 + e2};
-  const auto w{grade<1>(-n * v * inverse(n))};
+  const auto w{sandwich(n, v)};
   std::cout << "n⁻¹ = " << inverse(n) << ", -n v n⁻¹ = " << w << '\n';
   if (to_string(w) != "-5 m·e₁ - 4 m·e₂ + 6 m·e₃")
     return 1;

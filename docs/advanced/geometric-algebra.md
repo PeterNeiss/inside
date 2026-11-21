@@ -145,6 +145,8 @@ auto v = just<2> * si::metre * e1 + si::metre * e2;                // 2 m·e₁ 
 | `squared_norm(x)` | ⟨x x̃⟩₀ = Σ partᵢ · reverse(partᵢ): \|z\|², \|q\|², \|v\|² |
 | `inverse(x)`, `a / b` | α(x) / (x α(x)), α the reverse or the Clifford conjugate, when that is a scalar (below) |
 | `a / s` | each part divided by s, a number or a quantity of one blade |
+| `sandwich(V, x)` | the versor V acting on x, x's grades kept: V x V⁻¹ for an even V (a rotor), V x̂ V⁻¹ for an odd one, so `sandwich(n, v)` reflects v in the plane orthogonal to n; an `expected` when V's norm's grid holds 0, as `inverse` |
+| `rotate(R, x)` | R x R̃ for a rotor R (even, \|R\| = 1 assumed), x's grades kept: no division, never an `expected`; a rounded rotor scales x by \|R\|² |
 | `dual(x, I)` | x I⁻¹, for a pseudoscalar unit I that squares to ±1: `dual(u ∧ v, e1 * e2 * e3)` is u × v |
 | `complement(x, I)`, `uncomplement(x, I)` | the right complement within I's blade, A ∧ c(A) = I, without the metric, and its inverse |
 | `regressive(a, b, I)` | the regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA |
@@ -189,7 +191,10 @@ blade of y, in x's units, every part's range a bound computed at compile time
 `math::exp<per<(1 << 20)>>(x)`. `math::exp<C>(x)` names it: a multivector that
 holds the scalar part and every blade of y (a part it has beyond them is 0,
 and a part spelled with a sign, j = e₃e₁, gets its sign), or one inside, the
-number of every part.
+number of every part. Where a part of C may not hold its value, the result is
+a `std::expected<C, error>` (`error::overflow` when one misses), as `f<C>(x)`
+of an inside is; a rotor's parts on [−1, 1] hold every value, so `rotor`
+below stays plain.
 
 ```cpp
 using coef  = inside<{{-1, 1}, per<(1 << 20)>}, round_half_away>;
@@ -252,9 +257,6 @@ auto r  = v * i;                     // -1 m·e₁ + 2 m·e₂: a quarter turn
   N·m does not.
 - **exp only.** There is no log or sqrt of a rotor, and exp needs the closed
   form: its argument's non-scalar parts must anticommute.
-- **No sandwich helper.** R v R̃ keeps every grade the product can have. A
-  reflection or rotation of a vector has a grade-3 part that is 0; take
-  `grade<1>` of it.
 - **No hooks on whole multivectors.** inside's store hooks (`on_wrap`, …) and
   the algorithms on quantities work on the parts, not on a whole multivector.
 - **Compile time.** Each multivector operation forms its result type part by

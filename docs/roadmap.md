@@ -35,8 +35,6 @@ change, not an example workaround:
 - **log and sqrt of rotors**, rounded once (exp is there:
   [`math::exp`](advanced/geometric-algebra.md#exp)), and exp of an argument
   without the closed form (e₁e₂ + e₃e₄ in 4-D, as a product of two).
-- **A sandwich product that keeps the grades:** R v R̃ of a vector is a vector,
-  but the types keep a grade-3 part that is 0; today `grade<1>` drops it.
 
 ### Declined or parked
 

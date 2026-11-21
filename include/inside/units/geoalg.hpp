@@ -8,7 +8,8 @@
 //   - wedge, left_contraction, right_contraction, scalar_product;
 //   - reverse, involute, conjugate, grade<K>, part(x, u);
 //   - dual(x, I), complement(x, I), regressive(a, b, I);
-//   - squared_norm(x), inverse(x).
+//   - squared_norm(x), inverse(x);
+//   - sandwich(V, x), rotate(R, x): a versor acting on x, x's grades kept.
 // Complex numbers are the even part of G(2,0), quaternions the even part of G(3,0).
 // Each part of a multivector keeps its own inside, so every part's range is proved; the arithmetic is exact.
 #ifndef INSIDE_UNITS_GEOALG_HPP
@@ -912,6 +913,75 @@ namespace ins
       else
         return a * inv;
     }
+  }
+
+  // Versors acting on x.
+
+  namespace detail
+  {
+    // The parity of X's grades: 0 all even, 1 all odd, -1 both.
+    template <class X>
+    consteval int parity_of()
+    {
+      int p{-2};
+      for (const dimension& d : dims_of<parts_t<X>>())
+      {
+        const int g{grade_of(d) % 2};
+        if (p == -2)
+          p = g;
+        else if (p != g)
+          return -1;
+      }
+      return p == -2 ? 0 : p;
+    }
+    // y's parts of the grades X has.
+    template <class X, class Y>
+    constexpr auto keep_grades_of(const Y& y)
+    {
+      return each_part(
+        y,
+        [](const auto& p)
+        {
+          constexpr int g{grade_of(part_dim<std::remove_cvref_t<decltype(p)>>())};
+          if constexpr (std::ranges::any_of(dims_of<parts_t<X>>(), [](const dimension& d) { return grade_of(d) == g; }))
+            return p;
+          else
+            return multivector<>{};
+        });
+    }
+    // A versor's type: one parity, and geometric basis vectors only.
+    template <class V>
+    concept versor_type = (parity_of<V>() >= 0) && std::ranges::none_of(dims_of<parts_t<V>>(), has_inner);
+  } // namespace detail
+
+  // sandwich(V, x): the versor V acting on x, x's grades kept (the others are 0 for a versor):
+  // V x V⁻¹ for an even V (a rotor), V x̂ V⁻¹ for an odd one, so sandwich(n, v) reflects v in the plane orthogonal
+  // to n. V is invertible by its type (see inverse); like inverse, an expected when V's norm's grid holds 0.
+  template <multivector_like V, multivector_like X>
+    requires detail::invertible<V> && detail::versor_type<std::remove_cvref_t<V>>
+  [[nodiscard]] constexpr auto sandwich(const V& v, const X& x)
+  {
+    const auto apply = [&](const auto& inv)
+    {
+      if constexpr (detail::parity_of<std::remove_cvref_t<V>>() == 0)
+        return detail::keep_grades_of<std::remove_cvref_t<X>>(v * x * inv);
+      else
+        return detail::keep_grades_of<std::remove_cvref_t<X>>(v * involute(x) * inv);
+    };
+    const auto inv{inverse(v)};
+    if constexpr (detail::is_expected_v<std::remove_cvref_t<decltype(inv)>>)
+      return inv.transform(apply);
+    else
+      return apply(inv);
+  }
+
+  // rotate(R, x): R x R̃ for a rotor R (even, |R| = 1 assumed), x's grades kept: no division, never an expected.
+  // A rotor whose parts were rounded scales x by |R|², as R x R̃ does.
+  template <multivector_like R, multivector_like X>
+    requires detail::versor_type<std::remove_cvref_t<R>> && (detail::parity_of<std::remove_cvref_t<R>>() == 0)
+  [[nodiscard]] constexpr auto rotate(const R& r, const X& x)
+  {
+    return detail::keep_grades_of<std::remove_cvref_t<X>>(r * x * reverse(r));
   }
 
   // Duals.

@@ -38,6 +38,11 @@ own can be declared the same way with `defined_by`.
 
 ### Added
 
+- `sandwich(V, x)`: a versor acting on x with x's grades kept, V x V⁻¹ for a
+  rotor and V x̂ V⁻¹ for an odd versor, so `sandwich(n, v)` is the reflection
+  in the plane orthogonal to n (an `expected` when V's norm can be 0, as
+  `inverse`). `rotate(R, x)` is R x R̃ for a unit rotor, plain. Both replace
+  `grade<1>(R * v * reverse(R))`.
 - Quantities and points read from text with their units: `parse<Q>(text)`,
   `parse<Q>(number, unit)`, `parse<Q>(number, u)` and the `parse_exact`
   forms, and `>>` into a `std::expected<Q, error>` (only there). The unit may
