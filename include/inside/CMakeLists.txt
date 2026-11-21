@@ -69,6 +69,7 @@ target_sources(
                 units/io.hpp
                 units/mdspan.hpp
                 units/math.hpp
+                units/polynomial.hpp
                 units/random.hpp
                 units/systems.hpp
 )

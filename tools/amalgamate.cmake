@@ -227,6 +227,7 @@ foreach(r IN LISTS roots)
         OR r STREQUAL "inside/units/math.hpp"
         OR r STREQUAL "inside/units/constants.hpp"
         OR r STREQUAL "inside/units/geoalg.hpp"
+        OR r STREQUAL "inside/units/polynomial.hpp"
     )
         set(_guard_open "#ifndef INSIDE_NO_UNITS")
         set(_guard_close "#endif // INSIDE_NO_UNITS")

@@ -1424,7 +1424,7 @@ namespace ins
   }
 
   // divmod(a, b, args...) of two quantities of one dimension, in their common unit:
-  // the quotient is a plain number, the remainder a quantity.
+  // the quotient is a plain number, the remainder a quantity. (Of a polynomial variable: units/polynomial.hpp.)
   namespace detail
   {
     // The remainder as a quantity in C (an expected's error passed on).
@@ -1443,7 +1443,7 @@ namespace ins
     }
   } // namespace detail
   template <reference A, class VA, reference B, class VB, class... Args>
-    requires detail::common_rescalable<A, VA, B, VB>
+    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.U)))
           && requires(const detail::common_number_t<A, VA, B>& x,
                       const detail::common_number_t<B, VB, A>& y,
                       Args&&... args) { ins::divmod(x, y, std::forward<Args>(args)...); }
