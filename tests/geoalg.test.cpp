@@ -346,7 +346,7 @@ TEST(GeoalgTest, polynomial_variables_add_powers_and_commute) {
     EXPECT_TRUE(b * b == just<1> * q * q + just<2> * q * t + just<1> * t * t);
     // Coefficients with units: one dimension but for the variables.
     const auto s = just<2> * si::metre + just<3> * si::metre * t;
-    EXPECT_EQ(to_string(s), "2 m + 3 m t");
+    EXPECT_EQ(to_string(s), "2 m + 3 m·t");
     static_assert(!can_add<decltype(s), decltype(just<1> * si::second * t)>);
     EXPECT_TRUE(s.in(si::centi(si::metre)) == just<200> * si::centi(si::metre) + just<300> * si::centi(si::metre) * t);
     // Vector coefficients: a polynomial curve in G(3,0), (x + 2 t x)² = 1 + 4 t + 4 t².
