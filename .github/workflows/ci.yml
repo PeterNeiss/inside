@@ -17,7 +17,11 @@ jobs:
     name: ${{ matrix.config }}
     runs-on: ubuntu-latest
     # The library needs GCC 16 (C++26 static reflection).
-    container: gcc:16
+    container:
+      image: gcc:16
+      # TSan runs itself again with ASLR off (personality), which Docker's default seccomp profile refuses:
+      # "ThreadSanitizer: encountered an incompatible memory layout but was unable to disable ASLR".
+      options: ${{ matrix.config == 'release-tsan' && '--security-opt seccomp=unconfined' || '' }}
     strategy:
       fail-fast: false
       matrix:
