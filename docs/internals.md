@@ -474,7 +474,7 @@ type carries the value (`unit_t<V>`, `kind_t<P>`, `origin_t<P>`), so
 s·m. Identity is by content: a unit by its symbols, dimension, magnitude, kind
 and origin; a kind by its name, dimension, recipe, kind boundary and parent
 chain. A kind or origin reference inside these values is a plain pointer that
-is never null: none is the named object `no_kind` or `no_origin`, told by its
+is never null: none is the named object `kind_def::none` or `origin_def::none`, told by its
 empty name, because some compilers do not fold `&obj == nullptr` in constant
 expressions. A reference to one named unit and its own kind holds that unit
 alone (`ref_form`'s `unit_atom`), any other its parts (`ref_parts`), so the

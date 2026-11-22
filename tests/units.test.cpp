@@ -354,7 +354,7 @@ TEST(UnitsTest, point_arithmetic) {
     EXPECT_TRUE(z > t);
     // A unit without an origin counts from the implicit zero.
     const auto x = point<si::metre>(inside<{0, 10}>{3});
-    static_assert(std::remove_cvref_t<decltype(x)>::origin->Name.empty()); // no_origin
+    static_assert(std::remove_cvref_t<decltype(x)>::origin->Name.empty()); // origin_def::none
     EXPECT_EQ((x - point<si::metre>(just<1>)).numerical_value_in(si::metre), 2);
 }
 
@@ -748,7 +748,7 @@ TEST(UnitsApiTest, a_reference_has_one_form) {
     static_assert(!std::is_same_v<quantity<isq::length[si::metre], num>, m_t>);
     static_assert(quantity<si::metre / si::second, num>::reference.HasParts);
     static_assert(quantity<si::metre * si::metre, num>::reference.HasParts);
-    // A named unit without a kind: the unit alone too, and kind() is no_kind.
+    // A named unit without a kind: the unit alone too, and kind() is kind_def::none.
     constexpr auto metre_second = unit<"m·s", si::metre * si::second>;
     static_assert(!quantity<metre_second, num>::reference.HasParts);
     static_assert(quantity<metre_second, num>::reference.kind()->Name.empty());

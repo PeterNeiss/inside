@@ -76,7 +76,7 @@ quantity<reference{ref_form{ref_parts{(& isq::velocity_def),
 
 | Part | Means |
 |---|---|
-| `(& isq::velocity_def)` | the quantity kind, `isq::velocity`, by its definition object; `(& no_kind)` for none (any quantity of the dimension, as `si::metre / si::second` gives) |
+| `(& isq::velocity_def)` | the quantity kind, `isq::velocity`, by its definition object; `(& kind_def::none)` for none (any quantity of the dimension, as `si::metre / si::second` gives) |
 | `unit_value{unit_atom [6]{…}, …}` | the unit's factors, each a named unit with its prefix and exponent |
 | `magnitude{grid_number{1, 1, 0}, 0}` | the unit's extra factor as a grid number and a power of π: here 1·π⁰ |
 | `false` | whether the kind is a unit's own (any kind of it) rather than exactly that kind |

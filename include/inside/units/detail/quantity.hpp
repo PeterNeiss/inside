@@ -1145,7 +1145,7 @@ namespace ins
     requires detail::number_op<V, VA, '/'>
   [[nodiscard]] constexpr auto operator/(const V& v, const quantity<A, VA>& a)
   {
-    constexpr reference R{detail::product_reference<reference{&no_kind, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&kind_def::none, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(v / ins::detail::value_of(a));
   }
   // A quantity times a unit: (5 * m) / s.
@@ -1590,7 +1590,7 @@ namespace ins
     requires requires(const V& x, const VA& y, Args&&... args) { ins::div(x, y, std::forward<Args>(args)...); }
   [[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args)
   {
-    constexpr reference R{detail::product_reference<reference{&no_kind, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&kind_def::none, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(ins::div(v, ins::detail::value_of(a), std::forward<Args>(args)...));
   }
 

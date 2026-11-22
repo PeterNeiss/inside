@@ -18,7 +18,7 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   `derived()` (`Q::reference.U` is `Q::reference.unit()`), and
   `r.with_unit(u)` is the same kind facts on another unit.
 - `kind_ref` and `origin_ref` are `const kind_def*` and `const origin_def*`
-  and never null: none is `&no_kind` or `&no_origin`, which have no name.
+  and never null: none is `&kind_def::none` or `&origin_def::none`, which have no name.
   `ref_or_none` and its `.P` are gone. A truth test such as `if (opts.kind)`
   or `!P::origin` still compiles but is now always true or always false:
   test `->Name.empty()`. A kind and an origin need a name.

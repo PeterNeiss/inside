@@ -12,7 +12,7 @@ namespace ins
 {
 
   // quantity_point<R, O, Rep>: a point, a quantity of R counted from origin O
-  // (no_origin: the implicit zero of the dimension).
+  // (origin_def::none: the implicit zero of the dimension).
   // A change of origin shifts the grid by the exact offset, a change of unit rescales it.
   //   auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});   // 20 ℃
   //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
@@ -57,7 +57,7 @@ namespace ins
     // The default origin of a unit's points: its named unit's (K, ℃, ℉).
     consteval origin_ref origin_of_unit(const unit_value& u)
     {
-      return is_single_named(u) ? u.Atoms[0].U->Origin : &no_origin;
+      return is_single_named(u) ? u.Atoms[0].U->Origin : &origin_def::none;
     }
 
     // Whether Rep stores the plain number V (under the one-shot flags Pol) only while compiling:
