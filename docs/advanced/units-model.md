@@ -220,9 +220,9 @@ inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
 inline constexpr auto     fathom = defined_by<fathom_def>;
 ```
 
-A quantity in fathoms then prints in about 390 characters instead of 700, and
-one in a base unit of your own (a named kind and unit) in 380 instead of
-1300 (`tools/symbol_lengths.sh`). In a header, declare the definition
+A quantity in fathoms then prints in about 220 characters instead of 520, and
+one in a base unit of your own (a named kind and unit) in 220 instead of
+770 (`tools/symbol_lengths.sh`). In a header, declare the definition
 `inline constexpr`, so that every translation unit has the same one.
 
 ### Base dimensions of your own

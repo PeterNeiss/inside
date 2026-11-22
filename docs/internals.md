@@ -163,8 +163,9 @@ independent of the encoding, and gate different fast paths:
 `grid_numerator`, `grid_denominator`, `grid_divides_evenly`,
 `grid_same_lattice`, and `fits_rational` / `to_rational` for the 64-bit fast
 paths. A `grid_number` is laid out like `rational`: `Num` the numerator's
-magnitude, `Den` the denominator with the sign. A value past that range has
-`Den == 0` and `Big` pointing at an interned `big_rational`
+magnitude, `Den` the denominator with the sign. Zero is all zero bits
+(`{0, 0, null}`), which a mangled name leaves out. A value past that range has
+`Num == 1`, `Den == 0` and `Big` pointing at an interned `big_rational`
 (`inside/detail/big_rational.hpp`, `std::define_static_object`; its `big_int`s
 intern their limbs past one with `std::define_static_array`). One form per
 value, reduced and inline whenever it fits, so equal values are equal
@@ -472,9 +473,12 @@ type carries the value (`unit_t<V>`, `kind_t<P>`, `origin_t<P>`), so
 `si::metre * si::second / si::second` is computed, not sorted, and m·s equals
 s·m. Identity is by content: a unit by its symbols, dimension, magnitude, kind
 and origin; a kind by its name, dimension, recipe, kind boundary and parent
-chain. Optional pointers inside these values are `ref_or_none<T>` (a pointer
-and a flag), because some compilers do not fold `&obj == nullptr` in constant
-expressions.
+chain. A kind or origin reference inside these values is a plain pointer that
+is never null: none is the named object `no_kind` or `no_origin`, told by its
+empty name, because some compilers do not fold `&obj == nullptr` in constant
+expressions. A reference to one named unit and its own kind holds that unit
+alone (`ref_form`'s `unit_atom`), any other its parts (`ref_parts`), so the
+common quantity types spell short; the constructors make the one form.
 
 **A conversion is a rescale.** `conversion_factor<From, To>` is the ratio of
 the two magnitudes. `detail::rescale<M>(v)` multiplies an inside by the

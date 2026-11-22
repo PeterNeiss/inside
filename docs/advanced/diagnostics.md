@@ -12,17 +12,17 @@ probe an operation without an error at all.
 GCC spells every name out. The point `3_ins`:
 
 ```text
-inside<grid{interval{grid_number{3, 1, 0}, grid_number{3, 1, 0}},
-            grid_number{0, 1, 0}, grid_number{0, 1, 0}}, 0>
+inside<grid{grid_number{3, 1, 0}, grid_number{3, 1, 0},
+            grid_number{0, 0, 0}, grid_number{0, 0, 0}}, 0>
 ```
 
-GCC also prefixes `ins::`, shortened here. The `grid_number` pair
-is the interval, the next one the notch, the last the bound:
+GCC also prefixes `ins::`, shortened here. The first two grid numbers are
+the limits, the next one the notch, the last the bound:
 
 | Part | Means |
 |---|---|
-| `grid_number{num, den, big}` | a grid number, an exact fraction in lowest terms: `num` the numerator's magnitude, `den` the denominator with the sign, so −3 is `grid_number{3, -1, 0}` and 1/100 is `grid_number{1, 100, 0}`. A value past 64 bits has `den` 0 and `big` pointing at the interned value |
-| interval | the range, both limits included |
+| `grid_number{num, den, big}` | a grid number, an exact fraction in lowest terms: `num` the numerator's magnitude, `den` the denominator with the sign, so −3 is `grid_number{3, -1, 0}` and 1/100 is `grid_number{1, 100, 0}`. Zero is `grid_number{0, 0, 0}`. A value past 64 bits is `grid_number{1, 0, …}`, with `big` pointing at the interned value |
+| limits | `Lower` and `Upper`, both included |
 | notch | the step. 0 is a *continuous* grid or a point, not a missing value |
 | bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([exact arithmetic](exact-arithmetic.md#bounded-continuous-grids)); 0 otherwise |
 | the policy `P` | a bitset, printed as an integer: decode it with the table below |
@@ -47,21 +47,41 @@ bit is checked. (The definitions are in `include/inside/inside/policy_flag.hpp`.
 ## Decoding a quantity
 
 GCC prints a quantity's reference as the structure behind it. A quantity in
+a named unit and its own kind, the most common one (`si::metre`,
+`si::kilogram`, `si::kilo(si::metre)`), holds that unit alone. A quantity in
 km:
 
 ```text
-quantity<reference{kind_ref{(& isq::length_def), true}, true, recipe{kind_factor [6](), 0},
-                   unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 3, 1}}, 1,
-                              magnitude{grid_number{1, 1, 0}, 0}}},
+quantity<reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}, inside<…>>
+```
+
+| Part | Means |
+|---|---|
+| `unit_atom{(& si::metre_def), 3, 1}` | a named unit (`si::metre`, by its definition object), its decimal prefix as a power of 10 (3: kilo), and its exponent (1). Its kind is the unit's own (any length) |
+| `false` | the reference holds the unit alone |
+| `inside<…>` | the number, decoded as above |
+
+Any other reference holds its parts: a kind, a unit of several factors or a
+scale, or a product of kinds. A velocity in m/s:
+
+```text
+quantity<reference{ref_form{ref_parts{(& isq::velocity_def),
+                                      unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 0, 1},
+                                                               unit_atom{(& si::second_def), 0, -1}},
+                                                 magnitude{grid_number{1, 1, 0}, 0}},
+                                      false, recipe{kind_factor [6](), 0}}},
+                   true},
          inside<…>>
 ```
 
 | Part | Means |
 |---|---|
-| `kind_ref{(& isq::length_def), true}` | the quantity kind, `isq::length`, by its definition object |
-| `unit_atom{(& si::metre_def), 3, 1}` | a named unit (`si::metre`, by its definition object), its decimal prefix as a power of 10 (3: kilo), and its exponent (1) |
+| `(& isq::velocity_def)` | the quantity kind, `isq::velocity`, by its definition object; `(& no_kind)` for none (any quantity of the dimension, as `si::metre / si::second` gives) |
+| `unit_value{unit_atom [6]{…}, …}` | the unit's factors, each a named unit with its prefix and exponent |
 | `magnitude{grid_number{1, 1, 0}, 0}` | the unit's extra factor as a grid number and a power of π: here 1·π⁰ |
-| `inside<…>` | the number, decoded as above |
+| `false` | whether the kind is a unit's own (any kind of it) rather than exactly that kind |
+| `recipe{…}` | the kinds a product is made of (`isq::width * isq::height`), empty otherwise |
+| `true` | the reference holds its parts |
 
 A unit or kind of your own declared in one line is spelled by its content
 instead: `(& definition<unit_def, symbol_text{"ftm", 3}, …>::value)`, with

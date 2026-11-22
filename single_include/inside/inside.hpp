@@ -3814,14 +3814,18 @@ namespace ins
   // A value that fits the 64-bit rational is held inline, as detail::rational holds it
   // (the numerator's magnitude, and the denominator with the sign),
   // so a grid's type reads short: grid_number{1, 100, 0} is 1/100.
-  // A larger value is an interned big_rational, which exists only at compile time, marked by Den == 0
+  // Zero is all zero bits, grid_number{0, 0, 0}, which a mangled name leaves out
+  // (and with it the MaxDenominator of every grid but a continuous one).
+  // A larger value is an interned big_rational, which exists only at compile time, marked by Den == 0 and Num == 1
   // (tested instead of the pointer: under -fsanitize=null GCC cannot compare an interned pointer with nullptr
   // in a constant expression).
+  // Zero takes the 64-bit paths without a big value: it is decided inside the Den == 0 branch,
+  // so the paths of the other inline values are as before.
   // One form per value, reduced and inline whenever it fits, so equal values are the same template argument.
   struct grid_number
   {
     std::uint64_t               Num{0};
-    std::int64_t                Den{1};
+    std::int64_t                Den{0};
     const detail::big_rational* Big{nullptr};
 
     constexpr grid_number() = default;
@@ -3830,7 +3834,7 @@ namespace ins
     constexpr grid_number(T v) noexcept
       : Num{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
                                          : static_cast<std::uint64_t>(v)},
-        Den{std::is_signed_v<T> && v < 0 ? -1 : 1} {}
+        Den{v == 0 ? 0 : std::is_signed_v<T> && v < 0 ? -1 : 1} {}
     template <std::integral T>
       requires(std::numeric_limits<T>::digits > 64)
     constexpr grid_number(T v) : grid_number(detail::big_rational{v}) {}
@@ -3851,6 +3855,8 @@ namespace ins
     {
       if (b.fits_rational())
       {
+        if (b.Num.Small == 0)
+          return; // zero: all zero bits
         Num = b.Num.Small;
         const std::int64_t d{static_cast<std::int64_t>(b.Den.Small)};
         // A denominator is positive: the optimizer then knows Den != 0 here, so big() never reads Big (null).
@@ -3860,7 +3866,7 @@ namespace ins
       }
       if consteval
       {
-        Num = 0;
+        Num = 1;
         Den = 0;
         Big = std::define_static_object(b);
       }
@@ -3874,7 +3880,7 @@ namespace ins
     [[nodiscard]] constexpr detail::big_rational big() const
     {
       if (Den == 0)
-        return *Big;
+        return Num == 0 ? detail::big_rational{} : *Big;
       detail::big_rational r;
       r.Num = detail::big_int::of_limb(Num, Den < 0);
       r.Den = detail::big_int{detail::abs_den(Den)};
@@ -3884,12 +3890,21 @@ namespace ins
     [[nodiscard]] constexpr detail::big_int numerator() const { return big().Num; }
     [[nodiscard]] constexpr detail::big_int denominator() const { return big().Den; }
 
-    [[nodiscard]] constexpr bool fits_rational() const noexcept { return Den != 0; }
-    [[nodiscard]] constexpr bool negative() const noexcept { return Den != 0 ? Den < 0 : Big->Num.negative(); }
-    [[nodiscard]] constexpr bool is_zero() const noexcept { return Den != 0 && Num == 0; }
+    [[nodiscard]] constexpr bool fits_rational() const noexcept { return Den != 0 || Num == 0; }
+    [[nodiscard]] constexpr bool negative() const noexcept
+    {
+      return Den != 0 ? Den < 0 : Num != 0 && Big->Num.negative();
+    }
+    [[nodiscard]] constexpr bool is_zero() const noexcept { return Den == 0 && Num == 0; }
     [[nodiscard]] constexpr bool is_integer() const noexcept
     {
-      return Den != 0 ? (Den == 1 || Den == -1) : Big->is_integer();
+      return Den != 0 ? (Den == 1 || Den == -1) : Num == 0 || Big->is_integer();
+    }
+
+    // The 64-bit rational of a value that fits (fits_rational()).
+    [[nodiscard]] constexpr detail::rational small() const noexcept
+    {
+      return Den != 0 ? detail::rational_from_parts(Num, Den) : detail::rational{};
     }
 
     // Implicit, so every 64-bit path keeps working on a small grid.
@@ -3897,23 +3912,27 @@ namespace ins
     constexpr operator detail::rational() const
     {
       if (Den == 0)
+      {
+        if (Num == 0)
+          return detail::rational{};
         detail::fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(error::overflow);
+      }
       return detail::rational_from_parts(Num, Den);
     }
     constexpr explicit operator double() const { return static_cast<double>(big()); }
     constexpr explicit operator float() const { return static_cast<float>(big()); }
 
-    // By content, never by address (see Den): both inline, or both interned.
+    // By content, never by address (see Den): both inline (zero too), or both interned.
     friend constexpr bool operator==(const grid_number& a, const grid_number& b)
     {
-      if (a.Den != b.Den)
+      if (a.Den != b.Den || a.Num != b.Num)
         return false;
-      return a.Den != 0 ? a.Num == b.Num : *a.Big == *b.Big;
+      return a.Den != 0 || a.Num == 0 || *a.Big == *b.Big;
     }
     friend constexpr std::strong_ordering operator<=>(const grid_number& a, const grid_number& b)
     {
-      if (a.Den != 0 && b.Den != 0)
-        return detail::rational_from_parts(a.Num, a.Den) <=> detail::rational_from_parts(b.Num, b.Den);
+      if (a.fits_rational() && b.fits_rational())
+        return a.small() <=> b.small();
       return a.big() <=> b.big();
     }
 
@@ -3921,10 +3940,9 @@ namespace ins
     static constexpr grid_number neg(const grid_number& a)
     {
       if (a.Den == 0)
-        return detail::big_rational::neg(*a.Big);
+        return a.Num == 0 ? a : grid_number{detail::big_rational::neg(*a.Big)};
       grid_number r{a};
-      if (r.Num != 0)
-        r.Den = -r.Den;
+      r.Den = -r.Den;
       return r;
     }
     static constexpr grid_number add(const grid_number& a, const grid_number& b)
@@ -3949,7 +3967,7 @@ namespace ins
     friend constexpr grid_number abs(grid_number a)
     {
       if (a.Den == 0)
-        return detail::abs(*a.Big);
+        return a.Num == 0 ? a : grid_number{detail::abs(*a.Big)};
       if (a.Den < 0)
         a.Den = -a.Den;
       return a;
@@ -3975,8 +3993,8 @@ namespace ins
     {
       if constexpr (std::same_as<T, detail::rational>)
       {
-        if (a.Den != 0)
-          return detail::rational_from_parts(a.Num, a.Den) <=> b;
+        if (a.fits_rational())
+          return a.small() <=> b;
         return *a.Big <=> detail::big_rational{b};
       }
       else
@@ -4208,6 +4226,8 @@ namespace ins
     grid_number Upper;
 
     interval() = default;
+    // (Assigned as an lvalue only: an assignment to grid::interval() would change nothing.)
+    constexpr interval& operator=(const interval&) & = default;
 
     constexpr interval(grid_number lower, grid_number upper) : Lower{lower}, Upper{upper} {}
     constexpr interval(detail::plain_number auto lower, detail::plain_number auto upper)
@@ -4750,9 +4770,11 @@ namespace ins
     constexpr explicit max_denominator(const grid_number& v) : Value{v} {}
   };
 
+  // The limits are members of their own, not an interval, so a grid's type reads one level shorter.
   struct grid
   {
-    interval    Interval;
+    grid_number Lower;
+    grid_number Upper;
     grid_number Notch;
     // A continuous grid's bound on its values' denominators;
     // 0 is unbounded (any rational in range), which an inside does not take.
@@ -4770,32 +4792,35 @@ namespace ins
     constexpr grid(detail::grid_number_like auto lower,
                    detail::grid_number_like auto upper,
                    detail::grid_number_like auto notch)
-      : grid{interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
+      : grid{ins::interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived, gcd(1, Lower, Upper),
     // the coarsest step 1/k that keeps every integer and both limits on the lattice.
     // Integer limits give 1; {0.5, 10} gives 1/2; {just<-6, 5>, just<3, 5>} gives 1/5.
     constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper)
-      : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
+      : grid{ins::interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
     constexpr grid(detail::grid_number_like auto lower)
-      : grid{interval{to_number(lower), to_number(lower)}, grid_number{0}} {}
-    constexpr grid(interval val, grid_number notch) : Interval{val}, Notch{notch} {}
+      : grid{ins::interval{to_number(lower), to_number(lower)}, grid_number{0}} {}
+    constexpr grid(ins::interval val, grid_number notch) : Lower{val.Lower}, Upper{val.Upper}, Notch{notch} {}
     // The same with open limits: {{0, 64}, per<16>, bounds::half_open} is {{0, 63.9375}, per<16>},
     // and {0, 360, bounds::half_open} (notch derived from the limits as written) is {0, 359}.
     constexpr grid(detail::grid_number_like auto lower,
                    detail::grid_number_like auto upper,
                    detail::grid_number_like auto notch,
                    bounds                        b)
-      : grid{interval{to_number(lower), to_number(upper)}, to_number(notch), b} {}
+      : grid{ins::interval{to_number(lower), to_number(upper)}, to_number(notch), b} {}
     constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper, bounds b)
-      : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper), b} {}
-    constexpr grid(interval val, grid_number notch, bounds b) : Interval{close_bounds(val, notch, b)}, Notch{notch} {}
+      : grid{ins::interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper), b} {}
+    constexpr grid(ins::interval val, grid_number notch, bounds b) : grid{close_bounds(val, notch, b), notch} {}
     // A continuous grid with bounded denominators: {{0, 1}, max_denominator{1000}}.
-    constexpr grid(interval val, max_denominator d)
-      : Interval{val}, Notch{0}, MaxDenominator{check_bound(val, d.Value)} {}
+    constexpr grid(ins::interval val, max_denominator d)
+      : Lower{val.Lower}, Upper{val.Upper}, Notch{0}, MaxDenominator{check_bound(val, d.Value)} {}
+
+    // The limits as an interval, for the interval arithmetic (a value: set Lower and Upper to change them).
+    [[nodiscard]] constexpr ins::interval interval() const { return {Lower, Upper}; }
 
   private:
     // A bound is a positive integer at least the limits' denominators (each limit is a value).
-    static constexpr grid_number check_bound(const interval& iv, const grid_number& d)
+    static constexpr grid_number check_bound(const ins::interval& iv, const grid_number& d)
     {
       using detail::grid_denominator;
       if (!(d > 0) || grid_denominator(d) != detail::grid_int{1})
@@ -4808,7 +4833,7 @@ namespace ins
 
     // Moves iv's open limits in by one notch.
     // (By name: the ctors are constexpr, and the grid-number operators consteval.)
-    static constexpr interval close_bounds(interval iv, const grid_number& notch, bounds b)
+    static constexpr ins::interval close_bounds(ins::interval iv, const grid_number& notch, bounds b)
     {
       if (b == bounds::closed)
         return iv;
@@ -4853,19 +4878,19 @@ namespace ins
     template <auto G>
     static constexpr bool validate()
     {
-      interval::validate<G.Interval>();
+      ins::interval::validate<G.interval()>();
       // Decoding is Lower + raw·Notch: a negative notch would count downward.
       static_assert(G.Notch >= 0,
                     detail::diag_text{} << "grid: the notch must be non-negative (notch " << G.Notch << ")");
       // The values are Lower, Lower + Notch, …, Upper: the notch steps from Lower to Upper.
       // Lower need not be a multiple of the notch ({{0.5, 10.5}, 1} holds 0.5, 1.5, …).
-      static_assert(G.Interval.divides_evenly(G.Notch),
+      static_assert(G.interval().divides_evenly(G.Notch),
                     detail::diag_text{} << "grid: the notch must divide Upper − Lower evenly (notch " << G.Notch
-                                        << ", Upper − Lower " << G.Interval.Upper - G.Interval.Lower << ")");
-      static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
+                                        << ", Upper − Lower " << G.Upper - G.Lower << ")");
+      static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Lower != G.Upper),
                     "grid: only a continuous grid carries a max_denominator");
       // A bound sizes every value's fraction, so + - * on it are exact and total.
-      static_assert(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper || G.MaxDenominator != 0,
+      static_assert(G.Notch != 0 || G.Lower == G.Upper || G.MaxDenominator != 0,
                     "grid: a continuous grid (notch 0) needs a denominator bound - write {{lower, upper}, "
                     "max_denominator{D}}; an exact result whose fractions pass 1024 bits "
                     "has none - store an operand in a coarser grid first");
@@ -4882,8 +4907,8 @@ namespace ins
       using detail::grid_numerator, detail::grid_denominator;
       if (Notch == 0)
         return detail::grid_int{0};
-      const auto&            U{Interval.Upper};
-      const auto&            L{Interval.Lower};
+      const auto&            U{Upper};
+      const auto&            L{Lower};
       const detail::grid_int num{(grid_numerator(U) * grid_denominator(L) - grid_numerator(L) * grid_denominator(U))
                                  * grid_denominator(Notch)};
       return num / (grid_denominator(U) * grid_denominator(L) * grid_numerator(Notch));
@@ -4897,22 +4922,22 @@ namespace ins
     // Used to admit a single representable value (e.g. `0_ins`) regardless of whole-range mapping.
     [[nodiscard]] constexpr bool representable(grid_number v) const noexcept
     {
-      if (!includes(Interval, v))
+      if (!includes(interval(), v))
         return false;
       if (Notch == 0)
         return MaxDenominator == 0 || !(detail::grid_numerator(MaxDenominator) < detail::grid_denominator(v));
       // (Without forming (v − Lower)/Notch: on a fine notch it may leave the 64-bit rational
       // although v lies on the lattice.)
-      return detail::grid_same_lattice(v, Interval.Lower, Notch);
+      return detail::grid_same_lattice(v, Lower, Notch);
     }
     // A double exactly: one finer than 2^-62 fits no 64-bit rational store;
     // a big grid number past 64 bits exists only at compile time.
     template <std::floating_point T>
     [[nodiscard]] constexpr bool representable(T d) const noexcept
     {
-      if (!includes(Interval, d))
+      if (!includes(interval(), d))
         return false;
-      if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper)
+      if (detail::fits_rational(Lower) && detail::fits_rational(Upper)
           && detail::fits_rational(Notch))
       {
         if constexpr (detail::wide_float<T>)
@@ -4930,12 +4955,12 @@ namespace ins
       const auto f{detail::big::fraction_of_float(d)};
       if (Notch == 0)
         return MaxDenominator == 0 || detail::big::compare(f.Den, MaxDenominator.numerator().magnitude()) <= 0;
-      return detail::big::same_lattice(f, detail::fraction_of(Interval.Lower), detail::fraction_of(Notch));
+      return detail::big::same_lattice(f, detail::fraction_of(Lower), detail::fraction_of(Notch));
     }
 
     // Whether the lattice passes through 0: Lower is a multiple of the notch (every continuous grid is).
     // An unanchored grid such as {{0.5, 10.5}, 1} has its values offset from the multiples of the notch.
-    [[nodiscard]] constexpr bool anchored() const { return detail::grid_divides_evenly(Interval.Lower, Notch); }
+    [[nodiscard]] constexpr bool anchored() const { return detail::grid_divides_evenly(Lower, Notch); }
 
     // The largest number every value is an integer multiple of: gcd(Notch, Lower),
     // the notch on an anchored grid, finer on an unanchored one ({{0.5, 10.5}, 1}: 1/2).
@@ -4944,14 +4969,14 @@ namespace ins
     {
       if (Notch == 0 || anchored())
         return Notch;
-      return gcd(Notch, Interval.Lower);
+      return gcd(Notch, Lower);
     }
 
     // operator== be default for structural type
     [[nodiscard]] constexpr bool operator==(const grid& rhs) const = default;
     [[nodiscard]] consteval grid operator-() const
     {
-      grid g{-Interval, Notch};
+      grid g{-interval(), Notch};
       g.MaxDenominator = MaxDenominator;
       return g;
     }
@@ -4967,7 +4992,7 @@ namespace ins
     // A lattice bounds d by its value unit's denominator (the lcm of Lower's and the notch's),
     // a point by its own, a continuous grid by MaxDenominator; 0 is unbounded.
     // The bounds hold for unreduced fractions too, so an exact result can be sized from its operands' bounds.
-    constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; }
+    constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Lower != g.Upper; }
 
     // Whether g's step count fits uint64: a builtin index (else g stores a wide one),
     // and that count as the builtin (0 when it does not fit).
@@ -4990,9 +5015,9 @@ namespace ins
       if (continuous_grid(g))
         return grid_numerator(g.MaxDenominator);
       if (g.Notch == 0)
-        return grid_denominator(g.Interval.Lower);
+        return grid_denominator(g.Lower);
       // The value unit gcd(Lower, Notch) has denominator lcm(den Lower, den Notch).
-      const grid_int a{grid_denominator(g.Interval.Lower)}, b{grid_denominator(g.Notch)};
+      const grid_int a{grid_denominator(g.Lower)}, b{grid_denominator(g.Notch)};
       return a / gcd(a, b) * b;
     }
 
@@ -5003,7 +5028,7 @@ namespace ins
       const grid_int a{mag(iv.Lower)}, b{mag(iv.Upper)};
       return a < b ? b : a;
     }
-    consteval grid_int num_bound(const grid& g) { return num_bound(g.Interval, den_bound(g)); }
+    consteval grid_int num_bound(const grid& g) { return num_bound(g.interval(), den_bound(g)); }
 
     // The result grid of an exact op whose values are continuous on `iv` with denominators ≤ d (0: unbounded).
     // The bound is kept while it can size a fraction within detail::max_fraction_bits;
@@ -5036,7 +5061,7 @@ namespace ins
       const std::int64_t t {static_cast<std::int64_t>(q)}; // toward zero
       const double       f {q - static_cast<double>(t)};   // exact, sign of q, |f| < 1
       if constexpr (M == round_mode::nearest)
-        return t + (f >= 0.5) - (G.Interval.Lower < 0 && f <= -0.5);
+        return t + (f >= 0.5) - (G.Lower < 0 && f <= -0.5);
       else if constexpr (M == round_mode::floor)
         return t - (f < 0);
       else if constexpr (M == round_mode::ceil)
@@ -5068,7 +5093,7 @@ namespace ins
     // {{0.5, 10.5}, 1} has notch 1 but not integer values.
     constexpr bool unit_lattice(const grid& g) noexcept
     {
-      return g.Notch == 1 && grid_denominator(g.Interval.Lower) == grid_int{1};
+      return g.Notch == 1 && grid_denominator(g.Lower) == grid_int{1};
     }
 
     // Both endpoints lie in int64:
@@ -5091,7 +5116,7 @@ namespace ins
 
     // The value raw of a whole-number grid above 0: unsigned, holding Upper.
     template <grid G>
-    using value_uint_for_t = int_for_bits_t<bit_width_of(grid_numerator(G.Interval.Upper)), false>;
+    using value_uint_for_t = int_for_bits_t<bit_width_of(grid_numerator(G.Upper)), false>;
 
     // A whole-number grid stores the value itself where that is free:
     // below zero a signed value (within int64); from 0 the index is the value;
@@ -5100,13 +5125,13 @@ namespace ins
     template <grid G>
     inline constexpr bool deduces_value = []
     {
-      if constexpr (G.Interval.Lower == G.Interval.Upper || !unit_lattice(G) || !max_index_representable(G))
+      if constexpr (G.Lower == G.Upper || !unit_lattice(G) || !max_index_representable(G))
         return false;
-      else if constexpr (G.Interval.Lower < 0)
-        return fits_int64(G.Interval);
-      else if constexpr (G.Interval.Lower == 0)
+      else if constexpr (G.Lower < 0)
+        return fits_int64(G.interval());
+      else if constexpr (G.Lower == 0)
         return true;
-      else if constexpr (!fits_int64(G.Interval))
+      else if constexpr (!fits_int64(G.interval()))
         return false;
       else
         return sizeof(value_uint_for_t<G>) <= sizeof(index_raw_for_t<G>);
@@ -5132,16 +5157,16 @@ namespace ins
     template <grid G>
     constexpr auto raw_for()
     {
-      if constexpr (G.Interval.Lower == G.Interval.Upper)
+      if constexpr (G.Lower == G.Upper)
         return point_slot{};
       else if constexpr (G.Notch == 0)
         return continuous_raw_t<G>{};
       else if constexpr (!deduces_value<G>)
         return index_raw_for_t<G>{};
-      else if constexpr (G.Interval.Lower < 0)
-        return int_for_bits_t<signed_value_bits(grid_numerator(G.Interval.Lower), grid_numerator(G.Interval.Upper)),
+      else if constexpr (G.Lower < 0)
+        return int_for_bits_t<signed_value_bits(grid_numerator(G.Lower), grid_numerator(G.Upper)),
                               true>{};
-      else if constexpr (G.Interval.Lower == 0)
+      else if constexpr (G.Lower == 0)
         return index_raw_for_t<G>{};
       else
         return value_uint_for_t<G>{};
@@ -5161,7 +5186,7 @@ namespace ins
     // so every on-grid value is a binary fraction (a double when it fits double_exact).
     template <grid G>
     inline constexpr bool dyadic_grid =
-      G.Notch != 0 && is_pow2(grid_denominator(G.Notch)) && is_pow2(grid_denominator(G.Interval.Lower));
+      G.Notch != 0 && is_pow2(grid_denominator(G.Notch)) && is_pow2(grid_denominator(G.Lower));
 
     // Bits of |r · 2^f|: an integer on a dyadic grid, where r's denominator is a power of two dividing 2^f
     // (0 for r == 0).
@@ -5188,8 +5213,8 @@ namespace ins
         // f: the finest power of two among the values,
         // the notch's, or Lower's on an unanchored grid ({{0.25, 4.25}, 1}: 2^-2).
         constexpr int f{bit_width_of(grid_denominator(G.value_unit())) - 1};
-        return f <= MaxF && scaled_numerator_bits(G.Interval.Lower, f) <= Digits
-            && scaled_numerator_bits(G.Interval.Upper, f) <= Digits;
+        return f <= MaxF && scaled_numerator_bits(G.Lower, f) <= Digits
+            && scaled_numerator_bits(G.Upper, f) <= Digits;
       }
     }
 
@@ -5203,15 +5228,15 @@ namespace ins
     // A point c (notch 0) scales the other lattice: the notch becomes N·|c|.
     consteval grid_number product_notch(const grid& a, const grid& b)
     {
-      const bool  ap{a.Interval.Lower == a.Interval.Upper}, bp{b.Interval.Lower == b.Interval.Upper};
-      grid_number n{((ap && !bp) ? abs(a.Interval.Lower) : a.Notch)
-                    * ((bp && !ap) ? abs(b.Interval.Lower) : b.Notch)};
+      const bool  ap{a.Lower == a.Upper}, bp{b.Lower == b.Upper};
+      grid_number n{((ap && !bp) ? abs(a.Lower) : a.Notch)
+                    * ((bp && !ap) ? abs(b.Lower) : b.Notch)};
       if (ap || bp)
         return n;
       if (!b.anchored())
-        n = gcd(n, a.Notch * b.Interval.Lower);
+        n = gcd(n, a.Notch * b.Lower);
       if (!a.anchored())
-        n = gcd(n, b.Notch * a.Interval.Lower);
+        n = gcd(n, b.Notch * a.Lower);
       return n;
     }
   } // namespace detail
@@ -5225,8 +5250,9 @@ namespace ins
     // with denominators at most the product of the operands' bounds.
     // (A point, also notch 0, shifts the other lattice: gcd(0, n) = n is its notch.)
     if (detail::continuous_grid(lhs) || detail::continuous_grid(rhs))
-      return detail::bounded_continuous(lhs.Interval + rhs.Interval, detail::den_bound(lhs) * detail::den_bound(rhs));
-    return grid{lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch)};
+      return detail::bounded_continuous(lhs.interval() + rhs.interval(),
+                                        detail::den_bound(lhs) * detail::den_bound(rhs));
+    return grid{lhs.interval() + rhs.interval(), gcd(lhs.Notch, rhs.Notch)};
   }
 
   template <std::same_as<grid> G>
@@ -5241,7 +5267,7 @@ namespace ins
     // A point operand c (notch 0) scales the other lattice exactly: its notch becomes N·|c|,
     // so `x * just<c>` keeps integer storage instead of turning continuous.
     // A continuous product bounds its denominators by the product of the operands' bounds.
-    const interval    i{lhs.Interval * rhs.Interval};
+    const interval    i{lhs.interval() * rhs.interval()};
     const grid_number n{detail::product_notch(lhs, rhs)};
     if (n == 0 && i.Lower != i.Upper)
       return detail::bounded_continuous(i, detail::den_bound(lhs) * detail::den_bound(rhs));
@@ -5251,17 +5277,17 @@ namespace ins
   template <std::same_as<grid> G>
   [[nodiscard]] consteval std::expected<grid, error> operator/(const G& lhs, const G& rhs)
   {
-    const interval& r{rhs.Interval};
+    const interval& r{rhs.interval()};
     // A nonzero point divisor c scales the other lattice exactly, as in operator*:
     // its notch becomes N/|c|, so `x / just<c>` keeps integer storage instead of turning continuous.
     if (r.Lower == r.Upper && r.Lower != 0 && lhs.Notch != 0)
-      return grid{*(lhs.Interval / r), lhs.Notch / abs(r.Lower)};
+      return grid{*(lhs.interval() / r), lhs.Notch / abs(r.Lower)};
     // Any other quotient is continuous: x = p/a over y = r/b is p·b/(a·r),
     // so its denominators stay within den_bound(lhs)·num_bound(rhs).
     const detail::grid_int qd{detail::den_bound(lhs) * detail::num_bound(rhs)};
     auto continuous = [&](const interval& i) { return detail::bounded_continuous(i, qd); };
     if (!includes(r, 0))
-      return continuous(*(lhs.Interval / r));
+      return continuous(*(lhs.interval() / r));
     if (r.Lower == 0 && r.Upper == 0)
       return std::unexpected{error::division_by_zero};
 
@@ -5275,7 +5301,7 @@ namespace ins
       return std::unexpected{error::overflow};
     const grid_number step{rhs.Notch != 0 ? rhs.value_unit() : 1 / rhs.MaxDenominator};
     const interval    pos{step, r.Upper}, neg{r.Lower, -step};
-    auto over = [&](const interval& part) { return *(lhs.Interval / part); }; // zero-free: no error
+    auto over = [&](const interval& part) { return *(lhs.interval() / part); }; // zero-free: no error
     if (0 < r.Upper && 0 > r.Lower)
       return continuous(detail::interval_hull(over(pos), over(neg)));
     return continuous(over(0 < r.Upper ? pos : neg));
@@ -5298,7 +5324,7 @@ namespace ins
   // A continuous operand (Notch 0) makes the hull continuous.
   [[nodiscard]] consteval grid hull(const grid& lhs, const grid& rhs)
   {
-    const interval iv{detail::interval_hull(lhs.Interval, rhs.Interval)};
+    const interval iv{detail::interval_hull(lhs.interval(), rhs.interval())};
     // A continuous operand makes the hull continuous, bounded by the larger bound (unbounded if either is);
     // a point (also notch 0) joins the other lattice through the offset between them.
     if (detail::continuous_grid(lhs) || detail::continuous_grid(rhs))
@@ -5310,8 +5336,8 @@ namespace ins
                                                                                              : a);
     }
     grid_number n{gcd(lhs.Notch, rhs.Notch)};
-    if (n == 0 || !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, n))
-      n = gcd(n, rhs.Interval.Lower - lhs.Interval.Lower);
+    if (n == 0 || !detail::grid_same_lattice(lhs.Lower, rhs.Lower, n))
+      n = gcd(n, rhs.Lower - lhs.Lower);
     return grid{iv, n};
   }
 } // namespace ins
@@ -5380,7 +5406,7 @@ namespace ins
     {
       constexpr auto neutral = []<class B>(std::type_identity<B>)
       {
-        return grid_of<B>.Interval.Lower == grid_of<B>.Interval.Upper && policy_of<B> == 0;
+        return grid_of<B>.Lower == grid_of<B>.Upper && policy_of<B> == 0;
       };
       constexpr policy_flag f{neutral(std::type_identity<L>{}) ? policy_of<R>
                             : neutral(std::type_identity<R>{}) ? policy_of<L>
@@ -5394,15 +5420,15 @@ namespace ins
   inline constexpr interval interval_of = {0, 0};
 
   template <insidable B>
-  inline constexpr interval interval_of<B> = grid_of<B>.Interval;
+  inline constexpr interval interval_of<B> = grid_of<B>.interval();
 
   template <std::integral I>
   inline constexpr interval interval_of<I> = {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
   template <insidable B>
-  inline constexpr grid_number lower_of = grid_of<B>.Interval.Lower;
+  inline constexpr grid_number lower_of = grid_of<B>.Lower;
   template <insidable B>
-  inline constexpr grid_number upper_of = grid_of<B>.Interval.Upper;
+  inline constexpr grid_number upper_of = grid_of<B>.Upper;
   template <insidable B>
   inline constexpr grid_number notch_of = grid_of<B>.Notch;
 
@@ -5710,7 +5736,7 @@ namespace ins::detail
 
   template <insidable B>
   inline constexpr bool wide_grid_numbers =
-    !fits_rational(grid_of<B>.Interval.Lower) || !fits_rational(grid_of<B>.Interval.Upper)
+    !fits_rational(grid_of<B>.Lower) || !fits_rational(grid_of<B>.Upper)
     || !fits_rational(grid_of<B>.Notch);
 
   // A lattice whose values pass the 64-bit rational between limits that fit:
@@ -5837,14 +5863,14 @@ namespace ins::detail
   // ({{0.5, 10.5}, 1} has an integer notch but not integer values).
   template <grid G>
   inline constexpr bool integer_notch =
-    grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
+    grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Lower) == grid_int{1};
 
   // An index grid: every value an integer from 0 up, within int64.
   template <grid G>
   inline constexpr bool index_shaped =
     (integer_notch<G>
-     || (G.Interval.Lower == G.Interval.Upper && grid_denominator(G.Interval.Lower) == grid_int{1}))
-    && !(G.Interval.Lower < 0) && fits_int64(G.Interval);
+     || (G.Lower == G.Upper && grid_denominator(G.Lower) == grid_int{1}))
+    && !(G.Lower < 0) && fits_int64(G.interval());
 
   // Every value an integer: an integer lattice or an integer point (see integer_limits below).
   template <insidable B>
@@ -7831,15 +7857,15 @@ namespace ins::detail
   constexpr grid wrap_carry_grid()
   {
     constexpr grid        G{grid_of<L>};
-    constexpr grid_number period{G.Interval.Upper - G.Interval.Lower + G.Notch};
+    constexpr grid_number period{G.Upper - G.Lower + G.Notch};
     if constexpr (period == grid_number{0})
       return grid{grid_number{0}};
     else
     {
-      constexpr interval source{overshoot_source_grid<R>().Interval};
+      constexpr interval source{overshoot_source_grid<R>().interval()};
       const auto carry_of = [&](const grid_number& v)
       {
-        return grid_round<round_mode::floor>((v - G.Interval.Lower) / period);
+        return grid_round<round_mode::floor>((v - G.Lower) / period);
       };
       return grid{carry_of(source.Lower), carry_of(source.Upper)};
     }
@@ -10306,7 +10332,7 @@ namespace ins::detail
         return grid{integer_quotient_range(), rational{1}};
       else if constexpr (native_div_fixed)
       {
-        constexpr interval q{(*(grid_of<L> / grid_of<R>)).Interval};
+        constexpr interval q{(*(grid_of<L> / grid_of<R>)).interval()};
         // An endpoint on the notch stays; one off it rounds onto it.
         constexpr rational n{notch64<L>}, k{rational{1} / n};
         auto on = [&](const grid_number& x, bool up)
@@ -10319,7 +10345,7 @@ namespace ins::detail
       else if constexpr (notch_div)
       {
         // The exact quotient's limits rounded the same way (rounding is monotone), onto multiples of n.
-        constexpr interval    q{(*(grid_of<L> / grid_of<R>)).Interval};
+        constexpr interval    q{(*(grid_of<L> / grid_of<R>)).interval()};
         constexpr grid_number n{notch_of<L>};
         return grid{interval{grid_round<rmode>(q.Lower / n) * n, grid_round<rmode>(q.Upper / n) * n}, n};
       }
@@ -10686,7 +10712,7 @@ namespace ins::detail
     // invoker.)
     static consteval grid lattice_quotient_grid_of()
     {
-      const interval q{(*(grid_of<L> / grid_of<R>)).Interval};
+      const interval q{(*(grid_of<L> / grid_of<R>)).interval()};
       return grid{grid_round<rmode>(q.Lower), grid_round<rmode>(q.Upper)};
     }
     static constexpr grid lattice_quotient_grid = lattice_quotient_grid_of();
@@ -11018,7 +11044,7 @@ namespace ins
     // which assigns into T.
     template <grid G, policy_flag P>
     using cursor_value_t =
-      inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
+      inside<grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 
     // (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
 
@@ -11089,8 +11115,8 @@ namespace ins
     // On an integer lattice (D = 1) that is g's interval. A point's parts are points.
     consteval grid denominator_grid(const grid& g)
     {
-      if (g.Interval.Lower == g.Interval.Upper)
-        return grid{grid_number{grid_denominator(g.Interval.Lower)}};
+      if (g.Lower == g.Upper)
+        return grid{grid_number{grid_denominator(g.Lower)}};
       const grid_int d{den_bound(g)};
       if (d == grid_int{1})
         return grid{grid_number{1}};
@@ -11098,8 +11124,8 @@ namespace ins
     }
     consteval grid numerator_grid(const grid& g)
     {
-      const grid_number& lo{g.Interval.Lower};
-      const grid_number& hi{g.Interval.Upper};
+      const grid_number& lo{g.Lower};
+      const grid_number& hi{g.Upper};
       if (lo == hi)
         return grid{grid_number{grid_numerator(lo)}};
       const grid_number d{den_bound(g)};
@@ -11168,7 +11194,7 @@ namespace ins
       constexpr private_raw(R r) noexcept : Raw{r} {}
     };
     template <grid G, policy_flag P>
-    using raw_holder = std::conditional_t<G.Interval.Lower == G.Interval.Upper,
+    using raw_holder = std::conditional_t<G.Lower == G.Upper,
                                           public_raw<raw_for_t<G>>,
                                           private_raw<raw_for_t<G>, inside<G, P>>>;
   } // namespace detail
@@ -11470,8 +11496,8 @@ namespace ins
     constexpr operator detail::rational() const
       requires(detail::rational_readable<inside>)
     {
-      if constexpr (G.Interval.Lower == G.Interval.Upper)
-        return G.Interval.Lower;
+      if constexpr (G.Lower == G.Upper)
+        return G.Lower;
       else if constexpr (detail::value_storage<inside>)
         return Raw;
       // The Q-format fast path (an integer Lower) skips the generic path's three rational ops.
@@ -11679,7 +11705,7 @@ namespace ins
     // Its raw has this raw's type, so on an index raw it is a copy; on a value raw, one subtraction.
     // T::from_step(i) goes back.
     [[nodiscard]] constexpr auto step() const noexcept
-      requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires(G.Notch != 0 || G.Lower == G.Upper)
     {
       using I = inside<detail::index_grid(G)>;
       if constexpr (detail::point_storage<inside>)
@@ -11695,7 +11721,7 @@ namespace ins
 
 #define INSIDE_WHY_step_of "inside: step() counts notches - a continuous grid has none to count"
     auto step() const
-      requires(G.Notch == 0 && G.Interval.Lower != G.Interval.Upper)
+      requires(G.Notch == 0 && G.Lower != G.Upper)
     = delete (INSIDE_WHY_step_of);
 #undef INSIDE_WHY_step_of
 
@@ -11705,7 +11731,7 @@ namespace ins
     static constexpr auto step_value(const I& i)
     {
       constexpr grid_number unit_value{G.Notch != 0 ? G.Notch : grid_number{1}};
-      constexpr auto        lower{inside<grid{G.Interval.Lower}>::from_raw({}, unsafe)};
+      constexpr auto        lower{inside<grid{G.Lower}>::from_raw({}, unsafe)};
       constexpr auto        step{inside<grid{unit_value}>::from_raw({}, unsafe)};
       return lower + i * step;
     }
@@ -11723,7 +11749,7 @@ namespace ins
     // else a store checked by T's policy, or by a one-shot policy
     // (clamp saturates at the ends, wrap folds onto the indices).
     template <insidable I>
-      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Lower == G.Upper)
     // (A step that may fall outside 0 … step_count: a std::expected.)
     [[nodiscard]] static constexpr auto from_step(const I& i)
     {
@@ -11740,7 +11766,7 @@ namespace ins
         return detail::stored<inside>(step_value(i));
     }
     template <insidable I, typename Pol>
-      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires detail::integer_lattice<I> && (G.Notch != 0 || G.Lower == G.Upper)
             && (detail::flag_like<Pol> || detail::policy_like<Pol>)
     [[nodiscard]] static constexpr auto from_step(const I& i, Pol&& pol)
     {
@@ -11761,7 +11787,7 @@ namespace ins
     static inside from_step(const I&, Pol&&) = delete (INSIDE_WHY_from_index);
 #undef INSIDE_WHY_from_index
     template <std::integral T>
-      requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires(G.Notch != 0 || G.Lower == G.Upper)
     [[nodiscard]] static constexpr auto from_step(T i)
     {
       // A builtin step: compare it with the step count, then it is the slot.
@@ -11778,7 +11804,7 @@ namespace ins
         return from_step(as_step_inside(i));
     }
     template <std::integral T, typename Pol>
-      requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+      requires(G.Notch != 0 || G.Lower == G.Upper)
            && (detail::flag_like<Pol> || detail::policy_like<Pol>)
     [[nodiscard]] static constexpr auto from_step(T i, Pol&& pol)
     {
@@ -13666,13 +13692,13 @@ namespace ins
         grid_number hi{upper_of<A> < upper_of<B> ? upper_of<B> : upper_of<A>};
         if (g.Notch != 0) // onto the lattice, inward
         {
-          const grid_number base{g.Interval.Lower}, n{g.Notch};
+          const grid_number base{g.Lower}, n{g.Notch};
           lo = base + n * grid_round<round_mode::ceil>((lo - base) / n);
           hi = base + n * grid_round<round_mode::floor>((hi - base) / n);
         }
         // Only ever narrower: a point (the lerp of constants) stays a point.
-        g.Interval = interval{g.Interval.Lower < lo ? lo : g.Interval.Lower,
-                              hi < g.Interval.Upper ? hi : g.Interval.Upper};
+        g.Lower = g.Lower < lo ? lo : g.Lower;
+        g.Upper = hi < g.Upper ? hi : g.Upper;
       }
       return g;
     }
@@ -13728,12 +13754,13 @@ namespace ins
     template <insidable Lhs, insidable Rhs, bool Max>
     consteval grid extreme_grid()
     {
-      grid           h{hull(grid_of<Lhs>, grid_of<Rhs>)};
-      const interval a{grid_of<Lhs>.Interval}, b{grid_of<Rhs>.Interval};
+      grid        h{hull(grid_of<Lhs>, grid_of<Rhs>)};
+      const grid& a{grid_of<Lhs>};
+      const grid& b{grid_of<Rhs>};
       if constexpr (Max)
-        h.Interval = interval{a.Lower < b.Lower ? b.Lower : a.Lower, h.Interval.Upper};
+        h.Lower = a.Lower < b.Lower ? b.Lower : a.Lower;
       else
-        h.Interval = interval{h.Interval.Lower, a.Upper < b.Upper ? a.Upper : b.Upper};
+        h.Upper = a.Upper < b.Upper ? a.Upper : b.Upper;
       return h;
     }
     template <insidable Lhs, insidable Rhs, bool Max>
@@ -14215,7 +14242,7 @@ namespace ins
     template <insidable T>
     consteval grid cursor_grid(const auto& step)
     {
-      const grid_number s{grid{step}.Interval.Lower};
+      const grid_number s{grid{step}.Lower};
       if (!(s > 0))
         constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
       if (notch_of<T> == 0)
@@ -14265,7 +14292,7 @@ struct std::numeric_limits<ins::inside<G, P>>
   using B = ins::inside<G, P>;
 
   static constexpr bool is_specialized = true;
-  static constexpr bool is_signed      = (G.Interval.Lower < ins::detail::rational{0});
+  static constexpr bool is_signed      = (G.Lower < ins::detail::rational{0});
   // Every value is an integer: a non-zero integer notch over an integer Lower.
   static constexpr bool is_integer        = ins::detail::integer_lattice<B>;
   static constexpr bool is_exact          = true; // rational + integer raw are both exact
@@ -14305,7 +14332,7 @@ struct std::numeric_limits<ins::inside<G, P>>
     if constexpr (G.Notch == 0)
       return 0;
     else
-      return d::bit_width_of(G.step_count() + d::grid_int{1}) - 1 - (G.Interval.Lower < ::ins::grid_number{0} ? 1 : 0);
+      return d::bit_width_of(G.step_count() + d::grid_int{1}) - 1 - (G.Lower < ::ins::grid_number{0} ? 1 : 0);
   }();
   static constexpr int digits10 = digits * 30103 / 100000; // ⌊digits·log10 2⌋
 
@@ -14328,9 +14355,9 @@ private:
   }
 
 public:
-  static constexpr B min() noexcept { return at(G.Interval.Lower); }
-  static constexpr B max() noexcept { return at(G.Interval.Upper); }
-  static constexpr B lowest() noexcept { return at(G.Interval.Lower); }
+  static constexpr B min() noexcept { return at(G.Lower); }
+  static constexpr B max() noexcept { return at(G.Upper); }
+  static constexpr B lowest() noexcept { return at(G.Lower); }
   // An exact type has no rounding error: epsilon and round_error are 0, as for the integer types.
   // They exist where 0 is a value of the grid; on any other grid generic code gets a compile error, not a stand-in.
   static constexpr B epsilon() noexcept
@@ -14746,7 +14773,7 @@ namespace ins
   {
     std::string str{"{"};
 
-    str += ins::to_string(g.Interval);
+    str += ins::to_string(g.interval());
     str += ", ";
     str += ins::to_string(g.Notch);
     if (g.MaxDenominator != 0)
@@ -15765,9 +15792,9 @@ namespace ins
     consteval grid n_fold_grid(const grid& g, std::size_t n)
     {
       const grid_number k{n};
-      if (n == 0 || g.Interval.Lower == g.Interval.Upper)
-        return grid{g.Interval.Lower * k};
-      return grid{interval{g.Interval.Lower * k, g.Interval.Upper * k}, g.Notch};
+      if (n == 0 || g.Lower == g.Upper)
+        return grid{g.Lower * k};
+      return grid{interval{g.Lower * k, g.Upper * k}, g.Notch};
     }
     template <insidable N, std::size_t Count>
       requires notched<N> || point_grid<N>
@@ -22906,7 +22933,7 @@ namespace ins::math::detail::entry
       if constexpr (anchored<In>)
         return x;
       else
-        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
+        return inside<grid{grid_of<In>.interval(), grid_of<In>.value_unit()},
                       policy_of<In> & ~::ins::detail::cursor_marker>{x};
     }
 
@@ -24790,24 +24817,18 @@ namespace ins
   // (angular_measure vs a dimensionless ratio).
   struct kind_def;
 
-  // An optional reference to a static object (a parent kind, a unit's kind, an origin).
-  // It is tested by its flag, never against nullptr, and compared by content, never by address:
-  // under GCC's -fsanitize=undefined `&obj == nullptr`, and under -fsanitize=pointer-compare `&a == &b`,
-  // is no constant expression.
-  template <class T>
-  struct ref_or_none
+  // A reference to a kind's definition, a static object (a parent kind, a unit's kind, a quantity's kind).
+  // None is the named object no_kind, never null: a reference is tested by content (detail::has: no_kind has no
+  // name), never against nullptr, and compared by content, never by address
+  // (under GCC's -fsanitize=undefined `&obj == nullptr`, and under -fsanitize=pointer-compare `&a == &b`,
+  // is no constant expression). A plain pointer, so that a type which holds one prints and mangles the
+  // definition's name: (& ins::isq::length_def).
+  using kind_ref = const kind_def*;
+  extern const kind_def no_kind;
+  namespace detail
   {
-    const T* P{};
-    bool     Set{false};
-
-    constexpr ref_or_none() = default;
-    constexpr ref_or_none(std::nullptr_t) {}
-    constexpr ref_or_none(const T* p) : P{p}, Set{true} {} // p is not null
-    constexpr explicit operator bool() const { return Set; }
-    constexpr const T* operator->() const { return P; }
-  };
-
-  using kind_ref = ref_or_none<kind_def>;
+    constexpr bool has(kind_ref k);
+  } // namespace detail
 
   struct kind_factor
   {
@@ -24826,6 +24847,8 @@ namespace ins
   {
     kind_factor F[detail::max_kind_factors]{};
     std::int8_t Size{0};
+    // (Assigned as an lvalue only: an assignment to reference::derived() would change nothing.)
+    constexpr recipe& operator=(const recipe&) & = default;
     friend constexpr bool operator==(const recipe& a, const recipe& b)
     {
       return a.Size == b.Size && std::equal(a.F, a.F + a.Size, b.F);
@@ -24857,17 +24880,20 @@ namespace ins
   {
     std::string_view Name;
     dimension        Dim{};
-    kind_ref         Parent{};
+    kind_ref         Parent{&no_kind};
     recipe           Recipe{};
     bool             Distinct{false};
 
+    // no_kind: no name.
+    constexpr kind_def() = default;
     // A base quantity: a dimension of its own (length, currency).
-    constexpr kind_def(std::string_view name, dimension d) : Name{name}, Dim{d} {}
+    constexpr kind_def(std::string_view name, dimension d) : Name{named(name)}, Dim{d} {}
     // A child of a named kind.
     template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
+    constexpr kind_def(std::string_view name, kind_t<P>) : Name{named(name)}, Dim{P->Dim}, Parent{P} {}
     // A derived root: named by its recipe.
-    constexpr kind_def(std::string_view name, const kind_expr& e) : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
+    constexpr kind_def(std::string_view name, const kind_expr& e)
+      : Name{named(name)}, Dim{e.Dim}, Recipe{e.Recipe} {}
     // Any of these with options, as kind<"name", parent, options> takes them:
     // kind_def{"velocity", isq::speed, {.recipe = isq::displacement / isq::duration}}.
     template <class P>
@@ -24876,33 +24902,41 @@ namespace ins
       Distinct = o.distinct;
       if (o.recipe.Recipe.Size == 0)
         return;
-      if (!Parent)
+      if (!detail::has(Parent))
         ins::detail::constexpr_error<"units: a recipe of its own is for a child of a named kind - "
                                      "kind<\"velocity\", isq::speed, {.recipe = …}>">();
       if (!(o.recipe.Dim == Dim))
         ins::detail::constexpr_error<"units: a kind's recipe must have its parent's dimension">();
       Recipe = o.recipe.Recipe;
     }
+
+  private:
+    // A kind has a name (no_kind is the one without).
+    static constexpr std::string_view named(std::string_view name)
+    {
+      if (name.empty())
+        ins::detail::constexpr_error<"units: a kind needs a name">();
+      return name;
+    }
   };
+
+  inline constexpr kind_def no_kind{};
 
   namespace detail
   {
-    // Identity by content (see ref_or_none).
+    // Whether a kind reference names a kind: everything but no_kind, the one without a name.
+    constexpr bool has(kind_ref k) { return !k->Name.empty(); }
+
+    // Identity by content (see kind_ref).
     // A kind is its name, dimension, recipe, kind boundary and parent chain:
     // a user kind that reuses a name ("length") under another parent is another kind.
-    constexpr bool same(const kind_def* a, const kind_def* b) // both set
+    constexpr bool same(kind_ref a, kind_ref b)
     {
+      if (!has(a) || !has(b))
+        return !has(a) && !has(b);
       if (a->Name != b->Name || !(a->Dim == b->Dim) || a->Distinct != b->Distinct || !(a->Recipe == b->Recipe))
         return false;
-      if (!a->Parent || !b->Parent)
-        return !a->Parent && !b->Parent;
-      return same(a->Parent.P, b->Parent.P);
-    }
-    constexpr bool same(const kind_ref& a, const kind_ref& b)
-    {
-      if (!a || !b)
-        return !a && !b;
-      return same(a.P, b.P);
+      return same(a->Parent, b->Parent);
     }
 
   } // namespace detail
@@ -24918,8 +24952,8 @@ namespace ins
     // The kind's kind root: the first Distinct kind on the way up, else the root.
     consteval const kind_def* kind_root(const kind_def* s)
     {
-      while (!s->Distinct && s->Parent)
-        s = s->Parent.P;
+      while (!s->Distinct && has(s->Parent))
+        s = s->Parent;
       return s;
     }
     // a is s or an ancestor of s within s's kind (not above an Distinct boundary).
@@ -24929,9 +24963,9 @@ namespace ins
       {
         if (same(s, a))
           return true;
-        if (s->Distinct || !s->Parent)
+        if (s->Distinct || !has(s->Parent))
           return false;
-        s = s->Parent.P;
+        s = s->Parent;
       }
     }
 
@@ -25070,25 +25104,41 @@ namespace ins
   // origin_def: where a quantity_point's number counts from.
   // An absolute origin (absolute zero) or one at an exact offset from one, in the coherent unit of the dimension
   // (the ice point: absolute zero + 273.15 K).
+  struct origin_def;
+  // A reference to an origin's definition, as kind_ref is to a kind's: none is no_origin, the implicit zero of a
+  // dimension, tested by content (detail::has).
+  using origin_ref = const origin_def*;
+  extern const origin_def no_origin;
+
   struct origin_def
   {
-    std::string_view        Name;
-    dimension               Dim{};
-    ref_or_none<origin_def> Absolute{}; // none for an absolute origin
-    grid_number             Offset{0};  // from Absolute, in the coherent unit
+    std::string_view Name;
+    dimension        Dim{};
+    origin_ref       Absolute{&no_origin}; // none for an absolute origin
+    grid_number      Offset{0};            // from Absolute, in the coherent unit
 
+    // no_origin: no name.
+    constexpr origin_def() = default;
     // An absolute origin: the zero of a dimension, or of a kind's (absolute zero).
-    constexpr origin_def(std::string_view name, dimension d) : Name{name}, Dim{d} {}
+    constexpr origin_def(std::string_view name, dimension d) : Name{named(name)}, Dim{d} {}
     template <const kind_def* K>
-    constexpr origin_def(std::string_view name, kind_t<K>) : Name{name}, Dim{K->Dim} {}
+    constexpr origin_def(std::string_view name, kind_t<K>) : Name{named(name)}, Dim{K->Dim} {}
     // One at a constant point of another origin: origin_def{"ice point", si::absolute_zero + 273.15_ins * si::kelvin}
     // (defined in units/detail/define.hpp).
     template <class P>
       requires requires(const P& p) { p.quantity_from_origin(); }
     constexpr origin_def(std::string_view name, const P&);
+
+    // An origin has a name (no_origin is the one without).
+    static constexpr std::string_view named(std::string_view name)
+    {
+      if (name.empty())
+        ins::detail::constexpr_error<"units: an origin needs a name">();
+      return name;
+    }
   };
 
-  using origin_ref = ref_or_none<origin_def>; // none: the implicit zero of a dimension
+  inline constexpr origin_def no_origin{};
 
   template <origin_ref O>
   struct origin_t
@@ -25099,15 +25149,20 @@ namespace ins
 
   namespace detail
   {
-    consteval origin_ref absolute_of(origin_ref o) { return o && o->Absolute ? o->Absolute : o; }
+    // Whether an origin reference names an origin: everything but no_origin, the one without a name.
+    constexpr bool has(origin_ref o) { return !o->Name.empty(); }
+    consteval origin_ref absolute_of(origin_ref o) { return has(o) && has(o->Absolute) ? o->Absolute : o; }
     // By content, as same() for kinds and units (see there).
-    constexpr bool same(const origin_ref& a, const origin_ref& b)
+    constexpr bool same(origin_ref a, origin_ref b)
     {
-      if (!a || !b)
-        return !a && !b;
+      if (!has(a) || !has(b))
+        return !has(a) && !has(b);
       return a->Name == b->Name && a->Dim == b->Dim && a->Offset == b->Offset && same(a->Absolute, b->Absolute);
     }
-    consteval grid_number offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_number{0}; }
+    consteval grid_number offset_of(origin_ref o)
+    {
+      return has(o) && has(o->Absolute) ? o->Offset : grid_number{0};
+    }
   } // namespace detail
 
   // A short text held by value (a symbol, a name), so that a type which holds one is structural:
@@ -25140,8 +25195,8 @@ namespace ins
   struct unit_options
   {
     symbol_text ascii{};
-    kind_ref    kind{};
-    origin_ref  origin{};
+    kind_ref    kind{&no_kind};
+    origin_ref  origin{&no_origin};
     bool        space_before{true};
   };
 
@@ -25160,18 +25215,32 @@ namespace ins
 
   // unit: a product of named units to integer powers, each with an optional decimal prefix (k, m, µ…),
   // times a scale (mag<1000> * m; the common unit of a sum). A structural value: it is the template argument.
+  // The atoms in use come first, sorted; an unused one is zero (exponent 0), so the count needs no member of its own
+  // and a type name spells none.
   struct unit_value
   {
-    unit_atom   Atoms[detail::max_unit_atoms]{};
-    std::int8_t Size{0};
-    magnitude   Scale{};
+    unit_atom Atoms[detail::max_unit_atoms]{};
+    magnitude Scale{};
 
     constexpr unit_value() = default;
-    constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}}, Size{1} {}
+    constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}} {}
+    constexpr explicit unit_value(unit_atom a) : Atoms{a} {} // (by value: see reference)
+    // (Assigned as an lvalue only: an assignment to reference::unit() would change nothing.)
+    constexpr unit_value& operator=(const unit_value&) & = default;
+
+    // The number of atoms in use.
+    [[nodiscard]] constexpr std::int8_t size() const
+    {
+      std::int8_t n{0};
+      while (n < static_cast<std::int8_t>(detail::max_unit_atoms) && Atoms[n].Exp != 0)
+        ++n;
+      return n;
+    }
 
     friend constexpr bool operator==(const unit_value& a, const unit_value& b)
     {
-      return a.Size == b.Size && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + a.Size, b.Atoms);
+      const std::int8_t n{a.size()};
+      return n == b.size() && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + n, b.Atoms);
     }
   };
 
@@ -25197,9 +25266,9 @@ namespace ins
     symbol_text      Ascii; // empty: the symbol itself
     dimension        Dim{};
     magnitude        Mag{};
-    kind_ref         Kind{};
+    kind_ref         Kind{&no_kind};
     bool             SpaceBefore{true};
-    origin_ref       Origin{}; // the default origin of its points (K: absolute zero)
+    origin_ref       Origin{&no_origin}; // the default origin of its points (K: absolute zero)
 
     // A base unit of a kind: the coherent unit of its dimension, or a scale of it (g: 1/1000 of the coherent kg).
     template <const kind_def* K>
@@ -25243,7 +25312,7 @@ namespace ins
     {
       if (rule.Product == basis_product::none)
         ins::detail::constexpr_error<"units: a basis vector has a rule - geometric<S>">();
-      if (o.kind || o.origin)
+      if (detail::has(o.kind) || detail::has(o.origin))
         ins::detail::constexpr_error<"units: a basis vector has no kind or origin">();
       Unit.Dim = dimension_of(Self);
     }
@@ -25277,8 +25346,9 @@ namespace ins
 
     consteval void unit_add(unit_value& u, unit_atom a)
     {
+      std::int8_t size{u.size()};
       if (!sorted_add(
-            u.Atoms, u.Size, a, a.Exp,
+            u.Atoms, size, a, a.Exp,
             [](const unit_atom& x, const unit_atom& y) { return same(x.U, y.U) && x.Prefix == y.Prefix; },
             atom_before))
         ins::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with unit<\"sym\", …>">();
@@ -25289,7 +25359,7 @@ namespace ins
     constexpr bool is_basis_atom(const unit_atom& a) { return has_basis(a.U->Dim); }
     constexpr bool has_blade_atoms(const unit_value& u)
     {
-      return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
+      return std::any_of(u.Atoms, u.Atoms + u.size(), [](const unit_atom& a) { return is_blade_atom(a); });
     }
 
     consteval unit_value blade_unit_mul(const unit_value& a, const unit_value& b, int sign);
@@ -25298,7 +25368,7 @@ namespace ins
     {
       if (has_blade_atoms(a) || has_blade_atoms(b))
         return blade_unit_mul(a, b, sign);
-      for (std::int8_t i = 0; i < b.Size; ++i)
+      for (std::int8_t i = 0; i < b.size(); ++i)
       {
         unit_atom t{b.Atoms[i]};
         t.Exp = static_cast<std::int8_t>(t.Exp * sign);
@@ -25318,7 +25388,7 @@ namespace ins
         return r;
       }
       unit_value r{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, dimension::exponent(u.Atoms[i].Exp * n)});
       r.Scale = u.Scale.pow(n);
       return r;
@@ -25345,10 +25415,10 @@ namespace ins
   // A unit's dimension, magnitude (relative to the coherent unit of its dimension) and kind.
   consteval dimension dimension_of(const unit_value& u)
   {
-    if (u.Size == 1 && u.Atoms[0].Exp == 1) // a named unit: its dimension, interned already
+    if (u.size() == 1 && u.Atoms[0].Exp == 1) // a named unit: its dimension, interned already
       return u.Atoms[0].U->Dim;
     detail::exponents d;
-    for (std::int8_t i = 0; i < u.Size; ++i)
+    for (std::int8_t i = 0; i < u.size(); ++i)
     {
       const dimension& a{u.Atoms[i].U->Dim};
       for (std::size_t j = 0; j < a.Size; ++j)
@@ -25364,7 +25434,7 @@ namespace ins
     {
       blade acc;
       int   s{1};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
       {
         if (!is_blade_atom(u.Atoms[i]))
           continue;
@@ -25383,7 +25453,7 @@ namespace ins
   consteval magnitude magnitude_of(const unit_value& u)
   {
     magnitude m{u.Scale};
-    for (std::int8_t i = 0; i < u.Size; ++i)
+    for (std::int8_t i = 0; i < u.size(); ++i)
       m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
     if (detail::has_blade_atoms(u))
       m = m * magnitude{grid_number{detail::atoms_blade_sign(u)}};
@@ -25417,7 +25487,7 @@ namespace ins
       std::vector<unit_atom> blades;
       const auto take = [&](const unit_value& u, int sgn)
       {
-        for (std::int8_t i = 0; i < u.Size; ++i)
+        for (std::int8_t i = 0; i < u.size(); ++i)
         {
           unit_atom t{u.Atoms[i]};
           if (is_blade_atom(t))
@@ -25457,7 +25527,7 @@ namespace ins
     // One named unit (with a prefix too) to the power 1, unscaled: its kind, origin and spacing are the unit's.
     consteval bool is_single_named(const unit_value& u)
     {
-      return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
+      return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
     }
     // Whether a quantity's text puts a space before the unit (not before °).
     consteval bool space_before(const unit_value& u)
@@ -25469,7 +25539,7 @@ namespace ins
   // The kind a unit measures: a named unit's (with a prefix too), else none.
   consteval kind_ref kind_of(const unit_value& u)
   {
-    return detail::is_single_named(u) ? u.Atoms[0].U->Kind : kind_ref{};
+    return detail::is_single_named(u) ? u.Atoms[0].U->Kind : &no_kind;
   }
 
   namespace detail
@@ -25477,7 +25547,7 @@ namespace ins
     // The kind a unit defined by U inherits: its one factor's (min: 60 s).
     consteval kind_ref inherited_kind(const unit_value& u)
     {
-      return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : kind_ref{};
+      return u.size() == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : &no_kind;
     }
   } // namespace detail
 
@@ -25487,13 +25557,13 @@ namespace ins
       Ascii{o.ascii},
       Dim{dimension_of(U)},
       Mag{magnitude_of(U)},
-      Kind{o.kind ? o.kind : detail::inherited_kind(U)},
+      Kind{detail::has(o.kind) ? o.kind : detail::inherited_kind(U)},
       SpaceBefore{o.space_before},
       Origin{o.origin}
   {
-    if (Kind && !(Kind->Dim == Dim))
+    if (detail::has(Kind) && !(Kind->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
-    if (Origin && !(Origin->Dim == Dim))
+    if (detail::has(Origin) && !(Origin->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
     if (detail::has_basis(Dim) && !detail::same_outside_blade(Dim, dim_one))
       ins::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
@@ -25596,41 +25666,84 @@ namespace ins
     template <unit_value U>
     consteval auto operator()(unit_t<U>) const
     {
-      static_assert(U.Size == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
+      static_assert(U.size() == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
                     "units: a prefix applies to a named unit without a prefix (kilo(metre), not kilo(m/s))");
       return unit_t<detail::unit_prefixed(U, P)>{};
     }
   };
 
   // reference: what a quantity's number means, a unit plus a kind.
-  //   Kind named, KindOf false   isq::height[m]: exactly that kind
-  //   Kind named, KindOf true    a unit's kind (si::hertz): any kind of its kind
-  //   Kind null, Derived set     a product of kinds (width * height)
-  //   Kind null, Derived empty   any quantity of the unit's dimension (m/s)
+  // Its parts (unit(), kind(), kind_of(), derived()):
+  //   kind named, kind_of false   isq::height[m]: exactly that kind
+  //   kind named, kind_of true    a unit's kind (si::hertz): any kind of its kind
+  //   kind none, derived set      a product of kinds (width * height)
+  //   kind none, derived empty    any quantity of the unit's dimension (m/s)
+  // The most common reference, one named unit (with a prefix too) and its own kind (si::metre, si::kilogram), holds
+  // that unit alone, so a quantity's type spells it short: reference{ref_form{unit_atom{(& si::metre_def), 0, 1}},
+  // false}. Any other holds its parts. Each reference has one form, so equal references are one template argument.
+  struct ref_parts
+  {
+    kind_ref   Kind{&no_kind};
+    unit_value U{};
+    bool       KindOf{false};
+    recipe     Derived{}; // (KindOf and Derived last: false and empty drop out of a mangled name)
+  };
+
+  union ref_form
+  {
+    unit_atom Atom; // a named unit and its own kind
+    ref_parts Parts;
+  };
+
   struct reference
   {
-    kind_ref   Kind{};
-    bool       KindOf{false};
-    recipe     Derived{};
-    unit_value U{};
+    ref_form Form;
+    bool     HasParts{false}; // which member of Form holds the reference
 
-    constexpr reference() = default;
-    constexpr reference(kind_ref s, bool kind_of, recipe derived, unit_value u)
-      : Kind{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
+    constexpr reference() : reference{&no_kind, false, recipe{}, unit_value{}} {}
+    // (By value: a member copied from a const object through a reference keeps its const in GCC's template
+    // argument, which then differs from an equal one.)
+    constexpr reference(kind_ref k, bool any_of_kind, recipe derived, unit_value u)
+      : Form{atom_form(k, any_of_kind, derived, u) ? ref_form{.Atom = u.Atoms[0]}
+                                                   : ref_form{.Parts = {k, u, any_of_kind, derived}}},
+        HasParts{!atom_form(k, any_of_kind, derived, u)} {}
     // A unit tag as a reference: quantity<si::metre, …>.
     template <unit_value V>
-    constexpr reference(unit_t<V>) : Kind{kind_of(V)}, KindOf{static_cast<bool>(kind_of(V))}, U{V} {}
+    constexpr reference(unit_t<V>) : reference{ins::kind_of(V), detail::has(ins::kind_of(V)), recipe{}, V} {}
+
+    // The parts, whichever form holds them (values: a reference on another unit is with_unit's).
+    [[nodiscard]] constexpr unit_value unit() const { return HasParts ? Form.Parts.U : unit_value{Form.Atom}; }
+    [[nodiscard]] constexpr kind_ref   kind() const { return HasParts ? Form.Parts.Kind : Form.Atom.U->Kind; }
+    [[nodiscard]] constexpr bool       kind_of() const
+    {
+      return HasParts ? Form.Parts.KindOf : detail::has(Form.Atom.U->Kind);
+    }
+    [[nodiscard]] constexpr recipe derived() const { return HasParts ? Form.Parts.Derived : recipe{}; }
+    // The same kind facts on another unit.
+    [[nodiscard]] constexpr reference with_unit(const unit_value& u) const
+    {
+      return reference{kind(), kind_of(), derived(), u};
+    }
 
     friend constexpr bool operator==(const reference& a, const reference& b)
     {
-      return detail::same(a.Kind, b.Kind) && a.KindOf == b.KindOf && a.Derived == b.Derived && a.U == b.U;
+      return detail::same(a.kind(), b.kind()) && a.kind_of() == b.kind_of() && a.derived() == b.derived()
+          && a.unit() == b.unit();
+    }
+
+  private:
+    // Whether the parts are one named unit (detail::is_single_named) and its own kind.
+    static constexpr bool atom_form(kind_ref k, bool any_of_kind, const recipe& derived, const unit_value& u)
+    {
+      return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() && derived.Size == 0
+          && any_of_kind == detail::has(u.Atoms[0].U->Kind) && detail::same(k, u.Atoms[0].U->Kind);
     }
   };
 
   consteval reference reference_of(const unit_value& u)
   {
     const kind_ref k{kind_of(u)};
-    return reference{k, static_cast<bool>(k), recipe{}, u};
+    return reference{k, detail::has(k), recipe{}, u};
   }
 
   template <reference R>
@@ -25671,11 +25784,11 @@ namespace ins
   template <class U>
   consteval auto kind_t<S>::operator[](U) const
   {
-    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Size; }, "units: kind[unit] takes a unit");
+    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Atoms; }, "units: kind[unit] takes a unit");
     constexpr unit_value u{U::value};
     static_assert(dimension_of(u) == S->Dim, "units: kind[unit] - the unit has another dimension than the kind");
     constexpr kind_ref k{kind_of(u)};
-    static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
+    static_assert(!detail::has(k) || detail::same(detail::kind_root(k), detail::kind_root(S)),
                   "units: kind[unit] - the unit measures another kind of quantity (Hz for activity?)");
     return reference_t<reference{S, false, recipe{}, u}>{};
   }
@@ -25683,51 +25796,51 @@ namespace ins
   namespace detail
   {
     // Which kind facts a reference carries.
-    consteval bool is_generic(const reference& r) { return !r.Kind && r.Derived.Size == 0; }
+    consteval bool is_generic(const reference& r) { return !has(r.kind()) && r.derived().Size == 0; }
 
     // Whether a reference's quantity may convert implicitly to a named kind `to`.
     consteval bool derived_converts_to(const reference& from, const kind_def* to)
     {
-      if (to->Distinct && !from.KindOf)
+      if (to->Distinct && !from.kind_of())
         return false;
       // Any quantity of the dimension names a kind root: m/s → speed, N·m → energy.
-      if (!to->Parent && !to->Distinct)
+      if (!has(to->Parent) && !to->Distinct)
         return true;
-      if (from.KindOf)
-        return derived_converts_to(reference{nullptr, false, from.Derived, from.U}, kind_root(to))
-               || recipe_matches(from.Derived, recipe_of(kind_root(to)));
-      return to->Recipe.Size > 0 && recipe_matches(from.Derived, to->Recipe);
+      if (from.kind_of())
+        return derived_converts_to(reference{&no_kind, false, from.derived(), from.unit()}, kind_root(to))
+               || recipe_matches(from.derived(), recipe_of(kind_root(to)));
+      return to->Recipe.Size > 0 && recipe_matches(from.derived(), to->Recipe);
     }
 
     // Implicit conversion between the kinds of two references of one dimension.
     consteval bool kind_converts(const reference& from, const reference& to)
     {
       if (is_generic(to)) // a dimension's quantity takes any of its kinds but an Distinct one
-        return !from.Kind || !kind_root(from.Kind.P)->Distinct;
+        return !has(from.kind()) || !kind_root(from.kind())->Distinct;
       if (is_generic(from))
-        return !to.Kind || !kind_root(to.Kind.P)->Distinct;
-      if (!to.Kind) // a derived target: the source's recipe, by kind
+        return !has(to.kind()) || !kind_root(to.kind())->Distinct;
+      if (!has(to.kind())) // a derived target: the source's recipe, by kind
       {
-        const recipe have{from.Kind ? recipe_of(from.Kind.P) : from.Derived};
-        return recipe_by_kind(have) == recipe_by_kind(to.Derived);
+        const recipe have{has(from.kind()) ? recipe_of(from.kind()) : from.derived()};
+        return recipe_by_kind(have) == recipe_by_kind(to.derived());
       }
-      if (!from.Kind)
-        return derived_converts_to(from, to.KindOf ? kind_root(to.Kind.P) : to.Kind.P);
-      if (to.KindOf || from.KindOf) // a unit's kind takes and gives any kind of that kind
-        return same(kind_root(from.Kind.P), kind_root(to.Kind.P));
-      return is_within_kind_ancestor(from.Kind.P, to.Kind.P);
+      if (!has(from.kind()))
+        return derived_converts_to(from, to.kind_of() ? kind_root(to.kind()) : to.kind());
+      if (to.kind_of() || from.kind_of()) // a unit's kind takes and gives any kind of that kind
+        return same(kind_root(from.kind()), kind_root(to.kind()));
+      return is_within_kind_ancestor(from.kind(), to.kind());
     }
 
     // Explicit conversion (kind_cast): any kind of the same dimension, but not across Distinct kinds.
     consteval bool kind_casts(const reference& from, const kind_def* to)
     {
-      const kind_ref  fk{from.Kind ? kind_ref{kind_root(from.Kind.P)} : kind_ref{}};
+      const kind_ref  fk{has(from.kind()) ? kind_root(from.kind()) : &no_kind};
       const kind_def* tk{kind_root(to)};
-      if (same(fk, kind_ref{tk}))
+      if (same(fk, tk))
         return true;
-      if (fk && fk->Distinct)
+      if (has(fk) && fk->Distinct)
         return false;
-      return !tk->Distinct || !from.Kind;
+      return !tk->Distinct || !has(from.kind());
     }
 
     // The kind part of a sum's reference; ok = false when the two cannot add.
@@ -25739,66 +25852,69 @@ namespace ins
 
     consteval kind_result common_kind(const reference& a, const reference& b)
     {
-      if (same(a.Kind, b.Kind) && a.KindOf == b.KindOf && a.Derived == b.Derived)
+      if (same(a.kind(), b.kind()) && a.kind_of() == b.kind_of() && a.derived() == b.derived())
         return {true, a};
       if (kind_converts(a, b) && !kind_converts(b, a))
         return {true, b};
       if (kind_converts(b, a) && !kind_converts(a, b))
         return {true, a};
-      if (a.Kind && b.Kind)
+      if (has(a.kind()) && has(b.kind()))
       {
-        if (a.KindOf && b.KindOf && same(kind_root(a.Kind.P), kind_root(b.Kind.P)))
-          return {true, reference{kind_root(a.Kind.P), true, {}, a.U}};
-        if (a.KindOf != b.KindOf && same(kind_root(a.Kind.P), kind_root(b.Kind.P))) // kind_of + a named kind of it
-          return {true, a.KindOf ? b : a};
+        if (a.kind_of() && b.kind_of() && same(kind_root(a.kind()), kind_root(b.kind())))
+          return {true, reference{kind_root(a.kind()), true, {}, a.unit()}};
+        // A unit's kind and a named kind of it.
+        if (a.kind_of() != b.kind_of() && same(kind_root(a.kind()), kind_root(b.kind())))
+          return {true, a.kind_of() ? b : a};
         // The nearest common ancestor within one kind.
-        for (const kind_def* s = a.Kind.P;; s = s->Parent.P)
+        for (const kind_def* s = a.kind();; s = s->Parent)
         {
-          if (is_within_kind_ancestor(b.Kind.P, s))
-            return {true, reference{s, false, {}, a.U}};
-          if (s->Distinct || !s->Parent)
+          if (is_within_kind_ancestor(b.kind(), s))
+            return {true, reference{s, false, {}, a.unit()}};
+          if (s->Distinct || !has(s->Parent))
             break;
         }
         return {};
       }
       if (kind_converts(a, b) && kind_converts(b, a)) // e.g. two recipes of one kind
-        return {true, reference{nullptr, false, {}, a.U}};
+        return {true, reference{&no_kind, false, {}, a.unit()}};
       return {};
     }
 
     // The kind part of a product: named factors multiply into a recipe.
-    // (Kind null, KindOf, no recipe) is the empty product: 1 / x starts there.
+    // (Kind none, KindOf, no recipe) is the empty product: 1 / x starts there.
     consteval reference kind_product(const reference& a, const reference& b, int sign, const unit_value& u)
     {
-      const auto empty = [](const reference& r) consteval { return !r.Kind && r.KindOf && r.Derived.Size == 0; };
+      const auto empty = [](const reference& r) consteval
+      {
+        return !has(r.kind()) && r.kind_of() && r.derived().Size == 0;
+      };
       if ((is_generic(a) && !empty(a)) || (is_generic(b) && !empty(b)))
-        return reference{nullptr, false, {}, u};
+        return reference{&no_kind, false, {}, u};
       const auto factors = [](const reference& r) consteval
       {
-        if (!r.Kind)
-          return r.Derived;
+        if (!has(r.kind()))
+          return r.derived();
         recipe f{};
-        recipe_add(f, r.KindOf ? kind_root(r.Kind.P) : r.Kind.P, 1);
+        recipe_add(f, r.kind_of() ? kind_root(r.kind()) : r.kind(), 1);
         return f;
       };
       recipe f{factors(a)};
       if (!recipe_merge(f, factors(b), sign) || f.Size == 0) // too many factors, or a pure ratio
-        return reference{nullptr, false, {}, u};
-      const bool kind_of{(a.KindOf || empty(a)) && (b.KindOf || empty(b))};
+        return reference{&no_kind, false, {}, u};
+      const bool kind_of{(a.kind_of() || empty(a)) && (b.kind_of() || empty(b))};
       if (f.Size == 1 && f.F[0].Exp == 1)
         return reference{f.F[0].Kind, kind_of, {}, u};
-      return reference{nullptr, kind_of, f, u};
+      return reference{&no_kind, kind_of, f, u};
     }
 
     consteval reference kind_pow(const reference& a, int n, const unit_value& u)
     {
       if (is_generic(a) || n == 0)
-        return reference{nullptr, false, {}, u};
-      reference r{a};
-      r.U = u;
+        return reference{&no_kind, false, {}, u};
+      reference r{a.with_unit(u)};
       for (int i = 1; i < (n < 0 ? -n : n); ++i)
         r = kind_product(r, a, 1, u);
-      return n < 0 ? kind_product(reference{nullptr, true, {}, u}, r, -1, u) : r;
+      return n < 0 ? kind_product(reference{&no_kind, true, {}, u}, r, -1, u) : r;
     }
   } // namespace detail
 
@@ -25832,10 +25948,10 @@ namespace ins
     // A fixed order of units: fewer atoms first, then by symbol and exponent.
     consteval bool unit_before(const unit_value& a, const unit_value& b)
     {
-      if (a.Size != b.Size)
-        return a.Size < b.Size;
+      if (a.size() != b.size())
+        return a.size() < b.size();
       return std::lexicographical_compare(
-        a.Atoms, a.Atoms + a.Size, b.Atoms, b.Atoms + b.Size,
+        a.Atoms, a.Atoms + a.size(), b.Atoms, b.Atoms + b.size(),
         [](const unit_atom& x, const unit_atom& y)
         {
           if (atom_before(x, y) || atom_before(y, x))
@@ -25994,15 +26110,16 @@ namespace ins
       if constexpr (From == To)
         return true;
       else
-        return exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
+        return exact_rescale_v<From.unit(), To.unit()> && dimension_of(From.unit()) == dimension_of(To.unit())
+            && kind_converts(From, To);
     }
     template <reference From, reference To>
     inline constexpr bool implicit_v = implicit_conversion<From, To>();
     // A quantity of From on V that converts implicitly to To; one of R that converts to unit U (q.in<U>()).
     template <reference From, reference To, class V>
-    concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V>;
+    concept implicit_rescalable = implicit_v<From, To> && rescalable<From.unit(), To.unit(), V>;
     template <reference R, unit_value U, class V>
-    concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
+    concept in_rescalable = in_error_of<R.unit(), U>() == in_error::none && rescalable<R.unit(), U, V>;
 
     // A dimensionless quantity that is a plain number: no distinct kind (an angle), and an exact factor to unit one.
     // (A branch: a quantity type names number_like_v<R> in a declaration, so every quantity forms it, and the factor
@@ -26010,10 +26127,11 @@ namespace ins
     template <reference R>
     consteval bool number_like()
     {
-      if constexpr (!(dimension_of(R.U) == dim_one))
+      if constexpr (!(dimension_of(R.unit()) == dim_one))
         return false;
       else
-        return exact_factor_v<conversion_factor<R.U, unit_value{}>> && (!R.Kind || !kind_root(R.Kind.P)->Distinct);
+        return exact_factor_v<conversion_factor<R.unit(), unit_value{}>>
+            && (!has(R.kind()) || !kind_root(R.kind())->Distinct);
     }
     template <reference R>
     inline constexpr bool number_like_v = number_like<R>();
@@ -26028,19 +26146,19 @@ namespace ins
     template <reference R, class V>
     struct number_type<R, V, true>
     {
-      using type = decltype(rescale<conversion_factor<R.U, unit_value{}>>(std::declval<const V&>()));
+      using type = decltype(rescale<conversion_factor<R.unit(), unit_value{}>>(std::declval<const V&>()));
     };
     template <reference R, class V>
     using number_t = typename number_type<R, V>::type;
 
     template <reference From, reference To, insidable V>
-    using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
+    using rescaled_t = decltype(rescale<conversion_factor<From.unit(), To.unit()>>(std::declval<const V&>()));
 
     // q's number in unit U: exact, its grid rescaled.
     template <unit_value U, reference R, class V>
     constexpr auto number_in_unit(const quantity<R, V>& q)
     {
-      return rescale<conversion_factor<R.U, U>>(value_of(q));
+      return rescale<conversion_factor<R.unit(), U>>(value_of(q));
     }
 
     // A one-shot store's source (Q{x, clamp}, exact_cast<Q>(x)): a quantity, converted to Q's unit exactly first.
@@ -26048,11 +26166,12 @@ namespace ins
     template <class Q, class X>
     constexpr auto number_in(const X& x)
     {
-      return number_in_unit<Q::reference.U>(x);
+      return number_in_unit<Q::reference.unit()>(x);
     }
     template <class Q, class X>
     concept castable_quantity =
-      quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
+      quantity_like<X> && implicit_v<X::reference, Q::reference>
+      && exact_rescale_v<X::reference.unit(), Q::reference.unit()>;
     template <class Q, class X>
     concept castable_from = quantity_like<Q> && castable_quantity<Q, X>;
     // A number: an inside, a built-in, a rational or a grid number.
@@ -26076,7 +26195,7 @@ namespace ins
     concept unit_tag_of = is_reference_tag_v<std::remove_cvref_t<Tag>>
                        && implicit_v<reference_of_tag<std::remove_cvref_t<Tag>>, std::remove_cvref_t<Q>::reference>;
     template <class Q, class Tag>
-    inline constexpr bool own_unit_v = reference_of_tag<std::remove_cvref_t<Tag>>.U == Q::reference.U;
+    inline constexpr bool own_unit_v = reference_of_tag<std::remove_cvref_t<Tag>>.unit() == Q::reference.unit();
     template <class Q, class V, class Tag>
     concept number_in_tag =
       unit_tag_of<Q, Tag> && !quantity_like<V>
@@ -26091,7 +26210,7 @@ namespace ins
       if constexpr (own_unit_v<Q, Tag>)
         return std::forward<V>(v);
       else
-        return rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.U, Q::reference.U>>(v);
+        return rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.unit(), Q::reference.unit()>>(v);
     }
     template <class Q, class V, class Tag>
     using number_from_tag_t = decltype(number_from_tag<Q, Tag>(std::declval<V>()));
@@ -26101,10 +26220,12 @@ namespace ins
       unit_tag_of<Q, Tag> && !own_unit_v<Q, Tag> && number_value<V> && !insidable<std::remove_cvref_t<V>>;
     // Rep's twin in the unit of Tag (unit_tag_of: the factor holds no pi).
     template <class Q, class Tag>
-    concept twin_forms = rescalable<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U, typename Q::rep>;
+    concept twin_forms =
+      rescalable<Q::reference.unit(), reference_of_tag<std::remove_cvref_t<Tag>>.unit(), typename Q::rep>;
     template <class Q, class Tag>
-    using twin_t = decltype(rescale<conversion_factor<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U>>(
-      std::declval<const typename Q::rep&>()));
+    using twin_t =
+      decltype(rescale<conversion_factor<Q::reference.unit(), reference_of_tag<std::remove_cvref_t<Tag>>.unit()>>(
+        std::declval<const typename Q::rep&>()));
     template <class Q, class V, class Tag>
     concept raw_in_twin = raw_in_other_unit<Q, V, Tag> && twin_forms<Q, Tag>;
     // The twin's value as Q's number: the same value on the same grid, or an expected of it (try_make).
@@ -26115,7 +26236,8 @@ namespace ins
       if constexpr (is_expected_v<T>)
         return t.transform([](const auto& x) { return from_twin<Q, Tag>(x); });
       else
-        return Rep(rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.U, Q::reference.U>>(t));
+        return Rep(
+          rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.unit(), Q::reference.unit()>>(t));
     }
     // A unit of another quantity than Q's.
     template <class Q, class Tag>
@@ -26138,9 +26260,9 @@ namespace ins
     template <reference R>
     consteval reference unsigned_reference()
     {
-      reference r{R};
-      r.U.Scale.Ratio = abs(r.U.Scale.Ratio);
-      return r;
+      unit_value u{R.unit()};
+      u.Scale.Ratio = abs(u.Scale.Ratio);
+      return R.with_unit(u);
     }
 
     // A quantity of reference R on a number that inside's arithmetic returned:
@@ -26150,9 +26272,9 @@ namespace ins
     template <reference R, class V>
     constexpr auto make_quantity(V&& v)
     {
-      if constexpr (R.U.Scale.Ratio.is_zero())
+      if constexpr (R.unit().Scale.Ratio.is_zero())
         return multivector<>{};
-      else if constexpr (R.U.Scale.Ratio.negative())
+      else if constexpr (R.unit().Scale.Ratio.negative())
       {
         constexpr reference P{unsigned_reference<R>()};
         if constexpr (is_expected_v<std::remove_cvref_t<V>>)
@@ -26243,21 +26365,21 @@ namespace ins
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r = v; }
       constexpr Q& operator=(const quantity<R2, V2>& q)
       {
-        NumRef = number_in_unit<R.U>(q);
+        NumRef = number_in_unit<R.unit()>(q);
         return Self;
       }
       template <reference R2, class V2>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r += v; }
       constexpr Q& operator+=(const quantity<R2, V2>& q)
       {
-        NumRef += number_in_unit<R.U>(q);
+        NumRef += number_in_unit<R.unit()>(q);
         return Self;
       }
       template <reference R2, class V2>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
       constexpr Q& operator-=(const quantity<R2, V2>& q)
       {
-        NumRef -= number_in_unit<R.U>(q);
+        NumRef -= number_in_unit<R.unit()>(q);
         return Self;
       }
       template <insidable V>
@@ -26322,7 +26444,7 @@ namespace ins
   template <reference R, insidable Rep>
   class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>>
   {
-    static_assert(!R.U.Scale.Ratio.negative() && !R.U.Scale.Ratio.is_zero(),
+    static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
     using holder = detail::member_holder<Rep, Rep, quantity<R, Rep>>;
@@ -26331,16 +26453,16 @@ namespace ins
   public:
     using rep = Rep;
     static constexpr ins::reference  reference = R;
-    static constexpr ins::unit_value unit      = R.U;
-    static constexpr ins::dimension  dimension = dimension_of(R.U);
+    static constexpr ins::unit_value unit      = R.unit();
+    static constexpr ins::dimension  dimension = dimension_of(R.unit());
     // The kind as a value: its tag for a named kind (isq::height), else the expression of its recipe.
     // Compare with ==: q.kind == isq::length.
     static constexpr auto kind = []
     {
-      if constexpr (static_cast<bool>(R.Kind))
-        return kind_t<R.Kind.P>{};
+      if constexpr (detail::has(R.kind()))
+        return kind_t<R.kind()>{};
       else
-        return kind_expr{R.Derived, dimension_of(R.U)};
+        return kind_expr{R.derived(), dimension_of(R.unit())};
     }();
 
     constexpr quantity() = default;
@@ -26395,7 +26517,7 @@ namespace ins
     template <ins::reference R2, class V2>
       requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
-      : holder(Rep(detail::number_in_unit<R.U>(q))) {}
+      : holder(Rep(detail::number_in_unit<R.unit()>(q))) {}
     // Any other quantity names why it does not convert.
     template <ins::reference R2, class V2>
       requires detail::implicit_rescalable<R2, R, V2> && (!std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>)
@@ -26403,13 +26525,13 @@ namespace ins
                                                 "- store it with Q{q, round_half_away} or Q{q, clamp}, or check it "
                                                 "with exact_cast<Q>(q)");
     template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::dimension)
     quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another dimension");
     template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::pi)
     quantity(const quantity<R2, V2>&) = delete (INSIDE_UNITS_WHY_PI);
     template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::none && !detail::kind_converts(R2, R))
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::none && !detail::kind_converts(R2, R))
     quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another kind - read it as this kind with "
                                                 "kind_cast<K>(q)");
 
@@ -26420,8 +26542,8 @@ namespace ins
       requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in() const
     {
-      constexpr ins::reference to{R.Kind, R.KindOf, R.Derived, U};
-      return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Value));
+      constexpr ins::reference to{R.kind(), R.kind_of(), R.derived(), U};
+      return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.unit(), U>>(Value));
     }
     template <ins::unit_value U>
       requires detail::in_rescalable<R, U, Rep>
@@ -26434,22 +26556,22 @@ namespace ins
       requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto numerical_value_in(ins::unit_t<U>) const
     {
-      if constexpr (U == R.U)
+      if constexpr (U == R.unit())
         return Value;
       else
         return detail::value_of(in<U>());
     }
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::dimension)
     void in() const = delete ("units: in() - the unit has another dimension");
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::dimension)
     void in(ins::unit_t<U>) const = delete ("units: in() - the unit has another dimension");
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::pi)
     void in() const = delete (INSIDE_UNITS_WHY_PI);
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::pi)
     void in(ins::unit_t<U>) const = delete (INSIDE_UNITS_WHY_PI);
 
     // A dimensionless quantity is a number: its value in unit one (km/m is ×1000, % is ×1/100),
@@ -26459,10 +26581,10 @@ namespace ins
       requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const
     {
-      return T(detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
+      return T(detail::rescale<detail::conversion_factor<R.unit(), ins::unit_value{}>>(Value));
     }
     template <insidable T>
-      requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
+      requires(dimension_of(R.unit()) == dim_one && !detail::number_like_v<R>)
     operator T() const = delete ("units: an angle (a distinct kind) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value_in(si::radian), or value_cast it first");
 
@@ -26472,7 +26594,7 @@ namespace ins
       requires detail::number_like_v<R> && requires(const detail::number_t<R, Rep>& n) { ins::to<T, Round>(n); }
     [[nodiscard]] constexpr auto to() const
     {
-      return ins::to<T, Round>(detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
+      return ins::to<T, Round>(detail::rescale<detail::conversion_factor<R.unit(), ins::unit_value{}>>(Value));
     }
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
@@ -26484,7 +26606,7 @@ namespace ins
             && requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n += r; }
     constexpr quantity& operator+=(const quantity<R2, V2>& q)
     {
-      Value += detail::number_in_unit<R.U>(q);
+      Value += detail::number_in_unit<R.unit()>(q);
       return *this;
     }
     template <ins::reference R2, class V2>
@@ -26492,7 +26614,7 @@ namespace ins
             && requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n -= r; }
     constexpr quantity& operator-=(const quantity<R2, V2>& q)
     {
-      Value -= detail::number_in_unit<R.U>(q);
+      Value -= detail::number_in_unit<R.unit()>(q);
       return *this;
     }
     template <insidable V>
@@ -26700,10 +26822,9 @@ namespace ins
   // (π is never rounded; value_cast to a plain unit rounds it once, units/math.hpp). q / pi likewise.
   namespace detail
   {
-    consteval reference scaled_reference(reference r, const magnitude& m)
+    consteval reference scaled_reference(const reference& r, const magnitude& m)
     {
-      r.U = unit_scaled(r.U, m);
-      return r;
+      return r.with_unit(unit_scaled(r.unit(), m));
     }
   } // namespace detail
   template <magnitude M, reference R, class V>
@@ -26740,13 +26861,11 @@ namespace ins
     template <reference A, reference B>
     consteval reference sum_reference()
     {
-      static_assert(dimension_of(A.U) == dimension_of(B.U),
+      static_assert(dimension_of(A.unit()) == dimension_of(B.unit()),
                     "units: adding or comparing quantities of different dimensions");
       constexpr kind_result s{common_kind(A, B)};
       static_assert(s.Ok, "units: adding or comparing quantities of different kinds");
-      reference r{s.R};
-      r.U = common_unit(A.U, B.U);
-      return r;
+      return s.R.with_unit(common_unit(A.unit(), B.unit()));
     }
 
     // Why a sum or comparison of A and B is a unit error, if it is: other dimensions or kinds, or no common unit.
@@ -26757,11 +26876,12 @@ namespace ins
     template <reference A, reference B>
     consteval sum_error sum_error_of()
     {
-      if (dimension_of(A.U) != dimension_of(B.U))
-        return same_outside_blade(dimension_of(A.U), dimension_of(B.U)) ? sum_error::blades : sum_error::dimensions;
+      if (dimension_of(A.unit()) != dimension_of(B.unit()))
+        return same_outside_blade(dimension_of(A.unit()), dimension_of(B.unit())) ? sum_error::blades
+                                                                                   : sum_error::dimensions;
       if (!common_kind(A, B).Ok)
         return sum_error::kinds;
-      const magnitude ma{magnitude_of(A.U)}, mb{magnitude_of(B.U)};
+      const magnitude ma{magnitude_of(A.unit())}, mb{magnitude_of(B.unit())};
       if (ma.Pi != mb.Pi)
         return sum_error::pi;
       return sum_error::none;
@@ -26777,12 +26897,12 @@ namespace ins
     concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
     // A number and a quantity of a blade without a unit (3 + 4 i).
     template <reference A>
-    concept number_blade_sum = has_basis(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
+    concept number_blade_sum = has_basis(dimension_of(A.unit())) && same_outside_blade(dimension_of(A.unit()), dim_one);
 
     // Whether the two quantities have a common unit (no sum diagnostic) and both numbers rescale to it.
     template <reference A, class VA, reference B, class VB>
-    concept common_rescalable = (!sum_diagnosed<A, B>()) && rescalable<A.U, sum_reference<A, B>().U, VA>
-                             && rescalable<B.U, sum_reference<A, B>().U, VB>;
+    concept common_rescalable = (!sum_diagnosed<A, B>()) && rescalable<A.unit(), sum_reference<A, B>().unit(), VA>
+                             && rescalable<B.unit(), sum_reference<A, B>().unit(), VB>;
     // The number of a quantity of A on V, in A and B's common unit.
     template <reference A, class V, reference B>
     using common_number_t = rescaled_t<A, sum_reference<A, B>(), V>;
@@ -26794,7 +26914,7 @@ namespace ins
     template <reference A, reference B, int Sign>
     consteval reference product_reference()
     {
-      const unit_value u{unit_mul(A.U, B.U, Sign)};
+      const unit_value u{unit_mul(A.unit(), B.unit(), Sign)};
       return kind_product(A, B, Sign, u);
     }
 
@@ -26802,7 +26922,7 @@ namespace ins
     template <reference A, reference B, reference R, class V>
     constexpr auto in_common_unit(const quantity<R, V>& q)
     {
-      return number_in_unit<sum_reference<A, B>().U>(q);
+      return number_in_unit<sum_reference<A, B>().unit()>(q);
     }
   } // namespace detail
 
@@ -27045,7 +27165,7 @@ namespace ins
     requires detail::number_op<V, VA, '/'>
   [[nodiscard]] constexpr auto operator/(const V& v, const quantity<A, VA>& a)
   {
-    constexpr reference R{detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&no_kind, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(v / ins::detail::value_of(a));
   }
   // A quantity times a unit: (5 * m) / s.
@@ -27103,7 +27223,7 @@ namespace ins
     template <reference R, const kind_def* To>
     consteval cast_error cast_error_of()
     {
-      if (!(To->Dim == dimension_of(R.U)))
+      if (!(To->Dim == dimension_of(R.unit())))
         return cast_error::dimension;
       return kind_casts(R, To) ? cast_error::none : cast_error::distinct;
     }
@@ -27113,7 +27233,7 @@ namespace ins
     requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::none)
   [[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q)
   {
-    return detail::quantity_access::make<quantity<reference{KindTag::value, false, {}, R.U}, V>>(
+    return detail::quantity_access::make<quantity<reference{KindTag::value, false, {}, R.unit()}, V>>(
       ins::detail::value_of(q));
   }
   template <auto Kind, reference R, class V>
@@ -27160,13 +27280,13 @@ namespace ins
   // value_cast<U, Rep2>(q): in unit U with representation Rep2, the exact value in U, stored by Rep2's constructor.
   // (A pi factor, degree ↔ radian, rounds once: units/math.hpp.)
   template <auto U, insidable Rep2, reference R, class V>
-    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value>
+    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.unit(), decltype(U)::value>
           && requires(const quantity<R, V>& q) { Rep2::try_make(ins::detail::value_of(q.in(U))); }
   [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
   {
     constexpr ins::unit_value u{decltype(U)::value};
-    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
-    constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
+    static_assert(dimension_of(u) == dimension_of(R.unit()), "units: value_cast - the unit has another dimension");
+    constexpr reference to{R.kind(), R.kind_of(), R.derived(), u};
     return detail::cast_number<quantity<to, Rep2>, Rep2>(ins::detail::value_of(q.in(U)));
   }
 
@@ -27175,18 +27295,18 @@ namespace ins
   namespace detail
   {
     template <class Q, reference R>
-    concept value_castable_to = quantity_like<Q> && dimension_of(Q::reference.U) == dimension_of(R.U)
-                             && kind_converts(R, Q::reference) && exact_rescale_v<R.U, Q::reference.U>;
+    concept value_castable_to = quantity_like<Q> && dimension_of(Q::reference.unit()) == dimension_of(R.unit())
+                             && kind_converts(R, Q::reference) && exact_rescale_v<R.unit(), Q::reference.unit()>;
   } // namespace detail
   template <class Q, reference R, class V>
     requires detail::value_castable_to<Q, R>
           && requires(const quantity<R, V>& q)
              {
-               Q::rep::try_make(ins::detail::value_of(q.template in<Q::reference.U>()));
+               Q::rep::try_make(ins::detail::value_of(q.template in<Q::reference.unit()>()));
              }
   [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
   {
-    return detail::cast_number<Q, typename Q::rep>(ins::detail::value_of(q.template in<Q::reference.U>()));
+    return detail::cast_number<Q, typename Q::rep>(ins::detail::value_of(q.template in<Q::reference.unit()>()));
   }
   // inside's algorithms on quantities:
   // the number goes through the inside function in the target's unit, so each still rounds once and checks once.
@@ -27245,15 +27365,15 @@ namespace ins
            requires implicit_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>(),
                                out_reference<Out>()>;
          }
-      && rescalable<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>().U,
-                    out_reference<Out>().U,
+      && rescalable<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>().unit(),
+                    out_reference<Out>().unit(),
                     typename as_quantity_t<A>::rep>;
     template <class Out, int E, class A>
     constexpr auto into_scaled(const A& a, const auto& b)
     {
       constexpr reference P{
         product_reference<as_quantity_t<A>::reference, std::remove_cvref_t<decltype(as_quantity(b))>::reference, E>()};
-      return rescale<conversion_factor<P.U, out_reference<Out>().U>>(ins::detail::value_of(as_quantity(a)));
+      return rescale<conversion_factor<P.unit(), out_reference<Out>().unit()>>(ins::detail::value_of(as_quantity(a)));
     }
     // The output of mul<C> / div<C> (E = ±1) of a and b:
     // C, a quantity type or a plain number for a dimensionless result;
@@ -27327,13 +27447,14 @@ namespace ins
   template <class Q, std::ranges::input_range Rng>
     requires quantity_like<Q> && quantity_like<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
           && detail::implicit_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference, Q::reference>
-          && detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.U,
-                                     Q::reference.U>
+          && detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.unit(),
+                                     Q::reference.unit()>
   [[nodiscard]] constexpr auto sum(Rng&& r)
   {
     return detail::lift_to<Q>(ins::sum<typename Q::rep>(
       std::forward<Rng>(r)
-      | std::views::transform([](const auto& q) { return ins::detail::value_of(q.template in<Q::reference.U>()); })));
+      | std::views::transform([](const auto& q)
+                              { return ins::detail::value_of(q.template in<Q::reference.unit()>()); })));
   }
 
   // conversion_overflows<Q>(v, u) / conversion_rounds / conversion_loses: v, a number in unit u, against Q's grid
@@ -27420,7 +27541,7 @@ namespace ins
     }
   } // namespace detail
   template <reference A, class VA, reference B, class VB, class... Args>
-    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.U)))
+    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.unit())))
           && requires(const detail::common_number_t<A, VA, B>& x,
                       const detail::common_number_t<B, VB, A>& y,
                       Args&&... args) { ins::divmod(x, y, std::forward<Args>(args)...); }
@@ -27489,7 +27610,7 @@ namespace ins
     requires requires(const V& x, const VA& y, Args&&... args) { ins::div(x, y, std::forward<Args>(args)...); }
   [[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args)
   {
-    constexpr reference R{detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&no_kind, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(ins::div(v, ins::detail::value_of(a), std::forward<Args>(args)...));
   }
 
@@ -27561,7 +27682,7 @@ namespace ins
 {
 
   // quantity_point<R, O, Rep>: a point, a quantity of R counted from origin O
-  // (null: the implicit zero of the dimension).
+  // (no_origin: the implicit zero of the dimension).
   // A change of origin shifts the grid by the exact offset, a change of unit rescales it.
   //   auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});   // 20 ℃
   //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
@@ -27606,7 +27727,7 @@ namespace ins
     // The default origin of a unit's points: its named unit's (K, ℃, ℉).
     consteval origin_ref origin_of_unit(const unit_value& u)
     {
-      return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{};
+      return is_single_named(u) ? u.Atoms[0].U->Origin : &no_origin;
     }
 
     // Whether Rep stores the plain number V (under the one-shot flags Pol) only while compiling:
@@ -27688,11 +27809,11 @@ namespace ins
     // The quantity from this point's origin, or from another one.
     [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Value; }
     template <origin_ref O2>
-      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0
-               && detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
+      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.unit()).Pi == 0
+               && detail::shift_forms<detail::origin_shift<O, O2, R.unit()>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const
     {
-      constexpr grid_number c{detail::origin_shift<O, O2, R.U>()};
+      constexpr grid_number c{detail::origin_shift<O, O2, R.unit()>()};
       return detail::quantity_access::make<
         quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(ins::detail::value_of(Value)))>>>(
         detail::shift<c>(ins::detail::value_of(Value)));
@@ -27701,7 +27822,7 @@ namespace ins
       requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
     void quantity_from(origin_t<O2>) const = delete ("units: points of different absolute origins");
     template <origin_ref O2>
-      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi != 0)
+      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.unit()).Pi != 0)
     void quantity_from(origin_t<O2>) const
       = delete ("units: an origin shift in a unit with a pi magnitude has no exact grid");
     // The quantity from the absolute origin of the dimension (absolute zero, or the implicit zero):
@@ -27819,22 +27940,22 @@ namespace ins
     }
   } // namespace detail
   template <reference R, origin_ref O, class V, reference R2, class V2>
-    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a + detail::in_point_unit<R.U>(b); }
+    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a + detail::in_point_unit<R.unit()>(b); }
   [[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q)
   {
-    return detail::make_point<O>(p.quantity_from_origin() + detail::in_point_unit<R.U>(q));
+    return detail::make_point<O>(p.quantity_from_origin() + detail::in_point_unit<R.unit()>(q));
   }
   template <reference R2, class V2, reference R, origin_ref O, class V>
-    requires requires(const quantity<R2, V2>& a, const quantity<R, V>& b) { detail::in_point_unit<R.U>(a) + b; }
+    requires requires(const quantity<R2, V2>& a, const quantity<R, V>& b) { detail::in_point_unit<R.unit()>(a) + b; }
   [[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p)
   {
-    return detail::make_point<O>(detail::in_point_unit<R.U>(q) + p.quantity_from_origin());
+    return detail::make_point<O>(detail::in_point_unit<R.unit()>(q) + p.quantity_from_origin());
   }
   template <reference R, origin_ref O, class V, reference R2, class V2>
-    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a - detail::in_point_unit<R.U>(b); }
+    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a - detail::in_point_unit<R.unit()>(b); }
   [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q)
   {
-    return detail::make_point<O>(p.quantity_from_origin() - detail::in_point_unit<R.U>(q));
+    return detail::make_point<O>(p.quantity_from_origin() - detail::in_point_unit<R.unit()>(q));
   }
   template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
     requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b)
@@ -27951,7 +28072,7 @@ namespace ins
     : origin_def{name, dimension_of(std::remove_cvref_t<decltype(p.quantity_from_origin())>::unit)}
   {
     using Q = std::remove_cvref_t<decltype(p.quantity_from_origin())>;
-    static_assert(static_cast<bool>(P::origin), "units: an origin at o + q - the point counts from an origin");
+    static_assert(detail::has(P::origin), "units: an origin at o + q - the point counts from an origin");
     static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
                   "units: an origin lies at a constant point - si::absolute_zero + 273.15_ins * si::kelvin");
     static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
@@ -28727,7 +28848,7 @@ namespace ins
     consteval dimension part_dim()
     {
       if constexpr (quantity_like<P>)
-        return dimension_of(P::reference.U);
+        return dimension_of(P::reference.unit());
       else
         return dim_one;
     }
@@ -29165,7 +29286,7 @@ namespace ins
     consteval unit_value blade_atoms(const unit_value& u)
     {
       unit_value b{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         if (is_basis_atom(u.Atoms[i]))
           unit_add(b, u.Atoms[i]);
       return b;
@@ -29175,7 +29296,7 @@ namespace ins
     constexpr auto part_in(const P& p)
     {
       if constexpr (quantity_like<P>)
-        return p.template in<unit_mul(U, blade_atoms(P::reference.U), 1)>();
+        return p.template in<unit_mul(U, blade_atoms(P::reference.unit()), 1)>();
       else
         return quantity_access::make<quantity<reference_of(unit_value{}), P>>(p).template in<U>();
     }
@@ -29188,7 +29309,7 @@ namespace ins
     {
       unit_value r{};
       r.Scale = u.Scale;
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         if (!is_basis_atom(u.Atoms[i]))
           unit_add(r, u.Atoms[i]);
       return r;
@@ -29201,7 +29322,7 @@ namespace ins
     consteval unit_value unit_of_part()
     {
       if constexpr (quantity_like<P>)
-        return P::reference.U;
+        return P::reference.unit();
       else
         return unit_value{};
     }
@@ -29768,7 +29889,7 @@ namespace ins::detail
         else if (std::meta::has_template_arguments(t) && std::meta::template_of(t) == ^^unit_t)
         {
           const unit_value u{std::meta::extract<unit_value>(std::meta::template_arguments_of(t)[0])};
-          for (std::int8_t i = 0; i < u.Size; ++i)
+          for (std::int8_t i = 0; i < u.size(); ++i)
             add_text_unit(out, u.Atoms[i].U);
         }
       }
@@ -29955,7 +30076,7 @@ namespace ins::detail
     bool                            Scaled{false};
   };
 
-  // ---- What each unit says, for a quantity (unit R.U) or a point (and its origin O) ----
+  // ---- What each unit says, for a quantity (unit R.unit()) or a point (and its origin O) ----
 
   struct text_atom
   {
@@ -29981,7 +30102,7 @@ namespace ins::detail
           if (std::ranges::none_of(b, [&](const base_dimension_def* x) { return x->Name == d.Base[i]->Name; }))
             b.push_back(d.Base[i]);
       };
-      add(dimension_of(R.U));
+      add(dimension_of(R.unit()));
       for (std::size_t a = 0; a < S.Size; ++a)
         add(S.Data[a]->Dim);
       return b;
@@ -29998,8 +30119,8 @@ namespace ins::detail
             e[j] = d.Exp[i];
       return e;
     }
-    static constexpr std::array<std::int8_t, B> target_dim = exponents_of(dimension_of(R.U));
-    static constexpr magnitude                  target_mag = magnitude_of(R.U);
+    static constexpr std::array<std::int8_t, B> target_dim = exponents_of(dimension_of(R.unit()));
+    static constexpr magnitude                  target_mag = magnitude_of(R.unit());
 
     static consteval std::array<std::int8_t, S.Size * B> atom_dims_of()
     {
@@ -30014,7 +30135,7 @@ namespace ins::detail
     static constexpr std::array<std::int8_t, S.Size * B> atom_dims = atom_dims_of();
 
     // A text in no single unit counts from the dimension's zero.
-    static constexpr bool        implicit_origin_ok = !Point || (!absolute_of(O) && target_mag.Pi == 0);
+    static constexpr bool        implicit_origin_ok = !Point || (!has(absolute_of(O)) && target_mag.Pi == 0);
     static constexpr grid_number implicit_shift     = implicit_origin_ok && Point
                                                         ? (grid_number{0} - offset_of(O)) / target_mag.Ratio
                                                         : grid_number{0};
@@ -30022,7 +30143,7 @@ namespace ins::detail
     static consteval text_atom atom_of(const unit_def* u)
     {
       text_atom t{u->Utf8, u->ascii(), u->Mag.Ratio, u->Mag.Pi, false, false, grid_number{0}};
-      if (u->Dim == dimension_of(R.U))
+      if (u->Dim == dimension_of(R.unit()))
         t.KindOk = common_kind(reference_of(unit_value{*u}), R).Ok;
       if constexpr (Point)
         if (target_mag.Pi == 0 && same(absolute_of(u->Origin), absolute_of(O)))
@@ -30312,7 +30433,7 @@ namespace ins::detail
     if (unit.empty())
     {
       // Only a quantity of unit one prints no unit.
-      if constexpr (T::reference.U == unit_value{})
+      if constexpr (T::reference.unit() == unit_value{})
         return store_quantity_text<Q, F, Exact, 1>(number, wide_rational<1>{1, 1}, wide_rational<1>{0, 1});
       else
         return std::unexpected{number.empty() ? error::invalid_format : error::missing_unit};
@@ -30332,10 +30453,11 @@ namespace ins::detail
   consteval bool text_unit_converts()
   {
     using T = typename text_target<Q>::type;
-    if (!(dimension_of(U) == dimension_of(T::reference.U)) || magnitude_of(U).Pi != magnitude_of(T::reference.U).Pi)
+    if (!(dimension_of(U) == dimension_of(T::reference.unit()))
+        || magnitude_of(U).Pi != magnitude_of(T::reference.unit()).Pi)
       return false;
     if constexpr (text_target<Q>::point)
-      return magnitude_of(T::reference.U).Pi == 0 && same(absolute_of(origin_of_unit(U)), absolute_of(Q::origin));
+      return magnitude_of(T::reference.unit()).Pi == 0 && same(absolute_of(origin_of_unit(U)), absolute_of(Q::origin));
     else
       return true;
   }
@@ -30345,7 +30467,7 @@ namespace ins::detail
   constexpr std::expected<Q, error> parse_quantity_in(std::string_view number)
   {
     using T = typename text_target<Q>::type;
-    constexpr magnitude   from{magnitude_of(U)}, to{magnitude_of(T::reference.U)};
+    constexpr magnitude   from{magnitude_of(U)}, to{magnitude_of(T::reference.unit())};
     constexpr grid_number factor{from.Ratio / to.Ratio};
     constexpr grid_number shift{text_target<Q>::point
                                   ? (offset_of(origin_of_unit(U)) - offset_of(text_target<Q>::origin)) / to.Ratio
@@ -30397,10 +30519,10 @@ namespace ins
   }
   template <class Q, policy_flag F = detail::none, class Tag>
     requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
-         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, Tag)
   {
-    return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).U>(number);
+    return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).unit()>(number);
   }
   template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
     requires quantity_like<Q> || detail::is_quantity_point_v<Q>
@@ -30417,10 +30539,10 @@ namespace ins
   }
   template <class Q, class Tag>
     requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
-         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, Tag)
   {
-    return detail::parse_quantity_in<Q, detail::none, true, reference_of(Tag{}).U>(number);
+    return detail::parse_quantity_in<Q, detail::none, true, reference_of(Tag{}).unit()>(number);
   }
 
   // is >> e for e a std::expected of a quantity or a point: a number token, then a unit token unless the number's
@@ -30444,7 +30566,7 @@ namespace ins
       return stream;
     }
     std::string unit;
-    if constexpr (!(detail::text_target<Q>::type::reference.U == unit_value{}))
+    if constexpr (!(detail::text_target<Q>::type::reference.unit() == unit_value{}))
       if (!(stream >> unit))
       {
         e = std::unexpected{error::missing_unit};
@@ -30501,7 +30623,7 @@ namespace ins
     {
       bool first{true};
       for (const bool blades : {false, true})
-        for (std::int8_t i = 0; i < u.Size; ++i)
+        for (std::int8_t i = 0; i < u.size(); ++i)
         {
           const unit_atom& a{u.Atoms[i]};
           if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_basis_atom(a) != blades)
@@ -30522,8 +30644,8 @@ namespace ins
   {
     std::string s;
     const int   num{
-      static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.Size, [](const auto& a) { return a.Exp > 0; }))};
-    const int   den{u.Size - num};
+      static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.size(), [](const auto& a) { return a.Exp > 0; }))};
+    const int   den{u.size() - num};
     if (num == 0) // only a denominator: s⁻¹, m⁻¹ s⁻¹
       detail::append_atoms(s, u, 0, enc);
     else
@@ -30561,10 +30683,10 @@ namespace ins
   std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8)
   {
     std::string       s  {ins::to_string(ins::detail::value_of(q))};
-    const std::string sym{unit_symbol(R.U, enc)};
+    const std::string sym{unit_symbol(R.unit(), enc)};
     if (sym.empty())
       return s;
-    return s + (detail::space_before(R.U) ? " " : "") + sym;
+    return s + (detail::space_before(R.unit()) ? " " : "") + sym;
   }
 
   template <reference R, class V>
@@ -30630,10 +30752,10 @@ struct std::formatter<ins::quantity<R, V>> : std::formatter<V>
   {
     namespace u = ins;
     auto              out{std::formatter<V>::format(ins::detail::value_of(q), ctx)};
-    const std::string sym{u::unit_symbol(R.U)};
+    const std::string sym{u::unit_symbol(R.unit())};
     if (sym.empty())
       return out;
-    if constexpr (u::detail::space_before(R.U))
+    if constexpr (u::detail::space_before(R.unit()))
       *out++ = ' ';
     return std::ranges::copy(sym, out).out;
   }
@@ -30957,7 +31079,7 @@ namespace ins
     consteval unit_value unit_root(const unit_value& u, int n)
     {
       unit_value r{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
       {
         if (u.Atoms[i].Exp % n != 0)
           ins::detail::constexpr_error<"units: the root of a unit needs exponents it divides (m², not m)">();
@@ -30972,36 +31094,36 @@ namespace ins
     consteval reference root_reference(const reference& a, int n, const unit_value& u)
     {
       if (is_generic(a))
-        return reference{nullptr, false, {}, u};
-      const recipe f{a.Kind ? recipe_of(a.KindOf ? kind_root(a.Kind.P) : a.Kind.P) : a.Derived};
+        return reference{&no_kind, false, {}, u};
+      const recipe f{detail::has(a.kind()) ? recipe_of(a.kind_of() ? kind_root(a.kind()) : a.kind()) : a.derived()};
       recipe       r{};
       for (std::int8_t i = 0; i < f.Size; ++i)
       {
         if (f.F[i].Exp % n != 0)
-          return reference{nullptr, false, {}, u};
+          return reference{&no_kind, false, {}, u};
         recipe_add(r, f.F[i].Kind, f.F[i].Exp / n);
       }
       if (r.Size == 1 && r.F[0].Exp == 1)
-        return reference{r.F[0].Kind, a.KindOf, {}, u};
-      return reference{nullptr, a.KindOf, r, u};
+        return reference{r.F[0].Kind, a.kind_of(), {}, u};
+      return reference{&no_kind, a.kind_of(), r, u};
     }
 
     template <reference R, int N>
     consteval reference root_reference()
     {
-      const unit_value u{unit_root(R.U, N)};
+      const unit_value u{unit_root(R.unit(), N)};
       return root_reference(R, N, u);
     }
 
     // An angle in radians: a dimensionless quantity of magnitude one.
     template <reference R>
-    inline constexpr bool radians_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).is_one();
+    inline constexpr bool radians_v = dimension_of(R.unit()) == dim_one && magnitude_of(R.unit()).is_one();
 
     inline constexpr reference radian_reference = reference{si::radian};
 
     // An angle in a unit with a factor of π (°, a turn): sin and cos reduce it exactly.
     template <reference R>
-    inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1;
+    inline constexpr bool pi_angle_v = dimension_of(R.unit()) == dim_one && magnitude_of(R.unit()).Pi == 1;
 
     // The double tier for a π-scaled angle x·(n/d)·π (math/detail/tiers.hpp's decision):
     // x = j·u with u = unit_of<V>, so x·n/d = j·A/B half turns with A = num(u)·n, B = den(u)·d, all integers.
@@ -31056,14 +31178,14 @@ namespace ins
     };
 #ifndef INSIDE_MATH_NO_FP
     template <insidable Out, bool Cos, reference R, class V>
-    inline constexpr bool pi_trig_fp = pi_scaled<magnitude_of(R.U).Ratio, V>::ints
+    inline constexpr bool pi_trig_fp = pi_scaled<magnitude_of(R.unit()).Ratio, V>::ints
                                     && ins::math::detail::engine::fp_tier<Out, ins::math::detail::engine::fp_sin, V>;
     template <insidable Out, bool Cos, reference R, class V>
     inline bool pi_trig_double(const V& x, Out& out) noexcept
     {
       namespace engine = ins::math::detail::engine;
       namespace fpk    = ins::math::detail::fp;
-      using S = pi_scaled<magnitude_of(R.U).Ratio, V>;
+      using S = pi_scaled<magnitude_of(R.unit()).Ratio, V>;
       using K = fpk::trig_k<engine::fp_target<Out, engine::fp_sin>>;
       constexpr double   c2{3.141592653589793238462643383279502884 / (2.0 * static_cast<double>(S::b))};
       const std::int64_t two{2 * S::units(x) * S::a};
@@ -31093,7 +31215,7 @@ namespace ins
     {
       namespace engine = ins::math::detail::engine;
       using ins::detail::grid_int;
-      constexpr auto        f {magnitude_of(R.U).Ratio};
+      constexpr auto        f {magnitude_of(R.unit()).Ratio};
       constexpr grid_int    n {ins::detail::grid_numerator(f)};
       constexpr grid_int    d {ins::detail::grid_denominator(f)};
       constexpr bool        ng{n.negative()};
@@ -31126,7 +31248,8 @@ namespace ins
     inline constexpr bool pi_angle_output_v = false;
     template <reference R, class V>
     inline constexpr bool pi_angle_output_v<quantity<R, V>> =
-      pi_angle_v<R> && grid_number{0} < magnitude_of(R.U).Ratio && ins::detail::fits_rational(magnitude_of(R.U).Ratio);
+      pi_angle_v<R> && grid_number{0} < magnitude_of(R.unit()).Ratio
+      && ins::detail::fits_rational(magnitude_of(R.unit()).Ratio);
 
 #ifndef INSIDE_MATH_NO_FP
     // The double tier of pi_arc: the radian kernel's value v within its bound, times c = fl(d/(n·π)) (within 3·2^-53
@@ -31157,7 +31280,7 @@ namespace ins
     template <class F, class C>
     struct pi_arc_facts
     {
-      static constexpr grid_number   ratio{magnitude_of(C::reference.U).Ratio}; // the unit is ratio·π
+      static constexpr grid_number   ratio{magnitude_of(C::reference.unit()).Ratio}; // the unit is ratio·π
       static constexpr std::uint64_t n{static_cast<std::uint64_t>(ins::detail::grid_numerator(ratio))};
       static constexpr std::uint64_t d{static_cast<std::uint64_t>(ins::detail::grid_denominator(ratio))};
       static constexpr int           amp{std::max(std::bit_width(d) - std::bit_width(n) + 1, 0)};
@@ -31302,7 +31425,7 @@ namespace ins
     {
       namespace engine = ins::math::detail::engine;
       ins::math::detail::entry::require_rounding<Out>();
-      constexpr grid_number f{magnitude_of(R.U).Ratio};
+      constexpr grid_number f{magnitude_of(R.unit()).Ratio};
       static_assert(ins::detail::fits_rational(f), "units: tan of an angle with a factor of pi - a 64-bit factor");
       using T = pi_tan_facts<f, V>;
       static_assert(!T::pole, "units: tan of an angle whose grid holds a pole (an odd multiple of 90°)");
@@ -31346,15 +31469,15 @@ namespace ins
   // under its rounding mode.
   template <auto U, insidable Out, reference R, class V>
     requires detail::is_unit_tag_v<decltype(U)>
-          && (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
+          && (!detail::exact_factor_v<detail::conversion_factor<R.unit(), decltype(U)::value>>)
   [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
   {
     constexpr ins::unit_value u{decltype(U)::value};
-    constexpr magnitude       f{detail::conversion_factor<R.U, u>};
-    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
+    constexpr magnitude       f{detail::conversion_factor<R.unit(), u>};
+    static_assert(dimension_of(u) == dimension_of(R.unit()), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     ins::math::detail::entry::require_rounding<Out>();
-    constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
+    constexpr reference to{R.kind(), R.kind_of(), R.derived(), u};
 #ifndef INSIDE_MATH_NO_FP
     // The double tier: x·(n/d)·π^±1 = (j·A)·c with c = fl(π/B) or fl(1/(π·B)) (pi_scaled):
     // j·A is a double exactly, c within 3·2^-53 of its value and the product within 2^-53 more,
@@ -31389,7 +31512,7 @@ namespace ins
       {
         static_assert(quantity_like<X> && number_like_v<X::reference>,
                       "units: the argument must be a number - an inside or a dimensionless quantity");
-        return rescale<conversion_factor<X::reference.U, unit_value{}>>(ins::detail::value_of(x));
+        return rescale<conversion_factor<X::reference.unit(), unit_value{}>>(ins::detail::value_of(x));
       }
     }
     template <class X>
@@ -31494,7 +31617,7 @@ namespace ins
           {
             static_assert(!Number, "ins::math: f<C>(q) - the result is a number: C is an inside");
             static_assert(quantity_like<C>, "ins::math: f<C>(q) - C is a quantity or its number");
-            static_assert((C::reference.U == To.U && implicit_v<To, C::reference>)
+            static_assert((C::reference.unit() == To.unit() && implicit_v<To, C::reference>)
                             || (PiAngles && pi_angle_output_v<C>),
                           "ins::math: f<C>(q) - C's unit must be exactly the result's (or name only "
                           "the number); asin, acos, atan and atan2 also give an angle in a unit with a factor of pi");
@@ -31629,7 +31752,7 @@ namespace ins::math::detail
   // units/detail/geoalg_exp.hpp).
   template <class T>
     requires ins::quantity_like<T>
-  inline constexpr int kind_rank<T> = ins::detail::has_blade(dimension_of(T::reference.U)) ? 3 : 2;
+  inline constexpr int kind_rank<T> = ins::detail::has_blade(dimension_of(T::reference.unit())) ? 3 : 2;
 
   // Quantities: the rule of F.
   template <class F, class... Args>

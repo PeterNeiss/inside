@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+Shorter type names for insides and quantities: a grid holds its limits as
+members of their own, a zero grid number is all zero bits (so a mangled name
+leaves it out), kind and origin references are plain pointers, and a
+quantity in a named unit and its own kind (m, kg, km, ℃) holds that unit
+alone. A quantity in metres prints in 232 characters instead of 404.
+
+### Upgrading from 0.11.0
+
+- `grid`'s members are `Lower`, `Upper`, `Notch` and `MaxDenominator`; the
+  nested `Interval` is gone. `g.interval()` gives the limits as an interval,
+  and a structured binding of a grid takes four names. `grid{{lo, hi}, notch}`
+  is spelled as before.
+- A `reference`'s parts are read through `unit()`, `kind()`, `kind_of()` and
+  `derived()` (`Q::reference.U` is `Q::reference.unit()`), and
+  `r.with_unit(u)` is the same kind facts on another unit.
+- `kind_ref` and `origin_ref` are `const kind_def*` and `const origin_def*`
+  and never null: none is `&no_kind` or `&no_origin`, which have no name.
+  `ref_or_none` and its `.P` are gone. A truth test such as `if (opts.kind)`
+  or `!P::origin` still compiles but is now always true or always false:
+  test `->Name.empty()`. A kind and an origin need a name.
+- `unit_value::Size` is `size()`.
+- A zero grid number is `grid_number{0, 0, 0}`, and a value past 64 bits
+  `grid_number{1, 0, …}`, for code that reads `Num` and `Den` itself.
+
+### Changed
+
+- Type names (`tools/symbol_lengths.sh`, GCC 16, characters):
+
+  | Type | Mangled before → now | Printed before → now |
+  |---|---|---|
+  | `inside<{0, 100}>` | 135 → 96 | 147 → 132 |
+  | `inside<{{0, 1}, per<100>}, round_half_away>` | 136 → 97 | 151 → 136 |
+  | `quantity<si::metre, …>`, also kg and km | 373 → 206 | 404 → 232 |
+  | J | 373 → 206 | 404 → 232 |
+  | S | 380 → 209 | 410 → 234 |
+  | a point in ℃ | 469 → 260 | 508 → 276 |
+  | ftm: `defined_by` | 363 → 196 | 393 → 221 |
+  | km/h | 377 → 344 | 429 → 441 |
+  | `isq::velocity[m/s]` | 413 → 357 | 455 → 453 |
+
+  A reference that is not one named unit and its own kind (a unit of several
+  factors, a kind named with `kind[unit]`, a product of kinds) holds its parts
+  and keeps about its length. The 46 examples' symbols at -O0 shrink by 12 %
+  (31.9 MB → 28.2 MB), their objects by 7 %. Compile time (`perf stat`,
+  instructions): `units.hpp` −1.0 %, 200 quantity expressions −1.7 %, 200
+  inside expressions unchanged, `inside.hpp` +0.1 %, `arithmetic.test.cpp`
+  +0.4 %. Run time: the instruction counts of the perf workload are
+  unchanged.
+
 ## 0.11.0 — 2026-11-21
 
 Short type names: the catalog's units, kinds and origins are named definition
