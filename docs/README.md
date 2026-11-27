@@ -59,7 +59,7 @@ and the [certified math pairs](certified.md).
 
 | Header | Holds |
 |---|---|
-| `<inside/inside.hpp>` | the number: `inside`, grids, policies, arithmetic, casts, ranges, `cursor`, `std::hash` and `std::numeric_limits` |
+| `<inside/inside.hpp>` | the number: `id`, grids, policies, arithmetic, casts, ranges, `cursor`, `std::hash` and `std::numeric_limits` |
 | `<inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
 | `<inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `uq8_8` …, and the counters |
 | `<inside/inside/random.hpp>` | `uniform<B>(rng)` |

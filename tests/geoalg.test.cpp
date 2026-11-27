@@ -261,7 +261,7 @@ TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
     EXPECT_TRUE((just<3> + just<4> * xy) / (just<1> - just<2> * xy) == just<-1> + just<2> * xy);
 
     // A grid that holds 0: the inverse is an expected.
-    using gaussian = multivector<inside<{-2, 2}>, quantity<xy, inside<{-2, 2}>>>;
+    using gaussian = multivector<id<"[-2..2]">, id<"[-2..2] [xy]">>;
     const gaussian zero{};
     const gaussian two{just<2> + just<0> * xy};
     const auto     bad  = inverse(zero);
@@ -273,7 +273,7 @@ TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
 }
 
 TEST(GeoalgTest, declared_multivectors_convert) {
-    using complex = multivector<inside<{-10, 10}>, quantity<xy, inside<{-10, 10}>>>;
+    using complex = multivector<id<"[-10..10]">, id<"[-10..10] [xy]">>;
     const complex a{just<3> + just<4> * xy};
     const complex b = just<2>; // the missing part is 0
     const complex c{just<1> * x * y};
@@ -282,7 +282,7 @@ TEST(GeoalgTest, declared_multivectors_convert) {
     EXPECT_EQ(to_string(c), "0 + 1 xy");
     static_assert(!std::is_constructible_v<complex, decltype(just<1> * z)>);
     // Narrowing a part's grid is checked, as for an inside, or takes a policy.
-    using small = multivector<inside<{-1, 1}>, quantity<xy, inside<{-1, 1}>>>;
+    using small = multivector<id<"[-1..1]">, id<"[-1..1] [xy]">>;
     const small s{a, clamp};
     EXPECT_EQ(to_string(s), "1 + 1 xy");
     EXPECT_EQ(to_string((just<2> * km * x + just<3> * km * y).in(si::metre)), "2000 m·x + 3000 m·y");
@@ -323,8 +323,8 @@ TEST(GeoalgTest, sandwich_and_rotate_keep_the_grades) {
     EXPECT_TRUE(rotate(t, v) == just<6> * si::metre * x + just<4> * si::metre * y + just<5> * si::metre * z);
     EXPECT_TRUE(rotate(t, v) == sandwich(t, v));
     // A rotor whose norm's grid holds 0: sandwich is an expected, rotate scales by |q|² (here ½).
-    using unit_part = inside<{{-1, 1}, per<1024>}>;
-    const multivector<unit_part, quantity<xy, unit_part>> q{unit_part{0.5}, quantity<xy, unit_part>{0.5, xy}};
+    using unit_part = id<"[-1..1] 1/1024">;
+    const multivector<unit_part, id<"[-1..1] 1/1024 [xy]">> q{unit_part{0.5}, id<"[-1..1] 1/1024 [xy]">{0.5, xy}};
     const auto s = sandwich(q, v);
     static_assert(detail::is_expected_v<decltype(s)>);
     ASSERT_TRUE(s.has_value());

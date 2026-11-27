@@ -6,7 +6,7 @@
 
 int main() {
     using namespace ins;
-    using deg = quantity<si::degree, inside<{{0, 180}, per<2>}>>;
-    using out = inside<{{-1000, 1000}, per<1000>}, round_half_away>;
+    using deg = id<"[0..180] 1/2 [deg]">;
+    using out = id<"[-1000..1000] 1/1000 round_half_away">;
     (void)math::tan<out>(deg{30, si::degree});
 }

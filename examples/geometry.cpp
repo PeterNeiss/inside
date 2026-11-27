@@ -21,7 +21,7 @@ namespace
 
 int main()
 {
-  using pixels = quantity<px, inside<{-100, 100}>>; // screen coordinates, whole pixels
+  using pixels = id<"[-100..100] [px]">; // screen coordinates, whole pixels
 
   // a = (3, 4) and b = (4, -3), chosen perpendicular.
   pixels ax{3, px}, ay{4 , px};
@@ -51,8 +51,8 @@ int main()
   std::cout << "  point (5, 0)   is " << side(o, o, ten, o, five, o)    << "\n";
 
   // lerp(a, b, t) = a + (b − a) t with t on a [0, 1] grid: it stays inside, and dyadic t is exact.
-  using screen_x = quantity<px, inside<{0, 100}>>;
-  using fraction = inside<{{0, 1}, per<16>}, round_half_away>;
+  using screen_x = id<"[0..100] [px]">;
+  using fraction = id<"[0..1] 1/16 round_half_away">;
   screen_x x0{20, px}, x1{80, px};
   std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
   for (cursor<fraction, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1

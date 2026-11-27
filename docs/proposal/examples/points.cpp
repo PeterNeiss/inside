@@ -11,7 +11,7 @@ concept addable = requires(A a, B b) { a + b; };
 
 int main() {
     // [listing]
-    auto room = point<si::degree_Celsius>(inside<{{-50, 50}, per<10>}>{20});
+    auto room = point<si::degree_Celsius>(id<"[-50..50] 1/10">{20});
     auto k    = room.point_for(si::absolute_zero).in(si::kelvin);      // 293.15 K, exactly
     auto f    = room.point_in(international::degree_Fahrenheit);       // 68 ℉, exactly
     auto warm = room + just<5> * si::kelvin;                           // 25 ℃: a point plus a difference

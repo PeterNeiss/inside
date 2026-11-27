@@ -25,12 +25,12 @@ int main() {
     using namespace ins;
 
     // Core arithmetic — no FP anywhere.
-    inside<{0, 100}, clamp> a{200}; // -> 100
-    inside<{0, 9}, wrap>    w{13};  // -> 3
+    id<"[0..100] clamp"> a{200};    // -> 100
+    id<"[0..9] wrap">    w{13};     // -> 3
 
     // Transcendentals via the integer/CORDIC engine on a rounding grid. These are
     // constexpr under INSIDE_MATH_NO_FP, so evaluate at compile time too.
-    using Ang         = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using Ang         = id<"[-8..8] 1/16384 round_half_away">;
     constexpr auto s0 = math::sin(Ang{0});
     constexpr auto c0 = math::cos(Ang{0});
     static_assert(detail::rational{s0} == 0);

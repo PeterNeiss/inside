@@ -7,6 +7,6 @@
 using namespace ins;
 
 int main() {
-    inside<{{0, 10}, -2}> x{0};
+    id<key{grid{{0, 10}, -2}}> x{0};
     (void)x;
 }

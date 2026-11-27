@@ -89,13 +89,13 @@ namespace ins::math::detail
     return (s.Flags & (mode_bits | snap)) != 0 ? f : with_default_rounding(f);
   }
   template <insidable R, out_spec S>
-  using with_spec_flags_t = inside<grid_of<R>, spec_flags(policy_of<R>, S)>;
+  using with_spec_flags_t = id<key{grid_of<R>, spec_flags(policy_of<R>, S)}>;
 
   // An exact output R on notch N: its range rounded outward onto N.
   template <insidable R, grid_number N>
-  using on_notch_t = inside<
+  using on_notch_t = id<key{
     grid{{grid_round<round_mode::floor>(lower_of<R> / N) * N, grid_round<round_mode::ceil>(upper_of<R> / N) * N}, N},
-    policy_of<R>>;
+    policy_of<R>}>;
 
   // A rounding function's deduced output over insides In… for specs S:
   // on the named notch, else on its own (the arguments' notch, which they need then).
@@ -104,7 +104,7 @@ namespace ins::math::detail
   consteval auto rounding_output()
   {
     if constexpr (!F::template domain<In...>)
-      return std::type_identity<inside<{0, 1}, round_half_away>>{};
+      return std::type_identity<id<"[0..1] round_half_away">>{};
     else if constexpr (S.HasNotch)
       return std::type_identity<typename F::template result_on<S.Notch, In...>>{};
     else
@@ -254,7 +254,7 @@ namespace ins::math::detail
   consteval auto named_twin()
   {
     if constexpr (F::rounds)
-      return std::type_identity<inside<named_twin_grid<F, O, In...>(), policy_of<O>>>{};
+      return std::type_identity<id<key{named_twin_grid<F, O, In...>(), policy_of<O>}>>{};
     else
       return std::type_identity<typename F::template result<In...>>{};
   }

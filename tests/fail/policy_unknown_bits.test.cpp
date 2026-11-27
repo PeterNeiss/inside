@@ -5,6 +5,6 @@
 #include <inside/inside.hpp>
 
 int main() {
-    ins::inside<{0, 10}, 7> x{3};
+    ins::id<ins::key{ins::grid{0, 10}, 7}> x{3};
     (void)x;
 }

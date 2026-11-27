@@ -6,7 +6,7 @@
 #include <inside/math.hpp>
 
 int main() {
-    using from_zero = ins::inside<{0, 8}, ins::round_half_away>;
+    using from_zero = ins::id<"[0..8] round_half_away">;
     auto l          = ins::math::log(from_zero{1});
     (void)l;
 }

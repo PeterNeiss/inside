@@ -5,4 +5,4 @@
 
 using namespace ins;
 
-int main() { (void)math::sin<per<64>, per<128>>(inside<{{-1, 1}, per<64>}, round_half_away>{0.5}); }
+int main() { (void)math::sin<per<64>, per<128>>(id<"[-1..1] 1/64 round_half_away">{0.5}); }

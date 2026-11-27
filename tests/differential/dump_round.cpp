@@ -38,8 +38,8 @@ void store(rng_t& g, int n, const char* mode, bool clamped, bool ties) {
         // which an unanchored grid rounds by slot.
         if (!ties)
             continue;
-        using A   = inside<{{-4, 4}, per<4>}>;
-        using D   = inside<{{-3, 3}, per<3>}>;
+        using A   = id<"[-4..4] 1/4">;
+        using D   = id<"[-3..3] 1/3">;
         const A a = pick<A>(g);
         const D e = pick<D>(g);
         std::cout << "S " << mode << ' ' << clamped << ' ' << lower_of<B> << ' ' << upper_of<B> << ' '
@@ -57,13 +57,13 @@ void store(rng_t& g, int n, const char* mode, bool clamped, bool ties) {
 
 template <grid G, bool Ties>
 void modes(rng_t& g, int n) {
-    store<inside<G, round_half_away>>(g, n, "nearest", false, Ties);
-    store<inside<G, round_floor>>(g, n, "floor", false, Ties);
-    store<inside<G, round_ceil>>(g, n, "ceil", false, Ties);
-    store<inside<G, round_half_even>>(g, n, "even", false, Ties);
-    store<inside<G, round_toward_zero>>(g, n, "trunc", false, Ties);
-    store<inside<G, round_half_away | clamp>>(g, n, "nearest", true, Ties);
-    store<inside<G, round_floor | clamp>>(g, n, "floor", true, Ties);
+    store<id<key{G, round_half_away}>>(g, n, "nearest", false, Ties);
+    store<id<key{G, round_floor}>>(g, n, "floor", false, Ties);
+    store<id<key{G, round_ceil}>>(g, n, "ceil", false, Ties);
+    store<id<key{G, round_half_even}>>(g, n, "even", false, Ties);
+    store<id<key{G, round_toward_zero}>>(g, n, "trunc", false, Ties);
+    store<id<key{G, round_half_away | clamp}>>(g, n, "nearest", true, Ties);
+    store<id<key{G, round_floor | clamp}>>(g, n, "floor", true, Ties);
 }
 } // namespace
 

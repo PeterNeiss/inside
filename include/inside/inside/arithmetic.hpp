@@ -934,7 +934,7 @@ namespace ins
   {
     const auto w{a + (b - a) * t};
     using W = std::remove_cvref_t<decltype(w)>;
-    using R = inside<detail::lerp_grid<W, A, B, T>(), policy_of<W>>;
+    using R = id<key{detail::lerp_grid<W, A, B, T>(), policy_of<W>}>;
     if constexpr (std::is_same_v<R, W>)
       return w;
     else
@@ -949,7 +949,7 @@ namespace ins
     template <insidable Lhs, insidable Rhs>
     struct common_inside
     {
-      using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>>;
+      using type = id<key{hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>}>;
     };
 
     // Same type stays itself (policy included), mirroring std::common_type<T, T>.
@@ -988,7 +988,7 @@ namespace ins
     template <insidable Lhs, insidable Rhs, bool Max>
     struct extreme_type
     {
-      using type = inside<extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>>;
+      using type = id<key{extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>}>;
     };
     template <insidable Same, bool Max>
     struct extreme_type<Same, Same, Max>

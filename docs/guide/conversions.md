@@ -4,11 +4,11 @@ How values cross the boundary of an inside: native numbers in and out,
 casts, comparisons, and text.
 
 ```cpp
-inside<{0, 1000}> b{42};                   // in: from an int
+id<"[0..1000]"> b{42};                     // in: from an int
 auto n = b.to<int>();                      // out: 42, a plain int: 1000 fits one
 auto m = b.to<std::uint8_t>();             // out: a std::expected, since 1000 does not fit a byte
 std::cout << b;                            // text: 42
-auto p = parse<inside<{0, 1000}>>("42");   // text in: a std::expected
+auto p = parse<id<"[0..1000]">>("42");     // text in: a std::expected
 ```
 
 ## Into an inside
@@ -29,7 +29,7 @@ or rounds.
 To test a value without storing it:
 
 ```cpp
-using bounded = inside<{0, 100}>;
+using bounded = id<"[0..100]">;
 conversion_overflows<bounded>(150);   // true: outside [0, 100]
 conversion_rounds<bounded>(3.5);      // true: not on notch 1
 conversion_loses<bounded>(150);       // true: either of the two
@@ -64,7 +64,7 @@ non-negative integer, converts to the builtin integers. A container takes it
 as it is:
 
 ```cpp
-using row = inside<{0, 479}>;
+using row = id<"[0..479]">;
 std::array<int, 480> a{};
 row r = 17;
 a[r] = 1;       // also std::vector, std::span, std::mdspan, a builtin array
@@ -73,7 +73,7 @@ a[r] = 1;       // also std::vector, std::span, std::mdspan, a builtin array
 - The target is any builtin integer type that holds the whole grid. A
   smaller one, `bool`, a character and a floating type do not compile:
   nothing narrows, and `int n = x;` loses nothing.
-- The grid need not start at 0: `inside<{3, 11}>` names the positions 3 to
+- The grid need not start at 0: `id<"[3..11]">` names the positions 3 to
   11 of a larger array. A grid with a negative or fractional value is no
   index (`x.to<T>()` reads it), and neither is a cursor, whose end lies one
   past the last index.
@@ -93,7 +93,7 @@ An inside compares with other insides, integers and rationals, exactly, and
 without narrowing either side:
 
 ```cpp
-inside<{0, 100}> a{42}, c{58};
+id<"[0..100]"> a{42}, c{58};
 a == 42;          // true
 a < 50.5_ins;       // true
 a + c == 100;     // true
@@ -118,10 +118,10 @@ With `<inside/inside/io.hpp>`, `to_string(x)`, `std::cout << x` and
 A format spec rounds once, from the exact value, by the type's rounding mode:
 
 ```cpp
-using hundredths = inside<{{0, 1'000'000}, per<100>}>;
+using hundredths = id<"[0..1'000'000] 1/100">;
 hundredths x{19.9_ins};
 std::println("{} {:.1f} {:>8}", x, x, x);   // 19.90 19.9    19.90
-std::println("{:#04x}", inside<{0, 100}>{42});          // 0x2a
+std::println("{:#04x}", id<"[0..100]">{42});          // 0x2a
 ```
 
 ## Parsing
@@ -134,7 +134,7 @@ parse<bounded>("42");                      // 42
 parse<bounded>("0.1");                     // error::rounding_error: not on the grid
 parse<bounded>("150");                     // error::overflow
 parse<bounded>("4x");                      // error::invalid_format
-parse<inside<{{0, 1}, per<10>}>>("0.1");   // exactly 1/10
+parse<id<"[0..1] 1/10">>("0.1");           // exactly 1/10
 std::cin >> a;                             // one token; failbit on an error
 ```
 

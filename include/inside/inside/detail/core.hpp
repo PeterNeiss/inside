@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Internal: include <inside/inside.hpp> (the umbrella), not this directly.
-// The core type ins::inside<G, P>:
+// The core type ins::id<ins::key{G, P}>:
 // construction and try_make, compound assignment, ++/--, the conversions (rational, double, to<T>),
 // numerator()/denominator(), raw()/from_raw, the per-store overrides (with<F>(), on_error(ec))
 // and hooks (on_wrap, on_clamp, on_error), parse(first, last), just<…> and the _ins literal.
@@ -52,7 +52,7 @@ namespace ins
     // which assigns into T.
     template <grid G, policy_flag P>
     using cursor_value_t =
-      inside<grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
+      id<key{grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker}>;
 
     // (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
 
@@ -216,7 +216,7 @@ namespace ins
     static constexpr policy_flag P{detail::key_policy<Key>};
 
   public:
-    static_assert(Key.ok(), detail::key_error<detail::text_hook<0>>(Key));
+    static_assert(Key.ok(), detail::key_error<Key>());
     static_assert(detail::key_spec<Key>.Unit.empty(),
                   "inside: a type with a unit is a quantity - include <inside/units.hpp> before naming it");
     static_assert(grid::validate<G>());
@@ -228,7 +228,7 @@ namespace ins
       "round_half_even)");
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
-    using negated_type = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
+    using negated_type = id<key{-G, P & ~detail::cursor_marker}>; // −cursor is no cursor
     using raw_type     = detail::raw_for_t<G>;
 
   private:
@@ -281,7 +281,7 @@ namespace ins
     template <class Pol>
     static constexpr policy_flag flags_with = detail::override_flags(P, policy_of<Pol>);
     template <class Pol>
-    using twin_with = inside<G, flags_with<Pol>>;
+    using twin_with = id<key{G, flags_with<Pol>}>;
 
   public:
     // (Raw starts at the default value: a store that fails leaves its target unchanged,
@@ -341,8 +341,8 @@ namespace ins
     constexpr void store_with(const A& value, Pol& pol)
     {
       constexpr policy_flag O{detail::override_flags(P, policy_of<Pol>)};
-      inside<G, O> twin;
-      detail::assignment<inside<G, O>, A>::assign(twin, value, detail::with_flags<O>(pol));
+      id<key{G, O}> twin;
+      detail::assignment<id<key{G, O}>, A>::assign(twin, value, detail::with_flags<O>(pol));
       Raw = twin.raw();
     }
 
@@ -404,7 +404,7 @@ namespace ins
     constexpr void store_grid_number_with(const grid_number& value, Pol& pol)
     {
       constexpr policy_flag O{detail::override_flags(P, policy_of<Pol>)};
-      inside<G, O> twin;
+      id<key{G, O}> twin;
       detail::assign_grid_number(twin, value, detail::with_flags<O>(pol));
       Raw = twin.raw();
     }
@@ -479,7 +479,7 @@ namespace ins
     // No implicit integer conversion:
     // it would narrow silently into a smaller builtin (int i = b;, unsigned char c = b;), the range escaping the type.
     // The exception is an index, an inside whose every value is a non-negative integer
-    // (inside<{0, 479}>, inside<{3, 11}>): it converts to each builtin integer that holds its whole grid,
+    // (id<"[0..479]">, id<"[3..11]">): it converts to each builtin integer that holds its whole grid,
     // which is what std::mdspan, std::array, std::span, std::vector and builtin arrays ask of an index
     // (m[i, j], a[i]).
     // Never narrowing, and never to bool, a character or a floating type:
@@ -696,7 +696,7 @@ namespace ins
     // Read a builtin with .to<T>().
     [[nodiscard]] constexpr auto numerator() const
     {
-      using N = inside<detail::numerator_grid(G)>;
+      using N = id<key{detail::numerator_grid(G)}>;
       if constexpr (detail::point_storage<N>)
         return N::from_raw({}, unsafe);
       else if constexpr (detail::numerator_grid(G) == G)
@@ -708,7 +708,7 @@ namespace ins
     }
     [[nodiscard]] constexpr auto denominator() const
     {
-      using D = inside<detail::denominator_grid(G)>;
+      using D = id<key{detail::denominator_grid(G)}>;
       if constexpr (detail::point_storage<D>)
         return D::from_raw({}, unsafe);
       else if constexpr (detail::fraction_fits_int64<id>)
@@ -724,7 +724,7 @@ namespace ins
     [[nodiscard]] constexpr auto step() const noexcept
       requires(G.Notch != 0 || G.Lower == G.Upper)
     {
-      using I = inside<detail::index_grid(G)>;
+      using I = id<key{detail::index_grid(G)}>;
       if constexpr (detail::point_storage<id>)
         return I::from_raw({}, unsafe);
       else if constexpr (detail::index_storage<id>)
@@ -748,15 +748,15 @@ namespace ins
     static constexpr auto step_value(const I& i)
     {
       constexpr grid_number unit_value{G.Notch != 0 ? G.Notch : grid_number{1}};
-      constexpr auto        lower{inside<grid{G.Lower}>::from_raw({}, unsafe)};
-      constexpr auto        step{inside<grid{unit_value}>::from_raw({}, unsafe)};
+      constexpr auto        lower{id<key{grid{G.Lower}}>::from_raw({}, unsafe)};
+      constexpr auto        step{id<key{grid{unit_value}}>::from_raw({}, unsafe)};
       return lower + i * step;
     }
     // A builtin index as the inside on its type's range.
     template <std::integral T>
     static constexpr auto as_step_inside(T n)
     {
-      return inside<grid{interval_of<T>, grid_number{1}}>{n};
+      return id<key{grid{interval_of<T>, grid_number{1}}}>{n};
     }
 
   public:
@@ -789,7 +789,7 @@ namespace ins
     {
       using V = decltype(step_value(i));
       constexpr policy_flag O{detail::override_flags(P, policy_of<Pol>)};
-      if constexpr (detail::store_proven<inside<G, O>, V, O> || detail::reports_into_errc<Pol>)
+      if constexpr (detail::store_proven<id<key{G, O}>, V, O> || detail::reports_into_errc<Pol>)
         return id{step_value(i), std::forward<Pol>(pol)};
       else
         return detail::try_store<id, O>([&](id& r, auto&& ec_pol) { r = id{step_value(i), ec_pol}; });
@@ -1225,8 +1225,8 @@ namespace ins
     // A cursor steps one past its last value to its end;
     // stepping past the end is a precondition, reported to the error handler.
   private:
-    using up_step_t   = inside<grid{G.Notch}>;
-    using down_step_t = inside<grid{-G.Notch}>;
+    using up_step_t   = id<key{grid{G.Notch}}>;
+    using down_step_t = id<key{grid{-G.Notch}}>;
     static constexpr bool is_cursor = has_flag(P, detail::cursor_marker);
     template <class S>
     static constexpr bool step_proven = is_cursor || compound_proven<sum_t<S>>;
@@ -1502,11 +1502,11 @@ namespace ins
     consteval auto just_point()
     {
       if constexpr (std::integral<decltype(den)> && den == 1)
-        return inside<grid{value}>::from_raw({}, unsafe);
+        return id<key{grid{value}}>::from_raw({}, unsafe);
       else
       {
         static_assert(integer_den<den>(), "just<N, D>: D is an integer of at least 1");
-        return inside<grid{grid_number{value} / grid_number{den}}>::from_raw({}, unsafe);
+        return id<key{grid{grid_number{value} / grid_number{den}}}>::from_raw({}, unsafe);
       }
     }
   } // namespace detail
@@ -1515,28 +1515,28 @@ namespace ins
 
   // step_t<T>, step_count_of<T>: a grid's counts as insides, for run time
   // (a grid number past 64 bits exists only at compile time).
-  // - step_t<T>: inside<{0, step_count}>, what t.step() returns and T::from_step(i) takes back,
+  // - step_t<T>: id<key{grid{0, step_count}}>, what t.step() returns and T::from_step(i) takes back,
   //   with the same raw type as T's index.
   // - step_count_of<T>: (Upper − Lower)/Notch as a point of 0 bytes, the largest index,
   //   one less than the number of values.
   template <insidable T>
     requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
-  using step_t = inside<detail::index_grid(grid_of<T>)>;
+  using step_t = id<key{detail::index_grid(grid_of<T>)}>;
 
   template <insidable T>
     requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
   inline constexpr auto step_count_of = just<grid_number{grid_of<T>.step_count()}>;
 
-  // The _ins literal: a compile-time inside<{V, V}> from a numeric literal.
-  //   5_ins         inside<{5, 5}>                 integer
-  //   1.25_ins      inside<{rational{5,4}}>        decimal
-  //   1.5e2_ins     inside<{150}>                  decimal scientific
-  //   0xff_ins      inside<{255}>                  hex integer
-  //   0b1010_ins    inside<{10}>                   binary integer
-  //   0x1p15_ins    inside<{32768}>                hex with a 2^N exponent (Q-format)
-  //   0x1p-15_ins   inside<{rational{1,32768}}>    1/2^15, a grid notch
-  //   0x1.8p3_ins   inside<{12}>                   hex float
-  //   1'000_ins     inside<{1000}>                 digit separator
+  // The _ins literal: a compile-time id<key{grid{V, V}}> from a numeric literal.
+  //   5_ins         id<"[5..5]">                 integer
+  //   1.25_ins      id<"[5/4]">        decimal
+  //   1.5e2_ins     id<"[150]">                  decimal scientific
+  //   0xff_ins      id<"[255]">                  hex integer
+  //   0b1010_ins    id<"[10]">                   binary integer
+  //   0x1p15_ins    id<"[32768]">                hex with a 2^N exponent (Q-format)
+  //   0x1p-15_ins   id<"[1/32768]">    1/2^15, a grid notch
+  //   0x1.8p3_ins   id<"[12]">                   hex float
+  //   1'000_ins     id<"[1000]">                 digit separator
   // The parse is exact (no double round-trip) and of any size, as _g reads it (inside/detail/grid_rational.hpp):
   // 18446744073709551616_ins is the point 2^64. -1.5_ins parses as -(1.5_ins).
   inline namespace literals

@@ -53,13 +53,13 @@ inline constexpr auto g2  = basis_vector<"γ₂", geometric<-1>, {.ascii = "g2"}
 inline constexpr auto g3  = basis_vector<"γ₃", geometric<-1>, {.ascii = "g3"}>;
 
 template <policy_flag M>
-using in_t = inside<{{-4, 4}, per<64>}, M>;
+using in_t = id<key{grid{{-4, 4}, per<64>}, M}>;
 template <policy_flag M>
-using out_t = inside<{{-64, 64}, per<1 << 20>}, M>;
+using out_t = id<key{grid{{-64, 64}, per<1 << 20>}, M}>;
 template <policy_flag M>
-using fine_t = inside<{{-64, 64}, per<(std::int64_t{1} << 40)>}, M>;
+using fine_t = id<key{grid{{-64, 64}, per<(std::int64_t{1} << 40)>}, M}>;
 template <policy_flag M>
-using dec_t = inside<{{-64, 64}, rational{1, 1000}}, M>;
+using dec_t = id<key{grid{{-64, 64}, rational{1, 1000}}, M}>;
 
 long double ld(const rational& r) { return static_cast<long double>(r.Num) / static_cast<long double>(r.Den); }
 template <class P>
@@ -114,8 +114,8 @@ template <template <policy_flag> class Out, policy_flag M>
 int complex_mismatches(int stride) {
     using I   = in_t<round_half_away>;
     using O   = Out<M>;
-    using dom = multivector<I, quantity<i, I>>;
-    using cod = multivector<O, quantity<i, O>>;
+    using dom = multivector<I, id<quantity_key<i, I>>>;
+    using cod = multivector<O, id<quantity_key<i, O>>>;
     int bad   = 0;
     for (int ra = -256; ra <= 256; ra += stride)
         for (int rb = -256; rb <= 256; rb += stride) {
@@ -144,8 +144,8 @@ TEST(GeoalgExpTest, complex_numbers_round_correctly) {
 TEST(GeoalgExpTest, rotors_from_bivectors) {
     using I   = in_t<round_half_away>;
     using O   = out_t<round_half_away>;
-    using dom = multivector<quantity<i, I>, quantity<j, I>, quantity<k, I>>;
-    using cod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
+    using dom = multivector<id<quantity_key<i, I>>, id<quantity_key<j, I>>, id<quantity_key<k, I>>>;
+    using cod = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>, id<quantity_key<k, O>>>;
     int bad   = 0;
     for (int u = -256; u <= 256; u += 37)
         for (int v = -256; v <= 256; v += 41)
@@ -174,11 +174,11 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
     using O = out_t<round_half_away>;
     int bad = 0;
     // a + b e₁, e₁² = +1: e^a (cosh b + e₁ sinh b).
-    using hdom = multivector<I, quantity<e1, I>>;
-    using hcod = multivector<O, quantity<e1, O>>;
+    using hdom = multivector<I, id<quantity_key<e1, I>>>;
+    using hcod = multivector<O, id<quantity_key<e1, O>>>;
     // a + b ε, ε² = 0: e^a (1 + b ε).
-    using ndom = multivector<I, quantity<eps, I>>;
-    using ncod = multivector<O, quantity<eps, O>>;
+    using ndom = multivector<I, id<quantity_key<eps, I>>>;
+    using ncod = multivector<O, id<quantity_key<eps, O>>>;
     // a ≤ 1.5 and |b| ≤ 2.5 keep e^a cosh b within CoDomain's [-64, 64].
     for (int ra = -192; ra <= 96; ra += 11)
         for (int rb = -160; rb <= 160; rb += 13) {
@@ -204,12 +204,12 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
     EXPECT_EQ(math::exp<hcod>(hdom{I{3} + I{4} * e1}).error(), error::overflow);
     EXPECT_EQ(math::exp<ncod>(ndom{I{3} + I{4} * eps}).error(), error::overflow);
     EXPECT_TRUE(math::exp<hcod>(hdom{I{1} + I{1} * e1}).has_value());
-    using unit_part = inside<{{-1, 1}, per<1024>}, round_half_away>;
-    using rcod1     = multivector<unit_part, quantity<i, unit_part>>;
-    static_assert(std::same_as<decltype(math::exp<rcod1>(quantity<i, I>{})), rcod1>);
+    using unit_part = id<"[-1..1] 1/1024 round_half_away">;
+    using rcod1     = multivector<unit_part, id<"[-1..1] 1/1024 [i] round_half_away">>;
+    static_assert(std::same_as<decltype(math::exp<rcod1>(id<quantity_key<i, I>>{})), rcod1>);
     // A boost and a rotation that share γ₁: they anticommute, and z changes sign.
-    using mdom = multivector<quantity<g0 * g1, I>, quantity<g1 * g2, I>>;
-    using mcod = multivector<O, quantity<g0 * g1, O>, quantity<g1 * g2, O>>;
+    using mdom = multivector<id<quantity_key<g0 * g1, I>>, id<quantity_key<g1 * g2, I>>>;
+    using mcod = multivector<O, id<quantity_key<g0 * g1, O>>, id<quantity_key<g1 * g2, O>>>;
     for (int u = -256; u <= 256; u += 17)
         for (int v = -256; v <= 256; v += 19) {
             const long double y[2]  = {u / 64.0L, v / 64.0L};
@@ -227,13 +227,13 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
 TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
     using I   = in_t<round_floor>;
     using O   = out_t<round_floor>;
-    using dom = multivector<I, quantity<i, I>>;
-    using cod = multivector<O, quantity<i, O>>;
+    using dom = multivector<I, id<quantity_key<i, I>>>;
+    using cod = multivector<O, id<quantity_key<i, O>>>;
     // exp(0) = 1 exactly, under floor: no neighbour below.
     static_assert(math::exp<cod>(dom{}) == one);
     // A light-like boost plus rotation: z = 0, exp(y) = 1 + y exactly.
-    using mdom = multivector<quantity<g0 * g1, I>, quantity<g1 * g2, I>>;
-    using mcod = multivector<O, quantity<g0 * g1, O>, quantity<g1 * g2, O>>;
+    using mdom = multivector<id<quantity_key<g0 * g1, I>>, id<quantity_key<g1 * g2, I>>>;
+    using mcod = multivector<O, id<quantity_key<g0 * g1, O>>, id<quantity_key<g1 * g2, O>>>;
     const mdom n{test::store<I>(rational{3, 4}) * (g0 * g1) + test::store<I>(rational{3, 4}) * (g1 * g2)};
     EXPECT_TRUE((math::exp<mcod>(n) == just<1> + n));
     // A compile-time value equals the run-time one.
@@ -242,8 +242,8 @@ TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
     EXPECT_TRUE((c == math::exp<cod>(x)));
     // A part CoDomain has beyond the argument's blades is 0; a signed
     // spelling (j = -e₁e₃) gets its sign.
-    using qdom   = quantity<j, I>;
-    using qcod   = multivector<O, quantity<i, O>, quantity<j, O>>;
+    using qdom   = id<quantity_key<j, I>>;
+    using qcod   = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>>;
     const qcod q = math::exp<qcod>(qdom{test::store<I>(rational{1, 2}), j});
     EXPECT_TRUE(std::get<1>(q.parts()) == just<0> * i);
     EXPECT_NEAR(static_cast<double>(coef(std::get<2>(q.parts()))), std::sin(0.5), 1e-6);
@@ -256,14 +256,14 @@ TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
 TEST(GeoalgExpTest, the_deduced_output) {
     using I   = in_t<round_half_away>;
     using O   = out_t<round_half_away>;
-    using dom = multivector<quantity<i, I>, quantity<j, I>, quantity<k, I>>;
-    using cod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
+    using dom = multivector<id<quantity_key<i, I>>, id<quantity_key<j, I>>, id<quantity_key<k, I>>>;
+    using cod = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>, id<quantity_key<k, O>>>;
     const dom x =
         test::store<I>(rational{5, 8}) * i + test::store<I>(rational{-3, 8}) * j + test::store<I>(rational{1, 4}) * k;
     // A rotor: every part within ±1, its range 1 + one notch.
     using R = decltype(math::exp<per<1 << 20>>(x));
-    using P = inside<{{-1 - rational{1, 1 << 20}, 1 + rational{1, 1 << 20}}, per<1 << 20>}, round_half_away>;
-    static_assert(std::same_as<R, multivector<P, quantity<i, P>, quantity<j, P>, quantity<k, P>>>);
+    using P = id<key{grid{{-1 - rational{1, 1 << 20}, 1 + rational{1, 1 << 20}}, per<1 << 20>}, round_half_away}>;
+    static_assert(std::same_as<R, multivector<P, id<quantity_key<i, P>>, id<quantity_key<j, P>>, id<quantity_key<k, P>>>>);
     static_assert(ins::detail::gaexp::facts<dom, R>::in_range == std::array{true, true, true, true});
     const R   r = math::exp<per<1 << 20>>(x);
     const cod c = math::exp<cod>(x);
@@ -276,16 +276,16 @@ TEST(GeoalgExpTest, the_deduced_output) {
     EXPECT_EQ(math::exp<O>(x), c);
     EXPECT_EQ((math::exp<O, dom>(x)), c);
     // A complex number with a scalar part: e^amax bounds it.
-    using cdom = multivector<I, quantity<i, I>>;
+    using cdom = multivector<I, id<quantity_key<i, I>>>;
     using C    = decltype(math::exp<per<1024>>(cdom{I{2} + I{1} * i}));
     static_assert(upper_of<std::tuple_element_t<0, C::parts_type>> >= 54 &&
                   upper_of<std::tuple_element_t<0, C::parts_type>> < 55); // e^4 = 54.598…
     // A boost (hyperbolic) and a dual number deduce too.
     EXPECT_NEAR(
-        static_cast<double>(coef(std::get<0>(math::exp<per<1 << 20>>(quantity<g0 * g1, I>{1, g0 * g1}).parts()))),
+        static_cast<double>(coef(std::get<0>(math::exp<per<1 << 20>>(id<quantity_key<g0 * g1, I>>{1, g0 * g1}).parts()))),
         std::cosh(1.0),
         1e-6);
-    EXPECT_EQ(coef(std::get<1>(math::exp<per<64>>(quantity<eps, I>{3, eps}).parts())), 3); // e^(3ε) = 1 + 3ε
+    EXPECT_EQ(coef(std::get<1>(math::exp<per<64>>(id<quantity_key<eps, I>>{3, eps}).parts())), 3); // e^(3ε) = 1 + 3ε
 }
 
 // A deleted overload is visible only through a template: a non-template
@@ -297,15 +297,15 @@ TEST(GeoalgExpTest, the_closed_form_is_required) {
     using I = in_t<round_half_away>;
     using O = out_t<round_half_away>;
     // e₁e₂ and γ... in 4-D: two commuting bivectors.
-    using four = multivector<quantity<g0 * g1, I>, quantity<g2 * g3, I>>;
-    using cod  = multivector<O, quantity<g0 * g1, O>, quantity<g2 * g3, O>, quantity<g0 * g1 * g2 * g3, O>>;
+    using four = multivector<id<quantity_key<g0 * g1, I>>, id<quantity_key<g2 * g3, I>>>;
+    using cod  = multivector<O, id<quantity_key<g0 * g1, O>>, id<quantity_key<g2 * g3, O>>, id<quantity_key<g0 * g1 * g2 * g3, O>>>;
     static_assert(!can_exp<four, cod>);
-    using ok = multivector<quantity<i, I>, quantity<j, I>, quantity<k, I>>;
-    static_assert(can_exp<ok, multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>>);
+    using ok = multivector<id<quantity_key<i, I>>, id<quantity_key<j, I>>, id<quantity_key<k, I>>>;
+    static_assert(can_exp<ok, multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>, id<quantity_key<k, O>>>>);
 }
 
 template <policy_flag M>
-using p52_t = inside<{{-8, 8}, per<(std::int64_t{1} << 52)>}, M>;
+using p52_t = id<key{grid{{-8, 8}, per<(std::int64_t{1} << 52)>}, M}>;
 
 // make(u/16, v/16) for |u| ≤ U, |v| ≤ V, every step-th: exp onto Cod by the
 // fast path against IntegerOnly.
@@ -327,10 +327,10 @@ int same_as_integer(int U, int V, int step, Make make) {
 
 // The fast tiers decide only what the integer path decides the same way.
 TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
-    using I   = inside<{{-4, 4}, per<16>}, round_half_away>;
+    using I   = id<"[-4..4] 1/16 round_half_away">;
     using O   = out_t<round_half_away>;
-    using dom = multivector<I, quantity<i, I>>;
-    using cod = multivector<O, quantity<i, O>>;
+    using dom = multivector<I, id<quantity_key<i, I>>>;
+    using cod = multivector<O, id<quantity_key<i, O>>>;
     int bad   = 0;
     for (int ra = -64; ra <= 64; ++ra)
         for (int rb = -64; rb <= 64; ++rb) {
@@ -345,9 +345,9 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
                          std::get<1>(s.parts()).numerical_value_in(i).raw());
         }
     EXPECT_EQ(bad, 0);
-    using J    = inside<{{-4, 4}, per<4>}, round_half_away>;
-    using rdom = multivector<quantity<i, J>, quantity<j, J>, quantity<k, J>>;
-    using rcod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
+    using J    = id<"[-4..4] 1/4 round_half_away">;
+    using rdom = multivector<id<"[-4..4] 1/4 [i] round_half_away">, id<"[-4..4] 1/4 [j] round_half_away">, id<"[-4..4] 1/4 [k] round_half_away">>;
+    using rcod = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>, id<quantity_key<k, O>>>;
     int bad3   = 0;
     for (int u = -16; u <= 16; ++u)
         for (int v = -16; v <= 16; ++v)
@@ -364,8 +364,8 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
     EXPECT_EQ(bad3, 0);
     // A boost and a rotation: z = v² - u² takes both signs, so the series,
     // trig and hyperbolic branches of both paths all run.
-    using mdom = multivector<quantity<g0 * g1, I>, quantity<g1 * g2, I>>;
-    using mcod = multivector<O, quantity<g0 * g1, O>, quantity<g1 * g2, O>>;
+    using mdom = multivector<id<quantity_key<g0 * g1, I>>, id<quantity_key<g1 * g2, I>>>;
+    using mcod = multivector<O, id<quantity_key<g0 * g1, O>>, id<quantity_key<g1 * g2, O>>>;
     int bad2   = 0;
     for (int u = -48; u <= 48; ++u)
         for (int v = -48; v <= 48; ++v) {
@@ -387,21 +387,21 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
     using F40 = fine_t<round_half_away>;
     using F52 = p52_t<round_floor>;
     using N52 = p52_t<round_half_away>;
-    EXPECT_EQ((same_as_integer<dom, multivector<F40, quantity<i, F40>>>(64, 64, 2, cplx)), 0);
-    EXPECT_EQ((same_as_integer<dom, multivector<F52, quantity<i, F52>>>(32, 64, 3, cplx)), 0);
+    EXPECT_EQ((same_as_integer<dom, multivector<F40, id<quantity_key<i, F40>>>>(64, 64, 2, cplx)), 0);
+    EXPECT_EQ((same_as_integer<dom, multivector<F52, id<quantity_key<i, F52>>>>(32, 64, 3, cplx)), 0);
     EXPECT_EQ(
-        (same_as_integer<mdom, multivector<N52, quantity<g0 * g1, N52>, quantity<g1 * g2, N52>>>(32, 32, 1, mixed)),
+        (same_as_integer<mdom, multivector<N52, id<quantity_key<g0 * g1, N52>>, id<quantity_key<g1 * g2, N52>>>>(32, 32, 1, mixed)),
         0);
     // One part of y: split-complex (e₁² = 1) and dual (ε² = 0) numbers.
-    using hdom       = multivector<I, quantity<e1, I>>;
-    using ndom       = multivector<I, quantity<eps, I>>;
+    using hdom       = multivector<I, id<quantity_key<e1, I>>>;
+    using ndom       = multivector<I, id<quantity_key<eps, I>>>;
     const auto split = [](rational a, rational b) { return hdom{test::store<I>(a) + test::store<I>(b) * e1}; };
     const auto dual  = [](rational a, rational b) { return ndom{test::store<I>(a) + test::store<I>(b) * eps}; };
-    EXPECT_EQ((same_as_integer<hdom, multivector<O, quantity<e1, O>>>(32, 32, 1, split)), 0);
-    EXPECT_EQ((same_as_integer<hdom, multivector<N52, quantity<e1, N52>>>(16, 24, 1, split)), 0);
-    EXPECT_EQ((same_as_integer<ndom, multivector<O, quantity<eps, O>>>(32, 64, 1, dual)), 0);
-    EXPECT_EQ((same_as_integer<ndom, multivector<N52, quantity<eps, N52>>>(16, 32, 1, dual)), 0);
-    using r52 = multivector<N52, quantity<i, N52>, quantity<j, N52>, quantity<k, N52>>;
+    EXPECT_EQ((same_as_integer<hdom, multivector<O, id<quantity_key<e1, O>>>>(32, 32, 1, split)), 0);
+    EXPECT_EQ((same_as_integer<hdom, multivector<N52, id<quantity_key<e1, N52>>>>(16, 24, 1, split)), 0);
+    EXPECT_EQ((same_as_integer<ndom, multivector<O, id<quantity_key<eps, O>>>>(32, 64, 1, dual)), 0);
+    EXPECT_EQ((same_as_integer<ndom, multivector<N52, id<quantity_key<eps, N52>>>>(16, 32, 1, dual)), 0);
+    using r52 = multivector<N52, id<quantity_key<i, N52>>, id<quantity_key<j, N52>>, id<quantity_key<k, N52>>>;
     int bad4  = 0;
     for (int u = -16; u <= 16; u += 2)
         for (int v = -16; v <= 16; v += 2)
@@ -424,8 +424,8 @@ TEST(GeoalgLogTest, complex_quaternion_boost_and_dual) {
     using O = out_t<round_half_away>;
     int bad = 0;
     // log(a + b i) = ½ log(a² + b²) + atan2(b, a) i; at b = 0, a < 0 the principal value π i.
-    using cdom = multivector<I, quantity<i, I>>;
-    using ccod = multivector<O, quantity<i, O>>;
+    using cdom = multivector<I, id<quantity_key<i, I>>>;
+    using ccod = multivector<O, id<quantity_key<i, O>>>;
     for (int ra = -256; ra <= 256; ra += 8)
         for (int rb = -256; rb <= 256; rb += 9) {
             const auto r = math::log<ccod>(cdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * i});
@@ -440,8 +440,8 @@ TEST(GeoalgLogTest, complex_quaternion_boost_and_dual) {
         }
     EXPECT_EQ(bad, 0);
     // Quaternions: log(s + v) = ½ log(s² + |v|²) + v·atan2(|v|, s)/|v|; a negative scalar has no axis.
-    using qdom = multivector<I, quantity<i, I>, quantity<j, I>, quantity<k, I>>;
-    using qcod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
+    using qdom = multivector<I, id<quantity_key<i, I>>, id<quantity_key<j, I>>, id<quantity_key<k, I>>>;
+    using qcod = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>, id<quantity_key<k, O>>>;
     int bad_q = 0;
     for (int s = -192; s <= 192; s += 48)
         for (int u = -128; u <= 128; u += 64)
@@ -468,8 +468,8 @@ TEST(GeoalgLogTest, complex_quaternion_boost_and_dual) {
                 }
     EXPECT_EQ(bad_q, 0);
     // A boost, e₁² = +1: log(a + b e₁) = ½ log(a² − b²) + atanh(b/a) e₁ for a > |b|, else no value.
-    using hdom = multivector<I, quantity<e1, I>>;
-    using hcod = multivector<O, quantity<e1, O>>;
+    using hdom = multivector<I, id<quantity_key<e1, I>>>;
+    using hcod = multivector<O, id<quantity_key<e1, O>>>;
     int bad_h  = 0;
     for (int ra = -256; ra <= 256; ra += 8)
         for (int rb = -256; rb <= 256; rb += 9) {
@@ -485,8 +485,8 @@ TEST(GeoalgLogTest, complex_quaternion_boost_and_dual) {
         }
     EXPECT_EQ(bad_h, 0);
     // Dual numbers, ε² = 0: log(a + b ε) = log a + (b/a) ε, the second part exact before its rounding.
-    using ndom = multivector<I, quantity<eps, I>>;
-    using ncod = multivector<O, quantity<eps, O>>;
+    using ndom = multivector<I, id<quantity_key<eps, I>>>;
+    using ncod = multivector<O, id<quantity_key<eps, O>>>;
     int bad_n  = 0;
     for (int ra = 8; ra <= 256; ra += 8)
         for (int rb = -256; rb <= 256; rb += 9) {
@@ -501,11 +501,11 @@ TEST(GeoalgLogTest, complex_quaternion_boost_and_dual) {
 TEST(GeoalgLogTest, domain_types_and_compile_time) {
     using I    = in_t<round_half_away>;
     using O    = out_t<round_half_away>;
-    using P    = inside<{{1, 4}, per<64>}, round_half_away>;
-    using ccod = multivector<O, quantity<i, O>>;
+    using P    = id<"[1..4] 1/64 round_half_away">;
+    using ccod = multivector<O, id<quantity_key<i, O>>>;
     // s on [1, 4] proves the domain, and the parts fit: plain. Where s can be ≤ 0: an expected.
-    using pdom = multivector<P, quantity<i, I>>;
-    using cdom = multivector<I, quantity<i, I>>;
+    using pdom = multivector<P, id<quantity_key<i, I>>>;
+    using cdom = multivector<I, id<quantity_key<i, I>>>;
     static_assert(std::same_as<decltype(math::log<ccod>(pdom{})), ccod>);
     static_assert(std::same_as<decltype(math::log<ccod>(cdom{})), std::expected<ccod, error>>);
     EXPECT_EQ(math::log<ccod>(cdom{}).error(), error::domain_error); // log 0
@@ -514,8 +514,8 @@ TEST(GeoalgLogTest, domain_types_and_compile_time) {
     ASSERT_TRUE(m.has_value());
     EXPECT_TRUE((rounded_ok<O, round_half_away>(coef(std::get<1>(m->parts())), 3.14159265358979323846L)));
     // A named output too narrow for a part is an expected with error::overflow (π > 2).
-    using narrow = inside<{{-2, 2}, per<1024>}, round_half_away>;
-    using ncod   = multivector<narrow, quantity<i, narrow>>;
+    using narrow = id<"[-2..2] 1/1024 round_half_away">;
+    using ncod   = multivector<narrow, id<"[-2..2] 1/1024 [i] round_half_away">>;
     EXPECT_EQ(math::log<ncod>(cdom{I{-4} + I{1} * i}).error(), error::overflow); // atan2(1, -4) ≈ 2.9
     EXPECT_TRUE(math::log<ncod>(cdom{I{1} - I{4} * i}).has_value());             // atan2(-4, 1) ≈ -1.33
     static_assert(std::same_as<decltype(math::log<ncod>(pdom{})), std::expected<ncod, error>>);
@@ -532,8 +532,8 @@ TEST(GeoalgSqrtTest, complex_quaternion_boost_and_exact_roots) {
     using O = out_t<round_half_away>;
     int bad = 0;
     // Complex numbers: every value has a root (the principal one), so the result is plain.
-    using cdom = multivector<I, quantity<i, I>>;
-    using ccod = multivector<O, quantity<i, O>>;
+    using cdom = multivector<I, id<quantity_key<i, I>>>;
+    using ccod = multivector<O, id<quantity_key<i, O>>>;
     static_assert(std::same_as<decltype(math::sqrt<ccod>(cdom{})), ccod>);
     for (int ra = -256; ra <= 256; ra += 8)
         for (int rb = -256; rb <= 256; rb += 9) {
@@ -547,8 +547,8 @@ TEST(GeoalgSqrtTest, complex_quaternion_boost_and_exact_roots) {
     EXPECT_TRUE(math::sqrt<ccod>(cdom{I{3} + I{4} * i}) == just<2> + i);
     EXPECT_TRUE(math::sqrt<ccod>(cdom{I{-4} + I{0} * i}) == just<2> * i);
     EXPECT_TRUE(math::sqrt<ccod>(cdom{}) == multivector<>{});
-    using qdom = multivector<I, quantity<i, I>, quantity<j, I>, quantity<k, I>>;
-    using qcod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
+    using qdom = multivector<I, id<quantity_key<i, I>>, id<quantity_key<j, I>>, id<quantity_key<k, I>>>;
+    using qcod = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>, id<quantity_key<k, O>>>;
     EXPECT_TRUE(*math::sqrt<qcod>(qdom{I{0} + I{2} * i + I{0} * j + I{0} * k}) == just<1> + i);
     // A quaternion's negative scalar has no axis; √x · √x = x elsewhere, within the roundings.
     EXPECT_EQ(math::sqrt<qcod>(qdom{I{-1} + I{0} * i + I{0} * j + I{0} * k}).error(), error::domain_error);
@@ -579,8 +579,8 @@ TEST(GeoalgSqrtTest, complex_quaternion_boost_and_exact_roots) {
                 }
     EXPECT_EQ(bad_q, 0);
     // A boost: √(a + b e₁) = (√(a + b) + √(a − b))/2 + e₁·b/(√(a + b) + √(a − b)) for a ≥ |b|, else no value.
-    using hdom = multivector<I, quantity<e1, I>>;
-    using hcod = multivector<O, quantity<e1, O>>;
+    using hdom = multivector<I, id<quantity_key<e1, I>>>;
+    using hcod = multivector<O, id<quantity_key<e1, O>>>;
     int bad_h  = 0;
     for (int ra = -256; ra <= 256; ra += 8)
         for (int rb = -256; rb <= 256; rb += 9) {

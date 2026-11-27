@@ -7,5 +7,5 @@
 
 int main() {
     using namespace ins;
-    (void)math::factorial(inside<{0, 2000}>{});
+    (void)math::factorial(id<"[0..2000]">{});
 }

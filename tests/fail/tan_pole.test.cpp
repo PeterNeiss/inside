@@ -8,7 +8,7 @@
 using namespace ins;
 
 int main() {
-    using angle = inside<{{0, 2}, per<1024>}, round_half_away>;
+    using angle = id<"[0..2] 1/1024 round_half_away">;
     auto t      = math::tan(angle{1});
     (void)t;
 }

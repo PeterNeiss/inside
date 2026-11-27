@@ -6,7 +6,7 @@
 #include <inside/inside.hpp>
 
 int main() {
-    using b = ins::inside<{0, 10}>;
+    using b = ins::id<"[0..10]">;
     auto s  = ins::add(b{1}, b{2}, ins::detail::on_error([](auto&, auto, auto) {}));
     (void)s;
 }

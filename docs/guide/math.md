@@ -9,7 +9,7 @@ without an FPU.
 #include <inside/math.hpp>
 using namespace ins;
 
-using arg = inside<{{-8, 8}, per<(1 << 14)>}, round_half_away>;
+using arg = id<"[-8..8] 1/16384 round_half_away">;
 auto s = math::sin(arg{1});                     // 0.84149169921875, on the input's notch
 auto c = math::cos<per<(1 << 8)>>(arg{1});      // 0.5390625: the notch you name
 auto h = math::hypot(s, s);                     // √(s² + s²)
@@ -78,13 +78,13 @@ results are exact, and each result type is the range the inputs can produce,
 worked out while compiling:
 
 ```cpp
-inside<{0, 20}> n = 20;
-auto f = math::factorial(n);                    // inside<{1, 2432902008176640000}>: 8 bytes
-using small = inside<{0, 60}>;
+id<"[0..20]"> n = 20;
+auto f = math::factorial(n);                    // id<"[1..2432902008176640000]">: 8 bytes
+using small = id<"[0..60]">;
 auto c = math::binomial(small{49}, small{6});   // 13983816, on [0, C(60, 30)]
 auto p = math::falling_factorial(just<8>, just<3>);        // 336: podium orders
 auto m = math::multinomial(1_ins, 4_ins, 4_ins, 2_ins);    // 34650: MISSISSIPPI
-auto big = math::factorial(inside<{0, 100}>{100});         // 100!, on a wide raw
+auto big = math::factorial(id<"[0..100]">{100});           // 100!, on a wide raw
 ```
 
 `binomial(n, k)` and `falling_factorial(n, k)` are 0 for k > n, and
@@ -134,7 +134,7 @@ at most π/4, is approximated, so exact values come out exact:
 #include <inside/units/math.hpp>
 using namespace ins;
 
-quantity<si::degree, inside<{0, 360}>> deg{120, si::degree};
+id<"[0..360] [deg]"> deg{120, si::degree};
 math::cos<per<(1 << 14)>, round_floor>(deg);   // exactly −1/2, even rounding down
 ```
 

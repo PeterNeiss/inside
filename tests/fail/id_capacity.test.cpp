@@ -6,6 +6,6 @@
 int main() {
     using namespace ins;
     // 2^9000 - 1: 2250 hexadecimal digits
-    inside<{0, grid_number{(detail::grid_int{1} << 9000) - detail::grid_int{1}}}> x;
+    id<key{grid{0, grid_number{(detail::grid_int{1} << 9000) - detail::grid_int{1}}}}> x;
     (void)x;
 }

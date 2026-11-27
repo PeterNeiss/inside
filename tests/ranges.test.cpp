@@ -216,8 +216,8 @@ TEST(RangeTest, inside_range_with_std_views_stride) {
 // values<T>: the range of a type's values
 //---------------------------------------------------------------------------
 namespace {
-using bin     = inside<{0, 9}>;
-using quarter = inside<{{0, 1}, per<4>}, round_half_away>;
+using bin     = id<"[0..9]">;
+using quarter = id<"[0..1] 1/4 round_half_away">;
 
 template <typename T>
 concept has_values = requires { values<T>; };
@@ -231,7 +231,7 @@ static_assert(std::ranges::sized_range<decltype(values<bin>)>);
 static_assert(std::is_same_v<std::ranges::range_value_t<decltype(values<quarter>)>, quarter>);
 static_assert(has_values<bin>);
 static_assert(!has_values<cursor<bin>>);                           // ends past bin's Upper
-static_assert(!has_values<inside<{{0, 1}, max_denominator{10}}>>); // no notch
+static_assert(!has_values<id<"[0..1] <10>">>);                     // no notch
 static_assert(std::ranges::size(values<bin>) == 10);
 static_assert(std::ranges::count_if(values<bin>, [](bin b) { return b > 5; }) == 4);
 
@@ -352,7 +352,7 @@ using namespace ins::formats;
 using namespace ins::detail;
 
 namespace {
-using time_t_ = inside<{{-4, 4}, per<1024>}, round_half_away>;
+using time_t_ = id<"[-4..4] 1/1024 round_half_away">;
 using cur     = cursor<time_t_, per<4>>;
 
 template <typename B>
@@ -373,14 +373,14 @@ TEST(CursorTest, type) {
     static_assert(index_storage<cur>);
     static_assert(std::is_same_v<raw_t<cur>, std::uint8_t>);
     // a whole-number cursor stores its value, and still starts at Lower
-    static_assert(integer_value_storage<cursor<inside<{5, 100}>>>);
-    static_assert(rational{cursor<inside<{5, 100}>>{}} == 5);
+    static_assert(integer_value_storage<cursor<id<"[5..100]">>>);
+    static_assert(rational{cursor<id<"[5..100]">>{}} == 5);
     // the step as a rational, per<N> or an integer; T's notch by default
     static_assert(std::is_same_v<cursor<time_t_, 0.25_r>, cur>);
-    static_assert(std::is_same_v<cursor<inside<{0, 10}>, 2>, cursor<inside<{0, 10}>, rational{2}>>);
-    static_assert(grid_of<cursor<inside<{0, 10}>>> == grid{{0, 11}, 1});
+    static_assert(std::is_same_v<cursor<id<"[0..10]">, 2>, cursor<id<"[0..10]">, rational{2}>>);
+    static_assert(grid_of<cursor<id<"[0..10]">>> == grid{{0, 11}, 1});
     // a cursor over an unsafe T still starts at Lower
-    static_assert(rational{cursor<inside<{5, 100}, unsafe>>{}} == 5);
+    static_assert(rational{cursor<id<"[5..100] unsafe">>{}} == 5);
 }
 
 TEST(CursorTest, three_loop_forms) {
@@ -409,7 +409,7 @@ TEST(CursorTest, default_starts_at_lower) {
         cur t;
         return t == -4;
     }());
-    using off = cursor<inside<{{0.25_r, 1.25_r}, per<4>}>, 0.5_r>;
+    using off = cursor<id<"[0.25..1.25] 1/4">, 0.5_r>;
     static_assert([] {
         off t;
         return t == 0.25_ins;
@@ -419,7 +419,7 @@ TEST(CursorTest, default_starts_at_lower) {
         got.push_back(static_cast<rational>(t));
     EXPECT_EQ(got, (std::vector<rational>{0.25_r, 0.75_r, 1.25_r}));
 
-    using neg = cursor<inside<{-7, -1}>, 3>;
+    using neg = cursor<id<"[-7..-1]">, 3>;
     neg n;
     EXPECT_EQ(static_cast<rational>(n), rational{-7});
 }
@@ -436,7 +436,7 @@ TEST(CursorTest, steps_and_ends) {
         EXPECT_EQ(static_cast<rational>(x), static_cast<rational>(v));
     }
     // a cursor works where an inside does
-    using amp = inside<{{0, 64}, per<16384>}, round_half_away>;
+    using amp = id<"[0..64] 1/16384 round_half_away">;
     cur w     = 1_ins;
     EXPECT_EQ((math::exp<amp>(w)), (math::exp<amp>(time_t_{1})));
     EXPECT_EQ(to_string(w), "1");
@@ -455,13 +455,13 @@ TEST(CursorTest, marker_does_not_leak) {
 
 TEST(CursorTest, increment_moves_one_notch) {
     // (++ on a checked grid may step out: clamp names its range handling)
-    static_assert(!test::can_step<inside<{{0, 2}, per<4>}>>);
-    inside<{{0, 2}, per<4>}, clamp> q{0.5};
+    static_assert(!test::can_step<id<"[0..2] 1/4">>);
+    id<"[0..2] 1/4 clamp"> q{0.5};
     ++q;
     EXPECT_EQ(static_cast<rational>(q), 0.75_r);
     q--;
     EXPECT_EQ(static_cast<rational>(q), 0.5_r);
-    inside<{0, 10}, clamp> i{3};
+    id<"[0..10] clamp"> i{3};
     ++i;
     EXPECT_EQ(static_cast<rational>(i), rational{4});
 }
@@ -485,7 +485,7 @@ static_assert(!std::random_access_iterator<cur>); // t - u is arithmetic, not a 
 static_assert(std::sentinel_for<decltype(end(cur{})), cur>);
 static_assert(!std::sized_sentinel_for<cur, cur>);
 static_assert(std::same_as<std::iter_difference_t<cur>, std::int64_t>);
-static_assert(std::same_as<std::iter_value_t<cur>, inside<{{-4, 4}, per<4>}, round_half_away>>);
+static_assert(std::same_as<std::iter_value_t<cur>, id<"[-4..4] 1/4 round_half_away">>);
 static_assert(std::convertible_to<std::iter_value_t<cur>, time_t_>);
 // plain insides stay numbers, not iterators
 static_assert(!std::weakly_incrementable<time_t_>);
@@ -508,7 +508,7 @@ TEST(CursorTest, is_an_iterator) {
     EXPECT_EQ(static_cast<rational>(*std::ranges::find(t, end(t), 1.5_ins)), 1.5_r);
 
     static_assert([] {
-        cursor<inside<{0, 9}>, 3> i;
+        cursor<id<"[0..9]">, 3> i;
         return std::ranges::count_if(i, end(i), [](auto v) { return v > 2; }) == 3;
     }());
 
@@ -526,9 +526,9 @@ using namespace ins::detail;
 namespace rng = std::ranges;
 
 namespace {
-using cell = ins::inside<{0, 100, 0.5}>;
+using cell = ins::id<"[0..100] 0.5">;
 // (an accumulator of std algorithms stores each prefix back: clamp names it)
-using accum = ins::inside<{0, 1000, 0.5}, ins::clamp>;
+using accum = ins::id<"[0..1000] 0.5 clamp">;
 } // namespace
 
 // algo: ranges algorithms over vector<inside>
@@ -630,7 +630,7 @@ TEST(AlgoTest, algo_classic_stl_algorithms) {
     ASSERT_EQ(*mm.second, 99);
 
     // iota: ++ moves one notch (1/2 on this grid); ++ names its range handling
-    using step_cell = ins::inside<{0, 100, 0.5}, ins::clamp>;
+    using step_cell = ins::id<"[0..100] 0.5 clamp">;
     std::vector<step_cell> iota_v(5);
     std::iota(iota_v.begin(), iota_v.end(), step_cell{10});
     ASSERT_EQ(iota_v.front(), 10);
@@ -639,7 +639,7 @@ TEST(AlgoTest, algo_classic_stl_algorithms) {
 
 // ins::min / max / midpoint over bounds
 TEST(AlgoTest, ins_min_max_midpoint_over_bounds) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     pct a{30}, b{70};
     ASSERT_EQ((ins::min(a, b)), 30);
     ASSERT_EQ((ins::max(a, b)), 70);
@@ -654,7 +654,7 @@ TEST(AlgoTest, ins_min_max_midpoint_over_bounds) {
     ASSERT_EQ((min(a, b)), 30);
 
     // Fractional grid.
-    using s = inside<{{-1, 1}, per<16384>}, round_half_away>;
+    using s = id<"[-1..1] 1/16384 round_half_away">;
     s x{rational{1, 4}}, y{rational{3, 4}};
     ASSERT_EQ((rational{ins::midpoint(x, y)}), (rational{1, 2}));
     ASSERT_EQ((ins::max(x, y)), (rational{3, 4}));
@@ -676,13 +676,13 @@ namespace {
 consteval big_int     pow2(int k) { return big_int{1} << k; }
 consteval grid_number g(big_int v) { return grid_number{v}; }
 
-using huge   = inside<{0, g(pow2(100))}>;                           // 2^100 + 1 points
-using fine   = inside<{{0, 1}, grid_number{big_int{1}, pow2(80)}}>; // notch 2^-80
-using shuge  = inside<{-g(pow2(100)), g(pow2(100))}>;               // signed, past 64 bits
-using temp   = inside<{-40, 85}>;                                   // a value raw (int8_t)
-using halves = inside<{{0, 5}, 0.5}>;                               // an index raw (uint8_t)
-using bins   = inside<{{0.5, 255.5}, 1}>;                           // off the notch's multiples
-using five   = inside<{5, 5}>;                                      // a point
+using huge   = id<key{grid{0, g(pow2(100))}}>;                           // 2^100 + 1 points
+using fine   = id<key{grid{{0, 1}, grid_number{big_int{1}, pow2(80)}}}>; // notch 2^-80
+using shuge  = id<key{grid{-g(pow2(100)), g(pow2(100))}}>;               // signed, past 64 bits
+using temp   = id<"[-40..85]">;                                          // a value raw (int8_t)
+using halves = id<"[0..5] 0.5">;                                         // an index raw (uint8_t)
+using bins   = id<"[0.5..255.5] 1">;                                     // off the notch's multiples
+using five   = id<"[5..5]">;                                             // a point
 
 // A run-time integer the optimizer cannot see through.
 int at_run_time(int v) {
@@ -757,7 +757,7 @@ TEST(IndexTest, from_step_out_of_range) {
     EXPECT_EQ(five::from_step(at_run_time(1)).error(), error::overflow); // a point has index 0 only
 
     // Past 2^64 points: one past the last index.
-    const auto beyond = step_count_of<huge> + test::store<inside<{0, 1}>>(at_run_time(1));
+    const auto beyond = step_count_of<huge> + test::store<id<"[0..1]">>(at_run_time(1));
     EXPECT_EQ(huge::from_step(beyond).error(), error::overflow);
     EXPECT_TRUE(huge::from_step(beyond, clamp) == just<g(pow2(100))>);
     EXPECT_TRUE(huge::from_step(beyond, wrap) == 0);
@@ -775,12 +775,12 @@ TEST(IndexTest, numerator_and_denominator_are_insides) {
     static_assert(std::is_same_v<decltype(t.numerator()), temp>); // the value itself
     EXPECT_TRUE(t.numerator() == -7 && t.denominator() == 1);
 
-    using money   = inside<{{-100, 100}, rational{1, 100}}>;
+    using money   = id<"[-100..100] 1/100">;
     const money m = rational{-5, 4};
     static_assert(grid_of<decltype(m.numerator())> == grid{-10000, 10000});
     EXPECT_TRUE(m.numerator() == -5 && m.denominator() == 4);
 
-    using ratio   = inside<{{0, 1}, max_denominator{1000}}>;
+    using ratio   = id<"[0..1] <1000>">;
     const ratio r = test::store<ratio>(rational{at_run_time(2), 6});
     EXPECT_TRUE(r.numerator() == 1 && r.denominator() == 3);
 
@@ -878,10 +878,10 @@ TEST(RangeTest, inside_range_size_1_with_negative_point) {
 }
 
 TEST(RangeTest, uniform_covers_every_slot_and_stays_on_the_grid) {
-    using ints    = inside<{0, 9}>;
-    using idx     = inside<{-5, 5}>;
-    using quarter = inside<{{-1, 1}, per<4>}>;
-    using thirds  = inside<{{0, 1}, per<3>}>;
+    using ints    = id<"[0..9]">;
+    using idx     = id<"[-5..5]">;
+    using quarter = id<"[-1..1] 1/4">;
+    using thirds  = id<"[0..1] 1/3">;
     EXPECT_EQ(sample<ints>(2000).size(), 10u);
     EXPECT_EQ(sample<idx>(2000).size(), 11u);
     const auto q = sample<quarter>(2000);
@@ -899,7 +899,7 @@ TEST(RangeTest, uniform_covers_every_slot_and_stays_on_the_grid) {
 // (bits gathered from several outputs). Each index is the high word of
 // word·(N + 1) (Lemire's multiply): the first below is ⌊w·11 / 2^64⌋ − 5.
 TEST(RangeTest, uniform_draws_are_pinned_across_standard_libraries) {
-    using idx = inside<{-5, 5}>;
+    using idx = id<"[-5..5]">;
     std::mt19937_64 mt{42};
 #if INSIDE_HAS_INT128
     {
@@ -914,12 +914,12 @@ TEST(RangeTest, uniform_draws_are_pinned_across_standard_libraries) {
     for (int v : {-2, 0, -3, -5, -3, 0, -1, -5})
         EXPECT_EQ(uniform<idx>(ms), v);
 
-    using quarter = inside<{{-1, 1}, per<4>}>;
+    using quarter = id<"[-1..1] 1/4">;
     std::mt19937_64 mq{42};
     for (int q : {2, 1, 2, -3, 4, -4, 1, -1}) // in quarters
         EXPECT_EQ((rational{uniform<quarter>(mq)}), (rational{q, 4}));
 
-    using big = inside<{0, 1'000'000}>;
+    using big = id<"[0..1'000'000]">;
     std::minstd_rand mb{42};
     for (int v : {344601, 528440, 248991, 48048, 231137, 521369, 435869, 7259})
         EXPECT_EQ(uniform<big>(mb), v);
@@ -934,13 +934,13 @@ using namespace ins;
 using namespace ins::formats;
 
 TEST(RangeTest, values_past_2_to_the_63) {
-    using WS = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>; // 2^71 + 1 values
+    using WS = id<"[-1180591620717411303424..1180591620717411303424]">; // 2^71 + 1 values
     using U  = std::remove_const_t<decltype(values<uint64>)>;
     using R  = std::remove_const_t<decltype(values<WS>)>;
     static_assert(std::ranges::bidirectional_range<U> && std::ranges::view<U> && std::ranges::borrowed_range<U>);
     static_assert(!std::ranges::random_access_range<U> && !std::ranges::sized_range<U>);
     static_assert(std::ranges::bidirectional_range<R> && !std::ranges::sized_range<R>);
-    static_assert(std::ranges::random_access_range<decltype(values<inside<{0, 100}>>)>);
+    static_assert(std::ranges::random_access_range<decltype(values<id<"[0..100]">>)>);
 
     std::vector<std::uint64_t> head;
     for (const auto v : values<uint64> | std::views::take(3))

@@ -10,7 +10,7 @@
 using namespace ins;
 
 int main() {
-    using fine = inside<{{0, 1}, max_denominator{100000}}>;
+    using fine = id<"[0..1] <100000>">;
     std::array<fine, 2> r{};
-    (void)sum<inside<{{0, 2}, per<1024>}, round_half_away>>(r);
+    (void)sum<id<"[0..2] 1/1024 round_half_away">>(r);
 }

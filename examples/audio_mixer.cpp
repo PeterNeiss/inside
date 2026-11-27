@@ -23,11 +23,11 @@ namespace
   inline constexpr auto clip       = base_unit<"clip", "clipping">;        // one clipped frame
 } // namespace
 
-using sample = quantity<FS, inside<{{-1, 1}, per<(1 << 14)>}, round_half_away | clamp>>; // Q1.14 in FS
+using sample = id<"[-1..1] 1/16384 [FS] round_half_away|clamp">; // Q1.14 in FS
 static_assert(sizeof(sample) == 2);
 
-using decibels    = quantity<dB, inside<{{-24, 12}, per<2>}, round_half_away>>; // 0.5 dB steps, one byte
-using linear_gain = inside<{{0, 4}, per<(1 << 16)>}, round_half_away>;          // a ratio: 10^(dB/20) ≈ [0.063, 3.98]
+using decibels    = id<"[-24..12] 1/2 [dB] round_half_away">;                   // 0.5 dB steps, one byte
+using linear_gain = id<"[0..4] 1/65536 round_half_away">;                       // a ratio: 10^(dB/20) ≈ [0.063, 3.98]
 
 // 10^(L / 20 dB): the ratio is exact (a 1/40 grid), and pow_base rounds once onto linear_gain.
 static linear_gain db_to_linear(decibels db) { return math::pow_base<10, linear_gain>(db / (just<20> * dB)); }
@@ -43,11 +43,11 @@ int main()
   // 16 frames of four sines: the phase is exact up to sin (onto 2^-14);
   // mul<sample> rounds the scaled sample.
   constexpr std::size_t N{16};
-  using frame     = inside<{0, N - 1}>;
-  using seconds   = quantity<si::second, inside<{{0, 1}, per<N>}>>;
-  using cycles    = inside<{{0, 1}, per<N>}>;
-  using turns     = quantity<turn, inside<{{-1, 1}, per<24>}>>;
-  using amplitude = quantity<FS, inside<{{0, 1}, per<(1 << 10)>}, round_half_away>>;
+  using frame     = id<key{grid{0, N - 1}}>;
+  using seconds   = id<quantity_key<si::second, id<key{grid{{0, 1}, per<N>}}>>>;
+  using cycles    = id<key{grid{{0, 1}, per<N>}}>;
+  using turns     = id<"[-1..1] 1/24 [tr]">;
+  using amplitude = id<"[0..1] 1/1024 [FS] round_half_away">;
 
   constexpr auto  tone{just<1> * si::hertz}; // one cycle over the 1 s buffer
   constexpr turns offsets[4] = {
@@ -73,7 +73,7 @@ int main()
   // The mix: each gain × sample widens to its product grid and the sum widens further,
   // all in int64 notch math.
   // Storing it onto the bus clips, and on_clamp counts the clips.
-  quantity<clip, clamp_counter<1'000'000>> clip_events{0, clip};
+  id<quantity_key<clip, clamp_counter<1'000'000>>> clip_events{0, clip};
   const auto fs{[](const sample& x) { return x.numerical_value_in(FS); }}; // the table's numbers, in FS
   std::cout << "frame  c0, c1, c2, c3 and the mix, in FS\n";
   for (frame i : values<frame>)
@@ -90,14 +90,14 @@ int main()
 
   // The clamp flag pushes a wider-grid inside into a sample,
   // as in a std::transform over a sum bus.
-  using mix_bus = quantity<FS, inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>>;
+  using mix_bus = id<"[-4..4] 1/16384 [FS] round_half_away">;
   const mix_bus hot{2.5, FS};
   std::cout << "\nsample{mix_bus 2.5 FS, clamp} = " << sample{hot, clamp} << "\n";
 
   // add_all folds the inputs exactly (the grid widens);
   // the clamp flag clips the sum onto the bus.
-  using clipped_bus = quantity<FS, inside<{-3, 3}, clamp>>;
-  using channel     = quantity<FS, inside<{-1, 1}>>;
+  using clipped_bus = id<"[-3..3] [FS] clamp">;
+  using channel     = id<"[-1..1] [FS]">;
   std::cout << "clipped_bus{add_all(1, -1, 1, 1 FS), clamp} = "
             << clipped_bus{add_all(channel{1, FS}, channel{-1, FS}, channel{1, FS}, channel{1, FS}), clamp} << "\n";
 

@@ -551,7 +551,7 @@ namespace ins::detail
   }
 
   // integer_limits vs integer_lattice: easy to confuse, both needed.
-  // - integer_limits<B>: Lower and Upper integers (Notch may be fractional, e.g. inside<{0,100}, 1/10>).
+  // - integer_limits<B>: Lower and Upper integers (Notch may be fractional, e.g. id<key{grid{0,100}, 1/10}>).
   //   It lets Lower and Upper be used as int64 constants.
   // - integer_lattice<B>: every value an integer: an integer Lower and an integer non-zero Notch, or a point.
   //   It implies integer_limits (not the converse). A continuous grid (Notch 0) is not one, whatever its limits.

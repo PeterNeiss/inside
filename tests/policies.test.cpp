@@ -41,7 +41,7 @@ using namespace ins::detail;
 
 // clamp policy on assignment
 TEST(PolicyActionsTest, clamp_policy_on_assignment) {
-    using pct = inside<{0, 100}, clamp>;
+    using pct = id<"[0..100] clamp">;
     pct over{150};
     ASSERT_EQ(over, 100);
 
@@ -53,13 +53,13 @@ TEST(PolicyActionsTest, clamp_policy_on_assignment) {
 
     // compound +
     pct a{90};
-    a += inside<{0, 100}>{20};
+    a += id<"[0..100]">{20};
     ASSERT_EQ(a, 100);
 }
 
 // wrap policy on assignment
 TEST(PolicyActionsTest, wrap_policy_on_assignment) {
-    using angle = inside<{0, 359}, wrap>;
+    using angle = id<"[0..359] wrap">;
     angle a{370};
     ASSERT_EQ(a, 10);
     angle b{-10};
@@ -74,7 +74,7 @@ TEST(PolicyActionsTest, wrap_policy_on_assignment) {
 TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
     {
         SCOPED_TRACE("Q8.8 (notch 1/256) — try_make + in-place ++");
-        using fp = inside<{{0, 255}, 1.0 / 256}>;
+        using fp = id<key{grid{{0, 255}, 1.0 / 256}}>;
         static_assert(sizeof(fp) == 2);
 
         // notch-aligned in-range value
@@ -94,13 +94,13 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
         static_assert(!test::can_step<fp>);
         fp    top = fp::try_make(255.0).value();
         error ec{};
-        top.on_error(ec) += inside<grid{notch_of<fp>}>::from_raw({}, unsafe);
+        top.on_error(ec) += id<key{grid{notch_of<fp>}}>::from_raw({}, unsafe);
         ASSERT_EQ(ec, error::overflow);
     }
 
     {
         SCOPED_TRACE("half-step (notch 0.5) — uint8 storage");
-        using sensor = inside<{{0, 50}, 0.5}>;
+        using sensor = id<"[0..50] 0.5">;
         static_assert(sizeof(sensor) == 1);
 
         auto s = sensor::try_make(23.5);
@@ -113,7 +113,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
     {
         SCOPED_TRACE("signed Q1.14 (notch 1/16384) — uint16 storage");
-        using sample = inside<{{-1, 1}, per<16384>}, checked | round_half_away>;
+        using sample = id<"[-1..1] 1/16384 round_half_away">;
         static_assert(sizeof(sample) == 2);
 
         auto s = sample::try_make(0.5);
@@ -130,7 +130,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
     {
         SCOPED_TRACE("Q16.16 (notch 1/65536) — uint32 storage");
-        using fp = inside<{{0, 65535}, per<65536>}>;
+        using fp = id<"[0..65535] 1/65536">;
         static_assert(sizeof(fp) == 4);
 
         auto v = fp::try_make(1000.125);
@@ -144,7 +144,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
 // on_wrap action receives inside& and carry
 TEST(PolicyActionsTest, on_wrap_action_receives_inside_and_carry) {
-    using sec = inside<{0, 59}, wrap>;
+    using sec = id<"[0..59] wrap">;
     sec          s{0};
     std::int64_t carry = 0;
     s.on_wrap([&](auto& self, auto c) {
@@ -166,11 +166,11 @@ TEST(PolicyActionsTest, on_wrap_action_receives_inside_and_carry) {
 // on_wrap carry is an inside for an inside RHS
 TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     // A insidable RHS routes the wrap through inside arithmetic, so the carry is a
-    // inside<excess-grid>. `carry + just<0>` is inside+inside (compiles only for an inside;
+    // id<key{excess-grid}>. `carry + just<0>` is inside+inside (compiles only for an inside;
     // an int64 carry would hit the grid-less-scalar guidance overload).
-    using w10 = inside<{0, 9}, wrap>; // wraps at 10
+    using w10 = id<"[0..9] wrap">; // wraps at 10
     w10            x{8};
-    inside<{0, 5}> add{4}; // inside RHS
+    id<"[0..5]"> add{4}; // inside RHS
     std::int64_t   carry_val = -99;
     x.on_wrap([&](auto&, auto carry) { carry_val = to<std::int64_t>(carry + just<0>); }) += add;
     ASSERT_EQ(x, 2);         // 8 + 4 = 12 -> 12 mod 10
@@ -178,9 +178,9 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
 
     // Fractional grid (notch 1/2) exercises the rational wrap path; the carry is
     // still an inside (range = 3 + 0.5 = 3.5).
-    using pos = inside<{{0, 3}, per<2>}, wrap>;
+    using pos = id<"[0..3] 1/2 wrap">;
     pos                      p{2.5};
-    inside<{{0, 2}, per<2>}> fadd{1.5};
+    id<"[0..2] 1/2"> fadd{1.5};
     std::int64_t             fcarry = -99;
     p.on_wrap([&](auto&, auto carry) { fcarry = to<std::int64_t>(carry + just<0>); }) += fadd;
     ASSERT_TRUE((p == just<1, 2>)); // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
@@ -189,7 +189,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
 
 // on_clamp action receives overshoot
 TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
-    using u100 = inside<{0, 100}>;
+    using u100 = id<"[0..100]">;
     u100         x{0};
     std::int64_t overshoot = 0;
     x.on_clamp([&](auto& self, auto over) {
@@ -203,11 +203,11 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
 // on_clamp overshoot is an inside for an inside RHS
 TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_an_inside_rhs) {
     // A insidable RHS routes clamp through inside arithmetic, so the overshoot is a
-    // inside<grid_of<R> - grid_of<L>>, read with to<std::int64_t>() (it would not compile
+    // id<key{grid_of<R> - grid_of<L>}>, read with to<std::int64_t>() (it would not compile
     // against a raw expected<rational>).
-    using c100 = inside<{0, 100}, clamp>;
+    using c100 = id<"[0..100] clamp">;
     c100             x{0};
-    inside<{0, 200}> v{150}; // overlaps [0,100], runtime out of range
+    id<"[0..200]"> v{150}; // overlaps [0,100], runtime out of range
     std::int64_t     ov                                                = 0;
     x.on_clamp([&](auto&, auto over) { ov = to<std::int64_t>(over); }) = v;
     ASSERT_EQ(x, 100);
@@ -216,7 +216,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_an_inside_rhs) {
 
 // on_error action receives code and message
 TEST(PolicyActionsTest, on_error_action_receives_code_and_message) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     c100 e{50};
     bool fired = false;
     e.on_error([&](auto& self, error code, std::string_view msg) {
@@ -230,7 +230,7 @@ TEST(PolicyActionsTest, on_error_action_receives_code_and_message) {
 // A hook on a compound op: the sum overshoots the target, and the store back
 // fires on_clamp.
 TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     c100         b{50};
     bool         cl   = false;
     std::int64_t over = 0;
@@ -247,8 +247,8 @@ TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
 // the result, as for `/` (on_clamp / on_wrap / on_error are rejected, see
 // fail/arith_unused_action).
 TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
-    using c100   = inside<{0, 100}, checked>;
-    using u100ic = inside<{0, 100}, checked | round_toward_zero>;
+    using c100   = id<"[0..100]">;
+    using u100ic = id<"[0..100] round_toward_zero">;
     c100 d{50}, z{0};
     auto q = div(d, z, make_policy<round_half_away>());
     ASSERT_FALSE(q.has_value());
@@ -262,7 +262,7 @@ TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
 // A compound op whose exact result is off the grid fails like a store:
 // on_error takes it, and the value is unchanged.
 TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
-    using frac = inside<{{0, 1}, max_denominator{std::int64_t{1} << 62}}>;
+    using frac = id<key{grid{{0, 1}, max_denominator{std::int64_t{1} << 62}}}>;
     frac  f{rational{1, (std::int64_t{1} << 62) - 1}};
     error seen{};
     f.on_error([&](auto&, error c, const char*) { seen = c; }) += frac{rational{1, (std::int64_t{1} << 62) - 3}};
@@ -272,7 +272,7 @@ TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
 
 // free-fn div with ins::error& sets ec on div/0 / success path leaves ec clear
 TEST(PolicyActionsTest, free_fn_div_with_ins_error_sets_ec_on_div_0__success_path_leaves_ec_clear) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     ins::error ec{};
     auto       q = div(c100{10}, c100{0}, ec);
     ASSERT_EQ(ec, error::division_by_zero);
@@ -289,7 +289,7 @@ TEST(PolicyActionsTest, free_fn_div_with_ins_error_sets_ec_on_div_0__success_pat
 
 // free-fn mod with ins::error& sets ec on div/0
 TEST(PolicyActionsTest, free_fn_mod_with_ins_error_sets_ec_on_div_0) {
-    using u100ic = inside<{0, 100}, checked | round_toward_zero>;
+    using u100ic = id<"[0..100] round_toward_zero">;
     ins::error ec{};
     auto       m = mod(u100ic{7}, u100ic{0}, ec);
     ASSERT_EQ(ec, error::division_by_zero);
@@ -298,7 +298,7 @@ TEST(PolicyActionsTest, free_fn_mod_with_ins_error_sets_ec_on_div_0) {
 
 // free-fn add with ins::error& compiles and clears on success
 TEST(PolicyActionsTest, free_fn_add_with_ins_error_compiles_and_clears_on_success) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     ins::error ec{};
     auto       sum = add(c100{40}, c100{50}, ec);
     ASSERT_EQ(ec, error{});
@@ -315,7 +315,7 @@ TEST(PolicyActionsTest, free_fn_add_with_ins_error_compiles_and_clears_on_succes
 TEST(PolicyActionsTest, no_arg_div_on_div_0_returns_error_without_throwing) {
     // Regression guard for fix 1b's empty_ref/error_ref gate: the no-arg form
     // must NOT throw on div/0 — it should return error::division_by_zero.
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     ASSERT_NO_THROW((void)([] {
         auto q = div(c100{10}, c100{0});
         ASSERT_FALSE(q.has_value());
@@ -325,7 +325,7 @@ TEST(PolicyActionsTest, no_arg_div_on_div_0_returns_error_without_throwing) {
 
 // on_error catches rounding_error on float assignment
 TEST(PolicyActionsTest, on_error_catches_rounding_error_on_float_assignment) {
-    using coarse = inside<{{0, 10}, 2}>; // notch 2: 3.0 doesn't land
+    using coarse = id<"[0..10] 2">; // notch 2: 3.0 doesn't land
     coarse c{0};
     error  seen{};
     bool   fired = false;
@@ -341,7 +341,7 @@ TEST(PolicyActionsTest, on_error_catches_rounding_error_on_float_assignment) {
 
 // on_error(ec) catches rounding_error on float assignment
 TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     coarse     c{0};
     ins::error ec{};
     c.on_error(ec) = 3.0;
@@ -351,8 +351,8 @@ TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment) {
 // The on_wrap carry is an inside for every source kind, so it adds straight
 // into another inside; an `int64` callback parameter still binds.
 TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
-    using sec = inside<{0, 59}, wrap>;
-    using min = inside<{0, 59}, clamp>; // (the carries stay in range)
+    using sec = id<"[0..59] wrap">;
+    using min = id<"[0..59] clamp">; // (the carries stay in range)
     auto run  = [](auto src) {
         sec seconds{0};
         min minutes{0};
@@ -393,7 +393,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
 // is: the source minus the limit, exactly. Its grid holds every value of the
 // source kind minus either limit.
 TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     auto run  = [](auto src, std::int64_t expected) {
         pct          x{0};
         std::int64_t got = -1;
@@ -429,7 +429,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
     }) = std::uint8_t{101};
 
     // Below the range the overshoot is negative; it keeps the source's fraction.
-    using q4 = inside<{{0, 10}, per<4>}>;
+    using q4 = id<"[0..10] 1/4">;
     q4   f{0};
     bool exact                                                      = false;
     f.on_clamp([&](auto&, auto over) { exact = over == 2.25_ins; }) = 12.25;
@@ -444,27 +444,27 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
 // target's notch, a rational's, a long double's past a double's precision, and
 // a double past the int64 range. ±∞ reports the overshoot grid's end.
 TEST(PolicyActionsTest, on_clamp_overshoot_is_exact) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     pct  x{0};
     bool exact = false;
     // 150.7 is not 1507/10 in binary: the overshoot is the double minus 100.
-    x.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, 0x1p-45}>{150.7 - 100.0}; }) = 150.7;
+    x.on_clamp([&](auto&, auto over) { exact = over == id<"[0..64] 0x1p-45">{150.7 - 100.0}; }) = 150.7;
     EXPECT_TRUE(exact);
 
-    inside<{0, 100}, round_half_away> r{0};
-    r.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, per<6>}>{rational{301, 6}}; }) =
+    id<"[0..100] round_half_away"> r{0};
+    r.on_clamp([&](auto&, auto over) { exact = over == id<"[0..64] 1/6">{rational{301, 6}}; }) =
         rational{901, 6};
     EXPECT_TRUE(exact);
 
     if constexpr (std::numeric_limits<long double>::digits > 53) {
         constexpr long double ld = 150.25L + 0x1p-55L; // past a double's precision at 150
-        x.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, 0x1p-55}>{50.25L + 0x1p-55L}; }) = ld;
+        x.on_clamp([&](auto&, auto over) { exact = over == id<"[0..64] 0x1p-55">{50.25L + 0x1p-55L}; }) = ld;
         EXPECT_TRUE(exact);
     }
 
-    using wide = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}>;
+    using wide = id<"[-0x1p70..0x1p70] <3>">;
     wide w{0};
-    w.on_clamp([&](auto&, auto over) { exact = over == inside<{-0x1p71, 0}>{-0x1p70}; }) = -0x1p71;
+    w.on_clamp([&](auto&, auto over) { exact = over == id<"[-0x1p71..0]">{-0x1p70}; }) = -0x1p71;
     EXPECT_TRUE(exact);
 
     x.on_clamp([&](auto&, auto over) { exact = over == just<upper_of<decltype(over)>>; }) =
@@ -489,7 +489,7 @@ using namespace ins::detail;
 //---------------------------------------------------------------------------
 // with<clamp>: integer rhs, both directions
 TEST(PolicyHandleTest, clamp_integer_rhs_both_directions) {
-    using u100 = inside<{0, 100}>;
+    using u100 = id<"[0..100]">;
     u100 x{50};
 
     x.with<clamp>() = 150;
@@ -502,7 +502,7 @@ TEST(PolicyHandleTest, clamp_integer_rhs_both_directions) {
 
 // with<clamp>: float rhs
 TEST(PolicyHandleTest, clamp_float_rhs) {
-    using u10 = inside<{{0, 10}, 0.5}>;
+    using u10 = id<"[0..10] 0.5">;
     u10 x{5};
 
     x.with<clamp>() = 100.0;
@@ -515,8 +515,8 @@ TEST(PolicyHandleTest, clamp_float_rhs) {
 
 // with<clamp>: inside rhs
 TEST(PolicyHandleTest, clamp_inside_rhs) {
-    using wide   = inside<{0, 200}>;
-    using narrow = inside<{0, 100}>;
+    using wide   = id<"[0..200]">;
+    using narrow = id<"[0..100]">;
     narrow n{0};
     wide   over{150};
 
@@ -530,7 +530,7 @@ TEST(PolicyHandleTest, clamp_inside_rhs) {
 
 // with<clamp>: signed inside
 TEST(PolicyHandleTest, clamp_signed_inside) {
-    using s = inside<{-100, 100}>;
+    using s = id<"[-100..100]">;
     s x{0};
 
     x.with<clamp>() = 200;
@@ -544,7 +544,7 @@ TEST(PolicyHandleTest, clamp_signed_inside) {
 //---------------------------------------------------------------------------
 // with<wrap>: integer rhs, both directions
 TEST(PolicyHandleTest, wrap_integer_rhs_both_directions) {
-    using u10 = inside<{0, 9}>;
+    using u10 = id<"[0..9]">;
     u10 x{5};
 
     x.with<wrap>() = 13;
@@ -561,7 +561,7 @@ TEST(PolicyHandleTest, wrap_integer_rhs_both_directions) {
 
 // with<wrap>: signed inside
 TEST(PolicyHandleTest, wrap_signed_inside) {
-    using s = inside<{-5, 5}>; // 11 values
+    using s = id<"[-5..5]">; // 11 values
     s x{0};
 
     // 6 ≡ -5 (mod 11) within [-5, 5]
@@ -577,8 +577,8 @@ TEST(PolicyHandleTest, wrap_signed_inside) {
 
 // with<wrap>: inside rhs
 TEST(PolicyHandleTest, wrap_inside_rhs) {
-    using src = inside<{0, 100}>;
-    using dst = inside<{0, 9}>;
+    using src = id<"[0..100]">;
+    using dst = id<"[0..9]">;
     dst d{0};
 
     src high{45};
@@ -591,8 +591,8 @@ TEST(PolicyHandleTest, wrap_inside_rhs) {
 //---------------------------------------------------------------------------
 // with<round_toward_zero>: inside rhs with finer notch
 TEST(PolicyHandleTest, round_toward_zero_inside_rhs_with_finer_notch) {
-    using coarse = inside<{{0, 10}, 2}>;
-    using fine   = inside<{{0, 10}, 1}>;
+    using coarse = id<"[0..10] 2">;
+    using fine   = id<"[0..10] 1">;
 
     coarse c{0};
     c.with<round_toward_zero>() = fine{3};
@@ -607,7 +607,7 @@ TEST(PolicyHandleTest, round_toward_zero_inside_rhs_with_finer_notch) {
 
 // with<round_toward_zero>: float rhs not on notch
 TEST(PolicyHandleTest, round_toward_zero_float_rhs_not_on_notch) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     coarse c{0};
 
     c.with<round_toward_zero>() = 3.0;
@@ -623,7 +623,7 @@ TEST(PolicyHandleTest, round_toward_zero_float_rhs_not_on_notch) {
 //---------------------------------------------------------------------------
 // with<round_half_away>: float rhs
 TEST(PolicyHandleTest, round_half_away_float_rhs) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     coarse c{0};
 
     c.with<round_half_away>() = 3.0;
@@ -635,7 +635,7 @@ TEST(PolicyHandleTest, round_half_away_float_rhs) {
     c.with<round_half_away>() = 4.0;
     ASSERT_EQ(c, 4); // exact
 
-    using half = inside<{{0, 10}, 0.5}>;
+    using half = id<"[0..10] 0.5">;
     half h;
     h.with<round_half_away>() = 3.3;
     ASSERT_EQ(h, 3.5_r); // 3.5
@@ -645,8 +645,8 @@ TEST(PolicyHandleTest, round_half_away_float_rhs) {
 
 // with<round_half_away>: inside rhs incompatible notches
 TEST(PolicyHandleTest, round_half_away_inside_rhs_incompatible_notches) {
-    using coarse = inside<{{0, 10}, 2}>;
-    using fine   = inside<{{0, 10}, 1}>;
+    using coarse = id<"[0..10] 2">;
+    using fine   = id<"[0..10] 1">;
 
     coarse c{0};
     c.with<round_half_away>() = fine{3};
@@ -662,7 +662,7 @@ TEST(PolicyHandleTest, round_half_away_inside_rhs_incompatible_notches) {
 //---------------------------------------------------------------------------
 // with<round_toward_zero> vs with<round_half_away> disagree on halfway
 TEST(PolicyHandleTest, round_toward_zero_and_round_half_away_differ_on_a_tie) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     coarse c{0};
 
     c.with<round_toward_zero>() = 3.0;
@@ -678,7 +678,7 @@ TEST(PolicyHandleTest, round_toward_zero_and_round_half_away_differ_on_a_tie) {
 //---------------------------------------------------------------------------
 // with<Mode> selects the rounding mode
 TEST(PolicyHandleTest, the_handle_selects_the_rounding_mode) {
-    using coarse = inside<{{-10, 10}, 2}>; // grid: … -4 -2 0 2 4 …
+    using coarse = id<"[-10..10] 2">; // grid: … -4 -2 0 2 4 …
     coarse c{0};
 
     // +3 is halfway between 2 and 4.
@@ -713,7 +713,7 @@ TEST(PolicyHandleTest, the_handle_selects_the_rounding_mode) {
 // outlives the `num*num` temporary. Defined at namespace scope so the temporary is
 // truly gone by the time the caller reads the result.
 namespace {
-using small_t = ins::inside<{{0, 10}, per<10>}, clamp>;
+using small_t = ins::id<"[0..10] 1/10 clamp">;
 auto square(small_t n) { return (n * n).with<round_toward_zero>(); }
 } // namespace
 
@@ -759,10 +759,10 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
     // big keeps small's clamp (a result keeps its operands' shared policy), so it
     // clamps into any target; a checked product stays constrained.
     static_assert(
-        std::is_convertible_v<decltype(std::declval<big&>().with<round_toward_zero>()), inside<{{1000, 2000}, 1}>>);
-    using checked_big = decltype(inside<{0, 10}>{} * inside<{0, 10}>{});
+        std::is_convertible_v<decltype(std::declval<big&>().with<round_toward_zero>()), id<"[1000..2000] 1">>);
+    using checked_big = decltype(id<"[0..10]">{} * id<"[0..10]">{});
     static_assert(!std::is_convertible_v<decltype(std::declval<checked_big&>().with<round_toward_zero>()),
-                                         inside<{{1000, 2000}, 1}>>);
+                                         id<"[1000..2000] 1">>);
 }
 } // namespace with_methods_tests
 
@@ -801,7 +801,7 @@ struct scoped_handler {
 
 // A precondition broken at run time: a cursor stepped past its end.
 void step_past_the_end() {
-    cursor<inside<{0, 3}>> t;
+    cursor<id<"[0..3]">> t;
     t = end(t);
     ++t;
 }
@@ -814,11 +814,11 @@ TEST(ErrorHandlerTest, default_handler_prints_and_aborts) {
 
 // What a program can expect is reported as a value, not to the handler.
 TEST(ErrorHandlerTest, expected_failures_are_values) {
-    using coarse = inside<{{0, 10}, 2}>; // notch 2: 3 doesn't land
+    using coarse = id<"[0..10] 2">; // notch 2: 3 doesn't land
     EXPECT_EQ(exact_cast<coarse>(test::at_run_time(3)).error(), error::rounding_error);
-    using R = inside<{{0, 1}, per<16>}>;
+    using R = id<"[0..1] 1/16">;
     EXPECT_EQ(test::store_error<R>(test::at_run_time(std::numeric_limits<double>::infinity())), error::not_finite);
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     EXPECT_EQ(c100::try_make(test::at_run_time(200)).error(), error::overflow);
 }
 
@@ -850,8 +850,8 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
 
 // A zero divisor in a compound division is no handler's: it needs a channel.
 TEST(ErrorHandlerTest, compound_zero_divisor_names_a_channel) {
-    using x_t    = inside<{0, 10}, round_toward_zero>;
-    using zero_t = inside<{0, 1}>;
+    using x_t    = id<"[0..10] round_toward_zero">;
+    using zero_t = id<"[0..1]">;
     static_assert(!test::can_div<x_t, zero_t>);
     x_t   x{5};
     error ec{};
@@ -899,8 +899,8 @@ using namespace ins;
 using namespace ins::formats;
 
 namespace {
-using num_t = inside<{0, 100}>;
-using den_t = inside<{-5, 5}>; // spans zero → division returns expected
+using num_t = id<"[0..100]">;
+using den_t = id<"[-5..5]">; // spans zero → division returns expected
 
 std::expected<num_t, error> num_ok(int v) { return num_t::try_make(v); }
 std::expected<num_t, error> num_err(error e) { return std::unexpected{e}; }
@@ -957,9 +957,9 @@ TEST(ErrorVocabularyTest, division_inside_an_expected_chain_reports_its_cause) {
 // operator% chains through expected
 TEST(ErrorVocabularyTest, modulo_chains_through_expected) {
     // mod requires a rounding mode in the merged policy (integer-valued grids).
-    using mnum = inside<{0, 100}, round_toward_zero>;
-    using nz   = inside<{1, 5}, round_toward_zero>;  // divisor grid excludes zero
-    using span = inside<{-5, 5}, round_toward_zero>; // divisor grid spans zero
+    using mnum = id<"[0..100] round_toward_zero">;
+    using nz   = id<"[1..5] round_toward_zero">;     // divisor grid excludes zero
+    using span = id<"[-5..5] round_toward_zero">;    // divisor grid spans zero
     auto en    = []() -> std::expected<mnum, error> { return mnum{17}; };
 
     auto m = en() % nz{5};
@@ -992,8 +992,8 @@ concept stores_expected = requires(Ref r, E e) { r = e; };
 // += of an inside under wrap: the new raw's offset from a negative raw_lo
 // passed the work type.
 TEST(PolicyTest, wrap_offset_from_a_negative_lower) {
-    using L = inside<{-(1ll << 62), 1ll << 61}, wrap>;
-    using R = inside<{0, 1ll << 62}>;
+    using L = id<key{grid{-(1ll << 62), 1ll << 61}, wrap}>;
+    using R = id<key{grid{0, 1ll << 62}}>;
     L x{1ll << 61};
     x += R{1ll << 62};
     EXPECT_EQ(x, -1_ins);
@@ -1008,11 +1008,11 @@ TEST(PolicyTest, wrap_offset_from_a_negative_lower) {
 TEST(PolicyTest, wrap_folds_past_the_64_bit_rational) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
-    using full                     = inside<{i64_min, i64_max}>;
-    using quarter_wrap             = inside<{{-2, 3}, per<4>}, wrap>;
-    using halves_ceil              = inside<{{0.5, 10.5}, 1}, wrap | round_ceil>;
-    using digit                    = inside<{0, 9}, wrap>;
-    using fine                     = inside<{{0, 1}, per<(1ll << 62)>}, wrap>;
+    using full                     = id<key{grid{i64_min, i64_max}}>;
+    using quarter_wrap             = id<"[-2..3] 1/4 wrap">;
+    using halves_ceil              = id<"[0.5..10.5] 1 wrap|round_ceil">;
+    using digit                    = id<"[0..9] wrap">;
+    using fine                     = id<key{grid{{0, 1}, per<(1ll << 62)>}, wrap}>;
     EXPECT_EQ(*quarter_wrap::try_make(full{i64_min}), 2.5_ins);
     EXPECT_EQ(*halves_ceil::try_make(full{i64_min}), 3.5_ins);
     EXPECT_EQ(*digit::try_make(-0x1p63), 2_ins);
@@ -1025,8 +1025,8 @@ TEST(PolicyTest, wrap_folds_past_the_64_bit_rational) {
 // A flag (`clamp`, `round_floor`) or a const on_error(ec) as the constructor's
 // one-shot policy did not compile: report() was non-const.
 TEST(PolicyTest, named_policy_in_a_constructor) {
-    using halves = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
-    using digit  = inside<{0, 9}>;
+    using halves = id<"[0.5..10.5] 1">; // Lower off the notch's multiples
+    using digit  = id<"[0..9]">;
     static_assert(digit{12, clamp} == 9 && digit{12, wrap} == 2);
     static_assert(halves{7, round_floor} == 6.5_ins);
     error      ec{};
@@ -1040,24 +1040,24 @@ TEST(PolicyTest, named_policy_in_a_constructor) {
 // on a continuous grid it reported overflow.
 TEST(PolicyTest, continuous_grid_clamps_a_fine_double) {
     constexpr grid sevenths{interval{0, 1}, max_denominator{7}};
-    EXPECT_EQ(*(inside<{{0, 1}, max_denominator{1000}}, clamp>::try_make(-1e-20)), 0);
-    EXPECT_EQ(*(inside<{{1, 2}, max_denominator{1000}}, clamp>::try_make(1e-20)), 1);
-    EXPECT_EQ((*inside<sevenths, clamp>::try_make(-1e-20)), 0);
-    EXPECT_EQ((inside<{{0, 1}, max_denominator{1000}}>::try_make(-1e-20).error()), error::overflow);
+    EXPECT_EQ(*(id<"[0..1] <1000> clamp">::try_make(-1e-20)), 0);
+    EXPECT_EQ(*(id<"[1..2] <1000> clamp">::try_make(1e-20)), 1);
+    EXPECT_EQ((*id<key{sevenths, clamp}>::try_make(-1e-20)), 0);
+    EXPECT_EQ((id<"[0..1] <1000>">::try_make(-1e-20).error()), error::overflow);
 }
 
 TEST(PolicyTest, policy_handle_compound_is_constrained) {
-    using sixteenth = inside<{{0, 8}, per<16>}>;
-    using whole     = inside<{-100, 100}>;
+    using sixteenth = id<"[0..8] 1/16">;
+    using whole     = id<"[-100..100]">;
     static_assert(!proxy_add_ok<whole, sixteenth> && !plain_add_ok<whole, sixteenth>);
-    static_assert(proxy_add_ok<inside<{0, 100}>> && proxy_add_ok<sixteenth, whole>);
+    static_assert(proxy_add_ok<id<"[0..100]">> && proxy_add_ok<sixteenth, whole>);
 }
 
 // on_error was dropped when the value to store came from a continuous inside
 // (a quotient) and was off the notch: the store reported to the policy, which
 // threw, instead of calling the handler.
 TEST(PolicyTest, on_error_sees_rounding_from_a_continuous_source) {
-    using I = inside<{0, 100}>;
+    using I = id<"[0..100]">;
     I     w{7};
     error cb{};
     w.on_error([&](auto&, error c, const char*) { cb = c; }) /= I{2}; // 7/2
@@ -1066,7 +1066,7 @@ TEST(PolicyTest, on_error_sees_rounding_from_a_continuous_source) {
 }
 
 TEST(PolicyTest, policy_handle_expected_sink_reports_into_error) {
-    using ref = decltype(std::declval<inside<{0, 100}>&>().on_error(std::declval<error&>()));
+    using ref = decltype(std::declval<id<"[0..100]">&>().on_error(std::declval<error&>()));
     static_assert(!stores_expected<ref, std::expected<rational, error>>);
     static_assert(stores_expected<ref, rational>);
 }
@@ -1076,17 +1076,17 @@ TEST(PolicyTest, policy_handle_expected_sink_reports_into_error) {
 TEST(PolicyTest, policy_handle_failed_read_out_is_initialized) {
     static_assert([] {
         error                ec{};
-        inside<{0, 100}>     x{50};
-        const inside<{0, 9}> s = x.on_error(ec); // 50 is past 9: overflow into ec
+        id<"[0..100]">     x{50};
+        const id<"[0..9]"> s = x.on_error(ec); // 50 is past 9: overflow into ec
         return ec == error::overflow && s == 0;
     }());
 }
 
 // wrap on a bounded continuous grid folded before it rounded.
 TEST(PolicyTest, wrap_rounds_first_on_a_bounded_grid) {
-    using S = inside<{{0, 1}, max_denominator{2}}, wrap | round_toward_zero>;
-    using N = inside<{{0, 1}, max_denominator{2}}, wrap | round_half_away>;
-    using C = inside<{{0, 1}, max_denominator{7}}, wrap | round_ceil>;
+    using S = id<"[0..1] <2> wrap|round_toward_zero">;
+    using N = id<"[0..1] <2> wrap|round_half_away">;
+    using C = id<"[0..1] <7> wrap|round_ceil">;
     EXPECT_EQ(S{-1.3}, 0);
     EXPECT_EQ(N{-1.25}, rational(1, 2));
     EXPECT_EQ(C{rational(-97, 8)}, 0);
@@ -1095,7 +1095,7 @@ TEST(PolicyTest, wrap_rounds_first_on_a_bounded_grid) {
 
 // on_clamp did not fire for an infinity, though it was clamped.
 TEST(PolicyTest, on_clamp_hears_of_infinities) {
-    inside<{0, 100}> x{50};
+    id<"[0..100]"> x{50};
     int              fired = 0;
     bool             top   = false;
     x.on_clamp([&](auto&, auto o) { // an inside: ±∞ reports the end of its grid
@@ -1116,22 +1116,22 @@ TEST(PolicyTest, on_error_does_not_preempt_clamp_or_wrap) {
     error code{};
     auto  record = [&](auto&, error c, const char*) { code = c; };
 
-    inside<{0, 100}, clamp> c{0};
+    id<"[0..100] clamp"> c{0};
     c.on_error(record) = 150;
     EXPECT_EQ(code, error{});
     EXPECT_EQ(c, 100);
 
-    inside<{0, 59}, wrap> w{0};
+    id<"[0..59] wrap"> w{0};
     w.on_error(record) = 61;
     EXPECT_EQ(code, error{});
     EXPECT_EQ(w, 1);
 
-    inside<{{rational{1, 2}, rational{21, 2}}, 1}, round_half_even | clamp> h{rational{1, 2}};
+    id<"[1/2..21/2] 1 round_half_even|clamp"> h{rational{1, 2}};
     h.on_error(record) = 1e30;
     EXPECT_EQ(code, error{});
     EXPECT_EQ(h, rational(21, 2));
 
-    inside<{0, 100}> u{7}; // no clamp: on_error still replaces the failure
+    id<"[0..100]"> u{7}; // no clamp: on_error still replaces the failure
     u.on_error(record) = 150;
     EXPECT_EQ(code, error::overflow);
     EXPECT_EQ(u, 7);
@@ -1141,7 +1141,7 @@ TEST(PolicyTest, on_error_does_not_preempt_clamp_or_wrap) {
 // assignment<L, double> (assignment.hpp)
 //
 // `assign(insidable, double R)` checked for `uses_flag<L, P, clamp>` but not
-// for `uses_flag<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
+// for `uses_flag<L, P, wrap>`. An `id<key{grid{...}, wrap}>` constructed from a
 // double silently stores the unwrapped value (which may be out of range)
 // because it falls through `range_fail` without `checked` set.
 //
@@ -1150,7 +1150,7 @@ TEST(PolicyTest, on_error_does_not_preempt_clamp_or_wrap) {
 // policy machinery can react).
 //---------------------------------------------------------------------------
 TEST(PolicyTest, wrap_fires_for_a_double) {
-    using L = inside<{0, 100}, wrap>;
+    using L = id<"[0..100] wrap">;
 
     // 120 wraps once into [0, 100] → 19 (since the range is 101 inclusive).
     ASSERT_EQ(L{double{120.0}}, 19);
@@ -1159,14 +1159,14 @@ TEST(PolicyTest, wrap_fires_for_a_double) {
     ASSERT_EQ(L{double{-5.0}}, 96);
 
     // signed-range wrap
-    using S = inside<{-50, 50}, wrap>;
+    using S = id<"[-50..50] wrap">;
     // 75 wraps once: 75 - 101 = -26.
     ASSERT_EQ(S{double{75.0}}, -26);
 }
 
 TEST(PolicyTest, one_shot_policy_applies_to_dyadic_target) {
-    using RealSmall = ins::inside<{{0, 4}, ins::per<4>}>;
-    using RealWide  = ins::inside<{{-8, 8}, ins::per<4>}>;
+    using RealSmall = ins::id<"[0..4] 1/4">;
+    using RealWide  = ins::id<"[-8..8] 1/4">;
     using namespace ins;
     using namespace ins::formats;
     const RealWide big = RealWide{7.5}, low = RealWide{-1.0};
@@ -1182,16 +1182,16 @@ TEST(PolicyTest, one_shot_policy_applies_to_dyadic_target) {
 // clamp / wrap take an integral source whose whole type range misses the grid.
 //---------------------------------------------------------------------------
 TEST(PolicyTest, clamp_wrap_from_disjoint_integral_type) {
-    static_assert(inside<{{1000, 2000}, 1}, clamp>{std::uint8_t{5}}.to<int>() == 1000);
-    static_assert(inside<{{1000, 1009}, 1}, wrap>{std::uint8_t{5}}.to<int>() == 1005);
-    static_assert(inside<{1000, 2000}>{std::uint8_t{5}, clamp}.to<int>() == 1000);
+    static_assert(id<"[1000..2000] 1 clamp">{std::uint8_t{5}}.to<int>() == 1000);
+    static_assert(id<"[1000..1009] 1 wrap">{std::uint8_t{5}}.to<int>() == 1005);
+    static_assert(id<"[1000..2000]">{std::uint8_t{5}, clamp}.to<int>() == 1000);
 }
 
 // A policy_ref compound /= or %= with a zero divisor reports (or, under
 // unsafe, no-ops) like the member operator, and never divides by zero.
 TEST(PolicyTest, policy_handle_zero_divisor_does_not_divide) {
-    using X = inside<{0, 10}, checked | round_toward_zero>;
-    using Z = inside<{0, 10}, unsafe>;
+    using X = id<"[0..10] round_toward_zero">;
+    using Z = id<"[0..10] unsafe">;
     X b{6};
     b.with<unsafe>() /= X{0};
     b.with<unsafe>() %= X{0};
@@ -1215,7 +1215,7 @@ TEST(PolicyTest, policy_handle_zero_divisor_does_not_divide) {
 //---------------------------------------------------------------------------
 // checked += insidable overflow reports
 TEST(PolicyTest, checked_compound_overflow_reports) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     static_assert(!test::can_add<c100, c100>);
     c100  a{80};
     c100  b{50};
@@ -1233,7 +1233,7 @@ TEST(PolicyTest, checked_compound_overflow_reports) {
 //---------------------------------------------------------------------------
 // on_error fires for an out-of-range double assignment
 TEST(PolicyTest, on_error_fires_for_an_out_of_range_double_assignment) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     c100 e{50};
     bool fired = false;
     e.on_error([&](auto& self, error code, std::string_view msg) {
@@ -1250,7 +1250,7 @@ TEST(PolicyTest, on_error_fires_for_an_out_of_range_double_assignment) {
 //---------------------------------------------------------------------------
 // on_error compound subtract that does not fail
 TEST(PolicyTest, on_error_compound_subtract_that_does_not_fail) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     c100 acc{50};
     bool fired = false;
     acc.on_error([&](auto&, error, const char*) { fired = true; }) -= 10_ins; // 40, in range
@@ -1266,10 +1266,10 @@ TEST(PolicyTest, on_error_compound_subtract_that_does_not_fail) {
 // clamp | round_toward_zero truncates an in-range off-notch value; clamp
 // alone handles only the range, so the off-notch value is a rounding error.
 TEST(PolicyTest, clamp_truncates_an_off_notch_value_in_range) {
-    using strict = inside<{{0, 10}, per<2>}, clamp>;
+    using strict = id<"[0..10] 1/2 clamp">;
     ASSERT_EQ(strict::try_make(0.3).error(), error::rounding_error);
 
-    using b = inside<{{0, 10}, per<2>}, clamp | round_toward_zero>; // notch 1/2
+    using b = id<"[0..10] 1/2 clamp|round_toward_zero">; // notch 1/2
     b x{0};
     x = 0.3; // in range, off the 1/2 grid → truncates to 0
     ASSERT_EQ(x, 0);
@@ -1298,40 +1298,40 @@ TEST(PolicyTest, error_message_stringifies_every_error) {
 //---------------------------------------------------------------------------
 // unsafe + no action: out-of-range int rhs stores without throwing
 TEST(PolicyTest, unsafe_stores_without_a_range_check) {
-    using L = inside<{0, 100}, unsafe>;
+    using L = id<"[0..100] unsafe">;
     // The += must not throw, even with an out-of-range value. Storage holds
     // the raw value as-is (UB on read, but that's the `unsafe` contract).
     L b{50};
     // A delta inside with Lower==0 keeps the raw-add fast path (a singleton `200_ins`
     // would widen to a disjoint grid that only clamp/wrap can absorb).
-    ASSERT_NO_THROW((void)((b += inside<{0, 200}>{200})));
+    ASSERT_NO_THROW((void)((b += id<"[0..200]">{200})));
     // No assertion on the value — `unsafe` doesn't promise meaningful behaviour
     // for out-of-range writes, only that they don't throw.
 }
 
 // checked + no action: range check still fires
 TEST(PolicyTest, checked_range_check_fires) {
-    using L = inside<{0, 100}, checked>;
+    using L = id<"[0..100]">;
     L b{50};
-    static_assert(!test::can_add<L, inside<{0, 200}>>);
+    static_assert(!test::can_add<L, id<"[0..200]">>);
     error ec{};
-    b.on_error(ec) += inside<{0, 200}>{200};
+    b.on_error(ec) += id<"[0..200]">{200};
     ASSERT_EQ(ec, error::overflow);
 }
 
 // clamp policy: range check still fires
 TEST(PolicyTest, clamp_range_check_fires) {
-    using L = inside<{0, 100}, clamp>;
+    using L = id<"[0..100] clamp">;
     L b{50};
-    b += inside<{0, 200}>{200};
+    b += id<"[0..200]">{200};
     ASSERT_EQ(b, 100);
 }
 
 // wrap policy: range check still fires
 TEST(PolicyTest, wrap_range_check_fires) {
-    using L = inside<{0, 100}, wrap>;
+    using L = id<"[0..100] wrap">;
     L b{50};
-    b += inside<{0, 200}>{200};
+    b += id<"[0..200]">{200};
     ASSERT_EQ(b, 48); // (50 + 200 - 0) mod 101 + 0 = 250 mod 101 = 48
 }
 
@@ -1345,9 +1345,9 @@ using namespace ins::formats;
 
 // policy_ref %= by an unsafe zero divisor reports nothing and leaves the value.
 TEST(PoliciesArmTest, policy_ref_remainder_by_an_unsafe_zero) {
-    inside<{0, 10}>         b{7};
+    id<"[0..10]">         b{7};
     volatile int            zero = 0;
-    inside<{0, 10}, unsafe> z{static_cast<int>(zero)};
+    id<"[0..10] unsafe"> z{static_cast<int>(zero)};
     b.with<wrap>() %= z;
     EXPECT_TRUE(b == 7);
 }
@@ -1359,9 +1359,9 @@ using namespace ins::formats;
 
 // policy_ref %= by a nonzero divisor stores the remainder.
 TEST(PoliciesArmTest, policy_ref_remainder) {
-    inside<{0, 10}> b{7};
+    id<"[0..10]"> b{7};
     volatile int    four = 4;
-    b.with<wrap>() %= test::store<inside<{1, 10}>>(static_cast<int>(four));
+    b.with<wrap>() %= test::store<id<"[1..10]">>(static_cast<int>(four));
     EXPECT_TRUE(b == 3);
 }
 } // namespace reached_arms_tests
@@ -1393,9 +1393,9 @@ bool carry_is(Want want) {
 }
 
 TEST(PolicyActionsTest, wrap_carry_past_int64_is_exact) {
-    using digit   = inside<{0, 9}, wrap>;
-    using quarter = inside<{{0, 10}, per<4>}, wrap>; // period 10.25
-    using W       = inside<{0, 1180591620717411303424_g}>;
+    using digit   = id<"[0..9] wrap">;
+    using quarter = id<"[0..10] 1/4 wrap">; // period 10.25
+    using W       = id<"[0..1180591620717411303424]">;
     // An inside source past 64 bits: ⌊2^70 / 10⌋ and ⌊2^70 / 10.25⌋.
     EXPECT_TRUE((carry_is<digit>(W{1180591620717411303424_g}, just<118059162071741130342_g>)));
     EXPECT_TRUE((carry_is<quarter>(W{1180591620717411303424_g}, just<115179670313893785699_g>)));
@@ -1407,7 +1407,7 @@ TEST(PolicyActionsTest, wrap_carry_past_int64_is_exact) {
     EXPECT_TRUE((carry_is<digit, -0x1p100>(just<-126765060022822940149670320538_g>)));
     // A rational source, and an inside one into a fractional destination.
     EXPECT_TRUE((carry_is<quarter, rational{229, 4}>(5)));
-    EXPECT_TRUE((carry_is<quarter>(inside<{{0, 20}, per<4>}>{15}, 1)));
+    EXPECT_TRUE((carry_is<quarter>(id<"[0..20] 1/4">{15}, 1)));
     // The carry's type holds every carry of the source kind.
     digit d{};
     d.on_wrap([](auto&, auto carry) { static_assert(upper_of<decltype(carry)> == 1844674407370955161_g); }) =

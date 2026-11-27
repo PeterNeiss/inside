@@ -29,7 +29,7 @@ inline constexpr auto to_the_wei = per<1'000'000'000'000'000'000>;
 
 int main()
 {
-  using account_eth = quantity<ETH, inside<{{0, 1'000'000'000}, to_the_wei}>>; // one account
+  using account_eth = id<quantity_key<ETH, id<key{grid{{0, 1'000'000'000}, to_the_wei}}>>>; // one account
   static_assert(sizeof(account_eth) == 16); // 10^27 + 1 points: two 64-bit limbs
 
   // 1. Exact parsing from text with its unit, where the nearest double has lost the last ten digits.
@@ -42,8 +42,8 @@ int main()
   static_assert(wei == 1e-18_ins * ETH); // one wei is the notch of the grid
 
   // 2. A fee is gas × price: 21000 gas at 30 gwei/gas is 630000 gwei, exactly 0.00063 ETH.
-  using gas_amount   = quantity<gas       , inside<{0, 30'000'000}>>; // units of work
-  using gwei_per_gas = quantity<gwei / gas, inside<{0, 10'000    }>>; // whole gwei per gas
+  using gas_amount   = id<"[0..30'000'000] [gas]">;                   // units of work
+  using gwei_per_gas = id<"[0..10'000] [gwei/gas]">;                  // whole gwei per gas
   const auto fee{gas_amount{21'000, gas} * gwei_per_gas{30, gwei / gas}};
   std::cout << "fee      " << fee << " = " << fee.in(ETH) << "\n";
   if (fee != just<63, 100'000> * ETH || to_string(fee) != "630000 gwei")
@@ -59,7 +59,7 @@ int main()
 
   // 3. A thousand accounts near the top of the grid:
   // sum adds the wide raws exactly (an expected: the count is a run-time number).
-  using total_eth = quantity<ETH, inside<{{0, 1'000'000'000'000}, to_the_wei}>>;
+  using total_eth = id<quantity_key<ETH, id<key{grid{{0, 1'000'000'000'000}, to_the_wei}}>>>;
   std::array<account_eth, 1000> accounts;
   accounts.fill(*parse<account_eth>("999999999.999999999999999999 ETH"));
   const auto sum{ins::sum<total_eth>(accounts)};
@@ -71,8 +71,8 @@ int main()
 
   // 4. In dollars at 3141.59 USD/ETH: balance × rate has a 10^-20 notch, past 64-bit numbers,
   // so the exact product rounds straight onto the cents. ETH·USD/ETH is USD.
-  using usd_per_eth = quantity<USD / ETH, inside<{{0, 1'000'000}, per<100>}>>; // to the cent
-  using dollars     = quantity<USD, inside<{{0, 1'000'000'000'000'000}, per<100>}, round_half_away>>;
+  using usd_per_eth = id<"[0..1'000'000] 1/100 [USD/ETH]">; // to the cent
+  using dollars     = id<"[0..1'000'000'000'000'000] 1/100 [USD] round_half_away">;
   const dollars value{mul<dollars>(balance, *parse<usd_per_eth>("3141.59 USD/ETH"))};
   std::cout << "value    " << value << "\n";
   if (to_string(value) != "387850614142.36 USD")

@@ -26,7 +26,7 @@ Contents: [1 grid invariants](#1-grid-invariants) ·
 
 ## 1. Grid invariants
 
-Every `inside<G, P>` carries a `grid G` value. `grid::validate` (`grid.hpp`)
+Every `id<key{G, P}>` carries a `grid G` value. `grid::validate` (`grid.hpp`)
 checks these when the type is instantiated:
 
 - **Lower ≤ Upper**.
@@ -39,7 +39,7 @@ checks these when the type is instantiated:
   An inside needs the bound: it sizes every exact result's fraction, so
   `+ − ×` are total. A grid *value* may lack it (`grid{{0, 1}, 0}`, or a
   result whose fractions would pass 1024 bits), and
-  `inside<G>` then does not compile.
+  `id<key{G}>` then does not compile.
 - **Notch ≥ 0.** Decoding is Lower + raw·Notch, so a negative notch would
   count downward; `per<D>` is positive by construction, and any other negative
   notch is rejected.
@@ -255,7 +255,7 @@ four-level cascade:
 │                                  x.with<F>() = …                 │
 │                                       │ none                     │
 │                                       ▼                          │
-│ 3. the type's policy             inside<G, clamp>, inside<G, P>  │
+│ 3. the type's policy             id<key{G, clamp}>, id<key{G, P}>  │
 │                                       │ P does not handle it     │
 │                                       ▼                          │
 │ 4. no channel                    a compile error (or a constant) │
@@ -419,7 +419,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | Header | Holds |
 |---|---|
 | `inside/detail/config.hpp` | the build options and platform features (`__int128`, FMA, exceptions); the C++26-reflection `#error`; included first everywhere |
-| `inside/detail/core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to<T>`, `parse(first, last)`, hooks, `just`, `_ins` |
+| `inside/detail/core.hpp` | `id<key{G, P}>`: construction, compound assignment, `++`/`--`, `to<T>`, `parse(first, last)`, hooks, `just`, `_ins` |
 | `inside/detail/numbers.hpp` | the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `wide_builtin`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `error`, `error_message`, `inside_error` (compile time only), the error handler, `raise`, `constexpr_error` |
@@ -448,8 +448,8 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `math/detail/functions.hpp` | the call forms of every math function (`f(x)`, `f<Spec…>(x)`, `f<C>(x)`, `f<C, D…>(x)`): output specs, the kinds of arguments (insides here, quantities in `units/math.hpp`, multivectors in `units/detail/geoalg_exp.hpp`), and the macro that declares a function's public templates |
 | `units/detail/algebra.hpp` | dimensions, magnitudes, kinds, origins, units, their definition objects, references, the exact unit conversion |
 | `units/detail/define.hpp` | the declarations of your own: `unit`, `kind`, `base_dimension`, `base_unit`, `origin`, `basis_vector`, `pi` |
-| `units/detail/quantity.hpp` | `quantity<R, Rep>`: construction, arithmetic, casts, inside's algorithms on quantities |
-| `units/detail/point.hpp` | `quantity_point<R, O, Rep>`: points from an origin, their shifts and comparisons |
+| `units/detail/quantity.hpp` | `id<quantity_key<R, Rep>>`: construction, arithmetic, casts, inside's algorithms on quantities |
+| `units/detail/point.hpp` | `id<point_key<R, O, Rep>>`: points from an origin, their shifts and comparisons |
 
 `single_include/inside/inside.hpp` amalgamates the whole tree
 ([the single header](advanced/single-header.md)).
@@ -459,8 +459,8 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 ## 9. The units layer
 
 `units.hpp` builds quantities on top of insides, with no type-list
-metaprogramming. Its parts are in `units/`: the algebra, `quantity` and
-`quantity_point` in `units/detail/` (together `units/core.hpp`), and the
+metaprogramming. Its parts are in `units/`: the algebra, quantities and
+points in `units/detail/` (together `units/core.hpp`), and the
 catalog in `units/systems.hpp`.
 
 **Values, not type lists.** A dimension (any number of base dimensions,
@@ -483,7 +483,7 @@ common quantity types spell short; the constructors make the one form.
 **A conversion is a rescale.** `conversion_factor<From, To>` is the ratio of
 the two magnitudes. `detail::rescale<M>(v)` multiplies an inside by the
 rational M as `v * just<M>`, which scales the grid and keeps the raw (§1, point
-operands), then re-wraps it in v's policy. So km → mm on `inside<{0, 10}>` is
+operands), then re-wraps it in v's policy. So km → mm on `id<"[0..10]">` is
 the same `uint8_t`. A factor with π has no exact grid; `in()` refuses it, and
 `value_cast` across π goes through `engine::pi_scale_core`, which multiplies by π
 at the bits the output needs.

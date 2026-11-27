@@ -5,6 +5,6 @@
 
 using namespace ins;
 
-constexpr inside<{{0, 100}, per<100>}> price{3.49}; // 3.49 is no multiple of 1/100
+constexpr id<"[0..100] 1/100"> price{3.49}; // 3.49 is no multiple of 1/100
 
 int main() {}

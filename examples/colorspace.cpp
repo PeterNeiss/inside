@@ -29,8 +29,9 @@ namespace
   inline constexpr auto i  = unit<"i", e1 * e2>;
 
   // Linear light relative to white, to the 1/1000; a colour's parts print in name order, B G R.
-  using channel = inside<{{0, 1}, per<1000>}, round_half_away>;
-  using colour  = multivector<quantity<B, channel>, quantity<G, channel>, quantity<R, channel>>;
+  using channel = id<"[0..1] 1/1000 round_half_away">;
+  using colour  = multivector<id<"[0..1] 1/1000 [B] round_half_away">, id<"[0..1] 1/1000 [G] round_half_away">,
+                              id<"[0..1] 1/1000 [R] round_half_away">>;
 
   // The rows of the sRGB to XYZ matrix (D65): X = rx·c, Y = ry·c (the luminance), Z = rz·c.
   inline constexpr auto rx{0.4124_ins * R + 0.3576_ins * G + 0.1805_ins * B};
@@ -91,7 +92,7 @@ int main()
 
   // Any angle: the chroma a + b i of an opponent space (Lab) turns by e^(iθ), i·i = -1. A quarter turn is i,
   // exactly; e^(iπ/6) rounds each part once, onto 1/1000.
-  using fine = inside<{{-4, 4}, per<(1 << 20)>}, round_half_away>;
+  using fine = id<"[-4..4] 1/1048576 round_half_away">;
   const fine pi = math::pi;
   const auto chroma{just<3, 10> + just<4, 10> * i};
   const auto turn  {math::exp<per<1000>>(pi / just<6> * i)};

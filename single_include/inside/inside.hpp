@@ -41,7 +41,7 @@
 // The core type (inside/detail/core.hpp) and its comparisons (inside/compare.hpp),
 // plus the free-function layers that depend on the complete type:
 // casts, arithmetic operators, inside_range and cursor, and the std::numeric_limits and std::hash specializations.
-// Those follow inside/detail/core.hpp because they need `inside<G, P>` fully defined.
+// Those follow inside/detail/core.hpp because they need `id<key{G, P}>` fully defined.
 
 
 // ======================================================================
@@ -125,7 +125,7 @@
 //  inside/inside/detail/core.hpp
 // ======================================================================
 // Internal: include <inside/inside.hpp> (the umbrella), not this directly.
-// The core type ins::inside<G, P>:
+// The core type ins::id<ins::key{G, P}>:
 // construction and try_make, compound assignment, ++/--, the conversions (rational, double, to<T>),
 // numerator()/denominator(), raw()/from_raw, the per-store overrides (with<F>(), on_error(ec))
 // and hooks (on_wrap, on_clamp, on_error), parse(first, last), just<…> and the _ins literal.
@@ -4218,7 +4218,7 @@ namespace ins
   template <auto D>
   inline constexpr auto per = detail::make_per<D>();
 
-  // A grid number of any size: inside<{0, 1267650600228229401496703205376_g}>,
+  // A grid number of any size: id<"[0..1267650600228229401496703205376]">,
   // an exact decimal notch {{0, 1}, 1e-30_g}, or a binary one 0x1p-100_g.
   inline namespace literals
   {
@@ -4467,7 +4467,7 @@ namespace ins::detail
 
 namespace ins
 {
-  // policy_flag: the policy bits of inside<G, P> (the rounding modes, clamp, wrap, checked, unsafe),
+  // policy_flag: the policy bits of id<key{G, P}> (the rounding modes, clamp, wrap, checked, unsafe),
   // has_flag / is_checked, the rounding precedence (rounding_of),
   // the hook factories on_clamp / on_wrap / on_error with their is_*_action traits,
   // and the flags each hook implies.
@@ -4476,9 +4476,9 @@ namespace ins
   namespace detail
   {
     // A named flag is an object of its own type that converts to its bits:
-    // it is a template argument (inside<G, round_floor>), combines with | (clamp | round_floor stays a flag),
+    // it is a template argument (id<key{G, round_floor}>), combines with | (clamp | round_floor stays a flag),
     // and selects a call's policy (div(a, b, round_floor)).
-    // A policy_flag value, its bits, is what every template takes, so inside<G, round_floor> is inside<G, 48>.
+    // A policy_flag value, its bits, is what every template takes, so id<key{G, round_floor}> is id<key{G, 48}>.
     template <policy_flag V>
     struct flag
     {
@@ -4523,7 +4523,7 @@ namespace ins
   inline constexpr detail::flag<(1ull << 8) | detail::snap> round_half_even{};
 
   // Runtime checking, the default policy's name, no bits:
-  // every policy without `unsafe` checks (see is_checked), so inside<G> and inside<G, checked> are one type.
+  // every policy without `unsafe` checks (see is_checked), so id<key{G}> and id<key{G, checked}> are one type.
   inline constexpr detail::flag<0ull> checked{};
 
   // unary, mutually exclusive
@@ -4598,7 +4598,7 @@ namespace ins
 
     // Runtime checks run unless the flag set carries `unsafe`, which wins over `checked`
     // (the default policy's own bit, so `x.with<unsafe>()` opts a default inside out).
-    // `inside<G, round_half_away>` and `inside<G, clamp>` are checked, exactly like the default `inside<G>`.
+    // `id<key{G, round_half_away}>` and `id<key{G, clamp}>` are checked, exactly like the default `id<key{G}>`.
     [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, unsafe_marker); }
 
     // Whether an out-of-range value does anything under a flag set:
@@ -4779,7 +4779,7 @@ namespace ins
     inline constexpr int max_fraction_bits = 1024;
   } // namespace detail
 
-  // A continuous grid whose values have denominators of at most Value: inside<{{0, 1}, max_denominator{1000}}>.
+  // A continuous grid whose values have denominators of at most Value: id<"[0..1] <1000>">.
   // The bound makes exact arithmetic predictable: the result type knows how large every fraction can get.
   struct max_denominator
   {
@@ -5190,7 +5190,7 @@ namespace ins
         return value_uint_for_t<G>{};
     }
 
-    // The raw type of inside<G, P> (the policy plays no part).
+    // The raw type of id<key{G, P}> (the policy plays no part).
     template <grid G>
     using raw_for_t = decltype(raw_for<G>());
 
@@ -6012,7 +6012,7 @@ namespace ins::detail
 // ins::id<ins::key{"[0..10) 1/4 clamp"}>, and every spelling of one grid and policy is the same type:
 // id<"[0..10)"> is id<"[0..9]">. (GCC prints a class-typed template argument member by member, a char array as a
 // string; only the characters written are stored, so a mangled name holds only those.)
-// inside<G, P>, the grid and policy as values, names the same type: inside<{0, 9}> is id<"[0..9]">.
+// id<key{G, P}>, the grid and policy as values, names the same type: id<"[0..9]"> is id<"[0..9]">.
 namespace ins
 {
   struct key;
@@ -6038,23 +6038,32 @@ namespace ins
 
     consteval key key_of(grid g, policy_flag p);
     consteval key key_of(grid g, policy_flag p, quantity_name q);
-    template <class Hook>
+    template <class Reader>
     consteval key key_of_text(key raw);
     consteval key raw_key(std::string_view text);
     consteval key marked_key(const key& raw);
 
     struct id_spec;
 
-    // How a key reads a quantity's text (its unit, kind and origin): canonical_quantity_text(text_hook<N>{}, …),
-    // found by argument-dependent lookup where the key is formed, so that units/detail/unit_key.hpp, included
-    // after this header, provides it. Without it, a unit is an error. (at: where the text went wrong.)
+    // How a key reads a quantity's text (its unit, kind and origin): canonical_quantity_text(Reader{}, …), found by
+    // argument-dependent lookup, for the Reader that units_marker(text_hook<N>{}, 0) names where the key is formed
+    // (a default template argument of the key's constructor, asked at each one): the units' (units/detail/
+    // unit_key.hpp, an overload on int) where <inside/units.hpp> is included, else this one (on long), which reads
+    // no unit. (A reader bound once per text length would leave every quantity text of a length unread once a text
+    // of that length was read before the units header.) (at: where the text went wrong.)
     template <std::size_t N>
     struct text_hook
     {
     };
-    template <class Hook>
-    consteval bool canonical_quantity_text(Hook, const id_spec& s, quantity_name&, std::string_view& expected,
-                                           std::size_t& at)
+    template <std::size_t N>
+    struct no_units_reader
+    {
+    };
+    template <std::size_t N>
+    no_units_reader<N> units_marker(text_hook<N>, long);
+    template <std::size_t N>
+    consteval bool canonical_quantity_text(no_units_reader<N>, const id_spec& s, quantity_name&,
+                                           std::string_view& expected, std::size_t& at)
     {
       expected = "no unit: a quantity's type needs <inside/units.hpp>";
       at       = s.UnitAt;
@@ -6070,10 +6079,9 @@ namespace ins
     // mark, and the type it names fails with where the reading stopped (id's first static_assert).
     // (Through detail::key_of_text, a function of the text alone, whose results GCC keeps:
     // each text is read once however often a type names it.)
-    template <std::size_t N>
-    consteval key(const char (&text)[N])
-      : key{detail::key_of_text<detail::text_hook<N>>(detail::raw_key({text, N - 1}))} {}
-    // A grid and a policy as values (inside<G, P>, and the result types of the operators).
+    template <std::size_t N, class Reader = decltype(units_marker(detail::text_hook<N>{}, 0))>
+    consteval key(const char (&text)[N]) : key{detail::key_of_text<Reader>(detail::raw_key({text, N - 1}))} {}
+    // A grid and a policy as values (id<key{G, P}>, and the result types of the operators).
     consteval key(const grid& g, policy_flag p = checked) : key{detail::key_of(g, p)} {}
 
     [[nodiscard]] constexpr std::string_view text() const { return Text; }
@@ -6112,19 +6120,19 @@ namespace ins
       return k;
     }
     // A text's quantity, canonical (nothing for an inside), or where it went wrong.
-    template <class Hook>
+    template <class Reader>
     consteval bool read_quantity_of(const id_spec& s, quantity_name& q, std::string_view& expected, std::size_t& at)
     {
-      return s.Unit.empty() || canonical_quantity_text(Hook{}, s, q, expected, at);
+      return s.Unit.empty() || canonical_quantity_text(Reader{}, s, q, expected, at);
     }
-    template <class Hook>
+    template <class Reader>
     consteval key key_of_text(key raw)
     {
       const id_spec    s{parse_id_text(raw.text())};
       quantity_name    q;
       std::string_view expected;
       std::size_t      at{0};
-      if (!s.Expected.empty() || !read_quantity_of<Hook>(s, q, expected, at))
+      if (!s.Expected.empty() || !read_quantity_of<Reader>(s, q, expected, at))
         return marked_key(raw);
       return s.Unit.empty() ? key_of(s.Grid, s.Policy) : key_of(s.Grid, s.Policy, q);
     }
@@ -6169,22 +6177,23 @@ namespace ins
     // A key with a unit names a quantity (units/detail/quantity.hpp), one without an inside.
     template <key K>
     concept unit_key = !key_spec<K>.Unit.empty() && key_spec<K>.Origin.empty();
-    // A key with an origin names a point.
+    // A key with an origin names a point (units/detail/point.hpp).
     template <key K>
-    concept point_key = !key_spec<K>.Origin.empty();
+    concept origin_key = !key_spec<K>.Origin.empty();
     // A key without a unit names an inside.
     template <key K>
     concept inside_key = key_spec<K>.Unit.empty();
 
-    // Where a text stopped making sense, and what it expected there.
-    template <class Hook>
-    consteval diag_text key_error(const key& k)
+    // Where a key's text stopped making sense, and what it expected there (read by the reader where the type is
+    // formed).
+    template <key K, class Reader = decltype(units_marker(text_hook<K.text().size()>{}, 0))>
+    consteval diag_text key_error()
     {
-      const std::string_view text{k.text().substr(1)};
+      const std::string_view text{K.text().substr(1)};
       id_spec                s{parse_id_text(text)};
       quantity_name          q;
       if (s.Expected.empty())
-        (void)read_quantity_of<Hook>(s, q, s.Expected, s.Stop);
+        (void)read_quantity_of<Reader>(s, q, s.Expected, s.Stop);
       return diag_text{} << "inside: id<\"" << text << "\">: expected " << s.Expected << " at "
                          << grid_number{s.Stop} << " (\"" << text.substr(0, s.Stop) << "\" read)";
     }
@@ -6202,7 +6211,7 @@ namespace ins
       bool        Typed{false};
       bool        NumberOk{true};
 
-      template <std::size_t N>
+      template <std::size_t N, class Reader = decltype(units_marker(text_hook<N>{}, 0))>
       consteval value_text(const char (&literal)[N]) : Key{raw_key({literal, N - 1})}
       {
         const std::string_view text{literal, N - 1};
@@ -6232,10 +6241,10 @@ namespace ins
           t.put(Value);
           t.put("] ");
           t.put(rest);
-          Key = key_of_text<text_hook<N>>(raw_key({typed, t.Size}));
+          Key = key_of_text<Reader>(raw_key({typed, t.Size}));
           return;
         }
-        Key = key_of_text<text_hook<N>>(raw_key(rest));
+        Key = key_of_text<Reader>(raw_key(rest));
       }
     };
 
@@ -6254,10 +6263,6 @@ namespace ins
   // An inside type: the grid and the policy its key spells (inside/detail/core.hpp).
   template <key Key>
   struct id;
-
-  // The grid and policy as values: the same type as the id whose key spells them.
-  template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
-  using inside = id<key{G, P}>;
 } // namespace ins
 
 
@@ -7117,7 +7122,7 @@ namespace ins::detail
   }
 
   // integer_limits vs integer_lattice: easy to confuse, both needed.
-  // - integer_limits<B>: Lower and Upper integers (Notch may be fractional, e.g. inside<{0,100}, 1/10>).
+  // - integer_limits<B>: Lower and Upper integers (Notch may be fractional, e.g. id<key{grid{0,100}, 1/10}>).
   //   It lets Lower and Upper be used as int64 constants.
   // - integer_lattice<B>: every value an integer: an integer Lower and an integer non-zero Notch, or a point.
   //   It implies integer_limits (not the converse). A continuous grid (Notch 0) is not one, whatever its limits.
@@ -8735,7 +8740,7 @@ namespace ins::detail
     return overshoot_source_grid<R>() - limits;
   }
   template <insidable L, typename R>
-  using clamp_overshoot_t = ins::inside<clamp_overshoot_grid<L, R>()>;
+  using clamp_overshoot_t = ins::id<ins::key{clamp_overshoot_grid<L, R>()}>;
 
   // An exact value of Result's grid as Result, for any storage.
   template <insidable Result, std::size_t K>
@@ -8794,7 +8799,7 @@ namespace ins::detail
   template <insidable L, typename R, typename Q>
   constexpr auto make_wrap_carry(const Q& q)
   {
-    using C = ins::inside<wrap_carry_grid<L, R>()>;
+    using C = ins::id<ins::key{wrap_carry_grid<L, R>()}>;
     if constexpr (std::integral<Q> && notched<C> && !wide_valued<C>)
     {
       C carry;
@@ -10116,9 +10121,9 @@ namespace ins::detail
       // which is what rhs minus that limit as an inside computes in integers.
       if constexpr (clamp_action<plain_t<A>>)
       {
-        using limits = inside<lower_of<L> == upper_of<L>
+        using limits = id<key{lower_of<L> == upper_of<L>
                                 ? grid{lower_of<L>}
-                                : grid{interval{lower_of<L>, upper_of<L>}, upper_of<L> - lower_of<L>}>;
+                                : grid{interval{lower_of<L>, upper_of<L>}, upper_of<L> - lower_of<L>}}>;
         if constexpr (!wide_valued<R> && !wide_valued<L>
                       && requires(const R& r, const limits& l)
                          {
@@ -10535,11 +10540,11 @@ namespace ins
       && !std::same_as<T, char8_t> && !std::same_as<T, char16_t> && !std::same_as<T, char32_t>;
 
     // A builtin integer on the right of x += n, x -= n, x *= n:
-    // an inside on the whole range of its type (an int is an inside<{INT_MIN, INT_MAX}>),
+    // an inside on the whole range of its type (an int is an id<key{grid{INT_MIN, INT_MAX}}>),
     // so the result is stored back into x by the rules for any inside.
     // (The binary x + n has no such reading: its type would be that range.)
     template <index_integer A>
-    using lifted_t = inside<grid{interval_of<A>, grid_number{1}}>;
+    using lifted_t = id<key{grid{interval_of<A>, grid_number{1}}}>;
     template <class A>
     concept step_integer = index_integer<A> && integer_value_storage<lifted_t<A>>;
     template <step_integer A>
@@ -10565,13 +10570,13 @@ namespace ins
       rational    Exact{};       // an integer or a rational
 
       template <std::floating_point X>
-        requires inside_assignable<inside<grid_of<B>, F>, X, F>
+        requires inside_assignable<id<key{grid_of<B>, F}>, X, F>
       consteval constant_value(X x) : Floating{true}, Float{x}
       {
         trial(x);
       }
       template <class X>
-        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<inside<grid_of<B>, F>, X, F>
+        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<id<key{grid_of<B>, F}>, X, F>
       consteval constant_value(const X& x) : Exact{x}
       {
         trial(x);
@@ -10587,8 +10592,8 @@ namespace ins
       template <class X>
       static consteval void trial(const X& x)
       {
-        inside<grid_of<B>, F> twin;
-        assignment<inside<grid_of<B>, F>, X>::assign(twin, x, make_policy<F>());
+        id<key{grid_of<B>, F}> twin;
+        assignment<id<key{grid_of<B>, F}>, X>::assign(twin, x, make_policy<F>());
       }
     };
 
@@ -10860,7 +10865,7 @@ namespace ins::detail
 
 
 
-// addition: add(L, R, policy) -> inside<G>, G = grid_of<L> + grid_of<R>.
+// addition: add(L, R, policy) -> id<key{G}>, G = grid_of<L> + grid_of<R>.
 // The result interval holds every run-time sum,
 // and a continuous result's raw is sized from its denominator bound, so a sum never fails.
 // The shapes: a continuous result (an exact fraction or a rational raw), a point,
@@ -10871,7 +10876,7 @@ namespace ins::detail
   struct addition
   {
     static constexpr grid result_grid = grid_of<L> + grid_of<R>;
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // Total: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
@@ -10917,7 +10922,7 @@ namespace ins::detail
 
 
 
-// multiplication: mul(L, R, policy) -> inside<grid_of<L> * grid_of<R>>.
+// multiplication: mul(L, R, policy) -> id<key{grid_of<L> * grid_of<R>}>.
 // Integer raws multiply their value indices (wide_value.hpp), in int64 where the grids' bounds allow,
 // else by wrapping arithmetic as wide as the result raw.
 // A point scale and rational results have their own branches.
@@ -10927,7 +10932,7 @@ namespace ins::detail
   struct multiplication
   {
     static constexpr grid result_grid = grid_of<L> * grid_of<R>;
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // Total, as a sum is: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
@@ -11271,7 +11276,7 @@ namespace ins::detail
         return *(grid_of<L> / grid_of<R>);
     }();
 
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // The exact quotient of two anchored integer raws as one 64-bit fraction:
     // |J_L|·p_L·q_R and |J_R|·p_R·q_L stay below 2^62 for every value.
@@ -11547,7 +11552,7 @@ namespace ins::detail
         return grid{lo, hi};
     }();
 
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // Modulo never overflows (the remainder fits result_grid):
     // the only failure is a zero divisor, and a grid that excludes it gives a plain result.
@@ -11639,7 +11644,7 @@ namespace ins::detail
       if constexpr (integer_ops<L, R, FS>)
         return std::type_identity<typename division<L, R, FS>::result>{};
       else
-        return std::type_identity<inside<lattice_quotient_grid, result_flags<L, R>>>{};
+        return std::type_identity<id<key{lattice_quotient_grid, result_flags<L, R>}>>{};
     }
     using quotient = typename decltype(quotient_tag())::type;
 
@@ -11962,7 +11967,7 @@ namespace ins
     // which assigns into T.
     template <grid G, policy_flag P>
     using cursor_value_t =
-      inside<grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
+      id<key{grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker}>;
 
     // (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
 
@@ -12126,7 +12131,7 @@ namespace ins
     static constexpr policy_flag P{detail::key_policy<Key>};
 
   public:
-    static_assert(Key.ok(), detail::key_error<detail::text_hook<0>>(Key));
+    static_assert(Key.ok(), detail::key_error<Key>());
     static_assert(detail::key_spec<Key>.Unit.empty(),
                   "inside: a type with a unit is a quantity - include <inside/units.hpp> before naming it");
     static_assert(grid::validate<G>());
@@ -12138,7 +12143,7 @@ namespace ins
       "round_half_even)");
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
-    using negated_type = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
+    using negated_type = id<key{-G, P & ~detail::cursor_marker}>; // −cursor is no cursor
     using raw_type     = detail::raw_for_t<G>;
 
   private:
@@ -12191,7 +12196,7 @@ namespace ins
     template <class Pol>
     static constexpr policy_flag flags_with = detail::override_flags(P, policy_of<Pol>);
     template <class Pol>
-    using twin_with = inside<G, flags_with<Pol>>;
+    using twin_with = id<key{G, flags_with<Pol>}>;
 
   public:
     // (Raw starts at the default value: a store that fails leaves its target unchanged,
@@ -12251,8 +12256,8 @@ namespace ins
     constexpr void store_with(const A& value, Pol& pol)
     {
       constexpr policy_flag O{detail::override_flags(P, policy_of<Pol>)};
-      inside<G, O> twin;
-      detail::assignment<inside<G, O>, A>::assign(twin, value, detail::with_flags<O>(pol));
+      id<key{G, O}> twin;
+      detail::assignment<id<key{G, O}>, A>::assign(twin, value, detail::with_flags<O>(pol));
       Raw = twin.raw();
     }
 
@@ -12314,7 +12319,7 @@ namespace ins
     constexpr void store_grid_number_with(const grid_number& value, Pol& pol)
     {
       constexpr policy_flag O{detail::override_flags(P, policy_of<Pol>)};
-      inside<G, O> twin;
+      id<key{G, O}> twin;
       detail::assign_grid_number(twin, value, detail::with_flags<O>(pol));
       Raw = twin.raw();
     }
@@ -12389,7 +12394,7 @@ namespace ins
     // No implicit integer conversion:
     // it would narrow silently into a smaller builtin (int i = b;, unsigned char c = b;), the range escaping the type.
     // The exception is an index, an inside whose every value is a non-negative integer
-    // (inside<{0, 479}>, inside<{3, 11}>): it converts to each builtin integer that holds its whole grid,
+    // (id<"[0..479]">, id<"[3..11]">): it converts to each builtin integer that holds its whole grid,
     // which is what std::mdspan, std::array, std::span, std::vector and builtin arrays ask of an index
     // (m[i, j], a[i]).
     // Never narrowing, and never to bool, a character or a floating type:
@@ -12606,7 +12611,7 @@ namespace ins
     // Read a builtin with .to<T>().
     [[nodiscard]] constexpr auto numerator() const
     {
-      using N = inside<detail::numerator_grid(G)>;
+      using N = id<key{detail::numerator_grid(G)}>;
       if constexpr (detail::point_storage<N>)
         return N::from_raw({}, unsafe);
       else if constexpr (detail::numerator_grid(G) == G)
@@ -12618,7 +12623,7 @@ namespace ins
     }
     [[nodiscard]] constexpr auto denominator() const
     {
-      using D = inside<detail::denominator_grid(G)>;
+      using D = id<key{detail::denominator_grid(G)}>;
       if constexpr (detail::point_storage<D>)
         return D::from_raw({}, unsafe);
       else if constexpr (detail::fraction_fits_int64<id>)
@@ -12634,7 +12639,7 @@ namespace ins
     [[nodiscard]] constexpr auto step() const noexcept
       requires(G.Notch != 0 || G.Lower == G.Upper)
     {
-      using I = inside<detail::index_grid(G)>;
+      using I = id<key{detail::index_grid(G)}>;
       if constexpr (detail::point_storage<id>)
         return I::from_raw({}, unsafe);
       else if constexpr (detail::index_storage<id>)
@@ -12658,15 +12663,15 @@ namespace ins
     static constexpr auto step_value(const I& i)
     {
       constexpr grid_number unit_value{G.Notch != 0 ? G.Notch : grid_number{1}};
-      constexpr auto        lower{inside<grid{G.Lower}>::from_raw({}, unsafe)};
-      constexpr auto        step{inside<grid{unit_value}>::from_raw({}, unsafe)};
+      constexpr auto        lower{id<key{grid{G.Lower}}>::from_raw({}, unsafe)};
+      constexpr auto        step{id<key{grid{unit_value}}>::from_raw({}, unsafe)};
       return lower + i * step;
     }
     // A builtin index as the inside on its type's range.
     template <std::integral T>
     static constexpr auto as_step_inside(T n)
     {
-      return inside<grid{interval_of<T>, grid_number{1}}>{n};
+      return id<key{grid{interval_of<T>, grid_number{1}}}>{n};
     }
 
   public:
@@ -12699,7 +12704,7 @@ namespace ins
     {
       using V = decltype(step_value(i));
       constexpr policy_flag O{detail::override_flags(P, policy_of<Pol>)};
-      if constexpr (detail::store_proven<inside<G, O>, V, O> || detail::reports_into_errc<Pol>)
+      if constexpr (detail::store_proven<id<key{G, O}>, V, O> || detail::reports_into_errc<Pol>)
         return id{step_value(i), std::forward<Pol>(pol)};
       else
         return detail::try_store<id, O>([&](id& r, auto&& ec_pol) { r = id{step_value(i), ec_pol}; });
@@ -13135,8 +13140,8 @@ namespace ins
     // A cursor steps one past its last value to its end;
     // stepping past the end is a precondition, reported to the error handler.
   private:
-    using up_step_t   = inside<grid{G.Notch}>;
-    using down_step_t = inside<grid{-G.Notch}>;
+    using up_step_t   = id<key{grid{G.Notch}}>;
+    using down_step_t = id<key{grid{-G.Notch}}>;
     static constexpr bool is_cursor = has_flag(P, detail::cursor_marker);
     template <class S>
     static constexpr bool step_proven = is_cursor || compound_proven<sum_t<S>>;
@@ -13412,11 +13417,11 @@ namespace ins
     consteval auto just_point()
     {
       if constexpr (std::integral<decltype(den)> && den == 1)
-        return inside<grid{value}>::from_raw({}, unsafe);
+        return id<key{grid{value}}>::from_raw({}, unsafe);
       else
       {
         static_assert(integer_den<den>(), "just<N, D>: D is an integer of at least 1");
-        return inside<grid{grid_number{value} / grid_number{den}}>::from_raw({}, unsafe);
+        return id<key{grid{grid_number{value} / grid_number{den}}}>::from_raw({}, unsafe);
       }
     }
   } // namespace detail
@@ -13425,28 +13430,28 @@ namespace ins
 
   // step_t<T>, step_count_of<T>: a grid's counts as insides, for run time
   // (a grid number past 64 bits exists only at compile time).
-  // - step_t<T>: inside<{0, step_count}>, what t.step() returns and T::from_step(i) takes back,
+  // - step_t<T>: id<key{grid{0, step_count}}>, what t.step() returns and T::from_step(i) takes back,
   //   with the same raw type as T's index.
   // - step_count_of<T>: (Upper − Lower)/Notch as a point of 0 bytes, the largest index,
   //   one less than the number of values.
   template <insidable T>
     requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
-  using step_t = inside<detail::index_grid(grid_of<T>)>;
+  using step_t = id<key{detail::index_grid(grid_of<T>)}>;
 
   template <insidable T>
     requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
   inline constexpr auto step_count_of = just<grid_number{grid_of<T>.step_count()}>;
 
-  // The _ins literal: a compile-time inside<{V, V}> from a numeric literal.
-  //   5_ins         inside<{5, 5}>                 integer
-  //   1.25_ins      inside<{rational{5,4}}>        decimal
-  //   1.5e2_ins     inside<{150}>                  decimal scientific
-  //   0xff_ins      inside<{255}>                  hex integer
-  //   0b1010_ins    inside<{10}>                   binary integer
-  //   0x1p15_ins    inside<{32768}>                hex with a 2^N exponent (Q-format)
-  //   0x1p-15_ins   inside<{rational{1,32768}}>    1/2^15, a grid notch
-  //   0x1.8p3_ins   inside<{12}>                   hex float
-  //   1'000_ins     inside<{1000}>                 digit separator
+  // The _ins literal: a compile-time id<key{grid{V, V}}> from a numeric literal.
+  //   5_ins         id<"[5..5]">                 integer
+  //   1.25_ins      id<"[5/4]">        decimal
+  //   1.5e2_ins     id<"[150]">                  decimal scientific
+  //   0xff_ins      id<"[255]">                  hex integer
+  //   0b1010_ins    id<"[10]">                   binary integer
+  //   0x1p15_ins    id<"[32768]">                hex with a 2^N exponent (Q-format)
+  //   0x1p-15_ins   id<"[1/32768]">    1/2^15, a grid notch
+  //   0x1.8p3_ins   id<"[12]">                   hex float
+  //   1'000_ins     id<"[1000]">                 digit separator
   // The parse is exact (no double round-trip) and of any size, as _g reads it (inside/detail/grid_rational.hpp):
   // 18446744073709551616_ins is the point 2^64. -1.5_ins parses as -(1.5_ins).
   inline namespace literals
@@ -13703,7 +13708,7 @@ namespace ins
       using result = std::expected<B, error>;
       // The exact store succeeds exactly when exact_cast does:
       // try it first and name the failure afterwards, off the common path.
-      using strict = inside<grid_of<B>>;
+      using strict = id<key{grid_of<B>}>;
       if constexpr (requires { strict::try_make(value); })
       {
         if (const auto r = strict::try_make(value)) [[likely]]
@@ -14657,7 +14662,7 @@ namespace ins
   {
     const auto w{a + (b - a) * t};
     using W = std::remove_cvref_t<decltype(w)>;
-    using R = inside<detail::lerp_grid<W, A, B, T>(), policy_of<W>>;
+    using R = id<key{detail::lerp_grid<W, A, B, T>(), policy_of<W>}>;
     if constexpr (std::is_same_v<R, W>)
       return w;
     else
@@ -14672,7 +14677,7 @@ namespace ins
     template <insidable Lhs, insidable Rhs>
     struct common_inside
     {
-      using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>>;
+      using type = id<key{hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>}>;
     };
 
     // Same type stays itself (policy included), mirroring std::common_type<T, T>.
@@ -14711,7 +14716,7 @@ namespace ins
     template <insidable Lhs, insidable Rhs, bool Max>
     struct extreme_type
     {
-      using type = inside<extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>>;
+      using type = id<key{extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>}>;
     };
     template <insidable Same, bool Max>
     struct extreme_type<Same, Same, Max>
@@ -14941,11 +14946,11 @@ struct std::common_type<ins::id<K1>, ins::id<K2>> : ins::detail::common_inside<i
 // iterator_category is input_iterator_tag because operator* returns by value; iterator_concept carries the capability.
 namespace ins
 {
-  template <grid G, policy_flag P = checked, class V = inside<G, P>>
+  template <grid G, policy_flag P = checked, class V = id<key{G, P}>>
     requires(G.Notch != 0)
   struct inside_range : std::ranges::view_interface<inside_range<G, P, V>>
   {
-    using number_type = inside<G, P>;
+    using number_type = id<key{G, P}>;
     using value_type  = V; // number_type, or a quantity on it
     // Random access while end() − begin(), a std::ptrdiff_t, can be the count.
     static constexpr bool random_access =
@@ -15201,9 +15206,8 @@ namespace ins
   } // namespace detail
 
   template <detail::steppable T, auto Step = notch_of<detail::step_number_t<T>>>
-  using cursor = detail::step_rebind_t<T,
-                                       inside<detail::cursor_grid<detail::step_number_t<T>>(Step),
-                                              policy_of<detail::step_number_t<T>> | detail::cursor_marker>>;
+  using cursor = detail::step_rebind_t<T, id<key{detail::cursor_grid<detail::step_number_t<T>>(Step),
+                                                 policy_of<detail::step_number_t<T>> | detail::cursor_marker}>>;
 
   // end(t): a cursor's past-the-end value, one step past T's Upper.
   // Only a cursor has one: on any other inside its Upper is a value, not an end.
@@ -15224,7 +15228,7 @@ namespace ins
 
 
 
-// numeric_limits and hash: std:: specializations for inside<G, P>.
+// numeric_limits and hash: std:: specializations for id<key{G, P}>.
 // Part of the umbrella: a TU without them would silently get the primary numeric_limits
 // (is_specialized false, max() a zero raw), and an ODR violation beside one that has them.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's limits.
@@ -15371,48 +15375,48 @@ struct std::hash<ins::id<K>>
 // and each uses that type's full range: `uint8` is [0, 255] in a std::uint8_t.
 // Q-format types keep power-of-two notches.
 // The integer widths are `checked`; unorm and the Q formats round to nearest.
-// For wraparound or saturation declare your own (`inside<{0, 255}, wrap>`),
+// For wraparound or saturation declare your own (`id<"[0..255] wrap">`),
 // or use the counters clamp_counter<Max> and wrap_counter<Max> below.
 // In their own namespace, so the names (int8, uint64, …) come in on request:
 //   using namespace ins::formats;
 namespace ins::formats
 {
   // Native integer widths: value storage (Raw == value), `checked`, the full native range.
-  using uint8  = inside<{0, 255       }>;
-  using uint16 = inside<{0, 65535     }>;
-  using uint32 = inside<{0, 4294967295}>;
+  using uint8  = id<"[0..255]">;
+  using uint16 = id<"[0..65535]">;
+  using uint32 = id<"[0..4294967295]">;
   // uint64 reaches past int64: read it with `to<std::uint64_t>()`.
   // A difference of two uint64s spans 2^65 values and gets a wide-integer index.
-  using uint64 = inside<{0, 18446744073709551615u}>;
+  using uint64 = id<"[0..18446744073709551615]">;
 
-  using int8  = inside<{-128       , 127       }>;
-  using int16 = inside<{-32768     , 32767     }>;
-  using int32 = inside<{-2147483648, 2147483647}>;
+  using int8  = id<"[-128..127]">;
+  using int16 = id<"[-32768..32767]">;
+  using int32 = id<"[-2147483648..2147483647]">;
   // int64 is std::int64_t's whole range: its negation's type reaches 2^63, past int64,
   // and takes a wider raw (exact, as every result type).
-  using int64 = inside<{-9223372036854775807 - 1, 9223372036854775807}>;
+  using int64 = id<"[-9223372036854775808..9223372036854775807]">;
 
   // Unsigned normalized (UNORM): [0, 1] at N-bit resolution, `round_half_away`.
   // The notch denominator is the type max, so the index 0..max fills the native width;
   // both endpoints (0 and 1) are exactly representable.
-  using unorm8  = inside<{{0, 1}, per<255>       }, round_half_away>; // uint8
-  using unorm16 = inside<{{0, 1}, per<65535>     }, round_half_away>; // uint16
-  using unorm32 = inside<{{0, 1}, per<4294967295>}, round_half_away>; // uint32
+  using unorm8  = id<"[0..1] 1/255 round_half_away">;                 // uint8
+  using unorm16 = id<"[0..1] 1/65535 round_half_away">;               // uint16
+  using unorm32 = id<"[0..1] 1/4294967295 round_half_away">;          // uint32
 
   // Q-format fixed-point: unsigned integer.fraction, power-of-two notch, full natural range. `round_half_away`.
-  using uq4_4   = inside<{{0, just<255, 16>}           , per<16>   }, round_half_away>; // uint8: [0, 15.9375]
-  using uq8_8   = inside<{{0, just<65535, 256>}        , per<256>  }, round_half_away>; // uint16
-  using uq16_16 = inside<{{0, just<4294967295, 65536>}, per<65536>}, round_half_away>; // uint32
+  using uq4_4   = id<"[0..255/16] 1/16 round_half_away">;                               // uint8: [0, 15.9375]
+  using uq8_8   = id<"[0..65535/256] 1/256 round_half_away">;                           // uint16
+  using uq16_16 = id<"[0..4294967295/65536] 1/65536 round_half_away">; // uint32
 
   // Counters: an inside over [0, Max] whose overflow policy says what `++` does at the ceiling
   // (the boundary behavior is in the type).
   // Saturating counter: `++` caps at Max (never throws or wraps),
   // the honest "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
   template <auto Max> // a builtin or a grid number of any size
-  using clamp_counter = inside<{0, Max}, clamp>;
+  using clamp_counter = id<key{grid{0, Max}, clamp}>;
   // Wrapping counter: `++` wraps Max → 0 (sequence numbers, epochs).
   template <auto Max>
-  using wrap_counter = inside<{0, Max}, wrap>;
+  using wrap_counter = id<key{grid{0, Max}, wrap}>;
 
 } // namespace ins::formats
 
@@ -15434,7 +15438,7 @@ namespace ins::formats
 //   * to_string_debug(insidable)        value + raw + raw type + grid
 //   * operator<< and operator>> (one token, failbit on error)
 //   * parse<B, F>(std::string_view), parse_exact<B>(std::string_view)
-//   * std::formatter<inside<G, P>>, std::formatter<rational> (with <format>)
+//   * std::formatter<id<key{G, P}>>, std::formatter<rational> (with <format>)
 //   * type_name_of<B>                   a readable name of an inside type
 // units.hpp builds on it (to_string and std::formatter of quantities).
 
@@ -16359,14 +16363,14 @@ struct std::formatter<ins::detail::rational> : ins::detail::numeric_spec_formatt
 // std::mdspan with insides (opt-in: include this header).
 //
 //   m[i, j]                    a std::mdspan takes an inside on non-negative
-//                               integers as it is (inside<{0, 479}>): an index
+//                               integers as it is (id<"[0..479]">): an index
 //                               converts to its value. A value that may lie
 //                               past an edge is stored into the index type
 //                               first, by its policy (clamp pads at the
 //                               edges, wrap is periodic)
 //   extents_of<I, J>            std::extents from index types: the extent of
-//                               inside<{0, 479}> is 480 (Upper + 1)
-//   extent_index_t<E, r>        inside<{0, N − 1}> for E's static extent N at
+//                               id<"[0..479]"> is 480 (Upper + 1)
+//   extent_index_t<E, r>        id<key{grid{0, N − 1}}> for E's static extent N at
 //                               rank r
 //   index_for<I, E, r>          I is an index whose every value lies within
 //                               E's static extent at rank r
@@ -16414,7 +16418,7 @@ namespace ins
       using type = std::extents<std::size_t, extent_of_index<Is>...>;
     };
 
-    // 0 … n − 1 in steps of 1 (inside<{0, n − 1}>, also for n = 1).
+    // 0 … n − 1 in steps of 1 (id<key{grid{0, n − 1}}>, also for n = 1).
     consteval grid index_range_grid(std::size_t n)
     {
       return grid{interval{grid_number{0}, grid_number{n - 1}}, grid_number{1}};
@@ -16436,11 +16440,11 @@ namespace ins
   template <class... Is>
   using extents_of = typename detail::extents_of_impl<Is...>::type;
 
-  // The index type of E's static extent N ≥ 1 at rank R: inside<{0, N − 1}>.
+  // The index type of E's static extent N ≥ 1 at rank R: id<key{grid{0, N − 1}}>.
   template <class E, std::size_t R>
     requires detail::is_extents_v<E> && (R < E::rank()) && (E::static_extent(R) != std::dynamic_extent)
           && (E::static_extent(R) > 0)
-  using extent_index_t = inside<detail::index_range_grid(E::static_extent(R))>;
+  using extent_index_t = id<key{detail::index_range_grid(E::static_extent(R))}>;
 
   // I indexes rank R of E within bounds, proven by the types:
   // I is an index and its Upper lies below E's static extent (a dynamic extent proves nothing).
@@ -16751,7 +16755,7 @@ namespace ins
     }
     template <insidable N, std::size_t Count>
       requires notched<N> || point_grid<N>
-    using n_fold_sum_t = inside<n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker>;
+    using n_fold_sum_t = id<key{n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker}>;
     // The same for an element (an inside or a quantity): its kind on that number.
     template <class E, std::size_t Count>
     using n_fold_t = typename element_traits<E>::template rebind<n_fold_sum_t<element_number_t<E>, Count>>;
@@ -19376,7 +19380,7 @@ namespace ins::math::detail::engine
 
   // A deduced output on notch N.
   template <insidable In, grid_number N, grid_number Lo, grid_number Hi>
-  using result_grid_t = inside<{{Lo, Hi}, N}, result_policy<In>>;
+  using result_grid_t = id<key{grid{{Lo, Hi}, N}, result_policy<In>}>;
 
   // The bound of Core's result at In's lower or upper end, on notch N.
   template <insidable In, grid_number N, typename Core, bool AtUpper, bool Up>
@@ -20044,13 +20048,13 @@ namespace ins::math::detail
     return (s.Flags & (mode_bits | snap)) != 0 ? f : with_default_rounding(f);
   }
   template <insidable R, out_spec S>
-  using with_spec_flags_t = inside<grid_of<R>, spec_flags(policy_of<R>, S)>;
+  using with_spec_flags_t = id<key{grid_of<R>, spec_flags(policy_of<R>, S)}>;
 
   // An exact output R on notch N: its range rounded outward onto N.
   template <insidable R, grid_number N>
-  using on_notch_t = inside<
+  using on_notch_t = id<key{
     grid{{grid_round<round_mode::floor>(lower_of<R> / N) * N, grid_round<round_mode::ceil>(upper_of<R> / N) * N}, N},
-    policy_of<R>>;
+    policy_of<R>}>;
 
   // A rounding function's deduced output over insides In… for specs S:
   // on the named notch, else on its own (the arguments' notch, which they need then).
@@ -20059,7 +20063,7 @@ namespace ins::math::detail
   consteval auto rounding_output()
   {
     if constexpr (!F::template domain<In...>)
-      return std::type_identity<inside<{0, 1}, round_half_away>>{};
+      return std::type_identity<id<"[0..1] round_half_away">>{};
     else if constexpr (S.HasNotch)
       return std::type_identity<typename F::template result_on<S.Notch, In...>>{};
     else
@@ -20209,7 +20213,7 @@ namespace ins::math::detail
   consteval auto named_twin()
   {
     if constexpr (F::rounds)
-      return std::type_identity<inside<named_twin_grid<F, O, In...>(), policy_of<O>>>{};
+      return std::type_identity<id<key{named_twin_grid<F, O, In...>(), policy_of<O>}>>{};
     else
       return std::type_identity<typename F::template result<In...>>{};
   }
@@ -20278,7 +20282,7 @@ namespace ins::math::detail
 //   gcd(a, b), lcm(a, b)      as std::gcd and std::lcm: ≥ 0, gcd(0, 0) = 0,
 //                             lcm(0, b) = 0
 // Each result type holds exactly the values its inputs can produce, worked out at compile time:
-// factorial of inside<{0, 20}> is inside<{1, 20!}>, of inside<{0, 100}> a wide raw.
+// factorial of id<"[0..20]"> is id<key{grid{1, 20!}}>, of id<"[0..100]"> a wide raw.
 // fn<Out>(…) stores the result into Out by Out's policy (math/detail/functions.hpp has every call form).
 // A count (n, k) is an inside on the integers from 0, of any size; gcd and lcm take integer grids of any sign and
 // size. A result whose limit would pass max_count_bits has no type: its grid number is computed while compiling.
@@ -20690,7 +20694,7 @@ namespace ins::math
       requires detail::count<N> && (detail::factorial_grid<N>.Fits)
     [[nodiscard]] constexpr auto factorial_of(N n) noexcept
     {
-      using R = inside<detail::factorial_grid<N>.Grid>;
+      using R = id<key{detail::factorial_grid<N>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n;
@@ -20716,7 +20720,7 @@ namespace ins::math
       requires detail::count<N> && detail::count<K> && (detail::falling_grid<N, K>.Fits)
     [[nodiscard]] constexpr auto falling_factorial_of(N n, K k) noexcept
     {
-      using R = inside<detail::falling_grid<N, K>.Grid>;
+      using R = id<key{detail::falling_grid<N, K>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n, (void)k;
@@ -20738,7 +20742,7 @@ namespace ins::math
       requires detail::count<N> && detail::count<K> && (detail::rising_grid<N, K>.Fits)
     [[nodiscard]] constexpr auto rising_factorial_of(N n, K k) noexcept
     {
-      using R = inside<detail::rising_grid<N, K>.Grid>;
+      using R = id<key{detail::rising_grid<N, K>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n, (void)k;
@@ -20762,7 +20766,7 @@ namespace ins::math
       requires detail::count<N> && detail::count<K> && (detail::binomial_grid<N, K>.Fits)
     [[nodiscard]] constexpr auto binomial_of(N n, K k) noexcept
     {
-      using R = inside<detail::binomial_grid<N, K>.Grid>;
+      using R = id<key{detail::binomial_grid<N, K>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n, (void)k;
@@ -20789,7 +20793,7 @@ namespace ins::math
       requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (detail::multinomial_grid<Ks...>.Fits)
     [[nodiscard]] constexpr auto multinomial_of(Ks... ks) noexcept
     {
-      using R = inside<detail::multinomial_grid<Ks...>.Grid>;
+      using R = id<key{detail::multinomial_grid<Ks...>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         ((void)ks, ...);
@@ -20838,7 +20842,7 @@ namespace ins::math
       requires detail::has_lattice<A> && detail::has_lattice<B>
     [[nodiscard]] constexpr auto gcd_of(A a, B b) noexcept
     {
-      using R = inside<detail::gcd_grid<A, B>>;
+      using R = id<key{detail::gcd_grid<A, B>}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)a, (void)b;
@@ -20875,7 +20879,7 @@ namespace ins::math
       requires detail::has_lattice<A> && detail::has_lattice<B> && detail::lcm_fits<A, B>
     [[nodiscard]] constexpr auto lcm_of(A a, B b) noexcept
     {
-      using R = inside<detail::lcm_grid<A, B>>;
+      using R = id<key{detail::lcm_grid<A, B>}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)a, (void)b;
@@ -23887,8 +23891,8 @@ namespace ins::math::detail::entry
       if constexpr (anchored<In>)
         return x;
       else
-        return inside<grid{grid_of<In>.interval(), grid_of<In>.value_unit()},
-                      policy_of<In> & ~::ins::detail::cursor_marker>{x};
+        return id<key{grid{grid_of<In>.interval(), grid_of<In>.value_unit()},
+                      policy_of<In> & ~::ins::detail::cursor_marker}>{x};
     }
 
     template <insidable Out>
@@ -23896,7 +23900,7 @@ namespace ins::math::detail::entry
 
     template <insidable Out, policy_flag R, grid_number Unit = half_unit<Out>>
     using bracket_t =
-      inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (policy_of<Out> & clamp)>;
+      id<key{grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (policy_of<Out> & clamp)}>;
 
     // The integer form: a bracket 1024 times finer than half_unit, counted in int64.
     // Rounded down there, the value lies in [y, y + F);
@@ -24236,7 +24240,7 @@ namespace ins::math::detail::entry
       In, N,
       engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>>;
     template <grid_number N, insidable In>
-    using sin = inside<{{-1, 1}, N}, engine::result_policy<In>>;
+    using sin = id<key{grid{{-1, 1}, N}, engine::result_policy<In>}>;
     template <grid_number N, insidable In>
     using cos = sin<N, In>;
     // tan is increasing on its branch (tan_domain).
@@ -24287,7 +24291,7 @@ namespace ins::math::detail::entry
     inline constexpr grid_number pi_up =
       engine::lattice_bound<N, true>(engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
     template <grid_number N, insidable InY, insidable InX>
-    using atan2 = inside<{{-pi_up<N>, pi_up<N>}, N}, engine::result_policy<InY>>;
+    using atan2 = id<key{grid{{-pi_up<N>, pi_up<N>}, N}, engine::result_policy<InY>}>;
 
     // hypot: [0, hypot of the largest magnitudes] on N.
     template <insidable InX, insidable InY>
@@ -24306,7 +24310,7 @@ namespace ins::math::detail::entry
     template <grid_number N, insidable InX, insidable InY>
     inline constexpr grid_number hypot_hi = hypot_upper<N, InX, InY>();
     template <grid_number N, insidable InX, insidable InY>
-    using hypot = inside<{{0, hypot_hi<N, InX, InY>}, N}, engine::result_policy<InX>>;
+    using hypot = id<key{grid{{0, hypot_hi<N, InX, InY>}, N}, engine::result_policy<InX>}>;
 
     // pow: b^e is monotone in each argument for b > 0, so the extremes are at the corners of the input rectangle.
     template <insidable InB, insidable InE>
@@ -24335,7 +24339,7 @@ namespace ins::math::detail::entry
     }();
     template <grid_number N, insidable InB, insidable InE>
     using pow =
-      inside<{{pow_extreme<N, InB, InE, false>, pow_extreme<N, InB, InE, true>}, N}, engine::result_policy<InB>>;
+      id<key{grid{{pow_extreme<N, InB, InE, false>, pow_extreme<N, InB, InE, true>}, N}, engine::result_policy<InB>}>;
   } // namespace results
 
   // The tags (math/detail/functions.hpp): what every rounding function has in common, by arity;
@@ -24769,12 +24773,12 @@ namespace ins::math
     // |x| ranges over [smallest |x|, largest |x|].
     template <insidable In>
     using abs_result_t =
-      inside<exact_out_grid({abs_result_lower<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
-             out_policy<In>>;
+      id<key{exact_out_grid({abs_result_lower<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
+             out_policy<In>}>;
 
     // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
     template <insidable In>
-    using sign_result_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
+    using sign_result_t = id<key{grid{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>}>;
 
     // copysign(mag, sgn): |mag| with sgn's possible signs.
     // |mag| ranges over [m_lo, m_hi] (abs_result_lower, abs_result_upper);
@@ -24782,14 +24786,14 @@ namespace ins::math
 
     template <insidable Mag, insidable Sgn>
     using copysign_result_t =
-      inside<exact_out_grid({lower_of<Sgn> < 0 ? -abs_result_upper<Mag> : abs_result_lower<Mag>,
+      id<key{exact_out_grid({lower_of<Sgn> < 0 ? -abs_result_upper<Mag> : abs_result_lower<Mag>,
                              upper_of<Sgn> >= 0 ? abs_result_upper<Mag> : -abs_result_lower<Mag>},
                             sym_notch<Mag>,
-                            den_bound(grid_of<Mag>)),
-             out_policy<Mag>>;
+                            den_bound(grid_of<Mag>)), out_policy<Mag>}>;
 
     template <insidable In, round_mode M>
-    using integer_result_t = inside<{{grid_round<M>(lower_of<In>), grid_round<M>(upper_of<In>)}, 1}, out_policy<In>>;
+    using integer_result_t =
+      id<key{grid{{grid_round<M>(lower_of<In>), grid_round<M>(upper_of<In>)}, 1}, out_policy<In>}>;
 
     template <insidable In>
     using floor_result_t = integer_result_t<In, round_mode::floor>;
@@ -24963,11 +24967,11 @@ namespace ins::math
       abs_result_upper<InX> < abs_result_upper<InY> ? abs_result_upper<InX> : abs_result_upper<InY>;
 
     template <insidable InX, insidable InY>
-    using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_number{0}),
+    using fmod_result_t = id<key{exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_number{0}),
                                                  (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_number{0})},
                                                 engine::gcd_notch<InX, InY>,
                                                 den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
-                                 with_default_rounding(out_policy<InX>)>;
+                                 with_default_rounding(out_policy<InX>)}>;
 
     // pown<E>: compile-time integer powers, pure grid arithmetic.
     // Repeated squaring in inside-space: every multiply widens the result grid corner-correctly,
@@ -25174,7 +25178,7 @@ namespace ins::math
   // a ready-made output for sin and cos (`math::sin<math::unit_amplitude<32768>>(angle)`;
   // `math::sin<per<32768>>(angle)` deduces the same). All angles are radians, as in <cmath>.
   template <auto K> // a builtin or a grid number of any size
-  using unit_amplitude = inside<{{detail::rational{-1}, detail::rational{1}}, per<K>}, round_half_away>;
+  using unit_amplitude = id<key{grid{{detail::rational{-1}, detail::rational{1}}, per<K>}, round_half_away}>;
 
   // The functions (math/detail/functions.hpp states the call forms):
   // the grid operations, exact, and the transcendentals of the adaptive engine.
@@ -25222,12 +25226,12 @@ namespace ins::math
 // Opt-in: physical units and quantity kinds on inside, the main features of mp-units
 // with an inside as the only representation.
 //
-//   quantity<si::metre, inside<{0, 10}>> d{7, si::metre};   // 7 m: a number and its unit
+//   id<"[0..10] [m]"> d{7, si::metre};   // 7 m: a number and its unit
 //   auto k = just<5> * si::kilo(si::metre);                 // 5 km, a point grid
 //   auto s = k + d;                                         // 5007 m, exact
 //   auto v = d.in(si::milli(si::metre));                    // 7000 mm, the same raw
 //   d.numerical_value_in(si::metre);                        // 7: read in a named unit
-//   quantity<isq::height[si::metre], H> h{…};               // a quantity kind
+//   id<quantity_key<isq::height[si::metre], H>> h{…};               // a quantity kind
 //
 // A unit conversion is a grid rescale: km → m multiplies the interval and notch by 1000 and keeps the raw,
 // so it is exact, total and free.
@@ -26672,7 +26676,7 @@ namespace ins
       : Form{atom_form(k, any_of_kind, derived, u) ? ref_form{.Atom = u.Atoms[0]}
                                                    : ref_form{.Parts = {k, u, any_of_kind, derived}}},
         HasParts{!atom_form(k, any_of_kind, derived, u)} {}
-    // A unit tag as a reference: quantity<si::metre, …>.
+    // A unit tag as a reference: id<quantity_key<si::metre, …>>.
     template <unit_value V>
     constexpr reference(unit_t<V>) : reference{ins::kind_of(V), detail::has(ins::kind_of(V)), recipe{}, V} {}
 
@@ -26903,7 +26907,7 @@ namespace ins
         if constexpr (policy_of<decltype(x)> == policy_of<V>)
           return x;
         else
-          return inside<grid_of<decltype(x)>, policy_of<V>>::from_raw(x.raw(), unsafe);
+          return id<key{grid_of<decltype(x)>, policy_of<V>}>::from_raw(x.raw(), unsafe);
       }
     }
 
@@ -26988,7 +26992,7 @@ namespace ins
 // ======================================================================
 //  inside/units/detail/quantity.hpp
 // ======================================================================
-// quantity<R, Rep>: construction, arithmetic, casts and inside's algorithms on quantities.
+// id<quantity_key<R, Rep>>: construction, arithmetic, casts and inside's algorithms on quantities.
 // Internal: include <inside/units.hpp> or <inside/units/core.hpp>.
 
 
@@ -27936,9 +27940,16 @@ namespace ins::detail
   }
 
   // The canonical text of the quantity a key's text names (detail::key_of_text through this overload).
+  // The units' reader of a key's quantity text, where this header is included (inside/key.hpp: units_marker).
   template <std::size_t N>
-  consteval bool canonical_quantity_text(text_hook<N>, const id_spec& s, quantity_name& q, std::string_view& expected,
-                                         std::size_t& at)
+  struct units_reader
+  {
+  };
+  template <std::size_t N>
+  units_reader<N> units_marker(text_hook<N>, int);
+  template <std::size_t N>
+  consteval bool canonical_quantity_text(units_reader<N>, const id_spec& s, quantity_name& q,
+                                         std::string_view& expected, std::size_t& at)
   {
     const quantity_read r{read_quantity<text_hook<N>>(s.Unit, s.Kind, s.Origin)};
     if (!r.Ok)
@@ -28041,7 +28052,7 @@ namespace ins
       static constexpr key value = K;
     };
     template <reference R, insidable Rep, origin_ref O = &origin_def::none, bool Point = false>
-    consteval key quantity_key()
+    consteval key quantity_key_of()
     {
       if constexpr (R.unit().Scale.Ratio.negative() || R.unit().Scale.Ratio.is_zero())
         constexpr_error<"units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order "
@@ -28077,7 +28088,7 @@ namespace ins
       using A = std::remove_cvref_t<N>;
       using P = std::remove_cvref_t<Pol>;
       constexpr policy_flag F{override_flags(policy_of<Rep>, policy_of<P>)};
-      return insidable<A> || store_proven<inside<grid_of<Rep>, F>, A, F> || reports_into_errc<P>;
+      return insidable<A> || store_proven<id<key{grid_of<Rep>, F}>, A, F> || reports_into_errc<P>;
     }
 
     // A quantity's reference and number as a type, for traits specialized on them (quantity_rule, part_number):
@@ -28101,10 +28112,10 @@ namespace ins
     using basic_of_t = typename basic_of<T>::type;
   } // namespace detail
 
-  // quantity<R, Rep>: a number Rep of the reference R. A unit with a text names the type id<"[…] [unit]">:
-  // quantity<si::metre, id<"[0..100]">> is id<"[0..100] [m]">.
+  // The key of a quantity on R with the number Rep, for a type computed from them:
+  // id<quantity_key<si::metre, id<"[0..100]">>> is id<"[0..100] [m]">.
   template <reference R, insidable Rep>
-  using quantity = id<detail::quantity_key<R, Rep>()>;
+  inline constexpr key quantity_key = detail::quantity_key_of<R, Rep>();
 
   namespace detail
   {
@@ -28345,7 +28356,7 @@ namespace ins
           return make_quantity<P>(-v);
       }
       else
-        return lift_to<quantity<R, ins::detail::unwrap_t<V>>>(std::forward<V>(v));
+        return lift_to<id<quantity_key<R, ins::detail::unwrap_t<V>>>>(std::forward<V>(v));
     }
 
     // q.on_wrap(f) and the other hooks: the inside's policy_ref on q's number,
@@ -28504,7 +28515,7 @@ namespace ins
   } // namespace detail
 
   // A quantity: a number Rep (an inside, the key's grid and policy) of the reference R (the key's unit and kind),
-  // the type id<"[0..100] [km/h]">, which quantity<R, Rep> names.
+  // the type id<"[0..100] [km/h]">, which id<quantity_key<R, Rep>> names.
   template <key K>
     requires detail::unit_key<K>
   struct id<K> : public detail::member_holder<detail::key_rep<K>, detail::key_rep<K>, id<K>>
@@ -28536,7 +28547,7 @@ namespace ins
 
     constexpr id() = default;
 
-    // From a number and its unit: quantity<si::metre, inside<{0, 100}>>{42, si::metre} is 42 m,
+    // From a number and its unit: id<"[0..100] [m]">{42, si::metre} is 42 m,
     // stored under Rep's policy.
     // An inside in another unit of the same quantity converts exactly first: Q{n, si::kilo(si::metre)}.
     // (Each store twice: constexpr where it runs at run time, consteval where only a constant can make it,
@@ -28862,7 +28873,7 @@ namespace ins
     }
 
     // Rep's try_make of a number and its unit:
-    // quantity<si::metre, M>::try_make(12.5, si::metre), an expected quantity.
+    // id<quantity_key<si::metre, M>>::try_make(12.5, si::metre), an expected quantity.
     template <policy_flag F = ins::detail::none, class V, class Tag>
       requires detail::number_in_tag<id, V, Tag>
             && requires(const V& v) { Rep::template try_make<F>(detail::number_from_tag<id, Tag>(v)); }
@@ -28920,7 +28931,7 @@ namespace ins::detail
   {
     using number = typename Q::rep;
     template <class N>
-    using rebind = ins::quantity<Q::reference, N>;
+    using rebind = ins::id<ins::quantity_key<Q::reference, N>>;
     template <class N>
     static constexpr rebind<N> make(const N& n)
     {
@@ -28961,28 +28972,28 @@ namespace ins
   template <magnitude M, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
   [[nodiscard]] constexpr auto operator*(mag_t<M>, const QR& q)
   {
-    return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(ins::detail::value_of(q));
+    return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, M), V>>>(ins::detail::value_of(q));
   }
   template <quantity_like QR, magnitude M, reference R = QR::reference, class V = typename QR::rep>
   [[nodiscard]] constexpr auto operator*(const QR& q, mag_t<M>)
   {
-    return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(ins::detail::value_of(q));
+    return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, M), V>>>(ins::detail::value_of(q));
   }
   // A magnitude times a number: the number in the scaled unit one ([π]), so pi * just<2> * si::second is 2 in [π s].
   template <magnitude M, insidable V>
   [[nodiscard]] constexpr auto operator*(mag_t<M>, const V& v)
   {
-    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
+    return detail::quantity_access::make<id<quantity_key<reference_of(detail::unit_scaled(unit_value{}, M)), V>>>(v);
   }
   template <insidable V, magnitude M>
   [[nodiscard]] constexpr auto operator*(const V& v, mag_t<M>)
   {
-    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
+    return detail::quantity_access::make<id<quantity_key<reference_of(detail::unit_scaled(unit_value{}, M)), V>>>(v);
   }
   template <quantity_like QR, magnitude M, reference R = QR::reference, class V = typename QR::rep>
   [[nodiscard]] constexpr auto operator/(const QR& q, mag_t<M>)
   {
-    return detail::quantity_access::make<quantity<detail::scaled_reference(R, magnitude{} / M), V>>(
+    return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, magnitude{} / M), V>>>(
       ins::detail::value_of(q));
   }
 
@@ -29057,34 +29068,39 @@ namespace ins
     }
   } // namespace detail
 
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '+'>
   [[nodiscard]] constexpr auto operator+(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) + detail::in_common_unit<A, B>(b));
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '-'>
   [[nodiscard]] constexpr auto operator-(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) - detail::in_common_unit<A, B>(b));
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '%'>
   [[nodiscard]] constexpr auto operator%(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) % detail::in_common_unit<A, B>(b));
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '='>
   [[nodiscard]] constexpr bool operator==(const QA& a, const QB& b)
   {
     return detail::in_common_unit<A, B>(a) == detail::in_common_unit<A, B>(b);
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '<'>
   [[nodiscard]] constexpr auto operator<=>(const QA& a, const QB& b)
   {
@@ -29189,21 +29205,24 @@ namespace ins
 
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
   // the number is inside's min, max or midpoint (exact).
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '<'>
   [[nodiscard]] constexpr auto min(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(ins::min(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '<'>
   [[nodiscard]] constexpr auto max(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(ins::max(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '+'>
   [[nodiscard]] constexpr auto midpoint(const QA& a, const QB& b)
   {
@@ -29214,18 +29233,26 @@ namespace ins
   // A sum, difference, remainder or comparison of two units that cannot meet:
   // a deleted overload per reason, so a requires-test is false and a call says why.
 #define INSIDE_UNITS_SUM_DELETED(ret, op, blades)                                        \
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                                \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)              \
   ret op(const QA&, const QB&)                                 \
     = delete ("units: adding or comparing quantities of different dimensions");          \
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                                \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires detail::blade_sum<A, B>                                                     \
   ret op(const QA&, const QB&) = delete (blades);              \
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                                \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                   \
   ret op(const QA&, const QB&)                                 \
     = delete ("units: adding or comparing quantities of different kinds");               \
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                                \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                      \
   ret op(const QA&, const QB&)                                 \
     = delete ("units: no common unit of a pi multiple and a rational one - convert one " \
@@ -29258,14 +29285,16 @@ namespace ins
   void operator-(const QA&, const V&) = delete (INSIDE_UNITS_WHY_GEOALG);
 #undef INSIDE_UNITS_WHY_ORDER
 
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::number_op<VA, VB, '*'>
   [[nodiscard]] constexpr auto operator*(const QA& a, const QB& b)
   {
     return detail::make_quantity<detail::product_reference<A, B, 1>()>(ins::detail::value_of(a)
                                                                        * ins::detail::value_of(b));
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::number_op<VA, VB, '/'>
   [[nodiscard]] constexpr auto operator/(const QA& a, const QB& b)
   {
@@ -29368,7 +29397,7 @@ namespace ins
     requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::none)
   [[nodiscard]] constexpr auto kind_cast(const QR& q)
   {
-    return detail::quantity_access::make<quantity<reference{KindTag::value, false, {}, R.unit()}, V>>(
+    return detail::quantity_access::make<id<quantity_key<reference{KindTag::value, false, {}, R.unit()}, V>>>(
       ins::detail::value_of(q));
   }
   template <auto Kind, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
@@ -29410,7 +29439,7 @@ namespace ins
     requires requires(const V& v) { Rep2::try_make(v); }
   [[nodiscard]] constexpr auto value_cast(const QR& q)
   {
-    return detail::cast_number<quantity<R, Rep2>, Rep2>(ins::detail::value_of(q));
+    return detail::cast_number<id<quantity_key<R, Rep2>>, Rep2>(ins::detail::value_of(q));
   }
   // value_cast<U, Rep2>(q): in unit U with representation Rep2, the exact value in U, stored by Rep2's constructor.
   // (A pi factor, degree ↔ radian, rounds once: units/math.hpp.)
@@ -29422,10 +29451,11 @@ namespace ins
     constexpr ins::unit_value u{decltype(U)::value};
     static_assert(dimension_of(u) == dimension_of(R.unit()), "units: value_cast - the unit has another dimension");
     constexpr reference to{R.kind(), R.kind_of(), R.derived(), u};
-    return detail::cast_number<quantity<to, Rep2>, Rep2>(ins::detail::value_of(q.in(U)));
+    return detail::cast_number<id<quantity_key<to, Rep2>>, Rep2>(ins::detail::value_of(q.in(U)));
   }
 
-  // value_cast<Q>(q): into the quantity type Q = quantity<R2, Rep2>, q in R2's unit, stored by Rep2's constructor.
+  // value_cast<Q>(q): into the quantity type Q = id<quantity_key<R2, Rep2>>, q in R2's unit, stored by Rep2's
+  // constructor.
   // Q's kind must take q's, as for an implicit conversion; only the representation may round.
   namespace detail
   {
@@ -29454,7 +29484,7 @@ namespace ins
       if constexpr (quantity_like<T>)
         return x;
       else
-        return quantity_access::make<quantity<reference_of(one), T>>(x);
+        return quantity_access::make<id<quantity_key<reference_of(one), T>>>(x);
     }
     template <class T>
     using as_quantity_t = decltype(as_quantity(std::declval<const T&>()));
@@ -29523,8 +29553,8 @@ namespace ins
            && (!number_like_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>)
     struct named_product<C, E, A, B>
     {
-      using type = quantity<
-        unsigned_reference<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>(), C>;
+      using type = id<quantity_key<
+        unsigned_reference<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>(), C>>;
     };
     template <class C, int E, class A, class B>
     using named_product_t = typename named_product<C, E, A, B>::type;
@@ -29647,7 +29677,8 @@ namespace ins
 
   // lerp in a and b's common unit, as + takes it: inside's lerp on the numbers,
   // so with t in [0, 1] the result's range is that of a and b together.
-  template <quantity_like QA, quantity_like QB, insidable T, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, insidable T, reference A = QA::reference,
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '+'>
           && requires(const QA& a, const QB& b, T t) { a + (b - a) * t; }
   [[nodiscard]] constexpr auto lerp(const QA& a, const QB& b, const T& t)
@@ -29666,7 +29697,7 @@ namespace ins
     {
       const auto with_unit = [](const auto& v)
       {
-        using M = quantity<C, decltype(v.Remainder)>;
+        using M = id<quantity_key<C, decltype(v.Remainder)>>;
         return divmod_result<decltype(v.Quotient), M>{v.Quotient, quantity_access::make<M>(v.Remainder)};
       };
       if constexpr (is_expected_v<std::remove_cvref_t<D>>)
@@ -29675,7 +29706,8 @@ namespace ins
         return with_unit(d);
     }
   } // namespace detail
-  template <quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference,
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
     requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.unit())))
           && requires(const detail::common_number_t<A, VA, B>& x,
                       const detail::common_number_t<B, VB, A>& y,
@@ -29699,7 +29731,8 @@ namespace ins
   // and mul / div of two quantities (units multiply) or of a quantity and a number (the number scales):
   // inside's free arithmetic on the numbers, with its per-call policy, flag or error&.
 #define INSIDE_UNITS_SUM_FN(name)                                                                                \
-  template <quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                                         \
+  template <quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference,                      \
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>               \
     requires detail::common_rescalable<A, VA, B, VB>                                                             \
           && requires(const detail::common_number_t<A, VA, B>& x,                                                \
                       const detail::common_number_t<B, VB, A>& y,                                                \
@@ -29717,7 +29750,8 @@ namespace ins
 #undef INSIDE_UNITS_SUM_FN
 
 #define INSIDE_UNITS_PRODUCT_FN(name, sign)                                                                       \
-  template <int&... Barrier, quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                         \
+  template <int&... Barrier, quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference,      \
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                \
     requires requires(const VA& x, const VB& y, Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); } \
   [[nodiscard]] constexpr auto name(const QA& a, const QB& b,            \
                                     Args&&... args)                                                               \
@@ -29725,7 +29759,8 @@ namespace ins
     return detail::make_quantity<detail::product_reference<A, B, sign>()>(                                        \
       ins::name(ins::detail::value_of(a), ins::detail::value_of(b), std::forward<Args>(args)...));                \
   }                                                                                                               \
-  template <int&... Barrier, quantity_like QA, insidable V, class... Args, reference A = QA::reference, class VA = typename QA::rep>                                   \
+  template <int&... Barrier, quantity_like QA, insidable V, class... Args, reference A = QA::reference,           \
+            class VA = typename QA::rep>                                                                          \
     requires requires(const VA& x, const V& y, Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); }  \
   [[nodiscard]] constexpr auto name(const QA& a, const V& v, Args&&... args)                   \
   {                                                                                                               \
@@ -29737,13 +29772,15 @@ namespace ins
 
   // A number times or over a quantity, as the operators.
   // (The leading int&... takes no argument: mul<C>(a, b) is the named form above.)
-  template <int&... Barrier, insidable V, quantity_like QA, class... Args, reference A = QA::reference, class VA = typename QA::rep>
+  template <int&... Barrier, insidable V, quantity_like QA, class... Args, reference A = QA::reference,
+            class VA = typename QA::rep>
     requires requires(const V& x, const VA& y, Args&&... args) { ins::mul(x, y, std::forward<Args>(args)...); }
   [[nodiscard]] constexpr auto mul(const V& v, const QA& a, Args&&... args)
   {
     return detail::make_quantity<A>(ins::mul(v, ins::detail::value_of(a), std::forward<Args>(args)...));
   }
-  template <int&... Barrier, insidable V, quantity_like QA, class... Args, reference A = QA::reference, class VA = typename QA::rep>
+  template <int&... Barrier, insidable V, quantity_like QA, class... Args, reference A = QA::reference,
+            class VA = typename QA::rep>
     requires requires(const V& x, const VA& y, Args&&... args) { ins::div(x, y, std::forward<Args>(args)...); }
   [[nodiscard]] constexpr auto div(const V& v, const QA& a, Args&&... args)
   {
@@ -29822,11 +29859,11 @@ namespace ins
   // A point: id<K> for a key with an origin, a quantity of the key's reference counted from it
   // (@ice_point; @0, origin_def::none, the implicit zero of the dimension).
   // A change of origin shifts the grid by the exact offset, a change of unit rescales it.
-  //   auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});   // 20 ℃, id<"[-40..60] [`C] @ice_point">
+  //   auto t = point<si::degree_Celsius>(id<"[-40..60]">{20});   // 20 ℃, id<"[-40..60] [`C] @ice_point">
   //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
   //   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
   template <key K>
-    requires detail::point_key<K>
+    requires detail::origin_key<K>
   struct id<K>;
 
   namespace detail
@@ -29834,17 +29871,17 @@ namespace ins
     template <class T>
     inline constexpr bool is_quantity_point_v = false;
     template <key K>
-      requires point_key<K>
+      requires origin_key<K>
     inline constexpr bool is_quantity_point_v<id<K>> = true;
   } // namespace detail
 
   template <class T>
   concept point_like = detail::is_quantity_point_v<std::remove_cvref_t<T>>;
 
-  // quantity_point<R, O, Rep>: a point of a quantity on R from origin O, its number Rep:
-  // quantity_point<si::degree_Celsius, si::ice_point, id<"[-40..125]">> is id<"[-40..125] [`C] @ice_point">.
+  // The key of a point of a quantity on R from origin O, its number Rep, for a type computed from them:
+  // id<point_key<si::degree_Celsius, si::ice_point, id<"[-40..125]">>> is id<"[-40..125] [`C] @ice_point">.
   template <reference R, origin_ref O, insidable Rep>
-  using quantity_point = id<detail::quantity_key<R, Rep, O, true>()>;
+  inline constexpr key point_key = detail::quantity_key_of<R, Rep, O, true>();
 
   namespace detail
   {
@@ -29892,7 +29929,7 @@ namespace ins
     template <class Rep, class V, class Pol>
       requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
     inline constexpr bool point_store_immediate<Rep, V, Pol> =
-      !ins::detail::store_proven<inside<grid_of<Rep>, point_flags_with<Rep, Pol>>, std::remove_cvref_t<V>,
+      !ins::detail::store_proven<id<key{grid_of<Rep>, point_flags_with<Rep, Pol>}>, std::remove_cvref_t<V>,
                                  point_flags_with<Rep, Pol>>
       && !ins::detail::reports_into_errc<Pol>;
 
@@ -29900,20 +29937,22 @@ namespace ins
     constexpr auto make_point(Q&& q)
     {
       using T = ins::detail::unwrap_t<Q>;
-      return lift_to<quantity_point<T::reference, O, typename T::rep>>(std::forward<Q>(q));
+      return lift_to<id<point_key<T::reference, O, typename T::rep>>>(std::forward<Q>(q));
     }
   } // namespace detail
 
   template <key K>
-    requires detail::point_key<K>
+    requires detail::origin_key<K>
   struct id<K>
-    : public detail::member_holder<detail::key_rep<K>, quantity<detail::key_reference<K>, detail::key_rep<K>>, id<K>>
+    : public detail::member_holder<detail::key_rep<K>, id<quantity_key<detail::key_reference<K>, detail::key_rep<K>>>,
+                                   id<K>>
   {
   private:
     static constexpr ins::reference R{detail::key_reference<K>};
     static constexpr origin_ref     O{detail::key_origin<K>};
     using Rep    = detail::key_rep<K>;
-    using holder = detail::member_holder<Rep, quantity<R, Rep>, id>;
+    using Q      = id<quantity_key<R, Rep>>;
+    using holder = detail::member_holder<Rep, Q, id>;
     using holder::Value; // the quantity from the origin
 
     static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
@@ -29921,49 +29960,48 @@ namespace ins
                   "negate the number");
 
   public:
-    using quantity_type = quantity<R, Rep>;
+    using quantity_type = Q;
     using rep           = Rep;
     static constexpr ins::reference reference = R;
     static constexpr origin_ref     origin    = O;
 
     constexpr id() = default;
-    constexpr explicit id(const quantity<R, Rep>& q) : holder(q) {}
+    constexpr explicit id(const Q& q) : holder(q) {}
 
-    // From a number in the point's own unit, counted from its origin, stored as quantity<R, Rep>{v, u} stores it:
+    // From a number in the point's own unit, counted from its origin, stored as its quantity Q{v, u} stores it:
     // celsius{21.5, si::degree_Celsius}, celsius{v, si::degree_Celsius, clamp}.
     // A plain number the grids cannot prove is stored only while compiling, as by inside's consteval constructor;
     // this constructor is consteval then itself, so no escalation is left to infer.
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
            && (!detail::point_store_immediate<Rep, V, Pol...>)
     constexpr id(V&& v, Tag u, Pol&&... pol)
-      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+      : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
            && detail::point_store_immediate<Rep, V, Pol...>
     consteval id(V&& v, Tag u, Pol&&... pol)
-      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+      : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
     // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && (!detail::own_unit_v<quantity<R, Rep>, Tag>)
+           && (!detail::own_unit_v<Q, Tag>)
     id(V&&, Tag, Pol&&...) = delete ("units: a point from a number takes the point's own unit - write point<u>(v) "
                                      "and convert it with point_in or point_for");
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
-    template <ins::point_like P2, ins::reference R2 = P2::reference, origin_ref O2 = P2::origin, class V2 = typename P2::rep>
+    template <ins::point_like P2, ins::reference R2 = P2::reference, origin_ref O2 = P2::origin>
       requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O))) && detail::implicit_v<R2, R>
-            && std::constructible_from<quantity<R, Rep>,
-                                       decltype(std::declval<const P2&>().quantity_from(origin_t<O>{}))>
-    constexpr explicit(!std::convertible_to<decltype(std::declval<const P2&>().quantity_from(origin_t<O>{})),
-                                            quantity<R, Rep>>) id(const P2& p)
-      : holder(quantity<R, Rep>(p.quantity_from(origin_t<O>{}))) {}
+            && std::constructible_from<Q, decltype(std::declval<const P2&>().quantity_from(origin_t<O>{}))>
+    constexpr explicit(!std::convertible_to<decltype(std::declval<const P2&>().quantity_from(origin_t<O>{})), Q>)
+      id(const P2& p)
+      : holder(Q(p.quantity_from(origin_t<O>{}))) {}
 
     // The quantity from this point's origin, or from another one.
-    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Value; }
+    [[nodiscard]] constexpr const Q& quantity_from_origin() const noexcept { return Value; }
     template <origin_ref O2>
       requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.unit()).Pi == 0
                && detail::shift_forms<detail::origin_shift<O, O2, R.unit()>(), Rep>)
@@ -29971,7 +30009,7 @@ namespace ins
     {
       constexpr grid_number c{detail::origin_shift<O, O2, R.unit()>()};
       return detail::quantity_access::make<
-        quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(ins::detail::value_of(Value)))>>>(
+        id<quantity_key<R, std::remove_cvref_t<decltype(detail::shift<c>(ins::detail::value_of(Value)))>>>>(
         detail::shift<c>(ins::detail::value_of(Value)));
     }
     template <origin_ref O2>
@@ -29997,7 +30035,7 @@ namespace ins
     }
     // The same point in another unit.
     template <ins::unit_value U>
-      requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
+      requires requires(const Q& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const
     {
       return detail::make_point<O>(Value.in(u));
@@ -30014,14 +30052,14 @@ namespace ins
     }
 
     template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
-      requires requires(quantity<R, Rep>& a, const QR2& b) { a += b; }
+      requires requires(Q& a, const QR2& b) { a += b; }
     constexpr id& operator+=(const QR2& q)
     {
       Value += q;
       return *this;
     }
     template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
-      requires requires(quantity<R, Rep>& a, const QR2& b) { a -= b; }
+      requires requires(Q& a, const QR2& b) { a -= b; }
     constexpr id& operator-=(const QR2& q)
     {
       Value -= q;
@@ -30034,7 +30072,7 @@ namespace ins
   inline namespace literals
   {
     template <detail::value_text T>
-      requires detail::point_key<T.Key>
+      requires detail::origin_key<T.Key>
     consteval auto operator""_ins()
     {
       return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
@@ -30051,17 +30089,17 @@ namespace ins
       if constexpr (ins::detail::is_expected_v<Q>)
         return q.transform([](const auto& x) { return point_at<O>(x); });
       else
-        return quantity_point<Q::reference, O, typename Q::rep>{q};
+        return id<point_key<Q::reference, O, typename Q::rep>>{q};
     }
   } // namespace detail
-  template <insidable Rep2, point_like P, reference R = P::reference, origin_ref O = P::origin, class V = typename P::rep>
-    requires requires(const quantity<R, V>& q) { value_cast<Rep2>(q); }
+  template <insidable Rep2, point_like P, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& q) { value_cast<Rep2>(q); }
   [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     return detail::point_at<O>(value_cast<Rep2>(p.quantity_from_origin()));
   }
-  template <auto U, insidable Rep2, point_like P, reference R = P::reference, origin_ref O = P::origin, class V = typename P::rep>
-    requires requires(const quantity<R, V>& q) { value_cast<U, Rep2>(q); }
+  template <auto U, insidable Rep2, point_like P, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& q) { value_cast<U, Rep2>(q); }
   [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     return detail::point_at<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
@@ -30071,8 +30109,8 @@ namespace ins
   template <auto U, insidable V>
   [[nodiscard]] constexpr auto point(const V& v)
   {
-    return quantity_point<reference_of(U), detail::origin_of_unit(decltype(U)::value), V>{
-      detail::quantity_access::make<quantity<reference_of(U), V>>(v)};
+    return id<point_key<reference_of(U), detail::origin_of_unit(decltype(U)::value), V>>{
+      detail::quantity_access::make<id<quantity_key<reference_of(U), V>>>(v)};
   }
   // delta<si::degree_Celsius>(v): a difference, a plain quantity.
   template <auto U, insidable V>
@@ -30085,12 +30123,12 @@ namespace ins
   template <origin_ref O, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
   [[nodiscard]] constexpr auto operator+(origin_t<O>, const QR& q)
   {
-    return quantity_point<R, O, V>{q};
+    return id<point_key<R, O, V>>{q};
   }
   template <quantity_like QR, origin_ref O, reference R = QR::reference, class V = typename QR::rep>
   [[nodiscard]] constexpr auto operator+(const QR& q, origin_t<O>)
   {
-    return quantity_point<R, O, V>{q};
+    return id<point_key<R, O, V>>{q};
   }
 
   // point ± quantity: a point at the same origin,
@@ -30098,7 +30136,7 @@ namespace ins
   // else in the common unit; point − point: a quantity (the second counted from the first's origin).
   namespace detail
   {
-    template <unit_value U, quantity_like QR2, reference R2 = QR2::reference, class V2 = typename QR2::rep>
+    template <unit_value U, quantity_like QR2>
     constexpr auto in_point_unit(const QR2& q)
     {
       if constexpr (requires { q.template in<U>(); })
@@ -30107,24 +30145,24 @@ namespace ins
         return q;
     }
   } // namespace detail
-  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin, class V = typename P::rep>
-    requires requires(const quantity<R, V>& a, const QR2& b) {
+  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& a, const QR2& b) {
       a + detail::in_point_unit<R.unit()>(b);
     }
   [[nodiscard]] constexpr auto operator+(const P& p, const QR2& q)
   {
     return detail::make_point<O>(p.quantity_from_origin() + detail::in_point_unit<R.unit()>(q));
   }
-  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin, class V = typename P::rep>
-    requires requires(const QR2& a, const quantity<R, V>& b) {
+  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin>
+    requires requires(const QR2& a, const typename P::quantity_type& b) {
       detail::in_point_unit<R.unit()>(a) + b;
     }
   [[nodiscard]] constexpr auto operator+(const QR2& q, const P& p)
   {
     return detail::make_point<O>(detail::in_point_unit<R.unit()>(q) + p.quantity_from_origin());
   }
-  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin, class V = typename P::rep>
-    requires requires(const quantity<R, V>& a, const QR2& b) {
+  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& a, const QR2& b) {
       a - detail::in_point_unit<R.unit()>(b);
     }
   [[nodiscard]] constexpr auto operator-(const P& p, const QR2& q)
@@ -30954,7 +30992,8 @@ namespace ins
   namespace detail
   {
     template <reference R>
-    inline constexpr auto one_of = quantity_access::make<quantity<R, std::remove_cvref_t<decltype(just<1>)>>>(just<1>);
+    inline constexpr auto one_of =
+      quantity_access::make<id<quantity_key<R, std::remove_cvref_t<decltype(just<1>)>>>>(just<1>);
   } // namespace detail
 
   namespace constants
@@ -31543,7 +31582,7 @@ namespace ins
       if constexpr (quantity_like<P>)
         return p.template in<unit_mul(U, blade_atoms(P::reference.unit()), 1)>();
       else
-        return quantity_access::make<quantity<reference_of(unit_value{}), P>>(p).template in<U>();
+        return quantity_access::make<id<quantity_key<reference_of(unit_value{}), P>>>(p).template in<U>();
     }
     template <unit_value U, class P>
     concept part_in_unit = requires(const P& p) { part_in<U>(p); };
@@ -31669,7 +31708,8 @@ namespace ins
 
     constexpr multivector() = default;
 
-    // From its parts, in order: multivector<inside<…>, quantity<i, …>>{3, just<4> * i}. A blade's part is a quantity.
+    // From its parts, in order: multivector<id<"[0..9]">, id<"[0..9] [i]">>{3, just<4> * i}. A blade's part is a
+    // quantity.
     template <class... A>
       requires(sizeof...(A) == sizeof...(Parts) && (std::constructible_from<Parts, A> && ...))
     constexpr explicit(!(std::convertible_to<A, Parts> && ...)) multivector(A&&... a)
@@ -31749,19 +31789,22 @@ namespace ins
                                                "their blades), or parts of one blade that do not add");
 
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
   [[nodiscard]] constexpr auto operator+(const QA& a, const QB& b)
   {
     return detail::mv_add(a, b);
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
   [[nodiscard]] constexpr auto operator-(const QA& a, const QB& b)
   {
     return detail::mv_add(a, -b);
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
   [[nodiscard]] constexpr bool operator==(const QA& a, const QB& b)
   {
@@ -33545,12 +33588,12 @@ namespace ins
         const double     y {static_cast<double>(S::units(ins::detail::value_of(q)) * S::a) * c};
         Out              out;
         if (engine::fp_decide<Out>(y, 0x1p-50 * __builtin_fabs(y), out)) [[likely]]
-          return detail::quantity_access::make<quantity<to, Out>>(out);
-        return detail::quantity_access::make<quantity<to, Out>>(
+          return detail::quantity_access::make<id<quantity_key<to, Out>>>(out);
+        return detail::quantity_access::make<id<quantity_key<to, Out>>>(
           engine::cold_call([q] { return detail::pi_cast_exact<f, Out>(q); }));
       }
 #endif
-    return detail::quantity_access::make<quantity<to, Out>>(detail::pi_cast_exact<f, Out>(q));
+    return detail::quantity_access::make<id<quantity_key<to, Out>>>(detail::pi_cast_exact<f, Out>(q));
   }
 
   namespace detail
@@ -33577,7 +33620,7 @@ namespace ins
     template <reference R, class V>
     struct real_of<quantity_parts<R, V>>
     {
-      using type = quantity<R, V>;
+      using type = id<quantity_key<R, V>>;
     };
     template <class X>
     using number_of_t = decltype(number_of(std::declval<const typename real_of<X>::type&>()));
@@ -33664,7 +33707,7 @@ namespace ins
     struct output_in
     {
       template <class N>
-      using with = std::conditional_t<Number, N, quantity<To, N>>;
+      using with = std::conditional_t<Number, N, id<quantity_key<To, N>>>;
       template <class S>
       struct out
       {
@@ -33900,19 +33943,23 @@ namespace ins::math::detail
 namespace ins::math
 {
   // atan2, hypot, gcd and lcm of two quantities that do not add (another dimension or kind, no common unit).
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void atan2(const QA&, const QB&) = delete (
     "units: atan2 takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void hypot(const QA&, const QB&) = delete (
     "units: hypot takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void gcd(const QA&, const QB&) = delete (
     "units: gcd takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void lcm(const QA&, const QB&) = delete (
     "units: lcm takes two quantities that add - one dimension and kind, a common unit");
@@ -34273,7 +34320,7 @@ namespace ins::detail::gaexp
   template <reference R, class V, class N>
   struct with_number<quantity_parts<R, V>, N>
   {
-    using type = quantity<R, N>;
+    using type = id<quantity_key<R, N>>;
   };
   template <key K, class N>
     requires unit_key<K>
@@ -34283,7 +34330,7 @@ namespace ins::detail::gaexp
   template <class F, std::size_t Q>
   using twin_part =
     typename with_number<std::tuple_element_t<Q, typename F::CP>,
-                         inside<twin_grid<F, Q>(), policy_of<num_t<std::tuple_element_t<Q, typename F::CP>>>>>::type;
+                         id<key{twin_grid<F, Q>(), policy_of<num_t<std::tuple_element_t<Q, typename F::CP>>>}>>::type;
   template <class Domain, class CoDomain>
   consteval auto twin_of()
   {
@@ -35409,7 +35456,7 @@ namespace ins::detail::gaexp
     using type = decltype([]<std::size_t... J>(std::index_sequence<J...>)
                           {
                             return std::type_identity<
-                              multivector<N<D::N>, quantity<D::template ypart<J>::reference, N<J>>...>>{};
+                              multivector<N<D::N>, id<quantity_key<D::template ypart<J>::reference, N<J>>>...>>{};
                           }(std::make_index_sequence<D::N>{}))::type;
   };
 
@@ -35449,10 +35496,9 @@ namespace ins::detail::gaexp
     }
     // Part J of y, or J = N for the scalar part.
     template <std::size_t J>
-    using number = inside<grid{{-limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N]),
+    using number = id<key{grid{{-limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N]),
                                 limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N])},
-                               notch},
-                          flags>;
+                               notch}, flags}>;
     using type = typename output_parts<Domain, number>::type;
   };
 
@@ -36043,10 +36089,9 @@ namespace ins::detail::gaexp
       return ::ins::detail::grid_round<::ins::detail::round_mode::ceil>(grid_number{m} / notch) * notch;
     }
     template <std::size_t J>
-    using number = inside<grid{{-limit(J == D::N ? scalar_bound_of<Fn, D> : part_bound_of_fn<Fn, D>),
+    using number = id<key{grid{{-limit(J == D::N ? scalar_bound_of<Fn, D> : part_bound_of_fn<Fn, D>),
                                 limit(J == D::N ? scalar_bound_of<Fn, D> : part_bound_of_fn<Fn, D>)},
-                               notch},
-                          flags>;
+                               notch}, flags}>;
     using type = typename output_parts<Domain, number>::type;
   };
 
@@ -36259,7 +36304,7 @@ namespace ins::detail
   {
     using number = typename Q::rep;
     template <insidable N>
-    using rebind = ins::quantity<Q::reference, N>;
+    using rebind = ins::id<ins::quantity_key<Q::reference, N>>;
     static constexpr const number& number_of(const Q& q) noexcept { return ins::detail::value_of(q); }
     static constexpr Q             make(const number& n) { return ins::detail::quantity_access::make<Q>(n); }
     // (total: the caller proved the total fits; try_total reports it.)
@@ -36272,7 +36317,7 @@ namespace ins::detail
       N    out{};
       auto policy{make_policy<policy_of<N>>()};
       sum_into(numbers, out, policy);
-      return Q{ins::detail::quantity_access::make<ins::quantity<P::reference, N>>(out)};
+      return Q{ins::detail::quantity_access::make<ins::id<ins::quantity_key<P::reference, N>>>(out)};
     }
     template <class Rng>
     static constexpr std::expected<Q, error> try_total(Rng&& r)
@@ -36281,8 +36326,8 @@ namespace ins::detail
       using N = numbers_of<P>;
       auto numbers{std::forward<Rng>(r) | std::views::transform([](const P& p) { return ins::detail::value_of(p); })};
       return try_store<N, policy_of<N>>([&](N& out, auto&& policy) { sum_into(numbers, out, policy); })
-        .transform(
-          [](const N& t) { return Q{ins::detail::quantity_access::make<ins::quantity<P::reference, N>>(t)}; });
+        .transform([](const N& t)
+                   { return Q{ins::detail::quantity_access::make<ins::id<ins::quantity_key<P::reference, N>>>(t)}; });
     }
     template <class V>
     static constexpr std::expected<Q, error> try_store_of(const V& v)

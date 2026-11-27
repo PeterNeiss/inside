@@ -18,7 +18,7 @@ using detail::wide_sint;
 using ins::math::driver;
 
 namespace {
-using eighths = inside<{{0, 1}, rational{1, 8}}, round_half_away>;
+using eighths = id<"[0..1] 1/8 round_half_away">;
 
 // 1/16, a tie between 0 and 1/8, within ±4 units at every precision: never
 // decided. With deep_extra past the cap (4·24 bits), the driver runs it once
@@ -76,8 +76,8 @@ TEST(MathInstrumentTest, constant_evaluation_gives_the_same_guess) {
 }
 
 TEST(MathInstrumentTest, integer_only_skips_the_fast_tiers) {
-    using in         = inside<{{-4, 4}, per<128>}, round_half_away>; // 1025 slots
-    using out        = inside<{{-1, 1}, per<1024>}, round_half_away>;
+    using in         = id<"[-4..4] 1/128 round_half_away">; // 1025 slots
+    using out        = id<"[-1..1] 1/1024 round_half_away">;
     const auto sweep = [] {
         const std::uint64_t before = driver.IntegerRuns.load();
         for (int i = -512; i <= 512; ++i)
@@ -97,10 +97,10 @@ TEST(MathInstrumentTest, integer_only_skips_the_fast_tiers) {
 // An exact power with a root degree past 64: (2^128)^(1/128) = 2 is a
 // rounding boundary of a floor or ceil output, decided exactly (no guess).
 TEST(MathInstrumentTest, an_exact_power_past_root_64_is_decided) {
-    using base          = inside<{1, 340282366920938463463374607431768211456_g}>; // [1, 2^128]
-    using exponent      = inside<{{0, 1}, rational{1, 128}}>;
-    using down          = inside<{{0, 4}, rational{1, 1024}}, round_floor>;
-    using up            = inside<{{0, 4}, rational{1, 1024}}, round_ceil>;
+    using base          = id<"[1..340282366920938463463374607431768211456]">; // [1, 2^128]
+    using exponent      = id<"[0..1] 1/128">;
+    using down          = id<"[0..4] 1/1024 round_floor">;
+    using up            = id<"[0..4] 1/1024 round_ceil">;
     const counts before = read();
     const base   b{340282366920938463463374607431768211456_g};
     EXPECT_TRUE((am::pow<down>(b, exponent{rational{1, 128}}) == 2));

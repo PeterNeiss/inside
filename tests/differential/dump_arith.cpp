@@ -67,29 +67,29 @@ void mod(rng_t& g, int n, const char* mode) {
 
 template <class X>
 void mod_all(rng_t& g, int n, const char* mode) {
-    mod<X, inside<{1, 10}>>(g, n, mode);
-    mod<X, inside<{-10, -1}>>(g, n, mode);
-    mod<X, inside<{-10, 10}>>(g, n, mode);
-    mod<X, inside<{{-9, 9}, 3}>>(g, n, mode);
-    mod<X, inside<{1, 1ll << 40}>>(g, n, mode);
+    mod<X, id<"[1..10]">>(g, n, mode);
+    mod<X, id<"[-10..-1]">>(g, n, mode);
+    mod<X, id<"[-10..10]">>(g, n, mode);
+    mod<X, id<"[-9..9] 3">>(g, n, mode);
+    mod<X, id<key{grid{1, 1ll << 40}}>>(g, n, mode);
 }
 } // namespace
 
 void dump_arith(rng_t& g, int n) {
     using r = rational;
-    arith<inside<{-100, 100}>, inside<{1, 10}>>(g, n, "int");
-    arith<inside<{{-7, 23}, 3}>, inside<{{-9, 9}, 3}>>(g, n, "offset");
-    arith<inside<{{-1, 1}, per<(1ll << 40)>}>, inside<{{r{1, 3}, r{7, 3}}, r{1, 2}}>>(g, n, "unanchored");
-    arith<inside<{-(1ll << 62), 1ll << 62}>, inside<{-(1ll << 30), 1ll << 30}>>(g, n, "wide");
-    arith<inside<{{0, 100}, per<1000>}>, inside<{{1, 7}, per<3>}>>(g, n, "thirds");
-    arith<inside<{{-5, 5}, per<7>}>, inside<{{-2, 2}, per<11>}>>(g, n, "sevenths");
+    arith<id<"[-100..100]">, id<"[1..10]">>(g, n, "int");
+    arith<id<"[-7..23] 3">, id<"[-9..9] 3">>(g, n, "offset");
+    arith<id<key{grid{{-1, 1}, per<(1ll << 40)>}}>, id<key{grid{{r{1, 3}, r{7, 3}}, r{1, 2}}}>>(g, n, "unanchored");
+    arith<id<key{grid{-(1ll << 62), 1ll << 62}}>, id<key{grid{-(1ll << 30), 1ll << 30}}>>(g, n, "wide");
+    arith<id<"[0..100] 1/1000">, id<"[1..7] 1/3">>(g, n, "thirds");
+    arith<id<"[-5..5] 1/7">, id<"[-2..2] 1/11">>(g, n, "sevenths");
 
-    mod_all<inside<{-100, 100}>>(g, n, "trunc");
-    mod_all<inside<{-100, 100}, round_floor>>(g, n, "floor");
-    mod_all<inside<{-100, 100}, round_ceil>>(g, n, "ceil");
-    mod_all<inside<{-100, 100}, round_half_away>>(g, n, "nearest");
-    mod_all<inside<{-100, 100}, round_half_even>>(g, n, "even");
-    mod_all<inside<{{-97, 101}, 3}>>(g, n, "trunc");
-    mod_all<inside<{-(1ll << 62), 1ll << 62}, round_half_away>>(g, n, "nearest");
+    mod_all<id<"[-100..100]">>(g, n, "trunc");
+    mod_all<id<"[-100..100] round_floor">>(g, n, "floor");
+    mod_all<id<"[-100..100] round_ceil">>(g, n, "ceil");
+    mod_all<id<"[-100..100] round_half_away">>(g, n, "nearest");
+    mod_all<id<"[-100..100] round_half_even">>(g, n, "even");
+    mod_all<id<"[-97..101] 3">>(g, n, "trunc");
+    mod_all<id<key{grid{-(1ll << 62), 1ll << 62}, round_half_away}>>(g, n, "nearest");
 }
 } // namespace diff

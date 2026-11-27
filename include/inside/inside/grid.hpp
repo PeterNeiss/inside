@@ -52,7 +52,7 @@ namespace ins
     inline constexpr int max_fraction_bits = 1024;
   } // namespace detail
 
-  // A continuous grid whose values have denominators of at most Value: inside<{{0, 1}, max_denominator{1000}}>.
+  // A continuous grid whose values have denominators of at most Value: id<"[0..1] <1000>">.
   // The bound makes exact arithmetic predictable: the result type knows how large every fraction can get.
   struct max_denominator
   {
@@ -463,7 +463,7 @@ namespace ins
         return value_uint_for_t<G>{};
     }
 
-    // The raw type of inside<G, P> (the policy plays no part).
+    // The raw type of id<key{G, P}> (the policy plays no part).
     template <grid G>
     using raw_for_t = decltype(raw_for<G>());
 

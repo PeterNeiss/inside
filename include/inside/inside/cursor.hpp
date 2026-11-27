@@ -35,9 +35,8 @@ namespace ins
   } // namespace detail
 
   template <detail::steppable T, auto Step = notch_of<detail::step_number_t<T>>>
-  using cursor = detail::step_rebind_t<T,
-                                       inside<detail::cursor_grid<detail::step_number_t<T>>(Step),
-                                              policy_of<detail::step_number_t<T>> | detail::cursor_marker>>;
+  using cursor = detail::step_rebind_t<T, id<key{detail::cursor_grid<detail::step_number_t<T>>(Step),
+                                                 policy_of<detail::step_number_t<T>> | detail::cursor_marker}>>;
 
   // end(t): a cursor's past-the-end value, one step past T's Upper.
   // Only a cursor has one: on any other inside its Upper is a value, not an end.

@@ -19,13 +19,14 @@ static_assert(std::is_same_v<decltype(digit{} + digit{}), ins::id<"[0..18]">>);
 ```
 
 A string names the same type as the grid and policy written as values:
-`id<"[0..9] clamp">` is `inside<{0, 9}, clamp>`.
+`id<"[0..9] clamp">` is `id<key{grid{0, 9}, clamp}>` ([types computed from
+values](#types-computed-from-values)).
 
 ## The text
 
 | Text | Means |
 |---|---|
-| `[0..9]` | the limits, both included. Without a step, the step is the one the limits derive, as `inside<{0, 9}>` derives it: 1 here, 1/2 for `[0..1/2]` |
+| `[0..9]` | the limits, both included. Without a step, the step is the one the limits derive, as `grid{0, 9}` derives it: 1 here, 1/2 for `[0..1/2]` |
 | `[0..10)`, `(0..10]`, `(0..10)` | an open limit: it moves in by one step, so `[0..10)` is `[0..9]` |
 | `[0..10) 1/4` | a step: any positive number that divides the interval as written |
 | `[0..1] <1000>` | a continuous grid: every fraction in the interval with a denominator of at most 1000 ([exact arithmetic](../advanced/exact-arithmetic.md#bounded-continuous-grids)). Its limits are closed |
@@ -65,7 +66,7 @@ A type's text has room for 2048 characters; a grid whose numbers need more
 ## Quantities
 
 A unit in brackets, after the step, makes the type a quantity:
-`id<"[0..300] [km/h]">` is `quantity<si::kilo(si::metre) / si::hour, id<"[0..300]">>`,
+`id<"[0..300] [km/h]">` is `id<quantity_key<si::kilo(si::metre) / si::hour, id<"[0..300]">>>`,
 the same type. The unit is read as a quantity's text reads one, by symbols
 with powers (`km/h`, `kg*m^2/s^2`, `µs`, `[1/381 ft]` for a scaled unit),
 among the unit tags visible where the type is named: the catalog's and your
@@ -114,8 +115,8 @@ A point, a quantity counted from an origin, names its origin after the unit,
 `@0` for the implicit zero of the dimension:
 
 ```cpp
-using celsius = ins::id<"[-40..125] 1/10 [`C] @ice_point">;   // quantity_point<si::degree_Celsius, si::ice_point, …>
-static_assert(std::is_same_v<decltype(ins::point<ins::si::metre>(ins::inside<{0, 9}>{3})),
+using celsius = ins::id<"[-40..125] 1/10 [`C] @ice_point">;   // id<point_key<si::degree_Celsius, si::ice_point, …>>
+static_assert(std::is_same_v<decltype(ins::point<ins::si::metre>(ins::id<"[0..9]">{3})),
                              ins::id<"[0..9] [m] @0">>);
 constexpr auto t{"21.5 [-40..125] 1/10 [`C] @ice_point"_ins};  // 21.5 ℃
 ```
@@ -184,8 +185,6 @@ auto square(ins::id<K> x) { return x * x; }
 ```
 
 `grid_of<T>` and `policy_of<T>` give the grid and the policy as values.
-(`inside<G, P>` is an alias, so `template <grid G, policy_flag P>
-f(inside<G, P>)` deduces nothing.)
 
 Every quantity is an `id` too, so a function over quantities takes one and
 reads its reference and number type:
@@ -196,3 +195,26 @@ auto twice(const Q& q) { return q + q; }   // Q::reference, Q::rep
 ```
 
 and a point is `point_like` (`P::reference`, `P::origin`, `P::rep`).
+
+## Types computed from values
+
+A type whose parts are values, a template's parameters or the result of a
+computation, names its key from them:
+
+| Key | Names |
+|---|---|
+| `key{grid, policy}` | an inside: `id<key{grid{0, N - 1}}>`, `id<key{G, clamp}>` |
+| `quantity_key<R, Rep>` | a quantity on the reference R (a unit, or a kind of one) with the number Rep: `id<quantity_key<si::metre, Rep>>` |
+| `point_key<R, O, Rep>` | a point of such a quantity from the origin O: `id<point_key<si::degree_Celsius, si::ice_point, Rep>>` |
+
+```cpp
+template <auto N>
+using counter = ins::id<ins::key{ins::grid{0, N}, ins::clamp}>;
+template <class Rep>
+using metres  = ins::id<ins::quantity_key<ins::si::metre, Rep>>;
+```
+
+Each is the type the text names: `id<key{grid{0, 9}, clamp}>` is
+`id<"[0..9] clamp">`. Such a spelling names a type, but a function deduces the
+key, not its parts: `template <grid G> f(id<key{G}>)` deduces nothing; write
+`template <key K> f(id<K>)` and read `grid_of<id<K>>`.

@@ -455,7 +455,7 @@ namespace ins
   template <auto D>
   inline constexpr auto per = detail::make_per<D>();
 
-  // A grid number of any size: inside<{0, 1267650600228229401496703205376_g}>,
+  // A grid number of any size: id<"[0..1267650600228229401496703205376]">,
   // an exact decimal notch {{0, 1}, 1e-30_g}, or a binary one 0x1p-100_g.
   inline namespace literals
   {

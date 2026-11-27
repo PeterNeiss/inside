@@ -8,7 +8,7 @@
 # Usage: kern.sh <include-dir> <kernels.cpp> [dump]
 # <kernels.cpp> holds one [[gnu::noinline]] non-template function per
 # operation, named k_*, taking its operands by value:
-#   [[gnu::noinline]] auto k_add(inside<{0, 100}> a, inside<{0, 100}> b) { return a + b; }
+#   [[gnu::noinline]] auto k_add(id<"[0..100]"> a, id<"[0..100]"> b) { return a + b; }
 INC=$1; SRC=$2
 g++-16 -I"$INC" -O3 -DNDEBUG -std=c++26 -freflection -mfma -fno-asynchronous-unwind-tables -masm=intel -S -o - "$SRC" 2>&1 | c++filt |
 awk -v dump="$3" '

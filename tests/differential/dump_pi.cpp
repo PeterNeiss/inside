@@ -14,9 +14,9 @@ using namespace ins;
 
 template <class Out>
 void deg_to_rad(rng_t& g, int n, const char* mode) {
-    using D = inside<{{-720, 720}, per<1000>}>;
+    using D = id<"[-720..720] 1/1000">;
     for (int i = 0; i < n; ++i) {
-        const quantity<si::degree, D> q{pick<D>(g), si::degree};
+        const id<"[-720..720] 1/1000 [deg]"> q{pick<D>(g), si::degree};
         std::cout << "P " << mode << " deg2rad " << notch_of<Out> << ' ' << q.numerical_value_in(si::degree) << ' '
                   << value_cast<si::radian, Out>(q).numerical_value_in(si::radian) << '\n';
     }
@@ -24,9 +24,9 @@ void deg_to_rad(rng_t& g, int n, const char* mode) {
 
 template <class Out>
 void rad_to_deg(rng_t& g, int n, const char* mode) {
-    using R = inside<{{-13, 13}, per<1'000'003>}>;
+    using R = id<"[-13..13] 1/1'000'003">;
     for (int i = 0; i < n; ++i) {
-        const quantity<si::radian, R> q{pick<R>(g), si::radian};
+        const id<"[-13..13] 1/1'000'003 [rad]"> q{pick<R>(g), si::radian};
         std::cout << "P " << mode << " rad2deg " << notch_of<Out> << ' ' << q.numerical_value_in(si::radian) << ' '
                   << value_cast<si::degree, Out>(q).numerical_value_in(si::degree) << '\n';
     }
@@ -34,10 +34,10 @@ void rad_to_deg(rng_t& g, int n, const char* mode) {
 } // namespace
 
 void dump_pi(rng_t& g, int n) {
-    deg_to_rad<inside<{{-13, 13}, per<(1ll << 40)>}, round_half_away>>(g, n, "nearest");
-    deg_to_rad<inside<{{-13, 13}, per<(1ll << 40)>}, round_floor>>(g, n, "floor");
-    deg_to_rad<inside<{{-13, 13}, per<1'000'003>}, round_ceil>>(g, n, "ceil");
-    rad_to_deg<inside<{{-800, 800}, per<7>}, round_half_even>>(g, n, "even");
-    rad_to_deg<inside<{{-800, 800}, per<1000>}, round_half_away>>(g, n, "nearest");
+    deg_to_rad<id<key{grid{{-13, 13}, per<(1ll << 40)>}, round_half_away}>>(g, n, "nearest");
+    deg_to_rad<id<key{grid{{-13, 13}, per<(1ll << 40)>}, round_floor}>>(g, n, "floor");
+    deg_to_rad<id<"[-13..13] 1/1'000'003 round_ceil">>(g, n, "ceil");
+    rad_to_deg<id<"[-800..800] 1/7 round_half_even">>(g, n, "even");
+    rad_to_deg<id<"[-800..800] 1/1000 round_half_away">>(g, n, "nearest");
 }
 } // namespace diff

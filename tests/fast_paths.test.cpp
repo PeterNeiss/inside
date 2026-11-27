@@ -68,13 +68,13 @@ void expect_same(const V& v, const char* what) {
 
 template <policy_flag F>
 void integer_sweep() {
-    using n60   = inside<{{-600, 600}, 60}>;
-    using n72   = inside<{{-7, 14}, just<7, 2>}>;
-    using un    = inside<{{1, 601}, 60}>;
-    using half  = inside<{{just<1, 2>, just<201, 2>}, 1}>;
-    using q88   = inside<{{0, 255}, per<256>}>;
-    using n53   = inside<{{-5, 5}, just<5, 3>}>;          // period·K odd: the parity carries
-    using nhalf = inside<{{just<-7, 2>, just<9, 2>}, 1}>; // unanchored below 0
+    using n60   = id<"[-600..600] 60">;
+    using n72   = id<"[-7..14] 7/2">;
+    using un    = id<"[1..601] 60">;
+    using half  = id<"[1/2..201/2] 1">;
+    using q88   = id<"[0..255] 1/256">;
+    using n53   = id<"[-5..5] 5/3">;                      // period·K odd: the parity carries
+    using nhalf = id<"[-7/2..9/2] 1">;                    // unanchored below 0
     for (std::int64_t n = -1000; n <= 1000; ++n) {
         expect_same<n60, F>(n, "n60");
         expect_same<n72, F>(n, "n72");
@@ -110,14 +110,14 @@ void inside_sweep(const char* what) {
 }
 template <policy_flag F>
 void cross_grid() {
-    using dec2  = inside<{{-50, 50}, per<100>}>;
-    using q88   = inside<{{0, 20}, per<256>}>;
-    using n72   = inside<{{-7, 14}, just<7, 2>}>;
-    using s32   = inside<{-2000, 2000}>;
-    using n60   = inside<{{-600, 600}, 60}>;
-    using dec3  = inside<{{-5, 5}, per<1000>}>;
-    using q114  = inside<{{-1, 1}, per<16384>}>;
-    using small = inside<{-10, 10}>;
+    using dec2  = id<"[-50..50] 1/100">;
+    using q88   = id<"[0..20] 1/256">;
+    using n72   = id<"[-7..14] 7/2">;
+    using s32   = id<"[-2000..2000]">;
+    using n60   = id<"[-600..600] 60">;
+    using dec3  = id<"[-5..5] 1/1000">;
+    using q114  = id<"[-1..1] 1/16384">;
+    using small = id<"[-10..10]">;
     inside_sweep<q88, dec2, F>("dec2->q88");
     inside_sweep<n72, q88, F>("q88->n72");
     inside_sweep<n60, s32, F>("s32->n60");
@@ -125,10 +125,10 @@ void cross_grid() {
     inside_sweep<small, s32, F>("s32->small");
     inside_sweep<q114, q88, F>("q88->q114");
     // unanchored targets: Lower off the notch's multiples, above and below 0
-    using un    = inside<{{1, 601}, 60}>;
-    using uneg  = inside<{{-599, 601}, 60}>;
-    using half  = inside<{{just<1, 2>, just<201, 2>}, 1}>;
-    using nhalf = inside<{{just<-7, 2>, just<9, 2>}, 1}>;
+    using un    = id<"[1..601] 60">;
+    using uneg  = id<"[-599..601] 60">;
+    using half  = id<"[1/2..201/2] 1">;
+    using nhalf = id<"[-7/2..9/2] 1">;
     inside_sweep<un, n60, F>("n60->un");
     inside_sweep<un, s32, F>("s32->un");
     inside_sweep<uneg, s32, F>("s32->uneg");
@@ -158,8 +158,8 @@ TEST(FastPathTest, cross_grid_stores_match_the_exact_store) {
 // numerator spans most of int64.
 template <policy_flag F>
 void products_stored_back() {
-    using q1616                   = inside<{{-30000, 30000}, per<65536>}>; // raw: the index from Lower, 0 … 3932160000
-    using half                    = inside<{{just<1, 2>, just<201, 2>}, 1}>;
+    using q1616                   = id<"[-30000..30000] 1/65536">; // raw: the index from Lower, 0 … 3932160000
+    using half                    = id<"[1/2..201/2] 1">;
     constexpr std::int64_t raws[] = {0,
                                      1,
                                      65535,
@@ -193,13 +193,13 @@ TEST(FastPathTest, products_stored_back_match_the_exact_store) {
 
 template <policy_flag F>
 void double_sweep() {
-    using dec2         = inside<{{-1000, 1000}, per<100>}>;
-    using dec3         = inside<{{-50, 50}, per<1000>}>;
-    using n60          = inside<{{-600, 600}, 60}>;
-    using n72          = inside<{{-7, 14}, just<7, 2>}>;
-    using un           = inside<{{1, 601}, 60}>;
-    using half         = inside<{{just<1, 2>, just<201, 2>}, 1}>;
-    using s64          = inside<{-4000000000000000000, 4000000000000000000}>;
+    using dec2         = id<"[-1000..1000] 1/100">;
+    using dec3         = id<"[-50..50] 1/1000">;
+    using n60          = id<"[-600..600] 60">;
+    using n72          = id<"[-7..14] 7/2">;
+    using un           = id<"[1..601] 60">;
+    using half         = id<"[1/2..201/2] 1">;
+    using s64          = id<"[-4000000000000000000..4000000000000000000]">;
     std::uint64_t x    = 0x9e3779b97f4a7c15u;
     auto          next = [&] { return x = x * 6364136223846793005u + 1442695040888963407u; };
     auto          each = [&](double v) {
@@ -290,16 +290,16 @@ void binary_text() {
 }
 // A binary notch is read within 64 bits: 1/2^63 is one, and a notch past 64 bits (1/2^70) is not (it compiles,
 // rather than failing the checked conversion of its denominator), nor is a 1/3 notch.
-static_assert(bd::binary_notch<inside<{{0, 1}, per<(std::uint64_t{1} << 63)>}>>);
-static_assert(!bd::binary_notch<inside<{{0, 1}, 0x1p-70}>>);
-static_assert(!bd::binary_notch<inside<{{0, 1}, just<1, 3>}>>);
+static_assert(bd::binary_notch<id<key{grid{{0, 1}, per<(std::uint64_t{1} << 63)>}}>>);
+static_assert(!bd::binary_notch<id<"[0..1] 0x1p-70">>);
+static_assert(!bd::binary_notch<id<"[0..1] 1/3">>);
 
 TEST(FastPathTest, binary_notches_print_as_the_fraction_printer) {
-    binary_text<inside<{{0, 255}, per<256>}>>();
-    binary_text<inside<{{-2, 2}, per<16384>}>>();
-    binary_text<inside<{{-1, 1}, per<(1 << 19)>}>>();
-    binary_text<inside<{{-3, 5}, per<2>}>>();
-    using q1616 = inside<{{-100000, 100000}, per<(1 << 16)>}>; // a sample
+    binary_text<id<"[0..255] 1/256">>();
+    binary_text<id<"[-2..2] 1/16384">>();
+    binary_text<id<"[-1..1] 1/524288">>();
+    binary_text<id<"[-3..5] 1/2">>();
+    using q1616 = id<"[-100000..100000] 1/65536">; // a sample
     for (const std::int64_t raw : {std::int64_t{0},
                                    std::int64_t{1},
                                    std::int64_t{65535},
@@ -319,7 +319,7 @@ TEST(FastPathTest, binary_notches_print_as_the_fraction_printer) {
 // total stored by the exact store, totals past Out's range included.
 template <class Out, policy_flag F>
 void dot_sweep(std::mt19937_64& g) {
-    using q = inside<{{-2, 2}, per<16384>}>;
+    using q = id<"[-2..2] 1/16384">;
     for (int trial = 0; trial < 2000; ++trial) {
         std::array<q, 8> a{}, b{};
         for (std::size_t i = 0; i < 8; ++i) {
@@ -329,7 +329,7 @@ void dot_sweep(std::mt19937_64& g) {
         const auto d     = dot<Out>(std::mdspan{a.data(), std::extents<std::size_t, 8>{}},
                                     std::mdspan{b.data(), std::extents<std::size_t, 8>{}});
         auto       exact = a[0] * b[0];
-        using E          = inside<{{-32, 32}, per<(std::int64_t{1} << 28)>}, unsafe>; // the exact total: |Σ| ≤ 32
+        using E          = id<key{grid{{-32, 32}, per<(std::int64_t{1} << 28)>}, unsafe}>; // the exact total: |Σ| ≤ 32
         E total          = E{exact};
         for (std::size_t i = 1; i < 8; ++i)
             total = E{total + a[i] * b[i]};
@@ -348,15 +348,15 @@ void dot_sweep(std::mt19937_64& g) {
 }
 TEST(FastPathTest, dot_products_round_once_as_the_exact_total) {
     std::mt19937_64 g{11};
-    dot_sweep<inside<{{-8, 8}, per<16384>}, clamp | round_half_away>, clamp | round_half_away>(g);
-    dot_sweep<inside<{{-32, 32}, per<1000>}, round_half_even>, round_half_even>(g);
-    dot_sweep<inside<{{-3, 3}, per<100>}, round_floor>, round_floor>(g); // past the range: overflow
+    dot_sweep<id<"[-8..8] 1/16384 clamp|round_half_away">, clamp | round_half_away>(g);
+    dot_sweep<id<"[-32..32] 1/1000 round_half_even">, round_half_even>(g);
+    dot_sweep<id<"[-3..3] 1/100 round_floor">, round_floor>(g); // past the range: overflow
 }
 
 TEST(FastPathTest, a_full_int64_source_clamps_and_wraps) {
-    using full  = inside<{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()}>;
-    using small = inside<{-10, 10}, clamp>;
-    using ring  = inside<{-10, 10}, wrap>;
+    using full  = id<key{grid{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()}}>;
+    using small = id<"[-10..10] clamp">;
+    using ring  = id<"[-10..10] wrap">;
     for (const std::int64_t v : {std::numeric_limits<std::int64_t>::min(),
                                  std::int64_t{-11},
                                  std::int64_t{-10},
@@ -372,9 +372,9 @@ TEST(FastPathTest, a_full_int64_source_clamps_and_wraps) {
 }
 
 TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
-    using T = inside<{{0, 100}, per<100>}, clamp>;
-    for (const auto a : values<inside<{{0, 100}, per<4>}>>)
-        for (const auto b : values<inside<{{0, 100}, per<4>}>>) {
+    using T = id<"[0..100] 1/100 clamp">;
+    for (const auto a : values<id<"[0..100] 1/4">>)
+        for (const auto b : values<id<"[0..100] 1/4">>) {
             T                  x{a, clamp};
             const bd::rational sum   = *bd::try_add(bd::as_rational(a), bd::as_rational(b));
             bool               fired = false;
@@ -387,9 +387,9 @@ TEST(FastPathTest, the_clamp_hook_hears_the_exact_overshoot) {
 }
 
 TEST(FastPathTest, a_wide_product_clamps_and_wraps) {
-    using s64 = inside<{-4000000000000000000, 4000000000000000000}>;
-    using c64 = inside<{-4000000000000000000, 4000000000000000000}, clamp>;
-    using w64 = inside<{-4000000000000000000, 4000000000000000000}, wrap>;
+    using s64 = id<"[-4000000000000000000..4000000000000000000]">;
+    using c64 = id<"[-4000000000000000000..4000000000000000000] clamp">;
+    using w64 = id<"[-4000000000000000000..4000000000000000000] wrap">;
     for (const std::int64_t a : {std::int64_t{-3000000000},
                                  std::int64_t{-7},
                                  std::int64_t{0},
@@ -438,14 +438,14 @@ void steps_and_values() {
 }
 
 TEST(FastPathTest, steps_and_conversions_out_of_lattices) {
-    steps_and_values<inside<{{-7, 14}, just<7, 2>}>>();
-    steps_and_values<inside<{{just<1, 2>, just<201, 2>}, 1}>>();
-    steps_and_values<inside<{{1, 601}, 60}>>();
-    steps_and_values<inside<{{-2, 2}, per<1000>}>>();
-    steps_and_values<inside<{{0, 3}, per<65536>}>>();
+    steps_and_values<id<"[-7..14] 7/2">>();
+    steps_and_values<id<"[1/2..201/2] 1">>();
+    steps_and_values<id<"[1..601] 60">>();
+    steps_and_values<id<"[-2..2] 1/1000">>();
+    steps_and_values<id<"[0..3] 1/65536">>();
 }
 
-template <class A, class B, class Out = inside<{{-1000, 1000}, per<100>}, round_half_even>>
+template <class A, class B, class Out = id<"[-1000..1000] 1/100 round_half_even">>
 void divmod_and_onto() {
     for (const A a : values<A>)
         for (const B b : values<B>) {
@@ -499,14 +499,14 @@ void div_onto_dividend_notch(const char* what) {
 }
 template <policy_flag F>
 void div_modes() {
-    using dec2 = inside<{{-3, 3}, per<100>}>;
-    using q114 = inside<{{-1, 1}, per<16384>}>;
-    using n60  = inside<{{-600, 600}, 60}>;
-    using udec = inside<{{just<1, 200>, just<401, 200>}, per<100>}>; // unanchored
-    using s8   = inside<{-9, 9}>;
-    using nz   = inside<{1, 13}>;
-    using d3   = inside<{{-2, 2}, per<1000>}>;
-    using cont = inside<{{1, 4}, max_denominator{12}}>;
+    using dec2 = id<"[-3..3] 1/100">;
+    using q114 = id<"[-1..1] 1/16384">;
+    using n60  = id<"[-600..600] 60">;
+    using udec = id<"[1/200..401/200] 1/100">; // unanchored
+    using s8   = id<"[-9..9]">;
+    using nz   = id<"[1..13]">;
+    using d3   = id<"[-2..2] 1/1000">;
+    using cont = id<"[1..4] <12>">;
     div_onto_dividend_notch<dec2, s8, F>("dec2/s8");
     div_onto_dividend_notch<dec2, nz, F>("dec2/nz");
     div_onto_dividend_notch<q114, s8, F>("q114/s8");
@@ -520,8 +520,8 @@ void div_modes() {
 // stored once onto x's own lattice (an unanchored one too), not rounded
 // onto multiples of its notch first.
 TEST(FastPathTest, a_rounding_type_divides_once_onto_its_lattice) {
-    using udec = inside<{{just<1, 200>, just<401, 200>}, per<100>}, clamp | round_half_even>;
-    using nz   = inside<{1, 13}>;
+    using udec = id<"[1/200..401/200] 1/100 clamp|round_half_even">;
+    using nz   = id<"[1..13]">;
     for (const udec a : values<udec>)
         for (const nz b : values<nz>) {
             udec x = a;
@@ -540,18 +540,18 @@ TEST(FastPathTest, div_with_a_mode_rounds_onto_the_dividend_notch) {
 }
 
 TEST(FastPathTest, divmod_and_rounded_quotients_on_lattices) {
-    divmod_and_onto<inside<{{-3, 3}, per<16>}>, inside<{{just<1, 4>, 2}, per<4>}>>();
-    divmod_and_onto<inside<{{-1, 1}, per<100>}>, inside<{1, 9}>>();
-    divmod_and_onto<inside<{{-70, 70}, 7}>, inside<{{just<1, 2>, 3}, per<2>}>>();
+    divmod_and_onto<id<"[-3..3] 1/16">, id<"[1/4..2] 1/4">>();
+    divmod_and_onto<id<"[-1..1] 1/100">, id<"[1..9]">>();
+    divmod_and_onto<id<"[-70..70] 7">, id<"[1/2..3] 1/2">>();
     // an Out most products and quotients overflow: the error, as the exact store's
-    using narrow = inside<{{-1, 1}, per<100>}, round_half_even>;
-    divmod_and_onto<inside<{{-3, 3}, per<16>}>, inside<{{just<1, 4>, 2}, per<4>}>, narrow>();
-    divmod_and_onto<inside<{{-70, 70}, 7}>, inside<{{just<1, 2>, 3}, per<2>}>, narrow>();
+    using narrow = id<"[-1..1] 1/100 round_half_even">;
+    divmod_and_onto<id<"[-3..3] 1/16">, id<"[1/4..2] 1/4">, narrow>();
+    divmod_and_onto<id<"[-70..70] 7">, id<"[1/2..3] 1/2">, narrow>();
 }
 
 TEST(FastPathTest, exact_cast_and_the_predicates_match_the_exact_store) {
-    using n72 = inside<{{-7, 14}, just<7, 2>}>;
-    using q88 = inside<{{0, 255}, per<256>}>;
+    using n72 = id<"[-7..14] 7/2">;
+    using q88 = id<"[0..255] 1/256">;
     for (std::int64_t n = -300; n <= 300; ++n) {
         const auto e = exact_store<n72, checked>(n);
         const auto c = exact_cast<n72>(n);

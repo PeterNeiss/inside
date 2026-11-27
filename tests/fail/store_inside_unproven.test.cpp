@@ -6,7 +6,7 @@
 using namespace ins;
 
 int main() {
-    const inside<{0, 200}> wide{75};
-    inside<{0, 100}>       narrow{wide};
+    const id<"[0..200]"> wide{75};
+    id<"[0..100]">       narrow{wide};
     (void)narrow;
 }

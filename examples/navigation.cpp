@@ -17,7 +17,7 @@ int main()
 {
   // 1. A polar round trip on a 1 m square to 2^-14 m, theta onto 2^-14 rad with its range [-π, π] deduced.
   constexpr auto m = si::metre;
-  using coordinate = quantity<si::metre, inside<{{-1, 1}, per<(1 << 14)>}, round_half_away>>;
+  using coordinate = id<"[-1..1] 1/16384 [m] round_half_away">;
   std::cout << "(x, y) -> (r, theta) -> (x, y)\n";
   for (auto [x, y] : {std::pair{coordinate{1, m}         , coordinate{0, m}         },
                                {coordinate{-1, m}        , coordinate{1, m}         },
@@ -38,8 +38,8 @@ int main()
 
   // 2. Range and compass bearing (from north, clockwise) on a local east/north plane in metres.
   // The bearing atan2(east, north) goes straight into degrees, rounded once onto 0.1°.
-  using metres  = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_half_away>>;
-  using bearing = quantity<si::degree, inside<{{-180, 180}, per<10>}, round_half_away>>;
+  using metres  = id<"[-1024..1024] 1/256 [m] round_half_away">;
+  using bearing = id<"[-180..180] 1/10 [deg] round_half_away">;
   std::cout << "\ntarget (east, north)   range       bearing\n";
   for (auto [e, n] : {std::pair{metres{30 , si::metre}, metres{40 , si::metre}},
                                {metres{0  , si::metre}, metres{50 , si::metre}},
@@ -56,7 +56,7 @@ int main()
     return 1;
 
   // 3. asin and acos recover an angle in rad from a ratio in [-1, 1], a dimensionless quantity (a sine: m/m).
-  using ratio = quantity<one, inside<{{-1, 1}, per<(1 << 12)>}, round_half_away>>;
+  using ratio = id<"[-1..1] 1/4096 [1] round_half_away">;
   std::cout << "\nr      asin(r)    acos(r)\n";
   for (const ratio r : {ratio{-1, one}, ratio{-0.5, one}, ratio{0, one}, ratio{0.5, one}, ratio{1, one}})
     std::cout << "  " << r << "\t" << math::asin(r) << "\t" << math::acos(r) << "\n";

@@ -6,6 +6,6 @@
 using namespace ins;
 
 int main() {
-    inside<{0, 9}> i{0};
+    id<"[0..9]"> i{0};
     ++i;
 }

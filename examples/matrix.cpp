@@ -17,8 +17,8 @@
 
 using namespace ins;
 
-using q1_14        = inside<{{-2, 2}, per<(1 << 14)>}, round_half_away>;
-using degrees      = quantity<si::degree, inside<{0, 360}>>;
+using q1_14        = id<"[-2..2] 1/16384 round_half_away">;
+using degrees      = id<"[0..360] [deg]">;
 using rotation_2x2 = std::array<q1_14, 4>;
 
 // [[cos a, −sin a], [sin a, cos a]], each entry correctly rounded to Q1.14.
@@ -32,7 +32,7 @@ int main()
 {
   // 1. dot of two static vectors: 4 products of [−100, 100] lie in [−40000, 40000],
   // worked out at compile time.
-  using element = inside<{-100, 100}>;
+  using element = id<"[-100..100]">;
   std::array<element, 4> a{3 , -7, 100, 25},
                          b{12, 9 , -4 , 30};
   const auto d{dot(std::mdspan{a.data(), std::extents<std::size_t, 4>{}},
@@ -43,7 +43,7 @@ int main()
     return 1;
 
   // 2. Three points rotated by 30° with matrix_vector_product, compared with double.
-  using coord      = inside<{{-100, 100}, per<(1 << 8)>}, round_half_away>;
+  using coord      = id<"[-100..100] 1/256 round_half_away">;
   using point      = std::array<coord, 2>;
   using matrix_2x2 = std::extents<std::size_t, 2, 2>;
   using vector_2   = std::extents<std::size_t, 2>;
@@ -83,7 +83,7 @@ int main()
   // 64-bit entries whose products are held exactly in 128 bits.
   // No product of two such matrices is proven to fit,
   // so matrix_product returns an expected<void, error>: the first entry that does not fit.
-  using fibonacci = inside<{0, 12'200'160'415'121'876'738u}>; // F(93), the largest below 2^64
+  using fibonacci = id<"[0..12'200'160'415'121'876'738]">; // F(93), the largest below 2^64
   const std::array<fibonacci, 4> step {1, 1, 1, 0};
   std::array<fibonacci, 4>       power{1, 0, 0, 1};
   std::array<fibonacci, 4>       next {};

@@ -1,6 +1,6 @@
 # Reading compiler errors
 
-An inside is `id<key K>`, its grid and policy as text (`inside<G, P>` names
+An inside is `id<key K>`, its grid and policy as text (`id<key{G, P}>` names
 the same type), and so is a quantity, its unit and kind in the text too. Compilers
 print template arguments structurally, so an error shows the *whole* type.
 This page decodes the types, lists the named messages the library gives
@@ -20,8 +20,8 @@ ins::id<ins::key{"[0..359] wrap"}>
 ```
 
 The text is canonical: one per grid and policy, however the type was written,
-so `id<"[0..360) wrap">`, `inside<{0, 360, bounds::half_open}, wrap>` and the
-text above are one type.
+so `id<"[0..360) wrap">`, `id<key{grid{0, 360, bounds::half_open}, wrap}>`
+and the text above are one type.
 
 | Text | Means |
 |---|---|
@@ -119,12 +119,12 @@ error: static assertion failed: inside_assignable: rhs interval lies entirely ou
 ## The common surprise: it is the interval, not the notch
 
 ```cpp
-auto square(inside<> x) { return x * x; }   // inside<> is the grid {[0, 0], 0}
-square(3_ins);                               // 3_ins is the point [3, 3]: rejected
+auto square(id<"[0..9]"> x) { return x * x; }
+square(42_ins);                              // 42_ins is the point [42]: rejected
 ```
 
-`inside<>` defaults to the grid `[0, 0]`, which holds only 0, so 3 does not
-fit. The fix is in *your* signature: give it a wide enough grid, or make it
+`id<"[0..9]">` holds 0 … 9, so 42 does not fit, though both are integers.
+The fix is in *your* signature: give it a wide enough grid, or make it
 generic:
 
 ```cpp
@@ -198,12 +198,12 @@ instead (`= delete("…")`):
 |---|---|
 | `just<1> * si::metre + just<1> * si::second` | `units: adding or comparing quantities of different dimensions` |
 | `42 * si::metre` | `units: a raw number has no grid - write just<42> * unit, or Q{42, unit} into a quantity type Q` |
-| `quantity<si::metre, inside<{0, 100}>>{42}` | `units: a number alone has no unit - write Q{42, si::metre}, or just<42> * si::metre` |
+| `id<"[0..100] [m]">{42}` | `units: a number alone has no unit - write Q{42, si::metre}, or just<42> * si::metre` |
 | `q.numerical_value()` | `units: a number alone has no unit - read q.numerical_value_in(si::metre)` |
 | `q * 2` | `units: a raw number has no grid - scale by just<2>, not 2` |
 | `length.in(si::second)` | `units: in() - the unit has another dimension` |
 | `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <inside/units/math.hpp>, Rep declared with a rounding mode` |
-| `inside<{0, 7}> x = angle;` | `units: an angle (a distinct kind) or a pi-scaled ratio is no plain number - read numerical_value_in(si::radian), or value_cast it first` |
+| `id<"[0..7]"> x = angle;` | `units: an angle (a distinct kind) or a pi-scaled ratio is no plain number - read numerical_value_in(si::radian), or value_cast it first` |
 | `math::sin(degrees)` (the deduced form) | `units: sin and cos of an angle with a factor of pi (°, a turn) - name the result's notch: sin<per<K>>(q)` |
 
 Kinds that never mix (Hz and Bq, Gy and Sv), and the kind boundaries of
@@ -221,7 +221,7 @@ raw scalar (`x + 1`) and a free function given a hook are deleted too. A require
 ```cpp
 template <class A, class B>
 constexpr bool can_divide = requires(A a, B b) { a / b; };
-static_assert(!can_divide<inside<{0, 9}>, inside<{0}>>);            // the point 0
+static_assert(!can_divide<id<"[0..9]">, id<"[0]">>);            // the point 0
 
 template <class A, class B>
 constexpr bool can_add = requires(A a, B b) { a + b; };

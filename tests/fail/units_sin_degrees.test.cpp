@@ -6,6 +6,6 @@
 
 int main() {
     using namespace ins;
-    auto s = math::sin(quantity<si::degree, inside<{0, 90}, round_half_away>>{30, si::degree});
+    auto s = math::sin(id<"[0..90] [deg] round_half_away">{30, si::degree});
     (void)s;
 }

@@ -11,7 +11,7 @@
 //   * to_string_debug(insidable)        value + raw + raw type + grid
 //   * operator<< and operator>> (one token, failbit on error)
 //   * parse<B, F>(std::string_view), parse_exact<B>(std::string_view)
-//   * std::formatter<inside<G, P>>, std::formatter<rational> (with <format>)
+//   * std::formatter<id<key{G, P}>>, std::formatter<rational> (with <format>)
 //   * type_name_of<B>                   a readable name of an inside type
 // units.hpp builds on it (to_string and std::formatter of quantities).
 #ifndef INSIDE_INSIDE_IO_HPP

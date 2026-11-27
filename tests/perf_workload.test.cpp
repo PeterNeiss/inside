@@ -51,8 +51,8 @@ using namespace ins;
 using ins::detail::rational; // the library's own 64-bit fraction: a workload of its paths
 
 namespace {
-using I = inside<{-1000000, 1000000}>;      // integer fast path
-using Q = inside<{{-1000, 1000}, per<16>}>; // Q-format (fixed-point) fast path
+using I = id<"[-1000000..1000000]">;        // integer fast path
+using Q = id<"[-1000..1000] 1/16">;         // Q-format (fixed-point) fast path
 
 volatile std::int64_t g_sink = 0; // defeat dead-code elimination
 
@@ -82,7 +82,7 @@ std::int64_t run_integer_qformat() {
 }
 
 std::int64_t run_integer_mul() {
-    using M          = inside<{-1000, 1000}>; // product grid fits int32
+    using M          = id<"[-1000..1000]">; // product grid fits int32
     std::int64_t acc = 0, x = 1;
     for (long i = 0; i < iters; ++i) {
         lcg(x);
@@ -100,7 +100,7 @@ std::int64_t run_qformat_div() {
     // (qformat_grid), so the divisor grid necessarily spans zero and div returns
     // an expected — divisor raws stay >= 16, so it always has a value and the
     // measured work is the native `(a << log2 N) / b` path plus its zero test.
-    using Qn         = inside<{{0, 1000}, per<16>}>;
+    using Qn         = id<"[0..1000] 1/16">;
     std::int64_t acc = 0, x = 1;
     for (long i = 0; i < iters; ++i) {
         lcg(x);
@@ -114,8 +114,8 @@ std::int64_t run_qformat_div() {
 }
 
 std::int64_t run_cross_grid_assign() {
-    using narrow     = inside<{0, 100}>;
-    using wide       = inside<{-500, 9000}>;
+    using narrow     = id<"[0..100]">;
+    using wide       = id<"[-500..9000]">;
     std::int64_t acc = 0, x = 1;
     for (long i = 0; i < iters; ++i) {
         lcg(x);
@@ -127,7 +127,7 @@ std::int64_t run_cross_grid_assign() {
 }
 
 std::int64_t run_checked_add() {
-    using C          = inside<{-1000000, 1000000}, checked>;
+    using C          = id<"[-1000000..1000000]">;
     std::int64_t acc = 0, x = 1;
     for (long i = 0; i < iters; ++i) {
         lcg(x);
@@ -149,7 +149,7 @@ std::int64_t run_checked_add() {
 
 std::int64_t run_rational_store() {
     using R          = rational;
-    using Q8         = inside<{{0, 255}, per<256>}, round_half_away>;
+    using Q8         = id<"[0..255] 1/256 round_half_away">;
     std::int64_t acc = 0, x = 1;
     Q8           q = 0;
     for (long i = 0; i < iters; ++i) {
@@ -194,14 +194,14 @@ std::int64_t run_math(F f) {
     return acc;
 }
 
-using angle8 = inside<{{-4, rational{127, 32}}, per<32>}, round_half_away>; // 256 slots
-using angle  = inside<{{-4, 4}, per<512>}, round_half_away>;
-using dec    = inside<{{-4, 4}, per<1000>}, round_half_away>;
-using out20  = inside<{{-64, 64}, per<(1u << 20)>}, round_half_away>;
-using out40  = inside<{{-64, 64}, per<(std::uint64_t{1} << 40)>}, round_half_away>;
-using out52  = inside<{{-64, 64}, per<(std::uint64_t{1} << 52)>}, round_half_away>;
-using out57  = inside<{{0, 64}, per<(std::uint64_t{1} << 57)>}, round_half_away>;
-using out6   = inside<{{0, 64}, per<1000000>}, round_half_away>;
+using angle8 = id<"[-4..127/32] 1/32 round_half_away">; // 256 slots
+using angle  = id<"[-4..4] 1/512 round_half_away">;
+using dec    = id<"[-4..4] 1/1000 round_half_away">;
+using out20  = id<key{grid{{-64, 64}, per<(1u << 20)>}, round_half_away}>;
+using out40  = id<key{grid{{-64, 64}, per<(std::uint64_t{1} << 40)>}, round_half_away}>;
+using out52  = id<key{grid{{-64, 64}, per<(std::uint64_t{1} << 52)>}, round_half_away}>;
+using out57  = id<key{grid{{0, 64}, per<(std::uint64_t{1} << 57)>}, round_half_away}>;
+using out6   = id<"[0..64] 1/1000000 round_half_away">;
 
 std::int64_t run_math_table() {
     return run_math<angle8>([](angle8 v) { return math::sin<out20>(v); });
@@ -227,9 +227,9 @@ inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<+1>>;
 inline constexpr auto e2 = ins::basis_vector<"e2", ins::geometric<+1>>;
 inline constexpr auto e3 = ins::basis_vector<"e3", ins::geometric<+1>>;
 using bivector =
-    ins::multivector<ins::quantity<e1 * e2, angle>, ins::quantity<e1 * e3, angle>, ins::quantity<e2 * e3, angle>>;
+    ins::multivector<ins::id<"[-4..4] 1/512 [e1*e2] round_half_away">, ins::id<"[-4..4] 1/512 [e1*e3] round_half_away">, ins::id<"[-4..4] 1/512 [e2*e3] round_half_away">>;
 using rotor = ins::
-    multivector<out20, ins::quantity<e1 * e2, out20>, ins::quantity<e1 * e3, out20>, ins::quantity<e2 * e3, out20>>;
+    multivector<out20, ins::id<ins::quantity_key<e1 * e2, out20>>, ins::id<ins::quantity_key<e1 * e3, out20>>, ins::id<ins::quantity_key<e2 * e3, out20>>>;
 
 std::int64_t run_math_rotor() {
     std::int64_t   acc = 0, x = 1;

@@ -11,11 +11,11 @@ using namespace ins;
 
 int main() {
     // [listing]
-    using small = inside<{0, 10}>;
-    using wide  = inside<{-50, 50}>;
+    using small = id<"[0..10]">;
+    using wide  = id<"[-50..50]">;
 
     using common = std::common_type_t<small, wide>;          // the hull of the two grids
-    static_assert(std::is_same_v<common, inside<{-50, 50}>>);
+    static_assert(std::is_same_v<common, id<"[-50..50]">>);
     common hi = std::max<common>(small{7}, wide{-3});        // 7
 
     using limits = std::numeric_limits<small>;

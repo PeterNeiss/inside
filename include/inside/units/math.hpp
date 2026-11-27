@@ -709,12 +709,12 @@ namespace ins
         const double     y {static_cast<double>(S::units(ins::detail::value_of(q)) * S::a) * c};
         Out              out;
         if (engine::fp_decide<Out>(y, 0x1p-50 * __builtin_fabs(y), out)) [[likely]]
-          return detail::quantity_access::make<quantity<to, Out>>(out);
-        return detail::quantity_access::make<quantity<to, Out>>(
+          return detail::quantity_access::make<id<quantity_key<to, Out>>>(out);
+        return detail::quantity_access::make<id<quantity_key<to, Out>>>(
           engine::cold_call([q] { return detail::pi_cast_exact<f, Out>(q); }));
       }
 #endif
-    return detail::quantity_access::make<quantity<to, Out>>(detail::pi_cast_exact<f, Out>(q));
+    return detail::quantity_access::make<id<quantity_key<to, Out>>>(detail::pi_cast_exact<f, Out>(q));
   }
 
   namespace detail
@@ -741,7 +741,7 @@ namespace ins
     template <reference R, class V>
     struct real_of<quantity_parts<R, V>>
     {
-      using type = quantity<R, V>;
+      using type = id<quantity_key<R, V>>;
     };
     template <class X>
     using number_of_t = decltype(number_of(std::declval<const typename real_of<X>::type&>()));
@@ -828,7 +828,7 @@ namespace ins
     struct output_in
     {
       template <class N>
-      using with = std::conditional_t<Number, N, quantity<To, N>>;
+      using with = std::conditional_t<Number, N, id<quantity_key<To, N>>>;
       template <class S>
       struct out
       {
@@ -1064,19 +1064,23 @@ namespace ins::math::detail
 namespace ins::math
 {
   // atan2, hypot, gcd and lcm of two quantities that do not add (another dimension or kind, no common unit).
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void atan2(const QA&, const QB&) = delete (
     "units: atan2 takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void hypot(const QA&, const QB&) = delete (
     "units: hypot takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void gcd(const QA&, const QB&) = delete (
     "units: gcd takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference, class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
   void lcm(const QA&, const QB&) = delete (
     "units: lcm takes two quantities that add - one dimension and kind, a common unit");

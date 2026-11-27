@@ -6,5 +6,5 @@
 
 int main() {
     using namespace ins;
-    (void)math::factorial(inside<{-1, 5}>{});
+    (void)math::factorial(id<"[-1..5]">{});
 }

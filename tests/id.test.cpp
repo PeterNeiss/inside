@@ -209,17 +209,17 @@ TEST(IdTextTest, a_wrong_text_stops_where_it_goes_wrong) {
     static_assert(stops("[0..9] 2", 7, "a step that divides"));
     static_assert(stops("[0..9] x", 7, "a flag:"));
 }
-// The types: every spelling of one grid and policy is one type, the one inside<G, P> names,
+// The types: every spelling of one grid and policy is one type, the one id<key{G, P}> names,
 // and the operators' results read the same way.
 TEST(IdTypeTest, every_spelling_is_one_type) {
     static_assert(std::is_same_v<id<"[0..10)">, id<"[0..9]">>);
     static_assert(std::is_same_v<id<"(0..10)">, id<"[1..9]">>);
     static_assert(std::is_same_v<id<"[ 0 .. 10 ) 1/4">, id<"[0..39/4] 1/4">>);
-    static_assert(std::is_same_v<id<"[0..9]">, inside<{0, 9}>>);
-    static_assert(std::is_same_v<id<"[0..360) wrap">, inside<{0, 360, bounds::half_open}, wrap>>);
+    static_assert(std::is_same_v<id<"[0..9]">, id<key{grid{0, 9}}>>);
+    static_assert(std::is_same_v<id<"[0..360) wrap">, id<key{grid{0, 360, bounds::half_open}, wrap}>>);
     static_assert(std::is_same_v<id<"[0..1] 1/100 clamp|round_half_away">,
-                                 inside<{{0, 1}, per<100>}, round_half_away | clamp>>);
-    static_assert(std::is_same_v<id<"[0..1] <1000>">, inside<{{0, 1}, max_denominator{1000}}>>);
+                                 id<key{grid{{0, 1}, per<100>}, round_half_away | clamp}>>);
+    static_assert(std::is_same_v<id<"[0..1] <1000>">, id<key{grid{{0, 1}, max_denominator{1000}}}>>);
     static_assert(std::is_same_v<id<"[5]">, decltype(5_ins)>);
     static_assert(!std::is_same_v<id<"[3..3]">, decltype(3_ins)>);        // notch 1 vs a point
     static_assert(grid_of<id<"[0..10) 1/4">> == grid{{0, 10}, per<4>, bounds::half_open});

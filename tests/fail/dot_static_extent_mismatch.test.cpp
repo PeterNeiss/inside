@@ -8,8 +8,8 @@
 
 int main() {
     using namespace ins;
-    std::array<inside<{0, 9}>, 3> x{};
-    std::array<inside<{0, 9}>, 2> y{};
+    std::array<id<"[0..9]">, 3> x{};
+    std::array<id<"[0..9]">, 2> y{};
     (void)dot(std::mdspan{x.data(), std::extents<std::size_t, 3>{}},
               std::mdspan{y.data(), std::extents<std::size_t, 2>{}});
 }

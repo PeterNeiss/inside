@@ -89,12 +89,12 @@ struct checked_u8 {
     }
 };
 
-using u200          = inside<{0, 200}, unsafe>;
-using u200k         = inside<{0, 200'000}, unsafe>;
-using u200k_checked = inside<{0, 200'000}, checked>;
-using s100k         = inside<{-100'000, 100'000}, unsafe>;
-using s9k           = inside<{-500, 9000}, unsafe>;
-using u255          = inside<{0, 255}, unsafe>;
+using u200          = id<"[0..200] unsafe">;
+using u200k         = id<"[0..200'000] unsafe">;
+using u200k_checked = id<"[0..200'000]">;
+using s100k         = id<"[-100'000..100'000] unsafe">;
+using s9k           = id<"[-500..9000] unsafe">;
+using u255          = id<"[0..255] unsafe">;
 
 // The checked rows' channel: a store the grids cannot prove reports into an
 // error (nothing throws), so the checked rows store through this one, and
@@ -231,11 +231,11 @@ static void bench_scalar_u8() {
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
         doNotOptimizeAway(div(a, b, round_toward_zero)->raw());
     });
-    using q16 = inside<{{0, 200}, per<16>}, round_half_away>;
+    using q16 = id<"[0..200] 1/16 round_half_away">;
     dv.run("inside div<1/16> (divisor excludes 0)", [&] {
         ++i;
         u200                   a(din.a[i & kMask]);
-        inside<{1, 9}, unsafe> b(din.b[i & kMask]);
+        id<"[1..9] unsafe"> b(din.b[i & kMask]);
         doNotOptimizeAway(div<q16>(a, b).raw());
     });
     dv.run("inside div<1/16> (expected)", [&] {
@@ -247,7 +247,7 @@ static void bench_scalar_u8() {
 
     // divisor grid [1,9] excludes zero -> `%` returns a plain inside; a [0,200]
     // divisor keeps the zero check and the expected vocabulary.
-    using d9 = inside<{1, 9}, unsafe>;
+    using d9 = id<"[1..9] unsafe">;
     auto md  = group("mod (u8 [20,200] % [1,9])");
     md.run("native %", [&] {
         ++i;
@@ -319,7 +319,7 @@ static void bench_compound() {
 
     // Q8.8 is index-backed: negating the rhs shifts its Lower, so `-= (+= -rhs)`
     // cannot ride the raw-level += fast path — the row this table pins.
-    using fp88 = inside<{{0, 255}, 1.0 / 256}, unsafe>;
+    using fp88 = id<key{grid{{0, 255}, 1.0 / 256}, unsafe}>;
     auto sbq   = group("compound -= (Q8.8)");
     sbq.run("native int32 -=", [&] {
         ++i;
@@ -472,8 +472,8 @@ static void bench_signed() {
 
     // mixed integer-grid + quarter-notch-grid add (Tier-3 fast path): the
     // native pairing is the same math on a hand-scaled 1/4 fixed-point lattice.
-    using whole    = inside<{0, 100}, unsafe>;
-    using quarters = inside<{{0, 1}, per<4>}, unsafe>;
+    using whole    = id<"[0..100] unsafe">;
+    using quarters = id<"[0..1] 1/4 unsafe">;
     auto mixed     = group("add (mixed integer + 1/4-notch grids)");
     mixed.run("native int<<2 + q2", [&] {
         ++i;
@@ -517,8 +517,8 @@ static void bench_signed() {
 // fixed point — Q8.8, signed Q1.14, Q16.16, and the checked Q8.8 variant.
 //---------------------------------------------------------------------------
 static void bench_fixed_point() {
-    using fp   = inside<{{0, 255}, 1.0 / 256}, unsafe>;
-    using fp_c = inside<{{0, 255}, 1.0 / 256}, checked>;
+    using fp   = id<key{grid{{0, 255}, 1.0 / 256}, unsafe}>;
+    using fp_c = id<key{grid{{0, 255}, 1.0 / 256}, checked}>;
     static const scalar_inputs in{0, 90, 0, 90};
     std::size_t                i = 0;
 
@@ -587,7 +587,7 @@ static void bench_fixed_point() {
     mul.run("inside mul<Q8.8>(a, b, round_half_away)", [&] {
         ++i;
         fp a(min.a[i & kMask]), b(min.b[i & kMask]);
-        doNotOptimizeAway(ins::mul<inside<{{0, 255}, 1.0 / 256}, round_half_away>>(a, b)->raw());
+        doNotOptimizeAway(ins::mul<id<key{grid{{0, 255}, 1.0 / 256}, round_half_away}>>(a, b)->raw());
     });
     finish(mul);
 
@@ -630,7 +630,7 @@ static void bench_fixed_point() {
     finish(acc);
 
     // signed Q1.14 audio grid
-    using q14 = inside<{{-1, 1}, per<16384>}, unsafe>;
+    using q14 = id<"[-1..1] 1/16384 unsafe">;
     static_assert(sizeof(q14) == 2);
     auto q14g = group("Q1.14 signed add");
     q14g.run("native int", [&] {
@@ -647,7 +647,7 @@ static void bench_fixed_point() {
     finish(q14g);
 
     // Q16.16
-    using q16 = inside<{{0, 65535}, per<65536>}, unsafe>;
+    using q16 = id<"[0..65535] 1/65536 unsafe">;
     static_assert(sizeof(q16) == 4);
     auto q16g = group("Q16.16 add");
     q16g.run("native int64", [&] {
@@ -671,8 +671,8 @@ static void bench_fixed_point() {
 static void bench_store_convert() {
     std::size_t i = 0;
 
-    using celsius_trunc = inside<{{-40, 60}, 0.5}, round_toward_zero>;
-    using celsius_round = inside<{{-40, 60}, 0.5}, round_half_away>;
+    using celsius_trunc = id<"[-40..60] 0.5 round_toward_zero">;
+    using celsius_round = id<"[-40..60] 0.5 round_half_away">;
     auto assign         = group("assign from double ([-40,60] step 0.5)");
     assign.run("truncate (round_toward_zero)", [&] {
         ++i;
@@ -688,7 +688,7 @@ static void bench_store_convert() {
     });
     finish(assign);
 
-    using fp   = inside<{{0, 255}, 1.0 / 256}, round_half_away>;
+    using fp   = id<key{grid{{0, 255}, 1.0 / 256}, round_half_away}>;
     auto store = group("Q8.8 store");
     store.run("from fraction (rational)", [&] {
         ++i;
@@ -705,9 +705,9 @@ static void bench_store_convert() {
     finish(store);
 
     // cross-grid assignment
-    using narrow   = inside<{0, 100}, unsafe>;
-    using tenths   = inside<{{0, 100}, per<10>}, unsafe>;
-    using quarters = inside<{{0, 100}, per<4>}, round_half_away>;
+    using narrow   = id<"[0..100] unsafe">;
+    using tenths   = id<"[0..100] 1/10 unsafe">;
+    using quarters = id<"[0..100] 1/4 round_half_away">;
     auto cga       = group("cross-grid assign");
     cga.run("same-grid copy", [&] {
         ++i;
@@ -734,8 +734,8 @@ static void bench_store_convert() {
     finish(cga);
 
     // comparison
-    using q14a = inside<{{-8, 8}, per<16384>}, unsafe>;
-    using q14b = inside<{{-4, 12}, per<16384>}, unsafe>;
+    using q14a = id<"[-8..8] 1/16384 unsafe">;
+    using q14b = id<"[-4..12] 1/16384 unsafe">;
     std::vector<std::int16_t> ni(kMask + 1);
     std::vector<s9k>          bi(kMask + 1);
     std::vector<q14a>         ia(kMask + 1);
@@ -767,7 +767,7 @@ static void bench_store_convert() {
 
     // equality — same-grid raw compare, plus the inside-vs-raw-scalar overloads
     // (value-raw compares in int64; index-raw Q8.8 goes through rational).
-    using fp_u = inside<{{0, 255}, 1.0 / 256}, unsafe>;
+    using fp_u = id<key{grid{{0, 255}, 1.0 / 256}, unsafe}>;
     std::vector<fp_u> qv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j)
         qv[j] = static_cast<int>(j % 250);
@@ -809,7 +809,7 @@ static void bench_store_convert() {
     });
     casts.run("checked construction (in range)", [&] {
         ++i;
-        using u200c = inside<{0, 200}, checked>;
+        using u200c = id<"[0..200]">;
         s9k v(static_cast<int>(i % 200));
         doNotOptimizeAway(input<u200c>(v).raw());
     });
@@ -830,7 +830,7 @@ static void bench_store_convert() {
     finish(wrp);
 
     // conversions OUT of inside — the API-boundary direction (stores are above).
-    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using dyadic_real = id<"[-8..8] 1/16384 round_half_away">;
     std::vector<dyadic_real> rv(kMask + 1);
     std::vector<u200>        uv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -871,7 +871,7 @@ static void bench_store_convert() {
         doNotOptimizeAway(ax * bx + ay * by);
     });
     dg.run("ins::dot", [&] {
-        using c100 = inside<{-100, 100}, unsafe>;
+        using c100 = id<"[-100..100] unsafe">;
         ++i;
         c100 ax(din.a[i & kMask]), ay(din.b[i & kMask]);
         c100 bx(din.b[(i + 3) & kMask]), by(din.a[(i + 5) & kMask]);
@@ -888,7 +888,7 @@ static void bench_boundaries() {
     static const scalar_inputs in{0, 200, 0, 59};
     std::size_t                i = 0;
 
-    using u200 = inside<{0, 200}>;
+    using u200 = id<"[0..200]">;
     auto tm    = group("try_make (int into [0,200])");
     tm.run("native range check", [&] {
         ++i;
@@ -902,7 +902,7 @@ static void bench_boundaries() {
     finish(tm);
 
     // Seconds into whole minutes: an integer onto a notch of 60.
-    using minutes_in_s = inside<{{0, 36000}, 60}, round_floor>;
+    using minutes_in_s = id<"[0..36000] 60 round_floor">;
     auto coarse        = group("store onto a notch of 60 (floor)");
     coarse.run("native n / 60", [&] {
         ++i;
@@ -915,7 +915,7 @@ static void bench_boundaries() {
     });
     finish(coarse);
 
-    using q88 = inside<{{0, 255}, per<256>}>;
+    using q88 = id<"[0..255] 1/256">;
     std::vector<q88>           qv(kMask + 1);
     std::vector<std::uint16_t> nq(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -933,7 +933,7 @@ static void bench_boundaries() {
     });
     finish(out);
 
-    using s100k = inside<{-100000, 100000}>;
+    using s100k = id<"[-100000..100000]">;
     std::vector<s100k> sv(kMask + 1);
     std::vector<int>   ns(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -953,7 +953,7 @@ static void bench_boundaries() {
     finish(narrow);
 
     // A phase accumulator: the sum of two values is at most one period past.
-    using deg = inside<{0, 359}, wrap>;
+    using deg = id<"[0..359] wrap">;
     static const scalar_inputs din{0, 359, 0, 359};
     auto                       wr = group("wrap += (degrees [0,359])");
     wr.run("native conditional subtract", [&] {
@@ -977,7 +977,7 @@ static void bench_boundaries() {
 static void bench_helpers() {
     static const scalar_inputs in{-90, 90, -90, 90};
     std::size_t                i = 0;
-    using c100                   = inside<{-100, 100}, unsafe>;
+    using c100                   = id<"[-100..100] unsafe">;
 
     auto mn = group("min / max (same grid)");
     mn.run("native std::min", [&] {
@@ -997,8 +997,8 @@ static void bench_helpers() {
     finish(mn);
 
     // mixed grids: both operands convert into the hull type ([0,100] 1/10 grid).
-    using narrow = inside<{0, 100}, unsafe>;
-    using tenths = inside<{{0, 100}, per<10>}, unsafe>;
+    using narrow = id<"[0..100] unsafe">;
+    using tenths = id<"[0..100] 1/10 unsafe">;
     static const scalar_inputs pin{0, 100, 0, 100};
     std::vector<tenths>        tv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j)
@@ -1030,8 +1030,8 @@ static void bench_helpers() {
     finish(mp);
 
     // lerp on Q8.8 endpoints with a [0,1] 1/256 parameter.
-    using fp88 = inside<{{0, 255}, 1.0 / 256}, unsafe>;
-    using t256 = inside<{{0, 1}, per<256>}, unsafe>;
+    using fp88 = id<key{grid{{0, 255}, 1.0 / 256}, unsafe}>;
+    using t256 = id<"[0..1] 1/256 unsafe">;
     auto lp    = group("lerp (Q8.8, t in [0,1])");
     lp.run("native a + (((b-a)*t)>>8)", [&] {
         ++i;
@@ -1075,7 +1075,7 @@ static void bench_helpers() {
     });
     finish(aa);
 
-    using c15 = inside<{1, 15}, unsafe>;
+    using c15 = id<"[1..15] unsafe">;
     static const scalar_inputs min_in{1, 14, 1, 14};
     auto                       ma = group("mul_all (3 operands)");
     ma.run("native a*b*c", [&] {
@@ -1095,7 +1095,7 @@ static void bench_helpers() {
 // double.
 //---------------------------------------------------------------------------
 static void bench_dyadic() {
-    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using dyadic_real = id<"[-8..8] 1/16384 round_half_away">;
     std::vector<dyadic_real> va(kMask + 1), vb(kMask + 1);
     std::vector<double>      da(kMask + 1), db(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -1162,8 +1162,8 @@ fraction64 fraction_div(fraction64 a, fraction64 b) { return fraction_reduce(a.n
 } // namespace
 
 static void bench_rational() {
-    using continuous = inside<{{-8, 8}, max_denominator{1024}}>; // a rational raw
-    using positive   = inside<grid{interval{rational{1, 1024}, 8}, max_denominator{1024}}>;
+    using continuous = id<"[-8..8] <1024>">; // a rational raw
+    using positive   = id<"[1/1024..8] <1024>">;
     std::vector<continuous> ea(kMask + 1), eb(kMask + 1);
     std::vector<positive>   ep(kMask + 1);
     std::vector<rational>   qa(kMask + 1), qb(kMask + 1);
@@ -1340,20 +1340,20 @@ static void bench_range() {
 // (grids match tests/cmath.test.cpp).
 //---------------------------------------------------------------------------
 static void bench_cmath() {
-    using algeb_t    = inside<{{-8, 8}, per<16384>}, round_half_away>;
-    using sqrt_in_t  = inside<{{0, 4}, per<65536>}, round_half_away>;
-    using exp2_in_t  = inside<{{-4, 4}, per<16384>}, round_half_away>;
-    using log2_in_t  = inside<{{0x1p-8_r, 256}, per<16384>}, round_half_away>;
-    using exp_in_t   = inside<{{-10, 10}, per<16384>}, round_half_away>;
-    using log_in_t   = inside<{{0x1p-8_r, 256}, per<256>}, round_half_away>;
-    using pow_in_t   = inside<{{-9, 9}, per<16384>}, round_half_away>;
-    using angle_t    = inside<{{-8, 8}, per<16384>}, round_half_away>;
-    using tan_in_t   = inside<{{-0.75_r, 0.75_r}, per<16384>}, round_half_away>;
-    using atan2_in_t = inside<{{-1, 1}, per<16384>}, round_half_away>;
-    using fmod_x_t   = inside<{{-8, 8}, per<16384>}, round_half_away>;
-    using fmod_y_t   = inside<{{0.25_r, 4}, per<16384>}, round_half_away>;
-    using pow_b_t    = inside<{{1, 16}, per<65536>}, round_half_away>;
-    using pow_e_t    = inside<{{-2, 2}, per<16384>}, round_half_away>;
+    using algeb_t    = id<"[-8..8] 1/16384 round_half_away">;
+    using sqrt_in_t  = id<"[0..4] 1/65536 round_half_away">;
+    using exp2_in_t  = id<"[-4..4] 1/16384 round_half_away">;
+    using log2_in_t  = id<"[0x1p-8..256] 1/16384 round_half_away">;
+    using exp_in_t   = id<"[-10..10] 1/16384 round_half_away">;
+    using log_in_t   = id<"[0x1p-8..256] 1/256 round_half_away">;
+    using pow_in_t   = id<"[-9..9] 1/16384 round_half_away">;
+    using angle_t    = id<"[-8..8] 1/16384 round_half_away">;
+    using tan_in_t   = id<"[-0.75..0.75] 1/16384 round_half_away">;
+    using atan2_in_t = id<"[-1..1] 1/16384 round_half_away">;
+    using fmod_x_t   = id<"[-8..8] 1/16384 round_half_away">;
+    using fmod_y_t   = id<"[0.25..4] 1/16384 round_half_away">;
+    using pow_b_t    = id<"[1..16] 1/65536 round_half_away">;
+    using pow_e_t    = id<"[-2..2] 1/16384 round_half_away">;
 
     constexpr std::size_t   M = 4096;
     std::vector<algeb_t>    v_alg, v_alg2;
@@ -1481,15 +1481,15 @@ inline constexpr auto k  = ins::unit<"k", e2 * e3>;
 static void bench_geoalg() {
     using ins::multivector;
     using ins::quantity;
-    using in_t  = inside<{{-4, 4}, per<16384>}, round_half_away>;
-    using o20_t = inside<{{-64, 64}, per<1 << 20>}, round_half_away>;
-    using o52_t = inside<{{-64, 64}, per<(std::int64_t{1} << 52)>}, round_half_away>;
-    using cdom  = multivector<in_t, quantity<ga::i, in_t>>;
-    using c20   = multivector<o20_t, quantity<ga::i, o20_t>>;
-    using c52   = multivector<o52_t, quantity<ga::i, o52_t>>;
-    using bdom  = multivector<quantity<ga::i, in_t>, quantity<ga::j, in_t>, quantity<ga::k, in_t>>;
-    using r20   = multivector<o20_t, quantity<ga::i, o20_t>, quantity<ga::j, o20_t>, quantity<ga::k, o20_t>>;
-    using r52   = multivector<o52_t, quantity<ga::i, o52_t>, quantity<ga::j, o52_t>, quantity<ga::k, o52_t>>;
+    using in_t  = id<"[-4..4] 1/16384 round_half_away">;
+    using o20_t = id<"[-64..64] 1/1048576 round_half_away">;
+    using o52_t = id<key{grid{{-64, 64}, per<(std::int64_t{1} << 52)>}, round_half_away}>;
+    using cdom  = multivector<in_t, id<quantity_key<ga::i, in_t>>>;
+    using c20   = multivector<o20_t, id<quantity_key<ga::i, o20_t>>>;
+    using c52   = multivector<o52_t, id<quantity_key<ga::i, o52_t>>>;
+    using bdom  = multivector<id<quantity_key<ga::i, in_t>>, id<quantity_key<ga::j, in_t>>, id<quantity_key<ga::k, in_t>>>;
+    using r20   = multivector<o20_t, id<quantity_key<ga::i, o20_t>>, id<quantity_key<ga::j, o20_t>>, id<quantity_key<ga::k, o20_t>>>;
+    using r52   = multivector<o52_t, id<quantity_key<ga::i, o52_t>>, id<quantity_key<ga::j, o52_t>>, id<quantity_key<ga::k, o52_t>>>;
     struct rotor { // the native rotor: cos λ + (sin λ / λ)·(u i + v j + w k)
         double s, i, j, k;
     };

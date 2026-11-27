@@ -20,8 +20,8 @@ namespace
   inline constexpr auto dB         = unit<"dB", one, {.kind = level_kind}>;
 } // namespace
 
-using decibels    = quantity<dB, inside<{{-24, 12}, per<2>}, round_half_away>>; // a fader: 0.5 dB steps
-using linear_gain = inside<{{0x1p-8, 4}, per<(1 << 16)>}, round_half_away>;     // 10^(dB/20) ≈ [0.063, 3.98]
+using decibels    = id<"[-24..12] 1/2 [dB] round_half_away">;                   // a fader: 0.5 dB steps
+using linear_gain = id<"[0x1p-8..4] 1/65536 round_half_away">;                  // 10^(dB/20) ≈ [0.063, 3.98]
 
 // dB → linear: 10^(L / 20 dB).
 // The ratio is exact; pow_base rounds once (as in audio_mixer.cpp).

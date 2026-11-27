@@ -52,33 +52,33 @@ TEST(UnitsTest, dimensions_and_magnitudes) {
 }
 
 TEST(UnitsTest, conversion_rescales_the_grid_and_keeps_the_raw) {
-    const quantity<km, inside<{0, 10}>> d{7, km};
+    const id<"[0..10] [km]"> d{7, km};
     const auto                          m = d.in(si::metre);
     using M                               = std::remove_cvref_t<decltype(m)>::rep;
     static_assert(lower_of<M> == 0 && upper_of<M> == 10000 && notch_of<M> == 1000);
     EXPECT_EQ(m.numerical_value_in(si::metre), 7000);
     EXPECT_EQ(m.numerical_value_in(si::metre).raw(), d.numerical_value_in(km).raw());
-    static_assert(sizeof(M) == sizeof(inside<{0, 10}>));
+    static_assert(sizeof(M) == sizeof(id<"[0..10]">));
     // m → km: notch 1/1000, exact.
-    const quantity<si::metre, inside<{0, 1500}>> l{1234, si::metre};
+    const id<"[0..1500] [m]"> l{1234, si::metre};
     EXPECT_EQ(rational{l.numerical_value_in(km)}, rational(1234, 1000));
     // inch → mm, exact (25.4).
-    const quantity<international::inch, inside<{0, 12}>> in{3, international::inch};
+    const id<"[0..12] [in]"> in{3, international::inch};
     EXPECT_EQ(rational{in.numerical_value_in(mm)}, rational(762, 10));
     EXPECT_EQ(rational{in.numerical_value_in(international::foot)}, rational(1, 4));
 }
 
 // A number goes into and out of a quantity with its unit named.
 TEST(UnitsTest, numbers_name_their_unit) {
-    using metres = quantity<si::metre, inside<{0, 5000}>>;
+    using metres = id<"[0..5000] [m]">;
     const metres a{42, si::metre};
     EXPECT_TRUE(a == just<42> * si::metre);
     // An inside in another unit of the quantity converts exactly; a policy for
     // the one store, and the spec[unit] form.
-    const metres b{inside<{0, 4}>{2}, si::kilo(si::metre)};
+    const metres b{id<"[0..4]">{2}, si::kilo(si::metre)};
     EXPECT_TRUE(b == just<2000> * si::metre);
     EXPECT_TRUE((metres{9000, si::metre, clamp} == just<5000> * si::metre));
-    const quantity<isq::height[si::metre], inside<{0, 10}>> h{3, isq::height[si::metre]};
+    const id<"[0..10] [m]{height}"> h{3, isq::height[si::metre]};
     EXPECT_EQ(h.numerical_value_in(si::metre), 3);
     // Copy-list-initialization names the unit too.
     const metres c = {7, si::metre};
@@ -87,7 +87,7 @@ TEST(UnitsTest, numbers_name_their_unit) {
     EXPECT_TRUE(metres::try_make(12, si::metre).has_value());
     EXPECT_EQ(metres::try_make(6000, si::metre).error(), error::overflow);
     EXPECT_TRUE(conversion_overflows<metres>(6000, si::metre));
-    EXPECT_FALSE(conversion_overflows<metres>(inside<{0, 4}>{4}, si::kilo(si::metre)));
+    EXPECT_FALSE(conversion_overflows<metres>(id<"[0..4]">{4}, si::kilo(si::metre)));
     // Reading: in its own unit the number is the stored one, else rescaled.
     static_assert(std::is_same_v<decltype(a.numerical_value_in(si::metre)), metres::rep>);
     EXPECT_EQ(rational{b.numerical_value_in(si::kilo(si::metre))}, rational(2));
@@ -105,8 +105,8 @@ TEST(UnitsTest, sums_run_in_the_common_unit) {
     EXPECT_EQ(s.numerical_value_in(si::metre), 5003);
     EXPECT_EQ(to_string(s), "5003 m");
     // A range: the result grid is the exact hull, in metres.
-    const quantity<km, inside<{0, 10}>>           a{2, km};
-    const quantity<si::metre, inside<{0, 10000}>> b{500, si::metre};
+    const id<"[0..10] [km]">           a{2, km};
+    const id<"[0..10000] [m]"> b{500, si::metre};
     const auto                                    c = a + b;
     using C                                         = std::remove_cvref_t<decltype(c)>::rep;
     static_assert(lower_of<C> == 0 && upper_of<C> == 20000);
@@ -124,19 +124,19 @@ TEST(UnitsTest, sums_run_in_the_common_unit) {
 }
 
 TEST(UnitsTest, products_and_quotients) {
-    const quantity<si::metre, inside<{0, 100}>> d{42, si::metre};
-    const quantity<si::second, inside<{1, 10}>> t{4, si::second};
+    const id<"[0..100] [m]"> d{42, si::metre};
+    const id<"[1..10] [s]"> t{4, si::second};
     const auto                                  v = d / t; // 1 ≤ t: no zero divisor, a plain value
     EXPECT_EQ(rational{v.numerical_value_in(si::metre / si::second)}, rational(21, 2));
     EXPECT_EQ(to_string(v), "10.5 m/s");
     // A divisor whose grid holds 0: inside's expected.
-    const quantity<si::second, inside<{0, 10}>> t0{0, si::second};
+    const id<"[0..10] [s]"> t0{0, si::second};
     const auto                                  e = d / t0;
     static_assert(ins::detail::is_expected_v<std::remove_cvref_t<decltype(e)>>);
     EXPECT_FALSE(e.has_value());
     // N·m is an energy, implicitly a joule.
     const auto                            w = (just<3> * si::newton) * d;
-    quantity<si::joule, inside<{0, 300}>> j = w;
+    id<"[0..300] [J]"> j = w;
     EXPECT_EQ(j.numerical_value_in(si::joule), 126);
     // Scaling by a number.
     EXPECT_EQ((d * just<2>).numerical_value_in(si::metre), 84);
@@ -145,27 +145,27 @@ TEST(UnitsTest, products_and_quotients) {
 }
 
 TEST(UnitsTest, dimensionless_quantities_are_numbers) {
-    const quantity<si::kilogram, inside<{1, 100}>> a{21, si::kilogram};
-    const quantity<si::kilogram, inside<{1, 100}>> b{6, si::kilogram};
+    const id<"[1..100] [kg]"> a{21, si::kilogram};
+    const id<"[1..100] [kg]"> b{6, si::kilogram};
     // (a / b is a fraction of denominator up to 100 in [0, 100]: implicit)
-    const inside<{{0, 100}, max_denominator{100}}> r = a / b; // 7/2, implicitly
+    const id<"[0..100] <100>"> r = a / b; // 7/2, implicitly
     EXPECT_EQ(rational{r}, rational(7, 2));
     // km/m does not cancel to unit one: its number is ×1000.
     const auto           ratio = (just<3> * km) / (just<2> * si::metre);
-    const inside<{1500}> n     = ratio;
+    const id<"[1500]"> n     = ratio;
     EXPECT_EQ(n, 1500);
     // Into a grid that must round: explicit, through that inside's constructor.
     const auto x =
-        *inside<{{0, 10}, per<10>}, round_half_away>::try_make((a / b * just<1, 3>).numerical_value_in(one));
+        *id<"[0..10] 1/10 round_half_away">::try_make((a / b * just<1, 3>).numerical_value_in(one));
     EXPECT_EQ(rational{x}, rational(12, 10));
     // An angle is a quantity, not a number.
-    static_assert(!std::is_convertible_v<quantity<si::radian, inside<{0, 7}>>, inside<{0, 7}>>);
-    static_assert(!std::is_constructible_v<inside<{0, 7}>, quantity<si::radian, inside<{0, 7}>>>);
-    static_assert(!std::is_convertible_v<quantity<si::metre, inside<{0, 7}>>, inside<{0, 7}>>);
+    static_assert(!std::is_convertible_v<id<"[0..7] [rad]">, id<"[0..7]">>);
+    static_assert(!std::is_constructible_v<id<"[0..7]">, id<"[0..7] [rad]">>);
+    static_assert(!std::is_convertible_v<id<"[0..7] [m]">, id<"[0..7]">>);
 }
 
 TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
-    const quantity<si::second, inside<{0, 10}>> t{3, si::second};
+    const id<"[0..10] [s]"> t{3, si::second};
     const auto                                  p = pi * t;
     static_assert(magnitude_of(std::remove_cvref_t<decltype(p)>::unit).Pi == 1);
     EXPECT_EQ(p.numerical_value_in(pi * si::second), 3); // the number is untouched
@@ -183,28 +183,28 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
 }
 
 TEST(UnitsTest, compound_assignment_and_casts) {
-    quantity<si::metre, inside<{0, 10000}>> d{100, si::metre};
+    id<"[0..10000] [m]"> d{100, si::metre};
     error                                   ec{}; // (a sum the grids cannot prove: reported)
     d.on_error(ec) += km;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1100);
     d.on_error(ec) -= just<100> * si::metre;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1000);
     EXPECT_EQ(ec, error{});
-    const auto narrow = value_cast<inside<{0, 2000}>>(d); // may not fit: an expected
+    const auto narrow = value_cast<id<"[0..2000]">>(d); // may not fit: an expected
     EXPECT_EQ(narrow->numerical_value_in(si::metre), 1000);
-    EXPECT_EQ((value_cast<inside<{0, 500}>>(d).error()), error::overflow);
+    EXPECT_EQ((value_cast<id<"[0..500]">>(d).error()), error::overflow);
     // In another unit: 1000 m is 1 km; 1001 m rounds onto whole km by F, and
     // is past a {0, 1} km grid.
-    EXPECT_EQ((value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value_in(km)), 1);
+    EXPECT_EQ((value_cast<km, id<"[0..5] 1/1000">>(d)->numerical_value_in(km)), 1);
     d.on_error(ec) += si::metre;
-    EXPECT_EQ((value_cast<km, inside<{0, 5}, round_half_away>>(d)->numerical_value_in(km)), 1);
-    EXPECT_EQ((value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), error::overflow);
+    EXPECT_EQ((value_cast<km, id<"[0..5] round_half_away">>(d)->numerical_value_in(km)), 1);
+    EXPECT_EQ((value_cast<km, id<"[0..1] 1/1000">>(d).error()), error::overflow);
 }
 
 TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {
-    using height_m = quantity<isq::height[si::metre], inside<{0, 100}>>;
-    using length_m = quantity<isq::length[si::metre], inside<{0, 100}>>;
-    using width_m  = quantity<isq::width[si::metre], inside<{0, 100}>>;
+    using height_m = id<"[0..100] [m]{height}">;
+    using length_m = id<"[0..100] [m]{length}">;
+    using width_m  = id<"[0..100] [m]{width}">;
     static_assert(std::is_convertible_v<height_m, length_m>);
     static_assert(!std::is_convertible_v<length_m, height_m>);
     static_assert(!std::is_constructible_v<width_m, height_m>);
@@ -214,31 +214,31 @@ TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {
     const auto back = kind_cast<isq::height>(l);
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(back)>, height_m>);
     // A plain unit's kind (si::metre: any length) takes every length.
-    static_assert(std::is_convertible_v<quantity<si::metre, inside<{0, 100}>>, height_m>);
-    static_assert(std::is_convertible_v<height_m, quantity<si::metre, inside<{0, 100}>>>);
+    static_assert(std::is_convertible_v<id<"[0..100] [m]">, height_m>);
+    static_assert(std::is_convertible_v<height_m, id<"[0..100] [m]">>);
     // width + height: their common ancestor, length.
     const auto s = width_m{1, isq::width[si::metre]} + h;
     static_assert(std::remove_cvref_t<decltype(s)>::reference.kind()->Name == "length");
 }
 
 TEST(UnitsTest, derived_kinds_follow_their_recipes) {
-    using W   = quantity<isq::width[si::metre], inside<{0, 10}>>;
-    using H   = quantity<isq::height[si::metre], inside<{0, 10}>>;
-    using A   = quantity<isq::area[square(si::metre)], inside<{0, 100}>>;
+    using W   = id<"[0..10] [m]{width}">;
+    using H   = id<"[0..10] [m]{height}">;
+    using A   = id<"[0..100] [m^2]{area}">;
     const A a = W{2, isq::width[si::metre]} * H{3, isq::height[si::metre]}; // width·height → area
     EXPECT_EQ(a.numerical_value_in(square(si::metre)), 6);
     // mass·speed² → kinetic energy; force·length → energy, but not torque.
-    using kg_t = quantity<isq::mass[si::kilogram], inside<{0, 10}>>;
-    using v_t  = quantity<isq::speed[si::metre / si::second], inside<{0, 10}>>;
-    using ke_t = quantity<isq::kinetic_energy[si::joule], inside<{0, 1000}>>;
+    using kg_t = id<"[0..10] [kg]{mass}">;
+    using v_t  = id<"[0..10] [m/s]{speed}">;
+    using ke_t = id<"[0..1000] [J]{kinetic_energy}">;
     static_assert(std::is_convertible_v<decltype(kg_t{} * v_t{} * v_t{}), ke_t>);
-    using f_t = quantity<isq::force[si::newton], inside<{0, 10}>>;
-    using l_t = quantity<isq::length[si::metre], inside<{0, 10}>>;
-    static_assert(std::is_convertible_v<decltype(f_t{} * l_t{}), quantity<isq::energy[si::joule], inside<{0, 100}>>>);
+    using f_t = id<"[0..10] [N]{force}">;
+    using l_t = id<"[0..10] [m]{length}">;
+    static_assert(std::is_convertible_v<decltype(f_t{} * l_t{}), id<"[0..100] [J]{energy}">>);
     static_assert(!std::is_convertible_v<decltype(f_t{} * l_t{}),
-                                         quantity<isq::torque[si::newton * si::metre], inside<{0, 100}>>>);
+                                         id<"[0..100] [N*m]{torque}">>);
     // m/s (no kind) is any speed.
-    static_assert(std::is_convertible_v<quantity<si::metre / si::second, inside<{0, 10}>>, v_t>);
+    static_assert(std::is_convertible_v<id<"[0..10] [m/s]">, v_t>);
 }
 
 TEST(UnitsTest, separate_kinds_do_not_mix) {
@@ -250,7 +250,7 @@ TEST(UnitsTest, separate_kinds_do_not_mix) {
     static_assert(!addable<decltype(rad), decltype(one_)>());
     static_assert(addable<decltype(hz), decltype(just<1> / si::second)>());
     static_assert(
-        !std::is_convertible_v<quantity<si::hertz, inside<{0, 10}>>, quantity<si::becquerel, inside<{0, 10}>>>);
+        !std::is_convertible_v<id<"[0..10] [Hz]">, id<"[0..10] [Bq]">>);
     // Gy and Sv: both J/kg, different kinds.
     static_assert(!addable<decltype(just<1> * si::gray), decltype(just<1> * si::sievert)>());
     static_assert(!ins::detail::kind_casts(std::remove_cvref_t<decltype(rad)>::reference, isq::dimensionless.value));
@@ -290,7 +290,7 @@ TEST(UnitsTest, big_grid_prefixes_and_units) {
 }
 
 TEST(UnitsTest, points_shift_their_grid_between_origins) {
-    const auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});
+    const auto t = point<si::degree_Celsius>(id<"[-40..60]">{20});
     static_assert(std::remove_cvref_t<decltype(t)>::origin->Name == "ice_point");
     EXPECT_EQ(to_string(t), "20 ℃");
     // From absolute zero, still in ℃: 293.15, on a shifted grid.
@@ -303,7 +303,7 @@ TEST(UnitsTest, points_shift_their_grid_between_origins) {
     EXPECT_EQ(to_string(k), "293.15 K");
     EXPECT_TRUE(k == t);
     // 68 ℉ is 20 ℃.
-    const auto f = point<international::degree_Fahrenheit>(inside<{0, 100}>{68});
+    const auto f = point<international::degree_Fahrenheit>(id<"[0..100]">{68});
     EXPECT_TRUE(f == t);
     EXPECT_EQ(rational{f.point_for(si::ice_point)
                            .in(si::degree_Celsius)
@@ -311,13 +311,13 @@ TEST(UnitsTest, points_shift_their_grid_between_origins) {
                            .numerical_value_in(si::degree_Celsius)},
               rational(20));
     // Implicit conversion to a kelvin point type.
-    using kelvin_point    = quantity_point<si::kelvin, si::absolute_zero, inside<{{0, 400}, per<100>}>>;
+    using kelvin_point    = id<"[0..400] 1/100 [K] @absolute_zero">;
     const kelvin_point kp = t;
     EXPECT_EQ(rational{kp.quantity_from_origin().numerical_value_in(si::kelvin)}, rational(29315, 100));
 }
 
 TEST(UnitsTest, points_from_a_number_and_their_unit) {
-    using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-40, 60}, per<2>}, round_half_away>>;
+    using celsius = id<"[-40..60] 1/2 [`C] @ice_point round_half_away">;
     const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding
     EXPECT_EQ(to_string(room), "21.5 ℃");
     EXPECT_TRUE(room == point<si::degree_Celsius>(just<43, 2>));
@@ -342,18 +342,18 @@ TEST(UnitsTest, points_from_a_number_and_their_unit) {
 }
 
 TEST(UnitsTest, point_arithmetic) {
-    auto       t  = point<si::degree_Celsius>(inside<{-40, 60}>{20});
+    auto       t  = point<si::degree_Celsius>(id<"[-40..60]">{20});
     const auto t2 = t + delta<si::kelvin>(just<5>);
     EXPECT_EQ(to_string(t2), "25 ℃");
-    const auto d = t2 - point<si::kelvin>(inside<{250, 300}>{273}); // 25 ℃ − 273 K = 25.15 K
+    const auto d = t2 - point<si::kelvin>(id<"[250..300]">{273}); // 25 ℃ − 273 K = 25.15 K
     EXPECT_EQ(rational{d.numerical_value_in(si::kelvin)}, rational(2515, 100));
-    auto tc = point<si::degree_Celsius>(inside<{-40, 60}, clamp>{20}); // (+= names its range handling)
+    auto tc = point<si::degree_Celsius>(id<"[-40..60] clamp">{20}); // (+= names its range handling)
     tc += delta<si::degree_Celsius>(just<1>);
     EXPECT_EQ(to_string(tc), "21 ℃");
     const auto z = si::absolute_zero + just<300> * si::kelvin;
     EXPECT_TRUE(z > t);
     // A unit without an origin counts from the implicit zero.
-    const auto x = point<si::metre>(inside<{0, 10}>{3});
+    const auto x = point<si::metre>(id<"[0..10]">{3});
     static_assert(std::remove_cvref_t<decltype(x)>::origin->Name.empty()); // origin_def::none
     EXPECT_EQ((x - point<si::metre>(just<1>)).numerical_value_in(si::metre), 2);
 }
@@ -362,22 +362,22 @@ TEST(UnitsTest, std_format) {
     EXPECT_EQ(std::format("{}", just<5> * si::kilo(si::metre)), "5 km");
     EXPECT_EQ(std::format("{:>4}", just<5> * si::newton), "   5 N");
     EXPECT_EQ(std::format("{}", just<90> * si::degree), "90°");
-    const quantity<si::metre / si::second, inside<{{0, 10}, per<4>}>> v{rational(9, 4), si::metre / si::second};
+    const id<"[0..10] 1/4 [m/s]"> v{rational(9, 4), si::metre / si::second};
     EXPECT_EQ(std::format("{:.1f}", v), "2.2 m/s");
-    EXPECT_EQ(std::format("{}", point<si::degree_Celsius>(inside<{-40, 60}>{20})), "20 ℃");
+    EXPECT_EQ(std::format("{}", point<si::degree_Celsius>(id<"[-40..60]">{20})), "20 ℃");
     EXPECT_EQ(std::format("{}", just<3> * ins::one), "3");
 }
 
 TEST(UnitsTest, point_in_and_value_cast_on_points) {
-    const auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
+    const auto oven = point<international::degree_Fahrenheit>(id<"[0..600]">{350});
     const auto c    = oven.point_in(si::degree_Celsius); // (350 − 32)·5/9
     static_assert(std::remove_cvref_t<decltype(c)>::origin->Name == "ice_point");
     EXPECT_EQ(rational{c.quantity_from_origin().numerical_value_in(si::degree_Celsius)}, rational(530, 3));
     EXPECT_EQ(to_string(c.point_in(si::kelvin)), "26989/60 K");      // 449.8166…: exact, so N/D
-    const auto r = value_cast<inside<{0, 300}, round_half_away>>(c); // may not fit: an expected
+    const auto r = value_cast<id<"[0..300] round_half_away">>(c);    // may not fit: an expected
     EXPECT_EQ(to_string(*r), "177 ℃");
     const auto k =
-        value_cast<si::kelvin, inside<{{0, 1000}, per<10>}, round_half_away>>(c.point_for(si::absolute_zero));
+        value_cast<si::kelvin, id<"[0..1000] 1/10 round_half_away">>(c.point_for(si::absolute_zero));
     EXPECT_EQ(to_string(k), "449.8 K");
 }
 } // namespace units_tests
@@ -472,9 +472,9 @@ concept can_subtract = requires(const A& a, const B& b) { a - b; };
 template <class P>
 concept can_point_in_seconds = requires(const P& p) { p.point_in(si::second); };
 
-using metres  = quantity<si::metre, inside<{{-10, 10}, per<8>}, round_half_away>>;
-using seconds = quantity<si::second, inside<{{-10, 10}, per<8>}, round_half_away>>;
-using degrees = quantity<si::degree, inside<{0, 360}>>;
+using metres  = id<"[-10..10] 1/8 [m] round_half_away">;
+using seconds = id<"[-10..10] 1/8 [s] round_half_away">;
+using degrees = id<"[0..360] [deg]">;
 } // namespace
 
 TEST(UnitsApiTest, specs_and_units_are_identified_by_all_their_parts) {
@@ -490,20 +490,20 @@ TEST(UnitsApiTest, mismatches_are_constraint_failures) {
     static_assert(can_add<metres, metres> && !can_add<metres, seconds> && !can_less<metres, seconds>);
     static_assert(!can_add<decltype(just<1> * si::hertz), decltype(just<1> * si::becquerel)>);
     static_assert(!can_scale_raw<metres>);
-    static_assert(!can_in_seconds<metres> && can_in_radians<quantity<si::radian, inside<{0, 7}>>>);
+    static_assert(!can_in_seconds<metres> && can_in_radians<id<"[0..7] [rad]">>);
     static_assert(!can_in_radians<degrees>); // a factor of pi: value_cast rounds it
     static_assert(!can_cast_to_duration<metres>);
     static_assert(can_atan2<metres, metres> && !can_atan2<metres, seconds>);
 }
 
 TEST(UnitsApiTest, quantities_compare_only_with_compatible_quantities) {
-    using plain      = inside<{0, 10}>;
-    using kilometres = quantity<km, inside<{0, 10}>>;
-    using percents   = quantity<percent, inside<{0, 100}>>;
-    using ones       = quantity<one, inside<{0, 10}>>;
-    using celsius_q  = quantity<si::degree_Celsius, inside<{0, 10}>>;
+    using plain      = id<"[0..10]">;
+    using kilometres = id<"[0..10] [km]">;
+    using percents   = id<"[0..100] [%]">;
+    using ones       = id<"[0..10] [1]">;
+    using celsius_q  = id<"[0..10] [`C]">;
     using celsius_pt = decltype(point<si::degree_Celsius>(plain{}));
-    using kelvin_pt  = decltype(point<si::kelvin>(inside<{0, 400}>{}));
+    using kelvin_pt  = decltype(point<si::kelvin>(id<"[0..400]">{}));
     // Only a plain inside compares with a standard integer (a double is rejected by design).
     static_assert(can_compare<plain, int> && cannot_compare<plain, double>);
     // A quantity compares with a quantity of its kind, in any unit.
@@ -529,8 +529,8 @@ TEST(UnitsApiTest, quantities_compare_only_with_compatible_quantities) {
 }
 
 TEST(UnitsApiTest, a_unit_is_one_of_itself_in_arithmetic) {
-    using clamped_seconds = quantity<si::second, inside<{0, 100000}, clamp>>;
-    using plain           = inside<{0, 10}>;
+    using clamped_seconds = id<"[0..100000] [s] clamp">;
+    using plain           = id<"[0..10]">;
     const auto len        = just<3> * si::metre;
     EXPECT_TRUE(len + si::metre == just<4> * si::metre && si::metre + len == just<4> * si::metre);
     EXPECT_TRUE(len - si::metre == just<2> * si::metre && si::metre - len == just<-2> * si::metre);
@@ -562,8 +562,8 @@ TEST(UnitsApiTest, tags_for_your_own_entries) {
 }
 
 TEST(UnitsApiTest, kind_is_a_value) {
-    const quantity<isq::altitude[km], inside<{100, 1000}>> altitude{185, isq::altitude[km]};
-    const quantity<isq::radius[km], inside<{6300, 6400}>>  earth{6371, isq::radius[km]};
+    const id<"[100..1000] [km]{altitude}"> altitude{185, isq::altitude[km]};
+    const id<"[6300..6400] [km]{radius}">  earth{6371, isq::radius[km]};
     const auto                                             r = altitude + earth;
     static_assert(r.kind == isq::length && !(r.kind == isq::height));
     static_assert(altitude.kind == isq::altitude);
@@ -572,16 +572,16 @@ TEST(UnitsApiTest, kind_is_a_value) {
 }
 
 TEST(UnitsApiTest, value_cast_to_a_quantity_type) {
-    using km_q = quantity<km, inside<{{0, 20}, per<1000>}>>;
-    const quantity<si::metre, inside<{0, 20000}>> d{12345, si::metre};
+    using km_q = id<"[0..20] 1/1000 [km]">;
+    const id<"[0..20000] [m]"> d{12345, si::metre};
     const auto                                    a = value_cast<km_q>(d);
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(a)>, km_q>);
     EXPECT_EQ(to_string(a), "12.345 km");
-    EXPECT_EQ((value_cast<quantity<km, inside<{0, 20}, round_floor>>>(d).numerical_value_in(km)), 12);
-    EXPECT_EQ((value_cast<quantity<km, inside<{{0, 5}, per<1000>}>>>(d).error()), error::overflow);
+    EXPECT_EQ((value_cast<id<"[0..20] [km] round_floor">>(d).numerical_value_in(km)), 12);
+    EXPECT_EQ((value_cast<id<"[0..5] 1/1000 [km]">>(d).error()), error::overflow);
     // The spec must convert as for an implicit conversion: up the tree, not down.
-    using height_q = quantity<isq::height[si::metre], inside<{0, 9}>>;
-    using length_q = quantity<isq::length[si::metre], inside<{0, 9}>>;
+    using height_q = id<"[0..9] [m]{height}">;
+    using length_q = id<"[0..9] [m]{length}">;
     static_assert(can_value_cast<length_q, height_q> && !can_value_cast<height_q, length_q>);
     static_assert(!can_value_cast<km_q, seconds>);
 }
@@ -608,7 +608,7 @@ TEST(UnitsApiTest, a_denominator_alone_prints_negative_exponents) {
 }
 
 TEST(UnitsApiTest, points_from_zero_and_their_constraints) {
-    const auto c = point<si::degree_Celsius>(inside<{{-50, 50}, per<10>}>{20});
+    const auto c = point<si::degree_Celsius>(id<"[-50..50] 1/10">{20});
     EXPECT_EQ(to_string(c.quantity_from_zero()), "293.15 ℃");
     EXPECT_EQ(to_string(point<si::metre>(just<5>).quantity_from_zero()), "5 m");
     static_assert(!can_in_seconds<decltype(c)> && !can_point_in_seconds<decltype(c)>);
@@ -674,10 +674,10 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
 TEST(UnitsApiTest, si_base_dimensions_are_base_dimensions) {
     static_assert(dimension_of(si::metre.value) == base_dimension<"length">);
     static_assert(base_unit<"m", "length"> == si::metre);
-    using I = inside<{0, 100}>;
-    static_assert(std::is_same_v<quantity<base_unit<"m", "length">, I>, quantity<si::metre, I>>);
-    constexpr quantity<si::metre, I> m = quantity<base_unit<"m", "length">, I>{3, base_unit<"m", "length">};
-    static_assert(m == quantity<si::metre, I>{3, si::metre});
+    using I = id<"[0..100]">;
+    static_assert(std::is_same_v<id<quantity_key<base_unit<"m", "length">, I>>, id<"[0..100] [m]">>);
+    constexpr id<"[0..100] [m]"> m = id<quantity_key<base_unit<"m", "length">, I>>{3, base_unit<"m", "length">};
+    static_assert(m == id<"[0..100] [m]">{3, si::metre});
     static_assert(dimension_of(si::newton.value).Size == 3);
     static_assert(dimension_of(si::kelvin.value) == isq::thermodynamic_temperature.value->Dim);
     constexpr dimension price = dimension_of((unit<"EUR", money_kind> / si::kilogram).value);
@@ -711,7 +711,7 @@ inline constexpr basis_vector_def named_e1_def{"e1", geometric<+1>};
 } // namespace
 
 TEST(UnitsApiTest, named_definitions) {
-    using I = inside<{0, 100}>;
+    using I = id<"[0..100]">;
     static_assert(named_fathom == line_fathom);
     static_assert(named_cts == base_unit<"cnt", "count">);
     static_assert(defined_by<named_watt_def> == si::watt);
@@ -729,16 +729,16 @@ TEST(UnitsApiTest, named_definitions) {
     static_assert(std::is_same_v<decltype(defined_by<named_ice_def>), const origin_t<origin_ref{&named_ice_def}>>);
 
     // The one-liner's type: a quantity's type spells its unit by its symbol, and the two are equal.
-    static_assert(std::is_same_v<quantity<named_fathom, I>, quantity<line_fathom, I>>);
-    constexpr quantity<line_fathom, I>  a = quantity<named_fathom, I>{12, named_fathom};
-    constexpr quantity<named_fathom, I> b = a;
+    static_assert(std::is_same_v<id<quantity_key<named_fathom, I>>, id<quantity_key<line_fathom, I>>>);
+    constexpr id<"[0..100] [ftm]">  a = id<"[0..100] [ftm]">{12, named_fathom};
+    constexpr id<"[0..100] [ftm]"> b = a;
     static_assert(a == b);
 
     // Prefixes, conversions, products, points and text, as for any unit.
-    EXPECT_EQ(to_string(quantity<si::kilo(named_fathom), I>{2, si::kilo(named_fathom)}), "2 kftm");
+    EXPECT_EQ(to_string(id<"[0..100] [kftm]">{2, si::kilo(named_fathom)}), "2 kftm");
     EXPECT_EQ(to_string(b.in(si::metre)), "21.9456 m");
-    EXPECT_EQ(to_string(quantity<named_cts, I>{7, named_cts} / si::second), "7 cnt/s");
-    EXPECT_EQ(to_string(point<si::degree_Celsius>(inside<{-5, 5}>{1}).point_for(named_ice).quantity_from_origin()),
+    EXPECT_EQ(to_string(id<"[0..100] [cnt]">{7, named_cts} / si::second), "7 cnt/s");
+    EXPECT_EQ(to_string(point<si::degree_Celsius>(id<"[-5..5]">{1}).point_for(named_ice).quantity_from_origin()),
               "1 ℃");
     constexpr auto e1 = defined_by<named_e1_def>;
     static_assert(dimension_of((e1 * e1).value) == dim_one);
@@ -751,10 +751,10 @@ inline constexpr auto metre_second = unit<"m_s", si::metre * si::second>; // (no
 } // namespace
 
 TEST(UnitsApiTest, a_reference_has_one_form) {
-    using num = inside<{0, 100}>;
-    using m_t = quantity<si::metre, num>;
-    static_assert(!m_t::reference.HasParts && !quantity<si::kilogram, num>::reference.HasParts);
-    static_assert(!quantity<si::kilo(si::metre), num>::reference.HasParts);
+    using num = id<"[0..100]">;
+    using m_t = id<"[0..100] [m]">;
+    static_assert(!m_t::reference.HasParts && !id<"[0..100] [kg]">::reference.HasParts);
+    static_assert(!id<"[0..100] [km]">::reference.HasParts);
     static_assert(m_t::reference.kind()->Name == "length" && m_t::reference.kind_of());
     static_assert(m_t::reference.unit() == unit_value{si::metre_def} && m_t::reference.derived().Size == 0);
     // Reached by arithmetic: the same type.
@@ -762,13 +762,13 @@ TEST(UnitsApiTest, a_reference_has_one_form) {
     static_assert(std::is_same_v<decltype(num{} * si::metre * si::second / si::second), m_t>);
     static_assert(m_t::reference == reference{&isq::length_def, true, recipe{}, unit_value{si::metre_def}});
     // Exactly a kind, a product of units, and a scaled unit: the parts.
-    static_assert(quantity<isq::length[si::metre], num>::reference.HasParts);
-    static_assert(!std::is_same_v<quantity<isq::length[si::metre], num>, m_t>);
-    static_assert(quantity<si::metre / si::second, num>::reference.HasParts);
-    static_assert(quantity<si::metre * si::metre, num>::reference.HasParts);
+    static_assert(id<"[0..100] [m]{length}">::reference.HasParts);
+    static_assert(!std::is_same_v<id<"[0..100] [m]{length}">, m_t>);
+    static_assert(id<"[0..100] [m/s]">::reference.HasParts);
+    static_assert(id<"[0..100] [m^2]">::reference.HasParts);
     // A named unit without a kind: the unit alone too, and kind() is kind_def::none.
-    static_assert(!quantity<metre_second, num>::reference.HasParts);
-    static_assert(quantity<metre_second, num>::reference.kind()->Name.empty());
+    static_assert(!id<"[0..100] [m_s]">::reference.HasParts);
+    static_assert(id<"[0..100] [m_s]">::reference.kind()->Name.empty());
 }
 
 namespace {
@@ -776,18 +776,18 @@ inline constexpr auto cts = unit<"cts", adc_counts_kind>;
 } // namespace
 
 TEST(UnitsApiTest, adc_counts) {
-    using reading      = quantity<cts, inside<{0, 4095}>>;
-    using gain_t       = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
-    using volts_t      = quantity<si::volt, inside<{{0, 5}, per<1000>}>>;
+    using reading      = id<"[0..4095] [cts]">;
+    using gain_t       = id<"[1000..1500] 1/1000 [cts/V] round_half_away">;
+    using volts_t      = id<"[0..5] 1/1000 [V]">;
     const reading                          raw{2048, cts};
-    const quantity<cts, inside<{-64, 64}>> offset{12, cts};
+    const id<"[-64..64] [cts]"> offset{12, cts};
     const gain_t                           gain{rational{1240909, 1000}, cts / si::volt};
     const auto                             v = (raw - offset) / gain; // zero-free gain: a plain quantity
-    EXPECT_EQ(to_string(value_cast<quantity<si::milli(si::volt), inside<{-5000, 5000}, round_half_away>>>(v)),
+    EXPECT_EQ(to_string(value_cast<id<"[-5000..5000] [mV] round_half_away">>(v)),
               "1641 mV");
     // Two-point calibration: the exact Δcts / ΔV, checked into gain_t once.
-    const quantity<si::volt, inside<{{0, 1}, per<1000>}>> v1{rational{1, 2}, si::volt};
-    const quantity<si::volt, inside<{{2, 5}, per<1000>}>> v2{rational{5, 2}, si::volt};
+    const id<"[0..1] 1/1000 [V]"> v1{rational{1, 2}, si::volt};
+    const id<"[2..5] 1/1000 [V]"> v2{rational{5, 2}, si::volt};
     const auto g = value_cast<gain_t>((reading{3114, cts} - reading{632, cts}) / (v2 - v1));
     ASSERT_TRUE(g.has_value());
     EXPECT_EQ(to_string(*g), "1241.000 cts/V");
@@ -795,7 +795,7 @@ TEST(UnitsApiTest, adc_counts) {
     static_assert(!can_add<reading, volts_t>);
     static_assert(!can_add<reading, decltype(just<1> * one)>); // counts are not a plain number
     static_assert(!(dimension_of((cts / si::volt).value) == dimension_of((one / si::volt).value)));
-    static_assert(!std::constructible_from<quantity<si::ampere, inside<{0, 5}>>, decltype(v)>);
+    static_assert(!std::constructible_from<id<"[0..5] [A]">, decltype(v)>);
 }
 } // namespace units_api_tests
 
@@ -816,9 +816,9 @@ inline constexpr auto fine_turn = unit<"fturn", just<1, 1180591620717411303424_g
 
 constexpr auto ms = si::milli(si::second);
 
-using seconds_t = quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>>;
-using hp_t      = quantity<HP, inside<{0, 100}, clamp>>;
-using usd_t     = quantity<HP, inside<{{0, 1000}, per<100>}, round_half_away>>;
+using seconds_t = id<"[0..60) [s] wrap">;
+using hp_t      = id<"[0..100] [HP] clamp">;
+using usd_t     = id<"[0..1000] 1/100 [HP] round_half_away">;
 
 template <class Out, class A, class B>
 concept can_mul_onto = requires(const A& a, const B& b) { mul<Out>(a, b); };
@@ -857,7 +857,7 @@ TEST(UnitsAlgorithmsTest, increment_is_one_unit_and_try_make) {
     --hp;
     EXPECT_EQ(to_string(hp), "99 HP");
     const auto ok  = hp_t::try_make(5, HP);
-    const auto bad = quantity<HP, inside<{0, 100}>>::try_make(500, HP);
+    const auto bad = id<"[0..100] [HP]">::try_make(500, HP);
     ASSERT_TRUE(ok);
     EXPECT_EQ(to_string(*ok), "5 HP");
     ASSERT_FALSE(bad);
@@ -866,17 +866,17 @@ TEST(UnitsAlgorithmsTest, increment_is_one_unit_and_try_make) {
 
 TEST(UnitsAlgorithmsTest, mul_and_div_onto_a_named_output_fold_the_unit_factor) {
     // 3 m/s for 7 s, stored in km to the metre: 0.021 km.
-    using km_t   = quantity<si::kilo(si::metre), inside<{{0, 10}, per<1000>}, round_half_away>>;
-    const auto d = mul<km_t>(just<3> * si::metre / si::second, quantity<si::second, inside<{0, 10}>>{7, si::second});
+    using km_t   = id<"[0..10] 1/1000 [km] round_half_away">;
+    const auto d = mul<km_t>(just<3> * si::metre / si::second, id<"[0..10] [s]">{7, si::second});
     EXPECT_EQ(to_string(d), "0.021 km");
     // A plain factor, rounded once onto the cent.
-    EXPECT_EQ(to_string(mul<usd_t>(just<10> * HP, inside<{{0, 4}, per<16>}>{1.0625})), "10.63 HP");
+    EXPECT_EQ(to_string(mul<usd_t>(just<10> * HP, id<"[0..4] 1/16">{1.0625})), "10.63 HP");
     // A dimensionless quotient into a plain inside: 95.5 ms / 10 ms floors to 9.
-    const quantity<ms, inside<{{0, 100}, per<10>}>> lat{rational{955, 10}, ms};
-    const auto                                      bin = div<inside<{0, 9}, clamp | round_floor>>(lat, just<10> * ms);
+    const id<"[0..100] 1/10 [ms]"> lat{rational{955, 10}, ms};
+    const auto                                      bin = div<id<"[0..9] clamp|round_floor">>(lat, just<10> * ms);
     EXPECT_EQ(bin, 9);
     // A divisor grid holding 0 gives an expected.
-    const auto q = div<usd_t>(just<10> * HP, inside<{0, 4}>{0});
+    const auto q = div<usd_t>(just<10> * HP, id<"[0..4]">{0});
     ASSERT_FALSE(q);
     EXPECT_EQ(q.error(), error::division_by_zero);
     static_assert(!can_mul_onto<usd_t, decltype(just<1> * si::metre), decltype(just<1>)>); // a length is no HP
@@ -885,9 +885,9 @@ TEST(UnitsAlgorithmsTest, mul_and_div_onto_a_named_output_fold_the_unit_factor) 
 TEST(UnitsAlgorithmsTest, folds_sum_and_parse) {
     const std::vector<usd_t> items{usd_t{1.5, HP}, usd_t{2.25, HP}};
     EXPECT_EQ(to_string(*sum<usd_t>(items)), "3.75 HP");
-    const std::array<quantity<ms, inside<{0, 1000}>>, 2> waits{quantity<ms, inside<{0, 1000}>>{250, ms},
-                                                               quantity<ms, inside<{0, 1000}>>{1000, ms}};
-    EXPECT_EQ(to_string(*sum<quantity<si::second, inside<{{0, 10}, per<1000>}>>>(waits)), "1.250 s");
+    const std::array<id<"[0..1000] [ms]">, 2> waits{id<"[0..1000] [ms]">{250, ms},
+                                                               id<"[0..1000] [ms]">{1000, ms}};
+    EXPECT_EQ(to_string(*sum<id<"[0..10] 1/1000 [s]">>(waits)), "1.250 s");
     EXPECT_EQ(to_string(add_all(just<1> * HP, just<2> * HP, just<3> * HP)), "6 HP");
     EXPECT_EQ(to_string(mul_all(just<2> * si::metre, just<3> * si::metre, just<1, 2>)), "3 m²");
 
@@ -910,12 +910,12 @@ TEST(UnitsAlgorithmsTest, predicates_and_casts) {
 
 // q *= n with a builtin integer scales the number, stored back by its rules.
 TEST(UnitsAlgorithmsTest, a_builtin_integer_scales_a_quantity) {
-    quantity<si::metre, inside<{0, 100}, clamp>> q{5, si::metre};
+    id<"[0..100] [m] clamp"> q{5, si::metre};
     q *= 2;
     EXPECT_TRUE(q == just<10> * si::metre);
     q *= 100; // clamped
     EXPECT_TRUE(q == just<100> * si::metre);
-    quantity<si::metre, inside<{0, 100}>> c{5, si::metre};
+    id<"[0..100] [m]"> c{5, si::metre};
     error                                 ec{};
     c.on_error(ec) *= 3;
     EXPECT_TRUE(c == just<15> * si::metre && ec == error{});
@@ -932,9 +932,9 @@ TEST(UnitsAlgorithmsTest, dot_cross_lerp) {
 }
 
 TEST(UnitsAlgorithmsTest, trig_of_a_pi_scaled_angle_reduces_exactly) {
-    using amp   = inside<{{-1, 1}, per<16384>}, round_half_away>;
-    using floor = inside<{{-1, 1}, per<16384>}, round_floor>;
-    using deg   = quantity<si::degree, inside<{-1000, 1000}>>;
+    using amp   = id<"[-1..1] 1/16384 round_half_away">;
+    using floor = id<"[-1..1] 1/16384 round_floor">;
+    using deg   = id<"[-1000..1000] [deg]">;
     // Niven's values come out exact under any rounding.
     EXPECT_EQ(math::sin<floor>(deg{30, si::degree}), (just<1, 2>));
     EXPECT_EQ(math::cos<floor>(deg{120, si::degree}), (just<-1, 2>));
@@ -945,7 +945,7 @@ TEST(UnitsAlgorithmsTest, trig_of_a_pi_scaled_angle_reduces_exactly) {
     EXPECT_EQ(math::cos<amp>(deg{45, si::degree}), (just<11585, 16384>));
     EXPECT_EQ(math::cos<floor>(deg{45, si::degree}), (just<11585, 16384>));
     // A quarter turn in slots of 2π/65536 rad.
-    const quantity<slot, inside<{0, 65535}, wrap>> p{16384, slot};
+    const id<"[0..65535] [slot] wrap"> p{16384, slot};
     EXPECT_EQ(math::sin<amp>(p), 1);
     EXPECT_EQ(math::cos<amp>(p), 0);
 }
@@ -953,8 +953,8 @@ TEST(UnitsAlgorithmsTest, trig_of_a_pi_scaled_angle_reduces_exactly) {
 // A π unit whose factor is no 64-bit rational took no sin or cos (the
 // factor was one limb).
 TEST(UnitsAlgorithmsTest, trig_of_a_pi_angle_with_a_factor_past_64_bits) {
-    using amp = inside<{{-1, 1}, per<16384>}, round_half_away>;
-    using a70 = quantity<fine_turn, inside<{0, 2361183241434822606848_g}>>; // up to 2π
+    using amp = id<"[-1..1] 1/16384 round_half_away">;
+    using a70 = id<"[0..2361183241434822606848] [fturn]">;                  // up to 2π
     EXPECT_EQ(math::sin<amp>(a70{590295810358705651712_g, fine_turn}), 1);  // 2^69: π/2
     EXPECT_EQ(math::cos<amp>(a70{590295810358705651712_g, fine_turn}), 0);
     EXPECT_EQ(math::cos<amp>(a70{295147905179352825856_g, fine_turn}), (just<11585, 16384>)); // π/4
@@ -962,17 +962,17 @@ TEST(UnitsAlgorithmsTest, trig_of_a_pi_angle_with_a_factor_past_64_bits) {
 }
 
 TEST(UnitsAlgorithmsTest, divmod_in_the_common_unit_and_percent) {
-    const quantity<si::second, inside<{0, 86399}>> s{3725, si::second};
+    const id<"[0..86399] [s]"> s{3725, si::second};
     const auto [h, rest] = divmod(s, si::hour);
     EXPECT_EQ(h, 1);
     EXPECT_EQ(to_string(rest), "125 s");
     const auto [q, r] =
-        divmod(quantity<si::day, inside<{0, 100}, round_toward_zero>>{17, si::day}, just<1, 1> * si::day * just<7>);
+        divmod(id<"[0..100] [d] round_toward_zero">{17, si::day}, just<1, 1> * si::day * just<7>);
     EXPECT_EQ(q, 2);
     EXPECT_EQ(to_string(r), "3 d");
 
     EXPECT_EQ(to_string(just<8> * percent), "8 %");
-    const inside<{{0, 1}, per<100>}> x = just<8> * percent;
+    const id<"[0..1] 1/100"> x = just<8> * percent;
     EXPECT_EQ(x, (just<2, 25>));
     EXPECT_EQ(to_string(mul<usd_t>(just<45> * HP, just<8> * percent)), "3.60 HP");
     EXPECT_EQ(unit_symbol(per_mille, text_encoding::ascii), "permille");
@@ -980,17 +980,17 @@ TEST(UnitsAlgorithmsTest, divmod_in_the_common_unit_and_percent) {
 
 TEST(UnitsAlgorithmsTest, math_of_a_dimensionless_quantity_and_lifted_chains) {
     constexpr auto ratio = just<-6> * si::metre / (just<20> * si::metre); // −0.3
-    using gain_t         = inside<{{0x1p-8, 4}, per<65536>}, round_half_away>;
-    using decade_t       = inside<{{-1, 1}, per<1024>}, round_half_away>;
+    using gain_t         = id<"[0x1p-8..4] 1/65536 round_half_away">;
+    using decade_t       = id<"[-1..1] 1/1024 round_half_away">;
     const auto g         = math::pow_base<10, gain_t>(ratio);
     EXPECT_EQ(g, (gain_t{rational{32846, 65536}}));
     const auto d = math::log10<decade_t>(just<1> * si::metre / (just<1> * si::metre));
     EXPECT_EQ(d, 0);
     // An expected quantity chains through +, *, as an expected inside does.
-    const auto chained = just<1> * si::volt / inside<{0, 4}>{0} * just<2> + si::volt;
+    const auto chained = just<1> * si::volt / id<"[0..4]">{0} * just<2> + si::volt;
     ASSERT_FALSE(chained);
     EXPECT_EQ(chained.error(), error::division_by_zero);
-    const auto fine = just<1> * si::volt / inside<{0, 4}>{2} * just<2> + si::volt;
+    const auto fine = just<1> * si::volt / id<"[0..4]">{2} * just<2> + si::volt;
     ASSERT_TRUE(fine);
     EXPECT_EQ(to_string(*fine), "2 V");
 }
@@ -1001,8 +1001,8 @@ namespace units_math_tests {
 using namespace ins;
 
 namespace {
-using rad_t = inside<{{-4, 4}, per<1'000'000>}, round_half_away>;
-using deg_t = inside<{{-360, 360}, per<1'000'000>}, round_half_away>;
+using rad_t = id<"[-4..4] 1/1'000'000 round_half_away">;
+using deg_t = id<"[-360..360] 1/1'000'000 round_half_away">;
 
 template <class A, class B>
 concept can_gcd = requires(const A& a, const B& b) { math::gcd(a, b); } || requires(const A& a, const B& b) {
@@ -1011,66 +1011,66 @@ concept can_gcd = requires(const A& a, const B& b) { math::gcd(a, b); } || requi
 } // namespace
 
 TEST(UnitsMathTest, degree_to_radian_rounds_once) {
-    const quantity<si::degree, inside<{0, 360}>> a{90, si::degree};
+    const id<"[0..360] [deg]"> a{90, si::degree};
     const auto                                   r = value_cast<si::radian, rad_t>(a);
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(r)>::rep, rad_t>);
     EXPECT_EQ(rational{r.numerical_value_in(si::radian)}, rational(1570796, 1'000'000)); // π/2 = 1.5707963…
-    const auto n = value_cast<si::radian, rad_t>(quantity<si::degree, inside<{-360, 0}>>{-90, si::degree});
+    const auto n = value_cast<si::radian, rad_t>(id<"[-360..0] [deg]">{-90, si::degree});
     EXPECT_EQ(rational{n.numerical_value_in(si::radian)}, rational(-1570796, 1'000'000));
     // And back: 1 rad = 57.2957795…°.
-    const auto d = value_cast<si::degree, deg_t>(quantity<si::radian, inside<{0, 2}>>{1, si::radian});
+    const auto d = value_cast<si::degree, deg_t>(id<"[0..2] [rad]">{1, si::radian});
     EXPECT_EQ(rational{d.numerical_value_in(si::degree)}, rational(57295780, 1'000'000));
     // 0 is exact.
-    EXPECT_EQ((value_cast<si::radian, rad_t>(quantity<si::degree, inside<{0, 360}>>{0, si::degree})
+    EXPECT_EQ((value_cast<si::radian, rad_t>(id<"[0..360] [deg]">{0, si::degree})
                    .numerical_value_in(si::radian)),
               0);
     // A rational factor stays exact: arcminute → degree.
-    const auto m = value_cast<si::degree, inside<{{0, 1}, per<60>}>>(just<30> * si::arcminute);
+    const auto m = value_cast<si::degree, id<"[0..1] 1/60">>(just<30> * si::arcminute);
     EXPECT_EQ(rational{m.numerical_value_in(si::degree)}, rational(1, 2));
 }
 
 TEST(UnitsMathTest, roots_take_the_units_root) {
-    using area_t = quantity<isq::area[square(si::metre)], inside<{{0, 100}, per<1000>}, round_half_away>>;
+    using area_t = id<"[0..100] 1/1000 [m^2]{area} round_half_away">;
     const auto s = math::sqrt(area_t{2, isq::area[square(si::metre)]});
     static_assert(std::remove_cvref_t<decltype(s)>::unit == si::metre.value);
     static_assert(std::remove_cvref_t<decltype(s)>::reference.kind()->Name == "length");
     EXPECT_EQ(rational{s.numerical_value_in(si::metre)}, rational(1414, 1000));
     const auto c =
-        math::cbrt(quantity<cubic(si::metre), inside<{{0, 1000}, per<100>}, round_half_away>>{27, cubic(si::metre)});
+        math::cbrt(id<"[0..1000] 1/100 [m^3] round_half_away">{27, cubic(si::metre)});
     EXPECT_EQ(c.numerical_value_in(si::metre), 3);
     EXPECT_EQ(to_string(c), "3.00 m"); // a decimal notch fixes the digits
 }
 
 TEST(UnitsMathTest, trigonometry_in_radians) {
-    const quantity<si::radian, rad_t> a{rational(1, 2), si::radian};
+    const id<"[-4..4] 1/1'000'000 [rad] round_half_away"> a{rational(1, 2), si::radian};
     EXPECT_EQ(rational{math::sin(a)}, rational(479426, 1'000'000)); // sin 0.5 = 0.4794255…
     // Of a dimensionless quantity: an angle in radians (of a plain inside, a number).
-    const auto t = math::atan(quantity<one, inside<{{-1, 1}, per<1000>}, round_half_away>>{1, one});
+    const auto t = math::atan(id<"[-1..1] 1/1000 [1] round_half_away">{1, one});
     EXPECT_EQ(to_string(t), "0.785 rad");
-    EXPECT_EQ(to_string(math::atan(inside<{{-1, 1}, per<1000>}, round_half_away>{1})), "0.785");
-    const auto y = quantity<si::metre, inside<{{0, 10}, per<1000>}, round_half_away>>{3, si::metre};
-    const auto x = quantity<si::kilo(si::metre), inside<{{0, 10}, per<1000>}, round_half_away>>{rational(4, 1000),
+    EXPECT_EQ(to_string(math::atan(id<"[-1..1] 1/1000 round_half_away">{1})), "0.785");
+    const auto y = id<"[0..10] 1/1000 [m] round_half_away">{3, si::metre};
+    const auto x = id<"[0..10] 1/1000 [km] round_half_away">{rational(4, 1000),
                                                                                                 si::kilo(si::metre)};
     EXPECT_EQ(rational{math::atan2(y, x).numerical_value_in(si::radian)}, rational(644, 1000)); // atan(3/4) = 0.6435…
     EXPECT_EQ(to_string(math::hypot(y, x)), "5.000 m");
 }
 
 TEST(UnitsMathTest, gcd_and_lcm_in_the_common_unit) {
-    using minutes = quantity<si::minute, inside<{1, 60}>>;
+    using minutes = id<"[1..60] [min]">;
     const minutes a{12, si::minute}, b{18, si::minute};
     EXPECT_TRUE(math::gcd(a, b) == just<6> * si::minute);
     EXPECT_TRUE(math::lcm(a, b) == just<36> * si::minute);
     EXPECT_EQ(to_string(math::lcm(a, b)), "36 min");
     // Mixed units: the common unit (3 cm and 4 mm are 30 mm and 4 mm).
-    const quantity<si::centi(si::metre), inside<{0, 10}>> c{3, si::centi(si::metre)};
-    const quantity<si::milli(si::metre), inside<{0, 100}>> m{4, si::milli(si::metre)};
+    const id<"[0..10] [cm]"> c{3, si::centi(si::metre)};
+    const id<"[0..100] [mm]"> m{4, si::milli(si::metre)};
     EXPECT_EQ(to_string(math::gcd(c, m)), "2 mm");
     EXPECT_TRUE(math::lcm(c, m) == just<6> * si::centi(si::metre));
     static_assert(!can_gcd<minutes, decltype(just<1> * si::metre)> && can_gcd<minutes, decltype(just<1> * si::hour)>);
 }
 
 TEST(UnitsMathTest, number_functions_keep_the_unit) {
-    const quantity<si::metre, inside<{{-10, 10}, per<4>}, round_half_away>> d{rational(-11, 4), si::metre};
+    const id<"[-10..10] 1/4 [m] round_half_away"> d{rational(-11, 4), si::metre};
     EXPECT_EQ(to_string(math::abs(d)), "2.75 m");
     EXPECT_EQ(math::floor(d).numerical_value_in(si::metre), -3);
     EXPECT_EQ(math::ceil(d).numerical_value_in(si::metre), -2);
@@ -1081,77 +1081,77 @@ TEST(UnitsMathTest, number_functions_keep_the_unit) {
 
 TEST(UnitsMathTest, pi_magnitudes_round_once_in_value_cast) {
     // π · 2 s → 6.283185 s: π is part of the unit until the one rounding.
-    const quantity<si::second, inside<{0, 10}>> t{2, si::second};
-    const auto s = value_cast<si::second, inside<{{0, 100}, per<1'000'000>}, round_half_away>>(pi * t);
+    const id<"[0..10] [s]"> t{2, si::second};
+    const auto s = value_cast<si::second, id<"[0..100] 1/1'000'000 round_half_away">>(pi * t);
     EXPECT_EQ(rational{s.numerical_value_in(si::second)}, rational(6283185, 1'000'000));
-    const auto h = value_cast<si::hour, inside<{{0, 1}, per<1'000'000'000>}, round_half_away>>(pi * t);
+    const auto h = value_cast<si::hour, id<"[0..1] 1/1'000'000'000 round_half_away">>(pi * t);
     EXPECT_EQ(rational{h.numerical_value_in(si::hour)}, rational(1745329, 1'000'000'000)); // 2π/3600 = 0.00174532925…
 }
 
 TEST(UnitsMathTest, named_outputs_take_checked_inputs) {
-    using out_t = inside<{{0, 100}, per<1000>}, round_half_away>;
+    using out_t = id<"[0..100] 1/1000 round_half_away">;
     // An arithmetic result is checked: the deduced sqrt refuses it, sqrt<Out> rounds onto Out.
-    const quantity<square(si::metre), inside<{0, 50}>> a{2, square(si::metre)};
+    const id<"[0..50] [m^2]"> a{2, square(si::metre)};
     const auto                                         s = math::sqrt<out_t>(a + a);
     static_assert(std::remove_cvref_t<decltype(s)>::unit == si::metre.value);
     EXPECT_EQ(to_string(s), "2.000 m");
-    EXPECT_EQ(math::cbrt<out_t>(quantity<cubic(si::metre), inside<{0, 100}>>{27, cubic(si::metre)})
+    EXPECT_EQ(math::cbrt<out_t>(id<"[0..100] [m^3]">{27, cubic(si::metre)})
                   .numerical_value_in(si::metre),
               3);
     // (A grid that reaches below 0 is a compile error: fail/sqrt_domain.)
 
-    using unit_t = inside<{{-1, 1}, per<1'000'000>}, round_half_away>;
-    const quantity<si::radian, inside<{0, 3}>> one_rad{1, si::radian};
+    using unit_t = id<"[-1..1] 1/1'000'000 round_half_away">;
+    const id<"[0..3] [rad]"> one_rad{1, si::radian};
     EXPECT_EQ(rational{math::sin<unit_t>(one_rad)}, rational(841471, 1'000'000));
     EXPECT_EQ(rational{math::cos<unit_t>(one_rad)}, rational(540302, 1'000'000));
-    using rad_out = inside<{{-4, 4}, per<1000>}, round_half_away>;
-    EXPECT_EQ(to_string(math::atan<rad_out>(quantity<one, inside<{0, 2}>>{1, one})), "0.785 rad");
+    using rad_out = id<"[-4..4] 1/1000 round_half_away">;
+    EXPECT_EQ(to_string(math::atan<rad_out>(id<"[0..2] [1]">{1, one})), "0.785 rad");
     // A dimensionless quantity is a number too: asin of 1/2 = π/6.
-    const auto half = quantity<si::metre, inside<{0, 5}>>{3, si::metre} /
-                      quantity<si::metre, inside<{5, 10}>>{6, si::metre}; // in [0, 1]
+    const auto half = id<"[0..5] [m]">{3, si::metre} /
+                      id<"[5..10] [m]">{6, si::metre}; // in [0, 1]
     EXPECT_EQ(to_string(math::asin<rad_out>(half)), "0.524 rad");
-    const auto y = quantity<si::metre, inside<{0, 10}>>{3, si::metre};
-    const auto x = quantity<si::metre, inside<{0, 10}>>{4, si::metre};
+    const auto y = id<"[0..10] [m]">{3, si::metre};
+    const auto x = id<"[0..10] [m]">{4, si::metre};
     EXPECT_EQ(to_string(math::hypot<out_t>(x, y)), "5.000 m");
     EXPECT_EQ(to_string(math::atan2<rad_out>(y, x)), "0.644 rad");
 }
 
 // The rounding mode on the deduced call works on quantities too.
 TEST(UnitsMathTest, mode_on_the_deduced_call) {
-    using area_t = quantity<square(si::metre), inside<{{0, 100}, per<1024>}>>; // no rounding policy
+    using area_t = id<"[0..100] 1/1024 [m^2]">; // no rounding policy
     static_assert(math::sqrt<round_floor>(area_t{2, square(si::metre)}).numerical_value_in(si::metre) ==
                   1.4140625_ins);
-    static_assert(math::sin<round_half_away>(quantity<si::radian, inside<{{0, 4}, per<1024>}>>{1, si::radian}) > 0);
+    static_assert(math::sin<round_half_away>(id<"[0..4] 1/1024 [rad]">{1, si::radian}) > 0);
     static_assert(
-        math::atan<round_half_away>(quantity<one, inside<{{0, 1}, per<64>}>>{1, one}).numerical_value_in(si::radian) >
+        math::atan<round_half_away>(id<"[0..1] 1/64 [1]">{1, one}).numerical_value_in(si::radian) >
         0);
 }
 // A named output on a quantity: its number alone (the unit follows the
 // function), or the whole quantity in the result's unit; specs name the
 // number's notch and policy.
 TEST(UnitsMathTest, named_number_whole_quantity_and_specs) {
-    using area_t = quantity<square(si::metre), inside<{{0, 100}, per<1024>}, round_half_away>>;
-    using L      = inside<{{0, 10}, per<4096>}, round_floor>;
+    using area_t = id<"[0..100] 1/1024 [m^2] round_half_away">;
+    using L      = id<"[0..10] 1/4096 round_floor">;
     const area_t a{2, square(si::metre)};
     const auto   n = math::sqrt<L>(a);
     static_assert(decltype(n)::unit == si::metre.value && std::same_as<decltype(n)::rep, L>);
-    EXPECT_EQ(n, (math::sqrt<quantity<si::metre, L>>(a)));
+    EXPECT_EQ(n, (math::sqrt<id<"[0..10] 1/4096 [m] round_floor">>(a)));
     EXPECT_EQ(to_string(n), "1.4140625 m"); // 5791/4096, rounded down
     const auto s = math::sqrt<per<1000>, round_ceil>(a);
     static_assert(decltype(s)::unit == si::metre.value && notch_of<decltype(s)::rep> == rational{1, 1000});
     EXPECT_EQ(to_string(s), "1.415 m");
     // atan2 and hypot: the number in the common unit, the unit the rule's.
-    const auto y = quantity<si::metre, inside<{{0, 10}, per<1000>}, round_half_away>>{3, si::metre};
-    const auto x = quantity<si::kilo(si::metre), inside<{{0, 10}, per<1000>}, round_half_away>>{rational(4, 1000),
+    const auto y = id<"[0..10] 1/1000 [m] round_half_away">{3, si::metre};
+    const auto x = id<"[0..10] 1/1000 [km] round_half_away">{rational(4, 1000),
                                                                                                 si::kilo(si::metre)};
-    EXPECT_EQ(to_string(math::atan2<inside<{{-4, 4}, per<100>}, round_half_away>>(y, x)), "0.64 rad");
+    EXPECT_EQ(to_string(math::atan2<id<"[-4..4] 1/100 round_half_away">>(y, x)), "0.64 rad");
     EXPECT_EQ(to_string(math::hypot<per<10>>(y, x)), "5.0 m");
     // A number function of a dimensionless quantity: a number, named or by spec.
-    using ratio_t = quantity<one, inside<{{1, 100}, per<64>}, round_half_away>>;
-    EXPECT_EQ((math::log10<inside<{{0, 2}, per<8>}, round_half_away>>(ratio_t{10, one})), 1);
+    using ratio_t = id<"[1..100] 1/64 [1] round_half_away">;
+    EXPECT_EQ((math::log10<id<"[0..2] 1/8 round_half_away">>(ratio_t{10, one})), 1);
     static_assert(insidable<decltype(math::log10<per<8>>(ratio_t{10, one}))>);
     // sin of degrees on a notch you name: exact at 30°.
-    EXPECT_EQ((math::sin<per<2>>(quantity<si::degree, inside<{0, 90}>>{30, si::degree})), 0.5_ins);
+    EXPECT_EQ((math::sin<per<2>>(id<"[0..90] [deg]">{30, si::degree})), 0.5_ins);
 }
 
 } // namespace units_math_tests
@@ -1204,11 +1204,11 @@ TEST(ConstantsTest, derived_constants_are_exact_products) {
     EXPECT_EQ(to_string((pc::josephson_constant * pc::magnetic_flux_quantum).in(one)), "1");
     EXPECT_EQ(to_string((pc::von_klitzing_constant * pc::conductance_quantum).in(one)), "2");
     // ħ = h/2π: a factor of π rounds once, through value_cast.
-    using fine = inside<{{0, 1}, 1e-45_g}, round_half_away>;
+    using fine = id<"[0..1] 1e-45 round_half_away">;
     EXPECT_EQ(std::format("{:.9e}", value_cast<si::joule * si::second, fine>(pc::reduced_planck_constant)),
               "1.054571818e-34 J·s");
     // E = h·ν for 540 THz, exactly.
-    const quantity<si::tera(si::hertz), inside<{0, 1000}>> nu{540, si::tera(si::hertz)};
+    const id<"[0..1000] [THz]"> nu{540, si::tera(si::hertz)};
     EXPECT_EQ(std::format("{:.9e}", (pc::planck_constant * nu).in(si::joule)), "3.578077881e-19 J");
     // c₂ = hc/k.
     EXPECT_EQ(std::format("{:.9e}", pc::second_radiation_constant.in(si::metre * si::kelvin)), "1.438776878e-02 K·m");
@@ -1223,7 +1223,7 @@ using namespace ins;
 // A conversion keeps the number's policy; pow<3>, q-- and a prefix without
 // a symbol.
 TEST(UnitsArmTest, conversion_policy_pow_decrement_and_unnamed_prefix) {
-    const quantity<si::metre, inside<{0, 100}, clamp>> q{5, si::metre};
+    const id<"[0..100] [m] clamp"> q{5, si::metre};
     const auto                                         cm = q.in(si::centi(si::metre));
     static_assert(has_flag(policy_of<std::remove_cvref_t<decltype(cm)>::rep>, clamp));
     EXPECT_EQ(to_string(cm), "500 cm");
@@ -1238,7 +1238,7 @@ TEST(UnitsArmTest, conversion_policy_pow_decrement_and_unnamed_prefix) {
 // A quantity cursor in another unit is a cursor there: the rescale keeps
 // the marker the product dropped.
 TEST(UnitsArmTest, a_quantity_cursor_converts_to_a_cursor) {
-    cursor<quantity<si::metre, inside<{0, 10}>>, 1> c;
+    cursor<id<"[0..10] [m]">, 1> c;
     ++c;
     const auto mm = c.in(si::milli(si::metre));
     static_assert(has_flag(policy_of<std::remove_cvref_t<decltype(mm)>::rep>, ins::detail::cursor_marker));
@@ -1252,10 +1252,10 @@ constexpr bool converts_to_km = requires(const Q& q) { q.template in<km>(); };
 // point + quantity, where the quantity has no exact km (its fractions would
 // pass 1024 bits there): the sum in the common unit, metres.
 TEST(UnitsArmTest, point_plus_a_quantity_without_the_point_unit) {
-    using V = inside<{{0, 1}, max_denominator{ins::grid_number{ins::detail::big_int{1} << 510}}}>;
-    const quantity<si::metre, V> q{rational{1, 3}, si::metre};
+    using V = id<key{grid{{0, 1}, max_denominator{ins::grid_number{ins::detail::big_int{1} << 510}}}}>;
+    const id<quantity_key<si::metre, V>> q{rational{1, 3}, si::metre};
     static_assert(!converts_to_km<std::remove_cvref_t<decltype(q)>>);
-    const auto p = point<km>(inside<{{0, rational{1, 1000}}, per<1000>}>{rational{1, 1000}}); // 1 m
+    const auto p = point<km>(id<"[0..1/1000] 1/1000">{rational{1, 1000}}); // 1 m
     EXPECT_EQ(to_string(p + q), "4/3 m");
 }
 } // namespace reached_arms_tests
@@ -1265,10 +1265,10 @@ TEST(UnitsArmTest, point_plus_a_quantity_without_the_point_unit) {
 namespace number_in_another_unit_tests {
 using namespace ins;
 
-using minutes    = quantity<si::minute, inside<{0, 600}>>;
-using hundredths = quantity<si::minute, inside<{{0, 600}, per<100>}, round_half_even>>;
-using metres     = quantity<si::metre, inside<{0, 5000}>>;
-using degrees    = quantity<si::degree, inside<{0, 360}>>;
+using minutes    = id<"[0..600] [min]">;
+using hundredths = id<"[0..600] 1/100 [min] round_half_even">;
+using metres     = id<"[0..5000] [m]">;
+using degrees    = id<"[0..360] [deg]">;
 
 static_assert(minutes{120, si::second} == minutes{2, si::minute});
 static_assert(minutes{1, si::hour} == minutes{60, si::minute});
@@ -1324,15 +1324,15 @@ void trig_sweep() {
     }
 }
 TEST(PiTierTest, sin_and_cos_of_degrees_match_the_exact_engine) {
-    using deg   = quantity<si::degree, inside<{{0, 360}, per<64>}>>;
-    using wide  = quantity<si::degree, inside<{{-720, 720}, per<8>}>>;
-    using tenth = quantity<si::degree, inside<{{-90, 90}, per<10>}>>;
-    trig_sweep<deg, inside<{{-1, 1}, per<(1 << 20)>}, round_half_away>>();
-    trig_sweep<deg, inside<{{-1, 1}, per<(1 << 20)>}, round_floor>>();
-    trig_sweep<wide, inside<{{-1, 1}, per<(1 << 12)>}, round_half_even>>();
-    trig_sweep<wide, inside<{{-1, 1}, per<1000>}, round_ceil>>();
-    trig_sweep<tenth, inside<{{-1, 1}, per<(1 << 30)>}, round_toward_zero>>();
-    trig_sweep<tenth, inside<{{-1, 1}, per<2>}, round_half_away>>(); // ties: 30°, 150°
+    using deg   = id<"[0..360] 1/64 [deg]">;
+    using wide  = id<"[-720..720] 1/8 [deg]">;
+    using tenth = id<"[-90..90] 1/10 [deg]">;
+    trig_sweep<deg, id<"[-1..1] 1/1048576 round_half_away">>();
+    trig_sweep<deg, id<"[-1..1] 1/1048576 round_floor">>();
+    trig_sweep<wide, id<"[-1..1] 1/4096 round_half_even">>();
+    trig_sweep<wide, id<"[-1..1] 1/1000 round_ceil">>();
+    trig_sweep<tenth, id<"[-1..1] 1/1073741824 round_toward_zero">>();
+    trig_sweep<tenth, id<"[-1..1] 1/2 round_half_away">>(); // ties: 30°, 150°
 }
 
 template <auto U, class Out, class Q>
@@ -1348,12 +1348,12 @@ void cast_sweep(auto unit) {
     }
 }
 TEST(PiTierTest, value_cast_across_pi_matches_the_exact_engine) {
-    using deg = quantity<si::degree, inside<{{-360, 360}, per<64>}>>;
-    using rad = quantity<si::radian, inside<{{-7, 7}, per<1024>}>>;
-    cast_sweep<si::radian, inside<{{-8, 8}, per<(1 << 20)>}, round_half_away>, deg>(si::degree);
-    cast_sweep<si::radian, inside<{{-8, 8}, per<(1 << 30)>}, round_floor>, deg>(si::degree);
-    cast_sweep<si::degree, inside<{{-402, 402}, per<100>}, round_half_even>, rad>(si::radian);
-    cast_sweep<si::degree, inside<{{-402, 402}, per<(1 << 16)>}, round_toward_zero>, rad>(si::radian);
+    using deg = id<"[-360..360] 1/64 [deg]">;
+    using rad = id<"[-7..7] 1/1024 [rad]">;
+    cast_sweep<si::radian, id<"[-8..8] 1/1048576 round_half_away">, deg>(si::degree);
+    cast_sweep<si::radian, id<"[-8..8] 1/1073741824 round_floor">, deg>(si::degree);
+    cast_sweep<si::degree, id<"[-402..402] 1/100 round_half_even">, rad>(si::radian);
+    cast_sweep<si::degree, id<"[-402..402] 1/65536 round_toward_zero">, rad>(si::radian);
 }
 
 // asin, acos, atan and atan2 straight into degrees: rounded once (against a long double reference, within half a
@@ -1367,8 +1367,8 @@ bool degrees_ok(const Out& got, long double radians) {
 }
 TEST(PiTierTest, arcs_into_degrees_round_once) {
     namespace entry = ins::math::detail::entry;
-    using len       = quantity<si::metre, inside<{{-8, 8}, per<4>}>>;
-    using deg       = quantity<si::degree, inside<{{-180, 180}, per<1000>}, round_half_away>>;
+    using len       = id<"[-8..8] 1/4 [m]">;
+    using deg       = id<"[-180..180] 1/1000 [deg] round_half_away">;
     int bad         = 0;
     for (const auto y : values<typename len::rep>)
         for (const auto x : values<typename len::rep>) {
@@ -1378,9 +1378,9 @@ TEST(PiTierTest, arcs_into_degrees_round_once) {
                                              static_cast<long double>(x.template to<double>())));
         }
     EXPECT_EQ(bad, 0);
-    using ratio = quantity<one, inside<{{-1, 1}, per<64>}>>;
-    using half  = quantity<si::degree, inside<{{-90, 90}, per<(1 << 16)>}, round_floor>>;
-    using whole = quantity<si::degree, inside<{{0, 180}, per<1000>}, round_half_even>>;
+    using ratio = id<"[-1..1] 1/64 [1]">;
+    using half  = id<"[-90..90] 1/65536 [deg] round_floor">;
+    using whole = id<"[0..180] 1/1000 [deg] round_half_even">;
     int bad1    = 0;
     for (const auto v : values<typename ratio::rep>) {
         const ratio       q{v, one};
@@ -1404,7 +1404,7 @@ TEST(PiTierTest, arcs_into_degrees_round_once) {
     EXPECT_TRUE(math::atan<half>(ratio{1, one}) == just<45> * si::degree);
     EXPECT_TRUE(math::atan2<deg>(len{-1, si::metre}, len{-1, si::metre}) == just<-135> * si::degree);
     // A unit C that may not hold every angle: an expected.
-    using narrow = quantity<si::degree, inside<{{-45, 45}, per<10>}, round_half_away>>;
+    using narrow = id<"[-45..45] 1/10 [deg] round_half_away">;
     static_assert(ud::is_expected_v<decltype(math::atan2<narrow>(len{}, len{}))>);
     EXPECT_EQ(math::atan2<narrow>(len{1, si::metre}, len{-1, si::metre}).error(), error::overflow);
     EXPECT_TRUE((*math::atan2<narrow>(len{1, si::metre}, len{2, si::metre}) == just<266, 10> * si::degree));
@@ -1412,8 +1412,8 @@ TEST(PiTierTest, arcs_into_degrees_round_once) {
 
 // tan of a degree angle: rounded once, exact at 0 and ±45°, its bound from the lattice point nearest a pole.
 TEST(PiTierTest, tan_of_degrees_rounds_once) {
-    using deg = quantity<si::degree, inside<{{-89.75, 89.75}, per<4>}>>;
-    using out = inside<{{-512, 512}, per<(1 << 12)>}, round_half_away>;
+    using deg = id<"[-89.75..89.75] 1/4 [deg]">;
+    using out = id<"[-512..512] 1/4096 round_half_away">;
     static_assert(std::same_as<decltype(math::tan<out>(deg{})), out>); // |tan| ≤ 1/(2·¼·(1/180)) = 360
     int bad = 0;
     for (const auto v : values<typename deg::rep>) {
@@ -1426,7 +1426,7 @@ TEST(PiTierTest, tan_of_degrees_rounds_once) {
     EXPECT_TRUE(math::tan<out>(deg{45, si::degree}) == 1 && math::tan<out>(deg{-45, si::degree}) == -1);
     EXPECT_TRUE(math::tan<out>(deg{0, si::degree}) == 0);
     // A result that may not hold every value: an expected.
-    using small = inside<{{-100, 100}, per<1000>}, round_half_away>;
+    using small = id<"[-100..100] 1/1000 round_half_away">;
     static_assert(ud::is_expected_v<decltype(math::tan<small>(deg{}))>);
     EXPECT_EQ(math::tan<small>(deg{89.5, si::degree}).error(), error::overflow);
     EXPECT_TRUE((*math::tan<small>(deg{30, si::degree}) == just<577, 1000>));

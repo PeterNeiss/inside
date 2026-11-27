@@ -5,5 +5,5 @@
 
 int main() {
     using namespace ins;
-    (void)exact_cast<quantity<si::metre, inside<{0, 100}>>>(42);
+    (void)exact_cast<id<"[0..100] [m]">>(42);
 }

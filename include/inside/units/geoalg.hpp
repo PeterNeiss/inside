@@ -535,7 +535,7 @@ namespace ins
       if constexpr (quantity_like<P>)
         return p.template in<unit_mul(U, blade_atoms(P::reference.unit()), 1)>();
       else
-        return quantity_access::make<quantity<reference_of(unit_value{}), P>>(p).template in<U>();
+        return quantity_access::make<id<quantity_key<reference_of(unit_value{}), P>>>(p).template in<U>();
     }
     template <unit_value U, class P>
     concept part_in_unit = requires(const P& p) { part_in<U>(p); };
@@ -661,7 +661,8 @@ namespace ins
 
     constexpr multivector() = default;
 
-    // From its parts, in order: multivector<inside<…>, quantity<i, …>>{3, just<4> * i}. A blade's part is a quantity.
+    // From its parts, in order: multivector<id<"[0..9]">, id<"[0..9] [i]">>{3, just<4> * i}. A blade's part is a
+    // quantity.
     template <class... A>
       requires(sizeof...(A) == sizeof...(Parts) && (std::constructible_from<Parts, A> && ...))
     constexpr explicit(!(std::convertible_to<A, Parts> && ...)) multivector(A&&... a)
@@ -741,19 +742,22 @@ namespace ins
                                                "their blades), or parts of one blade that do not add");
 
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
   [[nodiscard]] constexpr auto operator+(const QA& a, const QB& b)
   {
     return detail::mv_add(a, b);
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
   [[nodiscard]] constexpr auto operator-(const QA& a, const QB& b)
   {
     return detail::mv_add(a, -b);
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
   [[nodiscard]] constexpr bool operator==(const QA& a, const QB& b)
   {

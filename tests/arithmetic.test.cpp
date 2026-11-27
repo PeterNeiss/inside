@@ -43,7 +43,7 @@ using namespace ins::detail;
 
 // inside add
 TEST(InsideArithmeticTest, inside_add) {
-    using u8 = inside<{10, 255}>;
+    using u8 = id<"[10..255]">;
     constexpr u8 a{16};
     constexpr u8 b{220};
     static_assert(a + just<1> == 17);
@@ -55,7 +55,7 @@ TEST(InsideArithmeticTest, inside_add) {
     static_assert(a - b == -204);
 
     // works at uint64 max
-    using u64 = inside<{{0u, std::numeric_limits<std::uint64_t>::max()}, 1}>;
+    using u64 = id<key{grid{{0u, std::numeric_limits<std::uint64_t>::max()}, 1}}>;
     constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
     static_assert(biggest == rational{std::numeric_limits<std::uint64_t>::max()});
 }
@@ -68,9 +68,9 @@ TEST(InsideArithmeticTest, inside_add_mixed_notch_with_offset_storage) {
     // sum was only correct when the lhs offset happened to be 0 or notches were
     // equal. These exercise different notches AND a non-zero (and negative-Lower)
     // offset, which is where the bug surfaced.
-    using fine   = inside<{{-4, 4}, per<16>}, round_half_away>;
-    using coarse = inside<{{-8, 8}, per<256>}, round_half_away>;
-    using offset = inside<{{0, 4}, per<16>}, round_half_away>;
+    using fine   = id<"[-4..4] 1/16 round_half_away">;
+    using coarse = id<"[-8..8] 1/256 round_half_away">;
+    using offset = id<"[0..4] 1/16 round_half_away">;
 
     ASSERT_EQ((fine{0} + coarse{2}), 2);   // was -1.75
     ASSERT_EQ((offset{1} + coarse{2}), 3); // was 2.0625
@@ -85,14 +85,14 @@ TEST(InsideArithmeticTest, inside_add_mixed_notch_with_offset_storage) {
 
 // inside mul
 TEST(InsideArithmeticTest, inside_mul) {
-    using r = inside<{10, 255, 1}>;
+    using r = id<"[10..255] 1">;
     constexpr r a{16};
     constexpr r b{102};
     static_assert(a * b == 1632);
 
     // Fractional-notch ops require runtime construction from `double` (the
     // double-valued assignment specialization is not constexpr-evaluable).
-    using u4 = inside<{{0.75, 10.5}, 0.25}>;
+    using u4 = id<"[0.75..10.5] 0.25">;
     u4   d{3};
     u4   e{3.25};
     auto f = d * e;
@@ -113,7 +113,7 @@ TEST(InsideArithmeticTest, inside_mul) {
 TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     {
         SCOPED_TRACE("default returns rational raw");
-        using r = inside<{1, 255}>;
+        using r = id<"[1..255]">;
         constexpr r    a{102};
         constexpr r    b{16};
         constexpr auto c = a / b; // zero-free divisor: a plain value
@@ -122,7 +122,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("a rounding mode at the call selects the integer-storage division");
-        using ui = inside<{0, 100}, round_toward_zero>;
+        using ui = id<"[0..100] round_toward_zero">;
         constexpr ui a{51}, b{8};
         static_assert(*(a / b) == just<51, 8>); // the operator is exact, whatever the operands round
         constexpr auto e = div(a, b, round_toward_zero);
@@ -132,7 +132,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("per-call round_toward_zero");
-        using u100 = inside<{0, 100}>;
+        using u100 = id<"[0..100]">;
         constexpr u100 a{51}, b{8};
         constexpr auto d = div(a, b, round_toward_zero);
         static_assert(!(std::is_same_v<typename decltype(d)::value_type::raw_type, rational>));
@@ -141,18 +141,18 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("round_toward_zero truncates both signs");
-        using s100 = inside<{-100, 100}>;
-        using pos  = inside<{1, 100}>;
+        using s100 = id<"[-100..100]">;
+        using pos  = id<"[1..100]">;
         static_assert(div(s100{-7}, pos{2}, round_toward_zero) == -3);
         static_assert(div(s100{7}, pos{2}, round_toward_zero) == 3);
         static_assert(round_toward_zero == round_toward_zero);
-        using t = inside<{0, 10}, round_toward_zero>;
+        using t = id<"[0..10] round_toward_zero">;
         static_assert(t{rational{29, 10}} == 2);
     }
 
     {
         SCOPED_TRACE("division by zero -> error::division_by_zero");
-        using ui = inside<{0, 100}, round_toward_zero>;
+        using ui = id<"[0..100] round_toward_zero">;
         ui a{51}, zero{0};
         ASSERT_FALSE((a / zero).has_value());
         ASSERT_EQ((a / zero).error(), error::division_by_zero);
@@ -160,7 +160,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("offset-encoded storage takes integer path");
-        using off = inside<{200, 300}>;
+        using off = id<"[200..300]">;
         static_assert(!(value_storage<off>));
         static_assert(index_storage<off>);
 
@@ -173,7 +173,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("non-unit notch trunc");
-        using step2 = inside<{{0, 10}, 2}>;
+        using step2 = id<"[0..10] 2">;
         constexpr step2 a{10}, b{6};
         constexpr auto  q = div(a, b, round_toward_zero);
         static_assert(*q == 1);
@@ -181,7 +181,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("offset + non-unit notch");
-        using step5 = inside<{{5, 15}, 5}>;
+        using step5 = id<"[5..15] 5">;
         constexpr step5 a{15}, b{5};
         constexpr auto  q = div(a, b, round_toward_zero);
         // {5,15} excludes zero → plain inside result.
@@ -190,7 +190,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("signed integer division truncates toward zero");
-        using si = inside<{-100, 100}, round_toward_zero>;
+        using si = id<"[-100..100] round_toward_zero">;
         constexpr si   a{-7}, b{2};
         constexpr auto q = div(a, b, round_toward_zero);
         static_assert(*q == -3);
@@ -198,9 +198,9 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("divisor grid excluding zero yields a non-expected result");
-        using num   = inside<{0, 100}, round_toward_zero>;
-        using pos   = inside<{1, 10}, round_toward_zero>;  // grid excludes zero
-        using spanz = inside<{-5, 10}, round_toward_zero>; // grid straddles zero
+        using num   = id<"[0..100] round_toward_zero">;
+        using pos   = id<"[1..10] round_toward_zero">;     // grid excludes zero
+        using spanz = id<"[-5..10] round_toward_zero">;    // grid straddles zero
 
         constexpr num   a{42};
         constexpr pos   p{3};
@@ -218,8 +218,8 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     }
     {
         SCOPED_TRACE("exact division: a zero-free divisor whose quotient provably fits");
-        using val = inside<{-100, 100}>;
-        using pos = inside<{1, 100}>;
+        using val = id<"[-100..100]">;
+        using pos = id<"[1..100]">;
         constexpr val n{-7};
         constexpr pos d{2};
         // The exact quotient's 64-bit rational cannot overflow on these grids, and
@@ -231,8 +231,8 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         // Grids whose values need 2^40 denominators: the quotient's
         // denominators reach 2^81, past the 64-bit rational: a fraction sized
         // from the bound holds it.
-        using fine = inside<{{0, 1}, rational{1, std::uint64_t{1} << 40}}>;
-        using fpos = inside<{{1, 2}, rational{1, std::uint64_t{1} << 40}}>;
+        using fine = id<key{grid{{0, 1}, rational{1, std::uint64_t{1} << 40}}}>;
+        using fpos = id<key{grid{{1, 2}, rational{1, std::uint64_t{1} << 40}}}>;
         static_assert(!is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
         EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == (just<1, 3>));
     }
@@ -240,7 +240,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
 // inside modulo
 TEST(InsideArithmeticTest, inside_modulo) {
-    using ui = inside<{0, 100}, round_toward_zero>;
+    using ui = id<"[0..100] round_toward_zero">;
     constexpr ui a{17}, b{5};
     static_assert(*(a % b) == 2);
 
@@ -252,11 +252,11 @@ TEST(InsideArithmeticTest, inside_modulo) {
     ASSERT_FALSE((a_rt % zero).has_value());
     ASSERT_EQ((a_rt % zero).error(), error::division_by_zero);
 
-    using si = inside<{-100, 100}, round_toward_zero>;
+    using si = id<"[-100..100] round_toward_zero">;
     constexpr si sa{-17}, sb{5};
     static_assert(*(sa % sb) == -2);
 
-    using u50 = inside<{0, 50}>;
+    using u50 = id<"[0..50]">;
     constexpr u50  e{23}, f{7};
     constexpr auto r = mod(e, f, round_toward_zero);
     static_assert(*r == 2);
@@ -264,7 +264,7 @@ TEST(InsideArithmeticTest, inside_modulo) {
 
 // inside expected ops propagate the error
 TEST(InsideArithmeticTest, inside_expected_ops_propagate_error) {
-    using u8 = inside<{1, 255}>;
+    using u8 = id<"[1..255]">;
     constexpr u8 a{100}, b{10};
     struct ex {
         static constexpr std::expected<u8, error> ok(u8 v) { return v; }
@@ -295,7 +295,7 @@ TEST(InsideArithmeticTest, inside_expected_ops_propagate_error) {
 
 // inside rational-storage expected ops do not double-wrap
 TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wrap) {
-    using frac   = inside<{{-10, 10}, max_denominator{100}}>;
+    using frac   = id<"[-10..10] <100>">;
     frac f1      = (2_r / 3);
     frac f2      = (1_r / 3);
     auto ok      = [](frac v) -> std::expected<frac, error> { return v; };
@@ -310,7 +310,7 @@ TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wr
     ASSERT_EQ(*(ok(f1) - f2), (1_r / 3));
     ASSERT_EQ(*(ok(f1) * f2), (2_r / 9));
 
-    using pfrac = inside<{{1, 10}, max_denominator{100}}>;
+    using pfrac = id<"[1..10] <100>">;
     pfrac p1 = 3, p2 = 2;
     auto  pok = [](pfrac v) -> std::expected<pfrac, error> { return v; };
     ASSERT_EQ(*(pok(p1) / p2), (3_r / 2));
@@ -318,7 +318,7 @@ TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wr
 
 // The free div reports a zero divisor in its result, and into an error&.
 TEST(InsideArithmeticTest, free_div_reports_a_zero_divisor) {
-    using c100 = inside<{0, 100}, checked>;
+    using c100 = id<"[0..100]">;
     c100 d{50}, z{0};
 
     error seen{};
@@ -347,18 +347,18 @@ TEST(InsideArithmeticTest, unary_ins_composes_through_the_literal_parser) {
 
 // constexpr arithmetic
 TEST(InsideArithmeticTest, constexpr_arithmetic) {
-    using u100 = inside<{0, 100}>;
+    using u100 = id<"[0..100]">;
     constexpr u100 a{30}, b{20};
     static_assert(a + b == 50);
     static_assert(a - b == 10);
     static_assert(b - a == -10);
 
-    using u10 = inside<{1, 10}>;
+    using u10 = id<"[1..10]">;
     constexpr u10 m{3}, n{7};
     static_assert(m * n == 21);
     static_assert(-a == -30);
 
-    using s50 = inside<{-50, 50}>;
+    using s50 = id<"[-50..50]">;
     constexpr s50 sa{-20}, sb{30};
     static_assert(sa + sb == 10);
     static_assert(sa - sb == -50);
@@ -367,7 +367,7 @@ TEST(InsideArithmeticTest, constexpr_arithmetic) {
 
 // scalars need a grid to join inside arithmetic
 TEST(InsideArithmeticTest, scalars_need_a_grid_to_join_inside_arithmetic) {
-    using bin_t = inside<{0, 9}>;
+    using bin_t = id<"[0..9]">;
     bin_t b{5};
 
     // A literal given a grid (`_ins` / `just<N>`) widens like any other inside, so
@@ -393,7 +393,7 @@ TEST(InsideArithmeticTest, scalars_need_a_grid_to_join_inside_arithmetic) {
 
 // exact scalar math stays in inside-space
 TEST(InsideArithmeticTest, exact_scalar_math_stays_in_inside_space) {
-    using rn = inside<{{-100, 100}, per<16>}, round_half_away>;
+    using rn = id<"[-100..100] 1/16 round_half_away">;
     rn a{0.5_r}; // 0.5
 
     // The old mixed-mode `inside op rational` overloads are gone: a scalar joins
@@ -419,7 +419,7 @@ TEST(InsideArithmeticTest, exact_scalar_math_stays_in_inside_space) {
 // ins::sum - bulk reduction with one deferred check
 TEST(InsideArithmeticTest, ins_sum_bulk_reduction_with_one_deferred_check) {
     // Integer raws (fast path): matches the naive += total.
-    using elem = inside<{0, 200'000}, checked>;
+    using elem = id<"[0..200'000]">;
     std::vector<elem> v(1000);
     for (std::size_t i = 0; i < v.size(); ++i)
         v[i] = test::store<elem>(static_cast<int>(i % 5));
@@ -427,56 +427,56 @@ TEST(InsideArithmeticTest, ins_sum_bulk_reduction_with_one_deferred_check) {
 
     // The TOTAL is validated, not the running prefix: a clamp target clips
     // once at the end.
-    using clamped = inside<{0, 100}, clamp>;
+    using clamped = id<"[0..100] clamp">;
     ASSERT_TRUE(ins::sum<clamped>(v) == 100);
 
     // Q-format elements (index raw): exact fractional accumulation.
-    using q = inside<{{0, 4}, per<256>}, round_half_away>;
+    using q = id<"[0..4] 1/256 round_half_away">;
     std::vector<q> qs(3, q{rational{1, 256}});
-    using qsum = inside<{{0, 16}, per<256>}, round_half_away>;
+    using qsum = id<"[0..16] 1/256 round_half_away">;
     ASSERT_EQ(rational{*ins::sum<qsum>(qs)}, (rational{3, 256}));
 
     // 64-bit raws whose index total passes 64 bits: summed exactly.
-    using u64 = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
+    using u64 = id<key{grid{0, std::numeric_limits<std::uint64_t>::max()}}>;
     std::vector<u64> big(4, u64{std::numeric_limits<std::uint64_t>::max()});
-    using wide_total = inside<{0, std::numeric_limits<std::uint64_t>::max()}, clamp>;
+    using wide_total = id<key{grid{0, std::numeric_limits<std::uint64_t>::max()}, clamp}>;
     ASSERT_TRUE(ins::sum<wide_total>(big) == std::numeric_limits<std::uint64_t>::max());
 
     // A continuous total past the target is reported through the target's
     // policy (not bad_expected_access).
-    using cont = inside<{{0, 1}, max_denominator{10}}>;
+    using cont = id<"[0..1] <10>">;
     std::vector<cont> c{cont{rational{3, 5}}, cont{rational{7, 10}}};
     ASSERT_EQ(ins::sum<cont>(c).error(), error::overflow); // 13/10
 
     // Blocks: 32-bit lanes take ⌊(2^32 − 1)/max raw⌋ elements (unsigned)
     // or ⌊(2^31 − 1)/max |raw|⌋ (signed) at a time; ranges longer than a
     // block, at every raw's maximum, add exactly.
-    using u200k = inside<{0, 200'000}>;
+    using u200k = id<"[0..200'000]">;
     static_assert(detail::lane32_block<u200k> == 21474);
     std::vector<u200k> hi(50'000, u200k{200'000});
-    using total_t = inside<{0, 20'000'000'000}>;
+    using total_t = id<"[0..20'000'000'000]">;
     ASSERT_TRUE(ins::sum<total_t>(hi) == 10'000'000'000);
-    using s100k = inside<{-100'000, 100'000}>;
+    using s100k = id<"[-100'000..100'000]">;
     static_assert(detail::lane32_block<s100k> == 21474);
     std::vector<s100k> lo(50'001, s100k{-100'000});
     lo.back()          = 7;
-    using signed_total = inside<{-10'000'000'000, 10'000'000'000}>;
+    using signed_total = id<"[-10'000'000'000..10'000'000'000]">;
     ASSERT_TRUE(ins::sum<signed_total>(lo) == -4'999'999'993);
     // Q-format index raws (offsets from Lower) in lanes too.
-    using qi = inside<{{-8, 8}, per<16384>}>;
+    using qi = id<"[-8..8] 1/16384">;
     std::vector<qi> qv(40'000, qi{rational{-3, 16384}});
-    using qtotal = inside<{{-200'000, 200'000}, per<16384>}>;
+    using qtotal = id<"[-200'000..200'000] 1/16384">;
     ASSERT_EQ(rational{*ins::sum<qtotal>(qv)}, (rational{-120'000, 16384}));
     // Raws near 2^31: a 32-bit lane holds two, too few, so int64 blocks.
-    using near = inside<{0, 0x7fff'fff0}>;
+    using near = id<"[0..0x7fff'fff0]">;
     static_assert(detail::lane32_block<near> == 2);
     std::vector<near> nv(5, near{0x7fff'fff0});
-    using ntotal = inside<{0, 0x7'ffff'ffff}>;
+    using ntotal = id<"[0..0x7'ffff'ffff]">;
     ASSERT_TRUE(ins::sum<ntotal>(nv) == 5 * std::int64_t{0x7fff'fff0});
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the
-// DESIGNED ban — `1_ins` / `just<V>` / `inside<{lo,hi}>::try_make(n)` are the API. Since
+// DESIGNED ban — `1_ins` / `just<V>` / `id<key{grid{lo,hi}}>::try_make(n)` are the API. Since
 // 2026-10-31 the guidance overloads are deleted (their reason is the fix), so
 // probes answer false like for every operation that cannot compile. An
 // accidentally-introduced real widening overload would make a probe true.
@@ -490,7 +490,7 @@ template <class A, class B>
 concept over_ok = requires(A a, B b) { a / b; };
 // scalar-operand ban: guidance overloads pinned
 TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
 
     static_assert(!plus_ok<pct, int> && !minus_ok<pct, int> && !times_ok<pct, int> && !over_ok<pct, int>);
     static_assert(!plus_ok<int, pct> && !times_ok<double, pct> && !times_ok<pct, double>);
@@ -509,7 +509,7 @@ TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
 
 // inside-space geometry helpers: dot / cross / lerp
 TEST(InsideArithmeticTest, inside_space_geometry_helpers_dot_cross_lerp) {
-    using coord = inside<{-10, 10}>;
+    using coord = id<"[-10..10]">;
 
     // dot(a, b) = ax*bx + ay*by ; cross(a, b) = ax*by - ay*bx (z-component).
     static_assert(coord{3} * coord{1} + coord{4} * coord{2} == 11);
@@ -523,8 +523,8 @@ TEST(InsideArithmeticTest, inside_space_geometry_helpers_dot_cross_lerp) {
     static_assert(!std::same_as<decltype(coord{1} * coord{0} + coord{0} * coord{1}), coord>);
 
     // lerp(a, b, t) = a + (b - a) * t, with t a [0, 1] fixed-point inside.
-    using val = inside<{0, 10}>;
-    using t_t = inside<{{0, 1}, per<4>}, round_half_away>;
+    using val = id<"[0..10]">;
+    using t_t = id<"[0..1] 1/4 round_half_away">;
     static_assert(lerp(val{2}, val{8}, t_t{0}) == 2);   // t = 0 -> a
     static_assert(lerp(val{2}, val{8}, t_t{1}) == 8);   // t = 1 -> b
     static_assert(lerp(val{2}, val{8}, t_t{0.5}) == 5); // midpoint (exact)
@@ -604,37 +604,37 @@ void check_cross(const std::vector<double>& va, const std::vector<double>& vb) {
 
 // cross-grid compare/arith: differing notches (1/2 vs 1/4)
 TEST(CrossGridTest, cross_grid_compare_arith_differing_notches_1_2_vs_1_4) {
-    using A = inside<{{-8, 8}, per<2>}>;
-    using B = inside<{{-8, 8}, per<4>}>;
+    using A = id<"[-8..8] 1/2">;
+    using B = id<"[-8..8] 1/4">;
     check_cross<A, B>(sweep(-8, 8, 0.5), sweep(-8, 8, 0.25));
 }
 
 // cross-grid compare/arith: integer vs half-notch, different offset
 TEST(CrossGridTest, cross_grid_compare_arith_integer_vs_half_notch_different_offset) {
-    using A = inside<{0, 100}>;         // notch 1, Lower 0
-    using B = inside<{{-50, 50}, 0.5}>; // notch 1/2, Lower -50
+    using A = id<"[0..100]">;           // notch 1, Lower 0
+    using B = id<"[-50..50] 0.5">;      // notch 1/2, Lower -50
     check_cross<A, B>(sweep(0, 100, 1.0), sweep(-50, 50, 0.5));
 }
 
 // cross-grid compare/arith: quarter-notch vs unit signed
 TEST(CrossGridTest, cross_grid_compare_arith_quarter_notch_vs_unit_signed) {
-    using A = inside<{{-8, 8}, per<4>}>;
-    using B = inside<{-3, 7}>;
+    using A = id<"[-8..8] 1/4">;
+    using B = id<"[-3..7]">;
     check_cross<A, B>(sweep(-8, 8, 0.25), sweep(-3, 7, 1.0));
 }
 
 // cross-grid compare/arith: Q8.8 vs Q1.14 (power-of-two notches)
 TEST(CrossGridTest, cross_grid_compare_arith_q8_8_vs_q1_14_power_of_two_notches) {
-    using A = inside<{{0, 255}, per<256>}>;
-    using B = inside<{{-1, 1}, per<16384>}>;
+    using A = id<"[0..255] 1/256">;
+    using B = id<"[-1..1] 1/16384">;
     // Values chosen on both grids' common refinement (1/256) so the oracle stays exact.
     check_cross<A, B>(sweep(0, 4, 1.0 / 256 * 37), sweep(-1, 1, 1.0 / 256 * 5));
 }
 
 // cross-grid compare/arith: asymmetric offsets, same notch
 TEST(CrossGridTest, cross_grid_compare_arith_asymmetric_offsets_same_notch) {
-    using A = inside<{{-7, 11}, 0.25}>;
-    using B = inside<{{3, 30}, 0.25}>;
+    using A = id<"[-7..11] 0.25">;
+    using B = id<"[3..30] 0.25">;
     check_cross<A, B>(sweep(-7, 11, 0.5), sweep(3, 30, 0.75));
 }
 
@@ -645,8 +645,8 @@ TEST(CrossGridTest, cross_grid_compare_arith_asymmetric_offsets_same_notch) {
 // now gated on integer_lattice of BOTH operands (matching multiplication).
 // regression: fractional + integer value-storage keeps the fraction
 TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction) {
-    using Frac = inside<{{-8, 8}, per<4>}>; // fractional, notch-offset storage
-    using Int  = inside<{-3, 7}>;           // integer, value storage
+    using Frac = id<"[-8..8] 1/4">;         // fractional, notch-offset storage
+    using Int  = id<"[-3..7]">;             // integer, value storage
 
     ASSERT_TRUE((static_cast<rational>(Frac{-7.75} + Int{-3}) == rational{43, -4})); // -10.75
     ASSERT_TRUE((static_cast<rational>(Frac{0.25} + Int{2}) == rational{9u, 4}));    //   2.25
@@ -661,23 +661,23 @@ TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction
 // value-index path).
 //---------------------------------------------------------------------------
 TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
-    using whole    = inside<{0, 100}>;
-    using quarters = inside<{{0, 1}, per<4>}>;
+    using whole    = id<"[0..100]">;
+    using quarters = id<"[0..1] 1/4">;
     static_assert(!detail::rational_storage<decltype(whole{} + quarters{})>);
     static_assert(whole{3} + quarters{0.75_r} == 3.75_r);
 
-    using tenths       = inside<{{0, 100}, per<10>}>;
-    using quarter_grid = inside<{{0, 100}, per<4>}, round_half_away>;
+    using tenths       = id<"[0..100] 1/10">;
+    using quarter_grid = id<"[0..100] 1/4 round_half_away">;
     static_assert(detail::assignment<quarter_grid, tenths>::affine_map.Ok);
 
     // fp-backed operands: the sum is exact either way.
-    using coarse_real = inside<{{0, (std::uint64_t{1} << 40)}, per<2>}>;
-    using fine_real   = inside<{{0, 1}, per<(1u << 20)>}>;
+    using coarse_real = id<key{grid{{0, (std::uint64_t{1} << 40)}, per<2>}}>;
+    using fine_real   = id<key{grid{{0, 1}, per<(1u << 20)>}}>;
     EXPECT_TRUE(coarse_real{1.5_r} + fine_real{0.25_r} == 1.75_r);
 
     // value check across a negative Lower, at compile time (constexpr path).
-    using signed_whole = inside<{-50, 50}>;
-    using eighths      = inside<{{-2, 2}, per<8>}>;
+    using signed_whole = id<"[-50..50]">;
+    using eighths      = id<"[-2..2] 1/8">;
     static_assert(rational{signed_whole{-7} + eighths{-0.625_ins}} == rational{std::uint64_t{61}, std::int64_t{-8}});
 }
 
@@ -685,31 +685,31 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
 TEST(CrossGridTest, cross_grid_assign_keeps_the_value) {
     // An inside source stores its exact value; rounding only where the source
     // is off the target grid.
-    using thirds = inside<{{0, 4}, per<3>}, round_half_away>;
+    using thirds = id<"[0..4] 1/3 round_half_away">;
 
-    using index_src = inside<{{0, 4}, per<3>}, round_half_away>;
+    using index_src = id<"[0..4] 1/3 round_half_away">;
     thirds from_step;
     from_step = index_src{rational{7, 3}};
     ASSERT_EQ(rational{from_step}, (rational{7, 3}));
 
-    using wide_thirds = inside<{{-4, 4}, per<3>}, round_half_away>;
+    using wide_thirds = id<"[-4..4] 1/3 round_half_away">;
     thirds from_exact;
     from_exact = test::store<thirds>(wide_thirds{rational{5, 3}});
     ASSERT_EQ(rational{from_exact}, (rational{5, 3}));
 
-    using value_src = inside<{0, 4}, round_toward_zero>;
+    using value_src = id<"[0..4] round_toward_zero">;
     thirds from_value_raw;
     from_value_raw = value_src{3};
     ASSERT_EQ(rational{from_value_raw}, rational{3});
 
-    using dyadic_src = inside<{{0, 4}, per<256>}, round_half_away>;
-    using dyadic     = inside<{{0, 4}, per<256>}, round_half_away>;
+    using dyadic_src = id<"[0..4] 1/256 round_half_away">;
+    using dyadic     = id<"[0..4] 1/256 round_half_away">;
     dyadic from_dyadic;
     from_dyadic = dyadic_src{rational{513, 256}};
     ASSERT_EQ(rational{from_dyadic}, (rational{513, 256}));
 
     // rounding still happens when the source is off the target grid
-    using units = inside<{{0, 4}, 1}, round_half_away>;
+    using units = id<"[0..4] 1 round_half_away">;
     units rounded;
     rounded = index_src{rational{7, 3}}; // 2.33 -> 2 on the unit grid
     ASSERT_EQ(rational{rounded}, rational{2});
@@ -720,7 +720,7 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
     // Q-format (index raw) vs integral scalar takes the cross-multiplied
     // integer arm; every verdict must match the exact rational comparison,
     // including at A's numeric_limits extremes.
-    using q88 = inside<{{0, 255}, per<256>}, round_half_away>;
+    using q88 = id<"[0..255] 1/256 round_half_away">;
     static_assert(scalar_index_cmp_fits<q88, int>);
 
     auto agree = [](auto probe, auto scalar) {
@@ -739,7 +739,7 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
     }
 
     // offset index grid (negative Lower -> nonzero bias)
-    using offset_q = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using offset_q = id<"[-8..8] 1/16384 round_half_away">;
     static_assert(scalar_index_cmp_fits<offset_q, int>);
     for (int scalar : {std::numeric_limits<int>::min(), -9, -8, -1, 0, 1, 8, std::numeric_limits<int>::max()}) {
         agree(offset_q{-8}, scalar);
@@ -759,8 +759,8 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
 // A continuous operand makes a sum continuous (gcd(0, 1) = 1 is a point's
 // rule, not a continuous grid's): 3/10 + 5 is 53/10, not a notch-1 value.
 TEST(CrossGridTest, continuous_plus_notched_is_continuous) {
-    using C = inside<{{-8, 8}, max_denominator{10}}>;
-    using I = inside<{0, 10}>;
+    using C = id<"[-8..8] <10>">;
+    using I = id<"[0..10]">;
     static_assert(notch_of<decltype(C{} + I{})> == 0);
     EXPECT_EQ((rational{C{rational{3, 10}} + I{5}}), (rational{53, 10}));
     EXPECT_EQ((rational{I{5} - C{rational{3, 10}}}), (rational{47, 10}));
@@ -777,21 +777,21 @@ using namespace ins::detail;
 
 // signed storage type selection
 TEST(SignedTest, signed_storage_type_selection) {
-    using s8  = inside<{-127, 127}>;
-    using s16 = inside<{-32000, 32000}>;
-    using s32 = inside<{-100000, 100000}>;
+    using s8  = id<"[-127..127]">;
+    using s16 = id<"[-32000..32000]">;
+    using s32 = id<"[-100000..100000]">;
     static_assert(std::is_same_v<typename s8::raw_type, std::int8_t>);
     static_assert(std::is_same_v<typename s16::raw_type, std::int16_t>);
     static_assert(std::is_same_v<typename s32::raw_type, std::int32_t>);
 
     // fractional notch with negative lower stays unsigned (notch storage)
-    using frac_neg = inside<{{-10, 10}, 0.25}>;
+    using frac_neg = id<"[-10..10] 0.25">;
     static_assert(std::is_unsigned_v<typename frac_neg::raw_type>);
 }
 
 // signed construction and arithmetic
 TEST(SignedTest, signed_construction_and_arithmetic) {
-    using s32 = inside<{-100000, 100000}>;
+    using s32 = id<"[-100000..100000]">;
     s32 a{42};
     s32 b{-300};
     ASSERT_EQ(a, 42);
@@ -823,7 +823,7 @@ TEST(SignedTest, signed_construction_and_arithmetic) {
 
 // signed storage uses the type's full range, including its minimum
 TEST(SignedTest, signed_storage_uses_full_range_including_minimum) {
-    using s8 = inside<{-128, 127}>;
+    using s8 = id<"[-128..127]">;
     static_assert(sizeof(s8) == 1);
     s8 min_val{-128};
     ASSERT_EQ(min_val, -128);
@@ -838,7 +838,7 @@ TEST(SignedTest, signed_storage_uses_full_range_including_minimum) {
 // adds lower_of<L> back for value-storage targets.
 // signed value-storage ctor from rational/double preserves value
 TEST(SignedTest, signed_direct_ctor_from_rational_double_preserves_value) {
-    using temp = inside<{-40, 60}>;
+    using temp = id<"[-40..60]">;
 
     ASSERT_EQ(temp{-40_r}, -40);
     ASSERT_EQ(temp{rational{42}}, 42);
@@ -854,15 +854,15 @@ TEST(SignedTest, signed_direct_ctor_from_rational_double_preserves_value) {
 // inside-to-inside assignment preserves value across value storages
 TEST(SignedTest, inside_to_inside_assignment_preserves_value_across_direct_storages) {
     // unsigned value-storage → signed value-storage
-    using upos = inside<{0, 30}>;
-    using s40  = inside<{-40, 50}>;
+    using upos = id<"[0..30]">;
+    using s40  = id<"[-40..50]">;
     upos u{25};
     s40  s{u};
     ASSERT_EQ(s, 25);
     ASSERT_EQ(s.raw(), 25);
 
     // signed value-storage → signed value-storage (different grids)
-    using s2 = inside<{-20, 30}>;
+    using s2 = id<"[-20..30]">;
     s2  s2v{15};
     s40 s40v{s2v};
     ASSERT_EQ(s40v, 15);
@@ -876,14 +876,14 @@ TEST(SignedTest, inside_to_inside_assignment_preserves_value_across_direct_stora
 
 // mixed signed/unsigned arithmetic
 TEST(SignedTest, mixed_signed_unsigned_arithmetic) {
-    using u100 = inside<{0, 100}>;
-    using s32  = inside<{-100000, 100000}>;
+    using u100 = id<"[0..100]">;
+    using s32  = id<"[-100000..100000]">;
     u100 u{80};
     s32  s{-500};
     auto mixed = u + s;
     ASSERT_EQ(mixed, -420);
 
-    using u8 = inside<{0, 255}>;
+    using u8 = id<"[0..255]">;
     u8   p{10}, q{200};
     auto d = p - q;
     ASSERT_EQ(d, -190);
@@ -891,18 +891,18 @@ TEST(SignedTest, mixed_signed_unsigned_arithmetic) {
 
 // signed clamp / wrap
 TEST(SignedTest, signed_clamp_wrap) {
-    using sc = inside<{-100, 100}, clamp>;
+    using sc = id<"[-100..100] clamp">;
     ASSERT_EQ(sc{200}, 100);
     ASSERT_EQ(sc{-200}, -100);
 
-    using sw = inside<{-100, 100}, wrap>;
+    using sw = id<"[-100..100] wrap">;
     ASSERT_EQ(sw{150}, -51);
     ASSERT_EQ(sw{-150}, 51);
 }
 
 // signed expected helpers
 TEST(SignedTest, signed_expected_helpers) {
-    using s32    = inside<{-100000, 100000}>;
+    using s32    = id<"[-100000..100000]">;
     auto a       = []() -> std::expected<s32, error> { return s32{42}; };
     auto failing = []() -> std::expected<s32, error> { return std::unexpected{error::overflow}; };
 
@@ -914,8 +914,8 @@ TEST(SignedTest, signed_expected_helpers) {
 
 // comparison across grids
 TEST(SignedTest, comparison_across_grids) {
-    using u100 = inside<{0, 100}>;
-    using u50  = inside<{0, 50}>;
+    using u100 = id<"[0..100]">;
+    using u50  = id<"[0..50]">;
     u100 a{30}, b{50};
     u50  c{30};
 
@@ -925,7 +925,7 @@ TEST(SignedTest, comparison_across_grids) {
     ASSERT_EQ(a, 30);
     ASSERT_TRUE(b > 25);
 
-    using s100 = inside<{-100, 100}>;
+    using s100 = id<"[-100..100]">;
     s100 neg{-30}, pos{30};
     ASSERT_TRUE(neg < pos);
 }
@@ -978,11 +978,11 @@ constexpr std::int64_t reference_remainder(std::int64_t a, std::int64_t b, mode 
 // range's ends are reached (no slack) except at nearest-mode ties.
 template <mode M, auto Flag, grid GA, grid GB>
 void expect_tight_remainder(bool ends_reached) {
-    using R                    = decltype(mod(inside<GA>{}, inside<GB>{}, Flag));
+    using R                    = decltype(mod(id<key{GA}>{}, id<key{GB}>{}, Flag));
     std::int64_t       seen_lo = hi<R>() + 1;
     std::int64_t       seen_hi = lo<R>() - 1;
-    const std::int64_t a_lo = lo<inside<GA>>(), a_hi = hi<inside<GA>>();
-    const std::int64_t b_lo = lo<inside<GB>>(), b_hi = hi<inside<GB>>();
+    const std::int64_t a_lo = lo<id<key{GA}>>(), a_hi = hi<id<key{GA}>>();
+    const std::int64_t b_lo = lo<id<key{GB}>>(), b_hi = hi<id<key{GB}>>();
     for (std::int64_t a = a_lo; a <= a_hi; ++a)
         for (std::int64_t b = b_lo; b <= b_hi; ++b) {
             if (b == 0)
@@ -1020,50 +1020,50 @@ TEST(ResultGridsTest, remainder_holds_exactly_what_each_mode_produces) {
 }
 
 TEST(ResultGridsTest, remainder_is_bounded_by_the_dividend) {
-    using small = inside<{0, 3}>;
-    using big   = inside<{1, 100}>;
-    static_assert(std::is_same_v<decltype(small{} % big{}), inside<{0, 3}>>);
-    static_assert(std::is_same_v<decltype(inside<{-100, 0}>{} % big{}), inside<{-99, 0}>>);
-    static_assert(std::is_same_v<decltype(mod(inside<{-100, 100}>{}, big{}, round_floor)), inside<{0, 99}>>);
-    static_assert(std::is_same_v<decltype(divmod(small{}, big{}).Remainder), inside<{0, 3}>>);
+    using small = id<"[0..3]">;
+    using big   = id<"[1..100]">;
+    static_assert(std::is_same_v<decltype(small{} % big{}), id<"[0..3]">>);
+    static_assert(std::is_same_v<decltype(id<"[-100..0]">{} % big{}), id<"[-99..0]">>);
+    static_assert(std::is_same_v<decltype(mod(id<"[-100..100]">{}, big{}, round_floor)), id<"[0..99]">>);
+    static_assert(std::is_same_v<decltype(divmod(small{}, big{}).Remainder), id<"[0..3]">>);
 }
 
 TEST(ResultGridsTest, min_and_max_hold_the_values_they_can_take) {
-    using a_t = inside<{0, 100}>;
-    using c_t = inside<{0, 10}>;
-    static_assert(std::is_same_v<decltype(min(a_t{}, c_t{})), inside<{0, 10}>>);
-    static_assert(std::is_same_v<decltype(max(a_t{}, c_t{})), inside<{0, 100}>>);
-    static_assert(std::is_same_v<decltype(min(inside<{-100, 0}>{}, inside<{5, 10}>{})), inside<{-100, 0}>>);
-    static_assert(std::is_same_v<decltype(max(inside<{-100, 0}>{}, inside<{5, 10}>{})), inside<{5, 10}>>);
+    using a_t = id<"[0..100]">;
+    using c_t = id<"[0..10]">;
+    static_assert(std::is_same_v<decltype(min(a_t{}, c_t{})), id<"[0..10]">>);
+    static_assert(std::is_same_v<decltype(max(a_t{}, c_t{})), id<"[0..100]">>);
+    static_assert(std::is_same_v<decltype(min(id<"[-100..0]">{}, id<"[5..10]">{})), id<"[-100..0]">>);
+    static_assert(std::is_same_v<decltype(max(id<"[-100..0]">{}, id<"[5..10]">{})), id<"[5..10]">>);
     static_assert(std::is_same_v<decltype(min(a_t{}, a_t{})), a_t>);
 
     EXPECT_TRUE(min(a_t{50}, c_t{3}) == 3);
     EXPECT_TRUE(max(a_t{50}, c_t{3}) == 50);
     EXPECT_TRUE(min(a_t{2}, c_t{3}) == 2);
-    EXPECT_TRUE(min(inside<{{0.5, 10.5}, 1}>{2.5}, c_t{3}) == 2.5_r);
-    EXPECT_TRUE(max(inside<{{0.5, 10.5}, 1}>{2.5}, c_t{3}) == 3);
+    EXPECT_TRUE(min(id<"[0.5..10.5] 1">{2.5}, c_t{3}) == 2.5_r);
+    EXPECT_TRUE(max(id<"[0.5..10.5] 1">{2.5}, c_t{3}) == 3);
 }
 
 TEST(ResultGridsTest, abs_and_even_powers_never_reach_below_their_least_magnitude) {
-    static_assert(std::is_same_v<decltype(math::abs(inside<{5, 10}>{5})), inside<{5, 10}>>);
-    static_assert(std::is_same_v<decltype(math::abs(inside<{-10, -5}>{-5})), inside<{5, 10}>>);
-    static_assert(std::is_same_v<decltype(math::abs(inside<{-10, 10}>{})), inside<{0, 10}>>);
-    static_assert(std::is_same_v<decltype(math::pown<2>(inside<{-10, 10}>{})), inside<{0, 100}>>);
-    static_assert(std::is_same_v<decltype(math::pown<2>(inside<{-10, -2}>{-2})), inside<{4, 100}>>);
-    static_assert(std::is_same_v<decltype(math::pown<3>(inside<{-10, 10}>{})), inside<{-1000, 1000}>>);
+    static_assert(std::is_same_v<decltype(math::abs(id<"[5..10]">{5})), id<"[5..10]">>);
+    static_assert(std::is_same_v<decltype(math::abs(id<"[-10..-5]">{-5})), id<"[5..10]">>);
+    static_assert(std::is_same_v<decltype(math::abs(id<"[-10..10]">{})), id<"[0..10]">>);
+    static_assert(std::is_same_v<decltype(math::pown<2>(id<"[-10..10]">{})), id<"[0..100]">>);
+    static_assert(std::is_same_v<decltype(math::pown<2>(id<"[-10..-2]">{-2})), id<"[4..100]">>);
+    static_assert(std::is_same_v<decltype(math::pown<3>(id<"[-10..10]">{})), id<"[-1000..1000]">>);
 
-    EXPECT_TRUE(math::abs(inside<{-10, -5}>{-7}) == 7);
-    EXPECT_TRUE(math::pown<2>(inside<{-10, 10}>{-7}) == 49);
-    EXPECT_TRUE(math::pown<4>(inside<{-3, 2}>{-3}) == 81);
+    EXPECT_TRUE(math::abs(id<"[-10..-5]">{-7}) == 7);
+    EXPECT_TRUE(math::pown<2>(id<"[-10..10]">{-7}) == 49);
+    EXPECT_TRUE(math::pown<4>(id<"[-3..2]">{-3}) == 81);
 }
 
 TEST(ResultGridsTest, lerp_stays_between_its_ends) {
-    using v_t = inside<{0, 100}>;
-    using t_t = inside<{{0, 1}, per<4>}>;
-    static_assert(std::is_same_v<decltype(lerp(v_t{}, v_t{}, t_t{})), inside<{{0, 100}, per<4>}>>);
-    static_assert(std::is_same_v<decltype(lerp(inside<{0, 10}>{}, v_t{}, t_t{})), inside<{{0, 100}, per<4>}>>);
+    using v_t = id<"[0..100]">;
+    using t_t = id<"[0..1] 1/4">;
+    static_assert(std::is_same_v<decltype(lerp(v_t{}, v_t{}, t_t{})), id<"[0..100] 1/4">>);
+    static_assert(std::is_same_v<decltype(lerp(id<"[0..10]">{}, v_t{}, t_t{})), id<"[0..100] 1/4">>);
     // t past [0, 1] extrapolates: the wide grid stays.
-    static_assert(lower_of<decltype(lerp(v_t{}, v_t{}, inside<{{0, 2}, per<4>}>{}))> < 0);
+    static_assert(lower_of<decltype(lerp(v_t{}, v_t{}, id<"[0..2] 1/4">{}))> < 0);
 
     EXPECT_TRUE(lerp(v_t{10}, v_t{30}, t_t{0.25}) == 15);
     EXPECT_TRUE(lerp(v_t{30}, v_t{10}, t_t{1}) == 10);
@@ -1071,12 +1071,12 @@ TEST(ResultGridsTest, lerp_stays_between_its_ends) {
 
 TEST(ResultGridsTest, quantities_take_the_numbers_tight_types) {
     using namespace ins;
-    const quantity<si::metre, inside<{0, 100}>>         a{10, si::metre};
-    const quantity<si::kilo(si::metre), inside<{0, 1}>> b{1, si::kilo(si::metre)};
-    const inside<{{0, 1}, per<4>}>                      t{0.25};
+    const id<"[0..100] [m]">         a{10, si::metre};
+    const id<"[0..1] [km]"> b{1, si::kilo(si::metre)};
+    const id<"[0..1] 1/4">                      t{0.25};
     // In the common unit, metres: lerp between [0, 100] m and [0, 1000] m.
-    static_assert(std::is_same_v<std::remove_cvref_t<decltype(lerp(a, b, t))>::rep, inside<{{0, 1000}, per<4>}>>);
-    static_assert(std::is_same_v<std::remove_cvref_t<decltype(min(a, b))>::rep, inside<{0, 100}>>);
+    static_assert(std::is_same_v<std::remove_cvref_t<decltype(lerp(a, b, t))>::rep, id<"[0..1000] 1/4">>);
+    static_assert(std::is_same_v<std::remove_cvref_t<decltype(min(a, b))>::rep, id<"[0..100]">>);
     EXPECT_TRUE((lerp(a, b, t) == just<2575, 10> * si::metre));
     EXPECT_TRUE(min(a, b) == just<10> * si::metre);
 }
@@ -1100,7 +1100,7 @@ constexpr exp_r bad(error e = error::overflow) { return std::unexpected{e}; }
 // No inside stores a std::expected - not by construction, =, or a compound
 // op: check it and store *e, or use try_make(e), which passes the error on.
 TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
-    using b_t = inside<{{0, 1}, per<16>}, round_half_away>;
+    using b_t = id<"[0..1] 1/16 round_half_away">;
     static_assert(!std::is_constructible_v<b_t, exp_r> && !std::is_convertible_v<exp_r, b_t>);
     static_assert(!std::is_assignable_v<b_t&, exp_r>);
     static_assert(!std::is_constructible_v<b_t, std::expected<b_t, error>>);
@@ -1117,9 +1117,9 @@ TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
 // the zero divisor on (clamp handles the range, not the error); a nonzero
 // divisor stores, rounded and clamped by the type.
 TEST(ExpectedArithmeticTest, zero_divisor_into_a_clamp_type_is_reported) {
-    inside<{0, 10}> a{4};
-    inside<{0, 2}>  b{0};
-    using c_t = inside<{0, 100}, clamp | round_half_away>;
+    id<"[0..10]"> a{4};
+    id<"[0..2]">  b{0};
+    using c_t = id<"[0..100] clamp|round_half_away">;
     EXPECT_EQ(c_t::try_make(a / b).error(), error::division_by_zero);
     b = 2;
     EXPECT_EQ(rational{*c_t::try_make(a / b)}, 2);
@@ -1130,7 +1130,7 @@ TEST(ExpectedArithmeticTest, zero_divisor_into_a_clamp_type_is_reported) {
 template <class A, class B>
 concept adds_to = requires(A a, B b) { a + b; };
 TEST(ExpectedArithmeticTest, expected_inside_plus_point_propagates_error) {
-    using b_t    = inside<{{0, 1}, per<16>}, round_half_away>;
+    using b_t    = id<"[0..1] 1/16 round_half_away">;
     auto some    = []() -> std::expected<b_t, error> { return b_t{0.5_r}; };
     auto failing = []() -> std::expected<b_t, error> { return std::unexpected{error::division_by_zero}; };
     static_assert(!adds_to<std::expected<b_t, error>, rational> && !adds_to<b_t, rational> && !adds_to<rational, b_t>);
@@ -1264,16 +1264,16 @@ using namespace ins::formats;
 
 namespace {
 inline constexpr rational wei{1, 1'000'000'000'000'000'000};
-using eth   = inside<{{0, 1'000'000'000}, wei}>;              // a wide raw
-using price = inside<{{0, 100'000'000}, per<100>}>;           // dollars per ETH, to the cent
-using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}>; // dollars to the cent
+using eth   = id<key{grid{{0, 1'000'000'000}, wei}}>;         // a wide raw
+using price = id<"[0..100'000'000] 1/100">;                   // dollars per ETH, to the cent
+using usd   = id<"[0..1'000'000'000'000'000] 1/100">;         // dollars to the cent
 } // namespace
 
 TEST(NamedOutputTest, mul_rounds_the_exact_product_once) {
     // eth × price has a 10^-20 notch: rounded once onto usd's grid.
     const eth   balance = *parse<eth>("123456789.123456789123456789");
     const price p       = *parse<price>("3141.59");
-    using usd_nearest   = inside<grid_of<usd>, round_half_away>;
+    using usd_nearest   = id<key{grid_of<usd>, round_half_away}>;
     EXPECT_EQ(to_string(*mul<usd_nearest>(balance, p)), "387850614142.36");
     EXPECT_EQ(to_string(*mul<usd>(balance, p, round_floor)), "387850614142.36");
     EXPECT_EQ(to_string(*mul<usd>(balance, p, round_ceil)), "387850614142.37");
@@ -1284,8 +1284,8 @@ TEST(NamedOutputTest, mul_rounds_the_exact_product_once) {
 }
 
 TEST(NamedOutputTest, mul_range_follows_out_policy) {
-    using small   = inside<{0, 100}>;
-    using clamped = inside<{0, 100}, clamp>;
+    using small   = id<"[0..100]">;
+    using clamped = id<"[0..100] clamp">;
     const small a{20}, b{30};
     EXPECT_EQ(mul<small>(a, b).error(), error::overflow);
     EXPECT_EQ(mul<clamped>(a, b), 100);
@@ -1293,27 +1293,27 @@ TEST(NamedOutputTest, mul_range_follows_out_policy) {
 }
 
 TEST(NamedOutputTest, div_onto_a_named_output) {
-    using third = inside<{{0, 100}, per<3>}, round_half_away>;
-    using pos   = inside<{1, 100}>;
-    using any   = inside<{0, 100}>;
+    using third = id<"[0..100] 1/3 round_half_away">;
+    using pos   = id<"[1..100]">;
+    using any   = id<"[0..100]">;
     // A zero-free divisor: a plain Out.
     const auto q = div<third>(any{7}, pos{3});
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(q)>, third>);
     EXPECT_EQ(q, (third{rational{7, 3}}));
     // Rounded once onto a coarser Out.
-    using tenth = inside<{{0, 100}, per<10>}, round_half_away>;
+    using tenth = id<"[0..100] 1/10 round_half_away">;
     EXPECT_EQ(div<tenth>(any{7}, pos{3}), (tenth{rational{23, 10}}));
     // A divisor that may be 0: every failure is the expected's error.
     const auto r = div<third>(any{7}, any{3});
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(r)>, std::expected<third, error>>);
     EXPECT_EQ(*r, (third{rational{7, 3}}));
     EXPECT_EQ(div<third>(any{7}, any{0}).error(), error::division_by_zero);
-    using one = inside<{0, 1}, round_half_away>;
+    using one = id<"[0..1] round_half_away">;
     EXPECT_EQ(div<one>(any{7}, any{2}).error(), error::overflow);
-    using ten = inside<{0, 10}>;
+    using ten = id<"[0..10]">;
     EXPECT_EQ(div<ten>(any{7}, any{2}).error(), error::rounding_error);
     // A quotient with no 64-bit fraction, straight onto a grid.
-    using fine  = inside<{{0, 2}, per<(std::uint64_t{1} << 62)>}, round_half_away>;
+    using fine  = id<key{grid{{0, 2}, per<(std::uint64_t{1} << 62)>}, round_half_away}>;
     const eth a = *parse<eth>("1.000000000000000001"), b = *parse<eth>("0.999999999999999999");
     EXPECT_EQ(div<fine>(a, b).value(), fine::from_raw((std::uint64_t{1} << 62) + 9, unsafe));
 }
@@ -1340,18 +1340,18 @@ void expect_mul_div_agree() {
             EXPECT_EQ(d, dw) << to_string(a) << " / " << to_string(b);
         }
 }
-using int_g  = inside<{-7, 9}>;
-using quart  = inside<{{-3, 3}, per<4>}>;
-using thirds = inside<{{rational{1, 3}, rational{13, 3}}, rational{1, 2}}>; // unanchored
-using neg    = inside<{{-2, -1}, per<8>}>;
+using int_g  = id<"[-7..9]">;
+using quart  = id<"[-3..3] 1/4">;
+using thirds = id<"[1/3..13/3] 1/2">; // unanchored
+using neg    = id<"[-2..-1] 1/8">;
 } // namespace
 
 TEST(NamedOutputTest, native_paths_agree_with_the_wide_path) {
-    using round_out = inside<{{-50, 50}, per<3>}, round_half_away>;
-    using floor_out = inside<{-40, 40}, round_floor>;
-    using clamp_out = inside<{{-5, 5}, per<2>}, clamp | round_ceil>;
-    using check_out = inside<{{-20, 20}, per<2>}>;
-    using wrap_out  = inside<{{-3, 3}, per<4>}, wrap | round_half_even>;
+    using round_out = id<"[-50..50] 1/3 round_half_away">;
+    using floor_out = id<"[-40..40] round_floor">;
+    using clamp_out = id<"[-5..5] 1/2 clamp|round_ceil">;
+    using check_out = id<"[-20..20] 1/2">;
+    using wrap_out  = id<"[-3..3] 1/4 wrap|round_half_even">;
     // Both native paths are taken: the product inside, and the rational
     // product where the store would reject the product type at compile time.
     static_assert(detail::native_product<round_out, checked, int_g, quart>);
@@ -1386,11 +1386,11 @@ using namespace ins::formats;
 using namespace ins::detail;
 
 namespace {
-using num   = inside<{0, 100}>;
-using den   = inside<{1, 7}>;
+using num   = id<"[0..100]">;
+using den   = id<"[1..7]">;
 using quot  = decltype(num{} / den{});
-using half  = inside<{{-6, 6}, per<2>}>;
-using small = inside<{1, 5}>;
+using half  = id<"[-6..6] 1/2">;
+using small = id<"[1..5]">;
 } // namespace
 
 TEST(BoundedRationalTest, quotient_of_notched_grids_is_bounded_and_plain) {
@@ -1409,7 +1409,7 @@ TEST(BoundedRationalTest, quotient_of_notched_grids_is_bounded_and_plain) {
 }
 
 TEST(BoundedRationalTest, declared_bound_makes_arithmetic_plain) {
-    using thousandths = inside<{interval{0, 1}, max_denominator{1000}}>;
+    using thousandths = id<"[0..1] <1000>">;
     static_assert(!is_expected_v<decltype(thousandths{} + thousandths{})>);
     static_assert(!is_expected_v<decltype(thousandths{} * thousandths{})>);
     const thousandths a{rational{1, 1000}}, b{rational{999, 1000}};
@@ -1418,7 +1418,7 @@ TEST(BoundedRationalTest, declared_bound_makes_arithmetic_plain) {
 }
 
 TEST(BoundedRationalTest, bounds_past_storage_report_in_cxx23_and_fit_in_cxx26) {
-    using billionths = inside<{interval{0, 1}, max_denominator{1'000'000'000}}>;
+    using billionths = id<"[0..1] <1'000'000'000>">;
     using b2         = decltype(billionths{} * billionths{});
     static_assert(!is_expected_v<b2>); // 10^18 fits the 64-bit rational
     using b3 = decltype(b2{} * billionths{});
@@ -1452,7 +1452,7 @@ TEST(BoundedRationalTest, sweep_matches_checked_rational) {
 // A bounded grid holds only values within its bound: a denominator past it
 // is off the grid, like a value off a notched grid's lattice.
 TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
-    using thousandths = inside<{interval{0, 1}, max_denominator{1000}}>;
+    using thousandths = id<"[0..1] <1000>">;
     EXPECT_TRUE(thousandths::try_make(rational{7, 1000}).has_value());
     EXPECT_EQ(thousandths::try_make(rational{1, 1001}).error(), error::rounding_error);
     EXPECT_EQ(parse<thousandths>("0.0001").error(), error::rounding_error);
@@ -1475,14 +1475,14 @@ TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
 
     // unsafe: nothing reported; its rounding truncates onto the bound, as it
     // truncates onto a notch.
-    inside<{interval{0, 1}, max_denominator{1000}}, unsafe> u{rational{1, 1001}};
+    id<"[0..1] <1000> unsafe"> u{rational{1, 1001}};
     EXPECT_TRUE(u == 0);
 }
 
 // The same check on a bounded grid stored as a wide fraction.
 TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
     constexpr grid e18{interval{0, 1}, max_denominator{1'000'000'000'000'000'000}};
-    using wide = inside<e18 * e18>; // denominators ≤ 10^36
+    using wide = id<key{e18 * e18}>; // denominators ≤ 10^36
     static_assert(fraction_storage<wide>);
     const auto ok = parse<wide>("0.000000000000000000000000000000000001"); // 10^-36
     ASSERT_TRUE(ok.has_value());
@@ -1494,7 +1494,7 @@ TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
 
 // Exact math outputs on continuous inputs keep the bound.
 TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {
-    using signed_quot = decltype(inside<{-100, 100}>{} / den{});
+    using signed_quot = decltype(id<"[-100..100]">{} / den{});
     const signed_quot q{rational{-50, 3}};
     const auto        a = math::abs(q);
     static_assert(grid_of<std::remove_cvref_t<decltype(a)>>.MaxDenominator == 7);
@@ -1502,7 +1502,7 @@ TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {
     const auto c = math::copysign(q, 1_ins);
     static_assert(grid_of<std::remove_cvref_t<decltype(c)>>.MaxDenominator == 7);
     EXPECT_TRUE(c == rational(50, 3));
-    const auto r = math::fmod(q, inside<{1, 4}>{3}); // −50/3 + 5·3 = −5/3
+    const auto r = math::fmod(q, id<"[1..4]">{3}); // −50/3 + 5·3 = −5/3
     static_assert(grid_of<std::remove_cvref_t<decltype(r)>>.MaxDenominator == 7);
     EXPECT_TRUE(lift_unwrap(r) == rational(-5, 3));
 }
@@ -1511,8 +1511,8 @@ TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {
 // 64-bit kernels' intermediates pass 64 bits (each operand over D_L·D_R
 // here), the op computes exactly in wide integers. No check, no expected.
 TEST(BoundedRationalTest, bounded_results_are_total_past_64_bit_intermediates) {
-    using L = inside<{{1ull << 40, (1ull << 40) + 1}, max_denominator{4096}}>;
-    using R = inside<{{-((1ll << 40) + 1), -(1ll << 40)}, max_denominator{4096}}>;
+    using L = id<key{grid{{1ull << 40, (1ull << 40) + 1}, max_denominator{4096}}}>;
+    using R = id<key{grid{{-((1ll << 40) + 1), -(1ll << 40)}, max_denominator{4096}}}>;
     constexpr L    a{(rational{1ull << 40} + rational{1, 3})};
     constexpr R    b{-(1ll << 40)};
     constexpr auto s = a + b;
@@ -1529,14 +1529,14 @@ template <class A, class B>
 constexpr bool can_add = requires(A a, B b) { a + b; };
 
 TEST(BoundedRationalTest, results_past_the_fraction_cap_have_no_type) {
-    using billionths = inside<{interval{0, 1}, max_denominator{1'000'000'000}}>;
+    using billionths = id<"[0..1] <1'000'000'000>">;
     using b2         = decltype(billionths{} * billionths{});
     using b4         = decltype(b2{} * b2{});
     using b8         = decltype(b4{} * b4{});
     using b16        = decltype(b8{} * b8{}); // denominators to 10^144
     static_assert(can_mul<b8, b8> && can_add<b16, billionths>);
     static_assert(!can_mul<b16, b16> && !can_add<b16, b16>); // 10^288: past 1024 bits
-    using cent      = inside<{{0, 1}, per<100>}, round_half_away>;
+    using cent      = id<"[0..1] 1/100 round_half_away">;
     const b16 tenth = rational{1, 10};
     EXPECT_EQ(mul<cent>(tenth, tenth), rational(1, 100));
 }
@@ -1564,7 +1564,7 @@ template <class T, class S>
 constexpr bool can_add_assign = requires(T t, S s) { t += s; };
 template <class T, class S>
 constexpr bool can_div_assign = requires(T t, S s) { t /= s; };
-using element                 = inside<{0, 100}>;
+using element                 = id<"[0..100]">;
 struct zero_end { // the end of a range: the element 0
     friend bool operator==(std::vector<element>::const_iterator i, zero_end) { return *i == 0; }
 };
@@ -1575,7 +1575,7 @@ TEST(ArithmeticTest, unanchored_sum_past_63_bits) {
     static_assert([] {
         constexpr std::int64_t p = std::int64_t{1} << 61;
         constexpr rational     hi{2 * p - 1, 2}, lo{-2 * p - 1, 2};
-        using L = inside<{{lo, hi}, 1}>;
+        using L = id<key{grid{{lo, hi}, 1}}>;
         return L{-0.5} + L{-0.5} == -1 && L{hi} + L{hi} == 2 * p - 1 && L{lo} + L{lo} == -2 * p - 1 &&
                L{hi} - L{lo} == 2 * p;
     }());
@@ -1584,8 +1584,8 @@ TEST(ArithmeticTest, unanchored_sum_past_63_bits) {
 // Sums counted in a unit finer than the result's notch (an unanchored
 // result): the offset from Lower in that unit passed int64.
 TEST(ArithmeticTest, unanchored_sum_near_int64) {
-    using halves = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
-    using thirds = inside<{{-(3ll << 60), 3ll << 60}, 3}>;
+    using halves = id<"[0.5..10.5] 1">; // Lower off the notch's multiples
+    using thirds = id<key{grid{{-(3ll << 60), 3ll << 60}, 3}}>;
     const auto s = halves{rational{1, 2}} + thirds{3ll << 60};
     EXPECT_EQ(to_string(s), "3458764513820540928.5");
     EXPECT_EQ(to_string(halves{rational{1, 2}} - thirds{-(3ll << 60)}), "3458764513820540928.5");
@@ -1594,33 +1594,33 @@ TEST(ArithmeticTest, unanchored_sum_near_int64) {
 TEST(ArithmeticTest, operations_are_constraint_friendly) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
-    using full                     = inside<{i64_min, i64_max}>;
-    using digit                    = inside<{0, 9}>;
-    using reals                    = inside<{{-2, 2}, max_denominator{1000}}>;
-    using fourths                  = inside<{{-2, 3}, per<4>}>;
+    using full                     = id<key{grid{i64_min, i64_max}}>;
+    using digit                    = id<"[0..9]">;
+    using reals                    = id<"[-2..2] <1000>">;
+    using fourths                  = id<"[-2..3] 1/4">;
     static_assert(can_div<digit, digit> && can_div<reals, digit>);
     static_assert(can_div<digit, reals>);        // a bounded divisor stays 1/1000 from 0
-    static_assert(!can_div<digit, inside<{0}>>); // the point 0
+    static_assert(!can_div<digit, id<"[0]">>);   // the point 0
     static_assert(can_mod<digit, digit> && can_mod<fourths, digit> && !can_mod<reals, digit>); // a lattice each
-    static_assert(can_divmod<digit, inside<{1, 3}>> && can_divmod<fourths, digit> && !can_divmod<reals, digit>);
+    static_assert(can_divmod<digit, id<"[1..3]">> && can_divmod<fourths, digit> && !can_divmod<reals, digit>);
     static_assert(can_add<digit, fourths> && can_mul<fourths, fourths>);
     static_assert(can_add<uint64, uint64> && can_mul<full, full>);
-    static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);
-    static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, round_toward_zero>, fourths>);
+    static_assert(can_make<digit, int> && can_make<digit, id<"[5..20]">> && !can_make<digit, id<"[20..30]">>);
+    static_assert(!can_make<digit, fourths> && can_make<id<"[0..9] round_toward_zero">, fourths>);
     // (A compound store the grids cannot prove names its channel: clamp here.)
-    static_assert(!can_add_assign<digit, digit> && !can_add_assign<digit, inside<{10}>> &&
-                  !can_add_assign<digit, fourths> && can_add_assign<inside<{0, 9}, clamp>, digit> &&
-                  can_add_assign<inside<{0, 9}, clamp>, inside<{10}>>);
-    static_assert(!can_div_assign<digit, inside<{0}>> && !can_div_assign<inside<{0, 9}, round_toward_zero>, digit> &&
-                  can_div_assign<inside<{0, 9}, round_toward_zero>, inside<{1, 9}>>);
+    static_assert(!can_add_assign<digit, digit> && !can_add_assign<digit, id<"[10]">> &&
+                  !can_add_assign<digit, fourths> && can_add_assign<id<"[0..9] clamp">, digit> &&
+                  can_add_assign<id<"[0..9] clamp">, id<"[10]">>);
+    static_assert(!can_div_assign<digit, id<"[0]">> && !can_div_assign<id<"[0..9] round_toward_zero">, digit> &&
+                  can_div_assign<id<"[0..9] round_toward_zero">, id<"[1..9]">>);
 }
 
 // Two integer raws whose common unit (the gcd of a 2/3 and a 2^-62 notch) is
 // past the 64-bit rational: comparing them did not compile (the unit's
 // expected was read in a constant expression); they compare by value.
 TEST(ArithmeticTest, compare_without_a_common_unit) {
-    using thirds = inside<{{rational{1, 3}, rational{31, 3}}, rational{2, 3}}, round_half_away>;
-    using fine   = inside<{{0, 1}, per<(1ll << 62)>}, round_half_away>;
+    using thirds = id<"[1/3..31/3] 2/3 round_half_away">;
+    using fine   = id<key{grid{{0, 1}, per<(1ll << 62)>}, round_half_away}>;
     static_assert(thirds{rational{1, 3}} < fine{rational{1, 2}});
     static_assert(thirds{1} > fine{rational{1, 2}});
     static_assert(thirds{1} == fine{1});
@@ -1631,8 +1631,8 @@ TEST(ArithmeticTest, compare_without_a_common_unit) {
 // against 1/(7·2^58) here: offset by 1/3 and 2/3) failed to compile although
 // the sum grid fits.
 TEST(ArithmeticTest, sum_with_units_past_the_64_bit_gcd) {
-    using L      = inside<{{rational{1, 3}, rational{4, 3}}, rational{1, 1ll << 60}}>;
-    using R      = inside<{{rational{2, 3}, rational{5, 3}}, rational{1, 7ll << 58}}>;
+    using L      = id<key{grid{{rational{1, 3}, rational{4, 3}}, rational{1, 1ll << 60}}}>;
+    using R      = id<key{grid{{rational{2, 3}, rational{5, 3}}, rational{1, 7ll << 58}}}>;
     const auto s = L{rational{1, 3}} + R{rational{2, 3}};
     EXPECT_EQ(s, 1);
     const auto t = L::from_raw(12345, unsafe) + R::from_raw(999, unsafe);
@@ -1641,7 +1641,7 @@ TEST(ArithmeticTest, sum_with_units_past_the_64_bit_gcd) {
 
 TEST(ArithmeticTest, sum_over_a_sentinel_range) {
     const std::vector<element> v{element{1}, element{2}, element{3}, element{0}};
-    const auto                 total = sum<inside<{0, 10000}>>(std::ranges::subrange(v.cbegin(), zero_end{}));
+    const auto                 total = sum<id<"[0..10000]">>(std::ranges::subrange(v.cbegin(), zero_end{}));
     EXPECT_EQ(total, 6);
 }
 
@@ -1650,8 +1650,8 @@ TEST(ArithmeticTest, sum_over_a_sentinel_range) {
 TEST(ArithmeticTest, unanchored_cross_grid_comparison) {
     using I64         = std::int64_t;
     constexpr I64 P61 = I64{1} << 61;
-    using X           = inside<grid{{rational{-2 * P61 - 1, 2}, rational{2 * P61 - 1, 2}}, 1}>;
-    using Y           = inside<grid{{0, 1}, rational{1, 2}}>;
+    using X           = id<key{grid{{rational{-2 * P61 - 1, 2}, rational{2 * P61 - 1, 2}}, 1}}>;
+    using Y           = id<"[0..1] 1/2">;
     constexpr X cx    = rational{2 * P61 - 1, 2};
     constexpr Y cy    = 0;
     static_assert(cx > cy);
@@ -1667,8 +1667,8 @@ TEST(ArithmeticTest, unanchored_cross_grid_comparison) {
 // mismatch class as the previously-fixed assignment paths.
 //---------------------------------------------------------------------------
 TEST(ArithmeticTest, rational_mixed_add_into_a_value_raw) {
-    using L = inside<{-5, 5}>;                            // signed value-storage
-    using R = inside<{{-10, 10}, max_denominator{1000}}>; // rational raw
+    using L = id<"[-5..5]">;                              // signed value-storage
+    using R = id<"[-10..10] <1000>">;                     // rational raw
 
     constexpr L l{2};
     constexpr R r{1_r};
@@ -1690,8 +1690,8 @@ TEST(ArithmeticTest, rational_mixed_add_into_a_value_raw) {
 // skips the fast path). L keeps value storage (Notch_L = 1, signed lower).
 //---------------------------------------------------------------------------
 TEST(ArithmeticTest, signed_multiplication_in_the_third_quadrant) {
-    using L = inside<{-5, 5}>;                      // signed value-storage, integer-aligned
-    using R = inside<{{-10, 10}, rational{1u, 2}}>; // notch 1/2, not value storage, not integer-aligned
+    using L = id<"[-5..5]">;                             // signed value-storage, integer-aligned
+    using R = id<key{grid{{-10, 10}, rational{1u, 2}}}>; // notch 1/2, not value storage, not integer-aligned
 
     // lower_of<result> = upper_of<L> * lower_of<R> = 5 * -10 = -50 → third quadrant.
     // Without the fix, L{2} * R{1} produces value -3 instead of 2.
@@ -1707,7 +1707,7 @@ TEST(ArithmeticTest, signed_multiplication_in_the_third_quadrant) {
 // bit: the result equals the exact rational product.
 //---------------------------------------------------------------------------
 TEST(ArithmeticTest, product_stays_exact_past_2_53) {
-    using U = inside<{{0, 4}, per<(1u << 26)>}>; // f=26
+    using U = id<key{grid{{0, 4}, per<(1u << 26)>}}>; // f=26
 
     const U        a  = 4.0 - std::ldexp(1.0, -26); // index 2^28-1, exact
     auto           p  = a * a;                      // product grid f=52 > 53 bits
@@ -1722,7 +1722,7 @@ TEST(ArithmeticTest, product_stays_exact_past_2_53) {
 TEST(ArithmeticTest, scalar_comparison_does_not_truncate_the_scalar) {
     using namespace ins;
     using namespace ins::formats;
-    inside<{-10, 10}> one{1}, minus_one{-1};
+    id<"[-10..10]"> one{1}, minus_one{-1};
     static_assert(detail::integer_value_storage<decltype(one)>);
     EXPECT_FALSE(one == 1.5_r);
     EXPECT_TRUE(one < 1.5_r);
@@ -1735,7 +1735,7 @@ TEST(ArithmeticTest, scalar_comparison_does_not_truncate_the_scalar) {
 TEST(ArithmeticTest, increment_moves_one_notch) {
     using namespace ins;
     using namespace ins::formats;
-    using rl = inside<{{-4, 4}, per<256>}, round_half_away | clamp>; // (++ names its range handling)
+    using rl = id<"[-4..4] 1/256 round_half_away|clamp">; // (++ names its range handling)
     rl x{rational{3, 2}};
     ++x;
     EXPECT_EQ(rational{x}, (rational{385, 256}));
@@ -1751,7 +1751,7 @@ TEST(ArithmeticTest, increment_moves_one_notch) {
 //---------------------------------------------------------------------------
 // expected-lift propagates a right-hand-side error
 TEST(ArithmeticTest, expected_lift_propagates_a_right_hand_side_error) {
-    using num_t = inside<{0, 100}>;
+    using num_t = id<"[0..100]">;
     std::expected<num_t, error> left{num_t{5}}; // valid
     std::expected<num_t, error> right{std::unexpected{error::overflow}};
 
@@ -1765,7 +1765,7 @@ TEST(ArithmeticTest, expected_lift_propagates_a_right_hand_side_error) {
 // product keeps integer storage and its offset is x's offset (mirrored for c < 0).
 //---------------------------------------------------------------------------
 TEST(ArithmeticTest, multiply_by_point_keeps_integer_storage) {
-    using U  = inside<{0, 200}>;
+    using U  = id<"[0..200]">;
     using R3 = decltype(U{} * just<3>);
     static_assert(!rational_storage<R3>);
     static_assert(notch_of<R3> == 3 && lower_of<R3> == 0 && upper_of<R3> == 600);
@@ -1776,13 +1776,13 @@ TEST(ArithmeticTest, multiply_by_point_keeps_integer_storage) {
 
 TEST(ArithmeticTest, multiply_by_point_matches_exact_product) {
     for (int v : {-100, -7, 0, 1, 99, 100}) {
-        const auto x = test::store<inside<{-100, 100}>>(v);
+        const auto x = test::store<id<"[-100..100]">>(v);
         EXPECT_EQ(rational{x * just<3>}, rational{3 * v});
         EXPECT_EQ(rational{just<3> * x}, rational{3 * v});
         EXPECT_EQ(rational{x * just<-2>}, rational{-2 * v});
         EXPECT_EQ((exact{x * just<-1, 4>}), (exact{v} * exact{rational{-1, 4}}));
     }
-    inside<{0, 200}> a{3}, b{4};
+    id<"[0..200]"> a{3}, b{4};
     EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
 }
 
@@ -1790,7 +1790,7 @@ TEST(ArithmeticTest, multiply_by_point_matches_exact_product) {
 // whose denominator passed 64 bits reported overflow, however small the
 // total. It adds exactly over lcm(1..D) now; n copies of a point are n·value.
 TEST(ArithmeticTest, continuous_sum_is_exact) {
-    using fine = inside<{{0, 1}, max_denominator{2000}}>;
+    using fine = id<"[0..1] <2000>">;
     // Six primes: the reduced sum's denominator, their product, passes 2^64.
     const std::array<fine, 6> r{fine{rational{1, 1999}},
                                 fine{rational{1, 1997}},
@@ -1798,16 +1798,16 @@ TEST(ArithmeticTest, continuous_sum_is_exact) {
                                 fine{rational{1, 1987}},
                                 fine{rational{1, 1979}},
                                 fine{rational{1, 1973}}};
-    using total  = inside<{{0, 6}, per<(1ll << 40)>}, round_half_away>;
+    using total  = id<key{grid{{0, 6}, per<(1ll << 40)>}, round_half_away}>;
     const auto s = ins::sum<total>(r); // Σ 1/p, rounded once
     EXPECT_EQ(s->raw(), 3318520424);   // round(2^40 · Σ 1/p)
-    using sixths = inside<{{-1, 1}, max_denominator{6}}>;
+    using sixths = id<"[-1..1] <6>">;
     const std::array<sixths, 4> h{
         sixths{rational{1, 2}}, sixths{rational{1, 3}}, sixths{rational{1, 6}}, sixths{rational{-5, 6}}};
-    using sixths_total = inside<{{-4, 4}, max_denominator{6}}>;
+    using sixths_total = id<"[-4..4] <6>">;
     EXPECT_EQ(rational{*ins::sum<sixths_total>(h)}, (rational{1, 6}));
     const std::array<std::remove_cvref_t<decltype(just<1, 3>)>, 5> p{}; // a point grid: 5 copies of 1/3
-    using thirds_total = inside<{{0, 2}, max_denominator{3}}>;
+    using thirds_total = id<"[0..2] <3>">;
     EXPECT_EQ(rational{*ins::sum<thirds_total>(p)}, (rational{5, 3}));
 }
 
@@ -1822,8 +1822,8 @@ using detail::rational;
 
 // Disjoint operand ranges decide min and max at compile time, either order.
 TEST(ArithmeticArmTest, min_and_max_of_disjoint_ranges) {
-    const inside<{0, 5}>   lo{3};
-    const inside<{10, 20}> hi{15};
+    const id<"[0..5]">   lo{3};
+    const id<"[10..20]"> hi{15};
     EXPECT_TRUE(min(lo, hi) == 3 && min(hi, lo) == 3);
     EXPECT_TRUE(max(lo, hi) == 15 && max(hi, lo) == 15);
 }
@@ -1832,8 +1832,8 @@ TEST(ArithmeticArmTest, min_and_max_of_disjoint_ranges) {
 // cross-reduced one (2^59/1023 ÷ 2^59/1021 = 1021/1023) or else the exact
 // wide one is stored, as the exact quotient rounds.
 TEST(ArithmeticArmTest, div_onto_past_the_unreduced_quotient) {
-    using C   = inside<{{1, 1125899906842624_g}, max_denominator{1024}}>; // [1, 2^50]
-    using Out = inside<{{0, 2}, per<1024>}, round_half_away>;
+    using C   = id<"[1..1125899906842624] <1024>">; // [1, 2^50]
+    using Out = id<"[0..2] 1/1024 round_half_away">;
     static_assert(std::is_same_v<detail::raw_t<C>, rational>);
     const C x{rational{std::uint64_t{1} << 59, 1023}}, y{rational{std::uint64_t{1} << 59, 1021}};
     const C u{rational{(std::uint64_t{1} << 59) + 1, 1023}}, v{rational{(std::uint64_t{1} << 59) + 3, 1021}};
@@ -1844,12 +1844,12 @@ TEST(ArithmeticArmTest, div_onto_past_the_unreduced_quotient) {
 // sum of continuous elements re-reduces a raw built unreduced (2/8), whose
 // denominator does not divide lcm(1..D).
 TEST(ArithmeticArmTest, sum_reduces_an_unreduced_raw) {
-    using T = inside<{{0, 1}, max_denominator{4}}>;
+    using T = id<"[0..1] <4>">;
     rational quarter;
     quarter.Num = 2;
     quarter.Den = 8;
     const std::vector<T> v{T::from_raw(quarter, unsafe), T{rational{1, 4}}};
-    using total = inside<{{0, 2}, max_denominator{4}}>;
+    using total = id<"[0..2] <4>">;
     EXPECT_EQ(rational{*ins::sum<total>(v)}, (rational{1, 2}));
 }
 } // namespace reached_arms_tests

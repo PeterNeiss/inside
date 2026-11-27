@@ -19,13 +19,13 @@ constexpr auto deg_C = si::degree_Celsius;
 int main()
 {
   // Three sensors in ℃, each with the precision of its hardware: the number each sends, read as a ℃ point.
-  using halves   = inside<{{-40, 60}, per<2> }, round_half_away>; // outdoor, 0.5 ℃
-  using tenths   = inside<{{0  , 50}, per<10>}, round_half_away>; // indoor, 0.1 ℃
-  using quarters = inside<{{-10, 30}, per<4> }, round_half_away>; // ground, 0.25 ℃
+  using halves   = id<"[-40..60] 1/2 round_half_away">;           // outdoor, 0.5 ℃
+  using tenths   = id<"[0..50] 1/10 round_half_away">;            // indoor, 0.1 ℃
+  using quarters = id<"[-10..30] 1/4 round_half_away">;           // ground, 0.25 ℃
 
   double raw[] = {22.5, 21.7, -50.0, 22.0, 23.25}; // -50 is an outlier, below the outdoor grid
 
-  using weight = inside<{{0, 1}, per<8>}, round_half_away>; // tuned by confidence
+  using weight = id<"[0..1] 1/8 round_half_away">; // tuned by confidence
   weight w_outdoor{0.5};
   weight w_indoor {0.375};
   weight w_ground {0.125};
@@ -36,8 +36,8 @@ int main()
   // The 1/160 notch holds every reading·weight product (outdoor 1/16, indoor 1/80, ground 1/32) exactly,
   // so the running sum is lossless.
   const auto ref{point<deg_C>(just<0>)};
-  using weighted_celsius = quantity<deg_C, inside<{{-200, 200}, per<160>}, round_half_away>>;
-  using weight_total     = inside<{{0, 8}, per<8>}, round_half_away>;
+  using weighted_celsius = id<"[-200..200] 1/160 [`C] round_half_away">;
+  using weight_total     = id<"[0..8] 1/8 round_half_away">;
   weighted_celsius weighted_sum{0, deg_C};
   weight_total     weight_sum  {0};
 
@@ -65,7 +65,7 @@ int main()
 
   // The fused value, whole ℃: its clamp and rounding policy saturates and rounds the quotient in one step.
   // The weight grid holds 0, so div is an expected: no accepted reading is reported, not a crash.
-  using fused_celsius = quantity<deg_C, inside<{-40, 60}, clamp | round_half_away>>;
+  using fused_celsius = id<"[-40..60] [`C] clamp|round_half_away">;
   const auto fused{ref + div<fused_celsius>(weighted_sum, weight_sum).value_or(fused_celsius{0, deg_C})};
 
   std::cout << "\nweighted sum: " << weighted_sum << ",  total weight: " << weight_sum << "\n";

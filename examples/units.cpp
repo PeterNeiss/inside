@@ -19,8 +19,8 @@ namespace
 int main()
 {
   // 1. Legs of 12.5 km, 800 m and 3 km: the sum runs in metres, the gcd of the units, so nothing rounds.
-  using leg_km     = quantity<km       , inside<{{0, 500}, per<1000>}>>; // to the metre
-  using leg_metres = quantity<si::metre, inside<{0, 1000}>>;
+  using leg_km     = id<"[0..500] 1/1000 [km]">; // to the metre
+  using leg_metres = id<"[0..1000] [m]">;
 
   const leg_km     a    {12.5, km};
   const leg_metres b    {800 , si::metre};
@@ -32,7 +32,7 @@ int main()
 
   // 20 min: the speed comes out in m/min and converts to km/h exactly
   // (the grid is rescaled, the number kept).
-  using minutes = quantity<si::minute, inside<{1, 600}>>;
+  using minutes = id<"[1..600] [min]">;
   const minutes t  {20, si::minute};
   const auto    v  {total / t};
   const auto    kmh{v.in(km / si::hour)};
@@ -41,7 +41,7 @@ int main()
     return 1;
 
   // 2. 20 ℃ as a point: 293.15 K counted from absolute zero, and 68 ℉, on shifted grids.
-  using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-50, 50}, per<10>}, round_half_away>>;
+  using celsius = id<"[-50..50] 1/10 [`C] @ice_point round_half_away">;
   const celsius room{20, si::degree_Celsius}; // to 0.1 ℃
   const auto k   {room.point_for(si::absolute_zero).in(si::kelvin)};
   const auto f   {room.point_for(international::zeroth_degree_Fahrenheit).in(international::degree_Fahrenheit)};
@@ -50,10 +50,10 @@ int main()
     return 1;
 
   // 3. Kinds: width·height converts to an area, and a height to a length, not the reverse.
-  using width         = quantity<isq::width[si::metre]        , inside<{0, 20 }>>;
-  using height        = quantity<isq::height[si::metre]       , inside<{0, 10 }>>;
-  using square_metres = quantity<isq::area[square(si::metre)], inside<{0, 200}>>;
-  using length_metres = quantity<isq::length[si::metre]       , inside<{0, 10 }>>;
+  using width         = id<"[0..20] [m]{width}">;
+  using height        = id<"[0..10] [m]{height}">;
+  using square_metres = id<"[0..200] [m^2]{area}">;
+  using length_metres = id<"[0..10] [m]{length}">;
   const square_metres floor = width{6, isq::width[si::metre]} * height{3, isq::height[si::metre]};
   const length_metres l     = height{3, isq::height[si::metre]};
   // height h = l;                        // would not compile: a length is not a height
@@ -64,8 +64,8 @@ int main()
 
   // 4. A bearing of 30° from north rounds once into radians;
   // the east and north components of a 1.5 km leg are 1.5 km · sin and · cos, each on a 1e-6 grid.
-  using degrees    = quantity<si::degree, inside<{0, 360}>>;
-  using millionths = inside<{{0, 7}, per<1'000'000>}, round_half_away>;
+  using degrees    = id<"[0..360] [deg]">;
+  using millionths = id<"[0..7] 1/1'000'000 round_half_away">;
   const auto bearing{value_cast<si::radian, millionths>(degrees{30, si::degree})};
   const auto east   {just<1.5> * km * math::sin(bearing)};
   const auto north  {just<1.5> * km * math::cos(bearing)};
@@ -76,9 +76,9 @@ int main()
 
   // 5. Text names its unit, any that converts exactly: 1.5 h and 90 s into minutes, 36 km/h into m/s,
   // 350 ℉ into a ℃ point. A bare number, another dimension or a unit nothing defines is an error, not a guess.
-  using read_minutes = quantity<si::minute, inside<{{0, 600}, per<10>}>>;
-  using read_speed   = quantity<si::metre / si::second, inside<{{0, 100}, per<100>}>>;
-  using oven         = quantity_point<si::degree_Celsius, si::ice_point, inside<{{0, 300}, max_denominator{9}}>>;
+  using read_minutes = id<"[0..600] 1/10 [min]">;
+  using read_speed   = id<"[0..100] 1/100 [m/s]">;
+  using oven         = id<"[0..300] <9> [`C] @ice_point">;
   const auto hours  {parse<read_minutes>("1.5 h")};
   const auto seconds{parse<read_minutes>("90 s")};
   const auto pace   {parse<read_speed>("36 km/h")};

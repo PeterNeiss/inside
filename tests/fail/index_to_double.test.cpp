@@ -5,7 +5,7 @@
 
 int main() {
     using namespace ins;
-    inside<{0, 7}> i{};
+    id<"[0..7]"> i{};
     double         d = i;
     (void)d;
 }

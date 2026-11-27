@@ -91,12 +91,12 @@ namespace ins::math
     // |x| ranges over [smallest |x|, largest |x|].
     template <insidable In>
     using abs_result_t =
-      inside<exact_out_grid({abs_result_lower<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
-             out_policy<In>>;
+      id<key{exact_out_grid({abs_result_lower<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
+             out_policy<In>}>;
 
     // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
     template <insidable In>
-    using sign_result_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
+    using sign_result_t = id<key{grid{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>}>;
 
     // copysign(mag, sgn): |mag| with sgn's possible signs.
     // |mag| ranges over [m_lo, m_hi] (abs_result_lower, abs_result_upper);
@@ -104,14 +104,14 @@ namespace ins::math
 
     template <insidable Mag, insidable Sgn>
     using copysign_result_t =
-      inside<exact_out_grid({lower_of<Sgn> < 0 ? -abs_result_upper<Mag> : abs_result_lower<Mag>,
+      id<key{exact_out_grid({lower_of<Sgn> < 0 ? -abs_result_upper<Mag> : abs_result_lower<Mag>,
                              upper_of<Sgn> >= 0 ? abs_result_upper<Mag> : -abs_result_lower<Mag>},
                             sym_notch<Mag>,
-                            den_bound(grid_of<Mag>)),
-             out_policy<Mag>>;
+                            den_bound(grid_of<Mag>)), out_policy<Mag>}>;
 
     template <insidable In, round_mode M>
-    using integer_result_t = inside<{{grid_round<M>(lower_of<In>), grid_round<M>(upper_of<In>)}, 1}, out_policy<In>>;
+    using integer_result_t =
+      id<key{grid{{grid_round<M>(lower_of<In>), grid_round<M>(upper_of<In>)}, 1}, out_policy<In>}>;
 
     template <insidable In>
     using floor_result_t = integer_result_t<In, round_mode::floor>;
@@ -285,11 +285,11 @@ namespace ins::math
       abs_result_upper<InX> < abs_result_upper<InY> ? abs_result_upper<InX> : abs_result_upper<InY>;
 
     template <insidable InX, insidable InY>
-    using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_number{0}),
+    using fmod_result_t = id<key{exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_number{0}),
                                                  (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_number{0})},
                                                 engine::gcd_notch<InX, InY>,
                                                 den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
-                                 with_default_rounding(out_policy<InX>)>;
+                                 with_default_rounding(out_policy<InX>)}>;
 
     // pown<E>: compile-time integer powers, pure grid arithmetic.
     // Repeated squaring in inside-space: every multiply widens the result grid corner-correctly,
@@ -496,7 +496,7 @@ namespace ins::math
   // a ready-made output for sin and cos (`math::sin<math::unit_amplitude<32768>>(angle)`;
   // `math::sin<per<32768>>(angle)` deduces the same). All angles are radians, as in <cmath>.
   template <auto K> // a builtin or a grid number of any size
-  using unit_amplitude = inside<{{detail::rational{-1}, detail::rational{1}}, per<K>}, round_half_away>;
+  using unit_amplitude = id<key{grid{{detail::rational{-1}, detail::rational{1}}, per<K>}, round_half_away}>;
 
   // The functions (math/detail/functions.hpp states the call forms):
   // the grid operations, exact, and the transcendentals of the adaptive engine.

@@ -23,10 +23,10 @@ int main()
 {
   // 1. A fixed calibration from the data sheet:
   // (2048 − 12) / 1240.909 V = 1.64073… V, rounded once to 1641 mV.
-  using adc_counts    = quantity<cts           , inside<{0    , 4095}>>;
-  using offset_counts = quantity<cts           , inside<{-64  , 64  }>>;
-  using cts_per_volt  = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
-  using millivolts    = quantity<si::milli(si::volt), inside<{-5000, 5000}, round_half_away>>;
+  using adc_counts    = id<"[0..4095] [cts]">;
+  using offset_counts = id<"[-64..64] [cts]">;
+  using cts_per_volt  = id<"[1000..1500] 1/1000 [cts/V] round_half_away">;
+  using millivolts    = id<"[-5000..5000] [mV] round_half_away">;
 
   const adc_counts    raw   {2048, cts};
   const offset_counts offset{12  , cts};
@@ -41,8 +41,8 @@ int main()
   // 2. A two-point calibration: 0.5 V reads 632 cts, 2.5 V reads 3114 cts,
   // so the gain is 1241 cts/V and the offset 11.5 cts.
   // The references lie in disjoint ranges, so ΔV is never 0.
-  using low_volts  = quantity<si::volt, inside<{{0, 1}, per<1000>}>>;
-  using high_volts = quantity<si::volt, inside<{{2, 5}, per<1000>}>>;
+  using low_volts  = id<"[0..1] 1/1000 [V]">;
+  using high_volts = id<"[2..5] 1/1000 [V]">;
 
   const low_volts  v1{just<1, 2> * si::volt};
   const high_volts v2{just<5, 2> * si::volt};
@@ -65,6 +65,6 @@ int main()
 
   // Counts and volts do not add, and a voltage is no current.
   static_assert(!addable<adc_counts, low_volts>);
-  static_assert(!std::constructible_from<quantity<si::ampere, inside<{0, 5}>>, decltype(volts)>);
+  static_assert(!std::constructible_from<id<"[0..5] [A]">, decltype(volts)>);
   return 0;
 }

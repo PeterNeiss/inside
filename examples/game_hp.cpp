@@ -19,15 +19,15 @@ namespace
 
 int main()
 {
-  using hit_points = quantity<HP, inside<{0, 100}, clamp>>; // saturates at 0 and 100
+  using hit_points = id<"[0..100] [HP] clamp">; // saturates at 0 and 100
   hit_points hp{75, HP};
   std::cout << "starting health: " << hp << "\n";
 
   // One hit with three multipliers in [0, 4] at 1/16: mul_all folds them, the grid widening at each step,
   // and mul<dealt_damage> scales the base damage and rounds once to whole HP.
-  using base_damage  = quantity<HP, inside<{0, 50  }>>;
-  using multiplier   = inside<{{0, 4}, per<16>}, round_half_away>;
-  using dealt_damage = quantity<HP, inside<{0, 3200}, round_half_away>>;
+  using base_damage  = id<"[0..50] [HP]">;
+  using multiplier   = id<"[0..4] 1/16 round_half_away">;
+  using dealt_damage = id<"[0..3200] [HP] round_half_away">;
 
   base_damage base{10, HP};
   multiplier  crit{2.0};  // 2x on a crit
@@ -59,7 +59,7 @@ int main()
   std::cout << "after heal: " << hp << "\n";
 
   // A level-scaled bonus may pass 100 HP: hit_points' clamp policy clips the conversion, no flag needed.
-  using scaled_pool = quantity<HP, inside<{0, 1000}>>;
+  using scaled_pool = id<"[0..1000] [HP]">;
   scaled_pool bonus{180, HP};
   hit_points  capped = bonus;
   std::cout << "\nlevel bonus 180 HP -> hit_points (implicit clamp): " << capped << "\n";

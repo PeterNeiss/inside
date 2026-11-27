@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    quantity<si::metre, inside<{0, 100}>> d{150, clamp};
+    id<"[0..100] [m]"> d{150, clamp};
     (void)d;
 }

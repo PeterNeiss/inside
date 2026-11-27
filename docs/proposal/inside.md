@@ -116,13 +116,13 @@ Each one is a region of a program that compiles and checks its own results.
 
 <!-- listing: range -->
 ```cpp
-using percent = inside<{0, 100}>;   // the integers 0..100, in one byte
+using percent = id<"[0..100]">;   // the integers 0..100, in one byte
 
 percent a = 42, b = 58;
-auto    sum  = a + b;               // inside<{0, 200}>
-auto    diff = a - b;               // inside<{-100, 100}>
-auto    neg  = -a;                  // inside<{-100, 0}>: no -INT_MIN
-static_assert(std::is_same_v<decltype(sum), inside<{0, 200}>>);
+auto    sum  = a + b;               // id<"[0..200]">
+auto    diff = a - b;               // id<"[-100..100]">
+auto    neg  = -a;                  // id<"[-100..0]">: no -INT_MIN
+static_assert(std::is_same_v<decltype(sum), id<"[0..200]">>);
 static_assert(sizeof(percent) == 1);
 
 percent c{sum - just<100>, clamp};  // -100..100 into 0..100: the store names what happens
@@ -133,7 +133,7 @@ auto    bad = percent::try_make(sum); // expected<percent, error>
 
 <!-- listing: money -->
 ```cpp
-using cents = inside<{{0, 1'000'000}, per<100>}, round_half_away>;
+using cents = id<"[0..1'000'000] 1/100 round_half_away">;
 
 cents price = 0.1_ins, tax = 0.2_ins;   // exactly 1/10 and 2/10
 auto  total = price + tax;              // exactly 3/10 — no 0.30000000000000004
@@ -147,9 +147,9 @@ cents third = cents{1} / 3_ins;         // 1/3 rounds to nearest: 0.33
 
 <!-- listing: wrap -->
 ```cpp
-using degrees = inside<{0, 359}, wrap>;   // modular
-using level   = inside<{0, 10}, clamp>;   // saturating
-using count   = inside<{0, 10}>;          // checked (the default)
+using degrees = id<"[0..359] wrap">;      // modular
+using level   = id<"[0..10] clamp">;      // saturating
+using count   = id<"[0..10]">;            // checked (the default)
 
 degrees heading = 350;
 heading += 20_ins;                        // 370 wraps to 10
@@ -164,13 +164,13 @@ auto n = count::try_make(14);             // unexpected(error::overflow)
 
 <!-- listing: offset -->
 ```cpp
-using centre = inside<{{0.5, 255.5}, 1}>;    // 0.5, 1.5, ..., 255.5
+using centre = id<"[0.5..255.5] 1">;         // 0.5, 1.5, ..., 255.5
 static_assert(sizeof(centre) == 1);          // 256 points: one byte
 
 centre x = 2.5_ins, y = 0.5_ins;
-auto   s = x + y;                            // inside<{1, 511}>: whole numbers again
+auto   s = x + y;                            // id<"[1..511]">: whole numbers again
 auto   p = x * y;                            // 0.25, 0.75, ...: Lower 1/4, notch 1/2
-static_assert(std::is_same_v<decltype(s), inside<{1, 511}>>);
+static_assert(std::is_same_v<decltype(s), id<"[1..511]">>);
 static_assert(lower_of<decltype(p)> == per<4> && notch_of<decltype(p)> == per<2>);
 ```
 
@@ -178,9 +178,9 @@ static_assert(lower_of<decltype(p)> == per<4> && notch_of<decltype(p)> == per<2>
 
 <!-- listing: division -->
 ```cpp
-using num  = inside<{0, 100}>;
-using any  = inside<{0, 10}>;              // may be zero
-using some = inside<{1, 10}>;              // never zero
+using num  = id<"[0..100]">;
+using any  = id<"[0..10]">;                // may be zero
+using some = id<"[1..10]">;                // never zero
 
 auto q = num{7} / some{3};                 // exactly 7/3, a plain value
 auto r = num{7} / any{3};                  // std::expected<..., error>
@@ -195,22 +195,22 @@ auto m = mod(num{7}, some{3}, round_floor);  // 1, consistent: 2·3 + 1 == 7
 
 <!-- listing: convert -->
 ```cpp
-using level  = inside<{0, 10}>;
-using sensor = inside<{0, 1000}>;
+using level  = id<"[0..10]">;
+using sensor = id<"[0..1000]">;
 sensor raw   = 725;
 
 static_assert(conversion_overflows<level>(725));
 auto top  = level{raw, clamp};                      // 10: saturated
-auto deg  = inside<{0, 359}>{raw, wrap};            // 5: 725 mod 360
+auto deg  = id<"[0..359]">{raw, wrap};              // 5: 725 mod 360
 auto fit  = exact_cast<level>(sensor{7});              // expected<level, error>: 7
 auto near = level{6.5, clamp | round_half_away};       // 7: a tie goes away from zero
 
-using quarter = inside<{{0, 10}, per<4>}>;
+using quarter = id<"[0..10] 1/4">;
 quarter q = 2.75_ins;
 auto num  = q.numerator();                               // 11: the value is 11/4
 auto i    = q.to<int>();                                 // unexpected(error::rounding_error)
 auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
-auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(error::overflow)
+auto neg  = id<"[-5..5]">{-1}.to<unsigned>();            // unexpected(error::overflow)
 ```
 
 **A call or a single store can take another policy, and an action sees what
@@ -218,8 +218,8 @@ the policy did.**
 
 <!-- listing: per_call -->
 ```cpp
-using whole = inside<{0, 100}>;
-using step  = inside<{1, 10}>;                           // never zero
+using whole = id<"[0..100]">;
+using step  = id<"[1..10]">;                           // never zero
 
 auto down       = div(whole{7}, step{2}, round_floor); // 3: this call rounds down
 auto up         = div(whole{7}, step{2}, round_ceil);  // 4
@@ -228,8 +228,8 @@ auto [quo, rem] = divmod(whole{17}, step{5});            // 3 and 2
 whole x = 50;
 x.with<clamp>() = 150;                                      // 100: this store saturates
 
-using seconds = inside<{0, 59}, wrap>;
-using minutes = inside<{0, 59}, clamp>; // m += carry names what happens past 59
+using seconds = id<"[0..59] wrap">;
+using minutes = id<"[0..59] clamp">; // m += carry names what happens past 59
 seconds s = 50;
 minutes m = 0;
 s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2
@@ -239,11 +239,11 @@ s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m
 
 <!-- listing: generic -->
 ```cpp
-using small = inside<{0, 10}>;
-using wide  = inside<{-50, 50}>;
+using small = id<"[0..10]">;
+using wide  = id<"[-50..50]">;
 
 using common = std::common_type_t<small, wide>;          // the hull of the two grids
-static_assert(std::is_same_v<common, inside<{-50, 50}>>);
+static_assert(std::is_same_v<common, id<"[-50..50]">>);
 common hi = std::max<common>(small{7}, wide{-3});        // 7
 
 using limits = std::numeric_limits<small>;

@@ -1397,7 +1397,7 @@ namespace ins
       : Form{atom_form(k, any_of_kind, derived, u) ? ref_form{.Atom = u.Atoms[0]}
                                                    : ref_form{.Parts = {k, u, any_of_kind, derived}}},
         HasParts{!atom_form(k, any_of_kind, derived, u)} {}
-    // A unit tag as a reference: quantity<si::metre, …>.
+    // A unit tag as a reference: id<quantity_key<si::metre, …>>.
     template <unit_value V>
     constexpr reference(unit_t<V>) : reference{ins::kind_of(V), detail::has(ins::kind_of(V)), recipe{}, V} {}
 
@@ -1628,7 +1628,7 @@ namespace ins
         if constexpr (policy_of<decltype(x)> == policy_of<V>)
           return x;
         else
-          return inside<grid_of<decltype(x)>, policy_of<V>>::from_raw(x.raw(), unsafe);
+          return id<key{grid_of<decltype(x)>, policy_of<V>}>::from_raw(x.raw(), unsafe);
       }
     }
 

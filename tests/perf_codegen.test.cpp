@@ -24,7 +24,7 @@ using namespace ins;
 
 // A plain integer grid: native integer storage, integer-aligned. `x + y` widens
 // the grid type but stays on the integer fast path.
-using I = inside<{-1000000, 1000000}>;
+using I = id<"[-1000000..1000000]">;
 
 // Scalar fast path: must be a bare integer add, no call into any fallback.
 extern "C" long ins_perf_add_fast(long a, long b) {
@@ -44,7 +44,7 @@ ins_perf_add_loop(const long* __restrict a, const long* __restrict b, long* __re
 
 // Multiply fast path: the value-index integer multiply must likewise stay
 // call-free (no fallback into the rational branch).
-using M = inside<{-1000, 1000}>;
+using M = id<"[-1000..1000]">;
 
 extern "C" long ins_perf_mul_fast(long a, long b) {
     M x = M::from_raw(static_cast<M::raw_type>(a), unsafe);
@@ -54,7 +54,7 @@ extern "C" long ins_perf_mul_fast(long a, long b) {
 
 // Index raw → double: one convert and one multiply (as_double's
 // index_double codec), no rational decode.
-using D = inside<{{-8, 8}, per<16384>}, round_half_away>;
+using D = id<"[-8..8] 1/16384 round_half_away">;
 
 extern "C" double ins_perf_to_double(D a) { return to<double>(a); }
 
@@ -62,7 +62,7 @@ extern "C" double ins_perf_to_double(D a) { return to<double>(a); }
 // must subtract raws directly (index-raw Q8.8 here — the case that would
 // otherwise fall into the full binary-add + cross-grid-assign engine via
 // `+= (-rhs)`).
-using Q = inside<{{0, 255}, per<256>}, clamp | round_toward_zero>; // (-= names its range handling)
+using Q = id<"[0..255] 1/256 clamp|round_toward_zero">; // (-= names its range handling)
 
 extern "C" long ins_perf_sub_compound(long a, long b) {
     Q x = Q::from_raw(static_cast<Q::raw_type>(a), unsafe);
@@ -86,18 +86,18 @@ extern "C" long ins_perf_range_sum() {
 // Units: a conversion rescales the grid and keeps the raw, so km → mm on an
 // index raw is no instruction at all; a sum in the common unit is one
 // multiply-add of raws.
-using km_t = ins::quantity<ins::si::kilo(ins::si::metre), inside<{{0, 100}, per<1000>}>>;
-using m_t  = ins::quantity<ins::si::metre, inside<{0, 1000}>>;
+using km_t = ins::id<"[0..100] 1/1000 [km]">;
+using m_t  = ins::id<"[0..1000] [m]">;
 
 extern "C" long ins_perf_unit_in(long a) {
-    const km_t d{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a), unsafe),
+    const km_t d{id<"[0..100] 1/1000">::from_raw(static_cast<km_t::rep::raw_type>(a), unsafe),
                  ins::si::kilo(ins::si::metre)};
     return static_cast<long>(d.numerical_value_in(ins::si::milli(ins::si::metre)).raw());
 }
 
 extern "C" long ins_perf_unit_sum(long a, long b) {
-    const km_t x{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a), unsafe),
+    const km_t x{id<"[0..100] 1/1000">::from_raw(static_cast<km_t::rep::raw_type>(a), unsafe),
                  ins::si::kilo(ins::si::metre)};
-    const m_t  y{inside<{0, 1000}>::from_raw(static_cast<m_t::rep::raw_type>(b), unsafe), ins::si::metre};
+    const m_t  y{id<"[0..1000]">::from_raw(static_cast<m_t::rep::raw_type>(b), unsafe), ins::si::metre};
     return static_cast<long>((x + y).numerical_value_in(ins::si::metre).raw());
 }

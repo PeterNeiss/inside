@@ -124,7 +124,7 @@ auto v = just<2> * si::metre * e1 + si::metre * e2;                // 2 m·e₁ 
 - A result with **one part** is that quantity or inside, and one with **none** is
   the zero `multivector<>`, which adds to anything.
 - A **declared type** fixes the parts' grids:
-  `multivector<inside<{-10, 10}>, quantity<i, inside<{-10, 10}>>>`. It takes any
+  `multivector<id<"[-10..10]">, id<"[-10..10] [i]">>`. It takes any
   element whose blades are among its own (the missing parts are 0), converting
   each part as the part converts, and `{x, clamp}` applies a policy to each
   part's store.
@@ -197,9 +197,9 @@ of an inside is; a rotor's parts on [−1, 1] hold every value, so `rotor`
 below stays plain.
 
 ```cpp
-using coef  = inside<{{-1, 1}, per<(1 << 20)>}, round_half_away>;
-using part  = inside<{{-1, 1}, per<(1 << 16)>}, round_half_away>;
-using rotor = multivector<part, quantity<i, part>, quantity<j, part>, quantity<k, part>>;
+using coef  = id<"[-1..1] 1/1048576 round_half_away">;
+using part  = id<"[-1..1] 1/65536 round_half_away">;
+using rotor = multivector<part, id<quantity_key<i, part>>, id<quantity_key<j, part>>, id<quantity_key<k, part>>>;
 const coef c{just<6045997880780726, 10000000000000000>};    // π/(3√3)
 math::exp<rotor>(c * i + c * j + c * k);                    // ½ + ½ i + ½ j + ½ k
 math::exp<part>(c * i + c * j + c * k);                     // the same rotor
@@ -234,10 +234,10 @@ complex number, log of one whose scalar part is positive); else a
 `expected` too.
 
 ```cpp
-using part  = inside<{{-4, 4}, per<64>}, round_half_away>;
-using coef  = inside<{{-8, 8}, per<1024>}, round_half_away>;
-using cplx  = multivector<part, quantity<i, part>>;
-using roots = multivector<coef, quantity<i, coef>>;
+using part  = id<"[-4..4] 1/64 round_half_away">;
+using coef  = id<"[-8..8] 1/1024 round_half_away">;
+using cplx  = multivector<part, id<quantity_key<i, part>>>;
+using roots = multivector<coef, id<quantity_key<i, coef>>>;
 math::sqrt<roots>(cplx{part{3} + part{4} * i});   // 2 + 1 i, exactly
 math::log<roots>(cplx{part{3} + part{4} * i});    // an expected: 1.609375 + 0.927734375 i
 ```

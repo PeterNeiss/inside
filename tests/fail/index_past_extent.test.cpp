@@ -18,5 +18,5 @@ int at(const image& m, R r, C c) {
 int main() {
     std::array<int, 20> a{};
     const image         m{a.data()};
-    return at(m, inside<{0, 4}>{}, inside<{0, 4}>{}); // rows are 0 ... 3
+    return at(m, id<"[0..4]">{}, id<"[0..4]">{}); // rows are 0 ... 3
 }

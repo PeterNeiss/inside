@@ -663,9 +663,16 @@ namespace ins::detail
   }
 
   // The canonical text of the quantity a key's text names (detail::key_of_text through this overload).
+  // The units' reader of a key's quantity text, where this header is included (inside/key.hpp: units_marker).
   template <std::size_t N>
-  consteval bool canonical_quantity_text(text_hook<N>, const id_spec& s, quantity_name& q, std::string_view& expected,
-                                         std::size_t& at)
+  struct units_reader
+  {
+  };
+  template <std::size_t N>
+  units_reader<N> units_marker(text_hook<N>, int);
+  template <std::size_t N>
+  consteval bool canonical_quantity_text(units_reader<N>, const id_spec& s, quantity_name& q,
+                                         std::string_view& expected, std::size_t& at)
   {
     const quantity_read r{read_quantity<text_hook<N>>(s.Unit, s.Kind, s.Origin)};
     if (!r.Ok)

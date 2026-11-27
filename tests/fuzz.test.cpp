@@ -166,7 +166,7 @@ template <insidable B>
 void prop_clamp(fuzz_state& s, long iters) {
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop    = "clamp";
-        using BC          = inside<grid_of<B>, clamp>;
+        using BC          = id<key{grid_of<B>, clamp}>;
         auto         lo   = trunc(detail::lower64<B>);
         auto         hi   = trunc(detail::upper64<B>);
         std::int64_t span = (hi - lo) * 3 + 100;
@@ -184,7 +184,7 @@ template <insidable B>
 void prop_wrap(fuzz_state& s, long iters) {
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop     = "wrap";
-        using BW           = inside<grid_of<B>, wrap>;
+        using BW           = id<key{grid_of<B>, wrap}>;
         auto         lo    = trunc(detail::lower64<B>);
         auto         hi    = trunc(detail::upper64<B>);
         std::int64_t range = hi - lo + 1;
@@ -222,7 +222,7 @@ template <insidable B>
 void prop_on_clamp(fuzz_state& s, long iters) {
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop    = "on_clamp";
-        using BC          = inside<grid_of<B>, clamp>;
+        using BC          = id<key{grid_of<B>, clamp}>;
         auto         lo   = trunc(detail::lower64<B>);
         auto         hi   = trunc(detail::upper64<B>);
         std::int64_t span = (hi - lo) * 2 + 50;
@@ -364,7 +364,7 @@ void prop_compound_add_inside(fuzz_state& s, long iters) {
         s.current_prop = "compound_add_inside";
         // The delta is itself an inside (raw int RHS is now ill-formed). A signed grid
         // spanning ±(Upper−Lower) covers every in-range delta.
-        using Delta = inside<{detail::lower64<B> - detail::upper64<B>, detail::upper64<B> - detail::lower64<B>}>;
+        using Delta = id<key{grid{detail::lower64<B> - detail::upper64<B>, detail::upper64<B> - detail::lower64<B>}}>;
         auto lo     = trunc(detail::lower64<B>);
         auto hi     = trunc(detail::upper64<B>);
         // Pick integer initial value and delta such that the result stays in range
@@ -392,7 +392,7 @@ void prop_modulo(fuzz_state& s, long iters) {
     // mod requires a rounding mode, so derive a typed alias.
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "modulo";
-        using BI       = inside<grid_of<B>, round_toward_zero>;
+        using BI       = id<key{grid_of<B>, round_toward_zero}>;
         auto lo        = trunc(detail::lower64<B>);
         auto hi        = trunc(detail::upper64<B>);
         if (lo > 0 || hi <= 0) {
@@ -439,7 +439,7 @@ template <insidable B>
 void prop_increment_wrap(fuzz_state& s, long iters) {
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop                                    = "increment_wrap";
-        using BW                                          = inside<grid_of<B>, wrap>;
+        using BW                                          = id<key{grid_of<B>, wrap}>;
         auto                                        lo    = trunc(detail::lower64<B>);
         auto                                        hi    = trunc(detail::upper64<B>);
         std::int64_t                                range = hi - lo + 1;
@@ -548,7 +548,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
             std::int64_t start = dist(s.rng);
             FUZZ_REQUIRE(s, reports_with(error::division_by_zero, [&] {
                              B                    b = test::store<B>(start);
-                             const inside<{0, 1}> zero{0};
+                             const id<"[0..1]"> zero{0};
                              error                ec{};
                              b.on_error(ec) /= zero;
                              return ec;
@@ -600,9 +600,9 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
         s.current_prop = "non_notch_assign";
         // The catalogue's B already uses the default `checked` policy, so a non-
         // notch-aligned assignment to B must throw rounding_error.
-        using BIR                = inside<grid_of<B>, round_toward_zero>; // silent floor
-        using BRN                = inside<grid_of<B>, round_half_away>;   // nearest
-        using BNONE              = inside<grid_of<B>, unsafe>;            // unchecked (unsafe carries the rounding)
+        using BIR                = id<key{grid_of<B>, round_toward_zero}>; // silent floor
+        using BRN                = id<key{grid_of<B>, round_half_away}>;   // nearest
+        using BNONE              = id<key{grid_of<B>, unsafe}>;            // unchecked (unsafe carries the rounding)
         constexpr rational notch = detail::notch64<B>;
         constexpr rational lo    = detail::lower64<B>;
         constexpr rational hi    = detail::upper64<B>;
@@ -686,7 +686,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
     // that bits-exponent > 62. Any double in (0, 2^-62) qualifies.
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
         s.current_prop                   = "subnormal_construct";
-        using BIR                        = inside<grid_of<B>, round_toward_zero>;
+        using BIR                        = id<key{grid_of<B>, round_toward_zero}>;
         constexpr rational lo            = detail::lower64<B>;
         constexpr rational hi            = detail::upper64<B>;
         constexpr bool     zero_in_range = (lo <= 0) && (hi >= 0);
@@ -736,7 +736,7 @@ void prop_expected_throws(fuzz_state& s) {
     // .value() (std::expected's own); an inside does not store it.
     s.current_prop        = "expected_throws";
     s.iter                = 0;
-    using B               = inside<{0, 100}>;
+    using B               = id<"[0..100]">;
     bool        got_throw = false;
     std::string what;
     try {
@@ -815,7 +815,7 @@ void prop_raw_rational_arith(fuzz_state& s, long iters) {
             auto        prod        = a * b;
             const exact expect_sum  = exact{ar} + exact{br};
             const exact expect_prod = exact{ar} * exact{br};
-            // sum/prod is either inside<...> or std::expected<inside<...>, error> depending
+            // sum/prod is either id<key{...}> or std::expected<id<key{...}>, error> depending
             // on whether the operation needs an overflow check (driven by policy).
             auto check = [&](auto v, const exact& expected) {
                 if constexpr (requires { v.has_value(); }) {
@@ -988,7 +988,7 @@ void prop_range(fuzz_state& s, long iters) {
 //---------------------------------------------------------------------------
 void prop_cmath_exact(fuzz_state& s, long iters) {
     // abs/floor/ceil/round/trunc/fmod against exact rational oracles.
-    using M        = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using M        = id<"[-8..8] 1/16384 round_half_away">;
     s.current_grid = "cmath";
     s.current_prop = "cmath_exact";
     for (long i = 0; i < iters; ++i) {
@@ -1012,8 +1012,8 @@ void prop_cmath_exact(fuzz_state& s, long iters) {
 }
 
 void prop_sqrt(fuzz_state& s, long iters) {
-    using In       = inside<{{0, 4}, per<65536>}, round_half_away>;
-    using Out      = inside<{{0, 2}, per<16384>}, round_half_away>;
+    using In       = id<"[0..4] 1/65536 round_half_away">;
+    using Out      = id<"[0..2] 1/16384 round_half_away">;
     s.current_grid = "cmath";
     s.current_prop = "sqrt";
     const rational tol{4, 16384}; // ~2 output notches (double-rounding)
@@ -1029,7 +1029,7 @@ void prop_sqrt(fuzz_state& s, long iters) {
     // A second grid, [0, 1] (one reaching below 0 is a compile error:
     // fail/sqrt_domain).
     s.current_prop = "sqrt_unit";
-    using SIn      = inside<{{0, 1}, per<65536>}, round_half_away>;
+    using SIn      = id<"[0..1] 1/65536 round_half_away">;
     for (long i = 0; i < iters; ++i) {
         s.iter        = i;
         SIn        x  = SIn::from_raw(random_in_range_raw<SIn>(s.rng), unsafe);
@@ -1040,7 +1040,7 @@ void prop_sqrt(fuzz_state& s, long iters) {
 }
 
 void prop_sin_cos(fuzz_state& s, long iters) {
-    using A        = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using A        = id<"[-8..8] 1/16384 round_half_away">;
     s.current_grid = "cmath";
     s.current_prop = "sin_cos";
     const rational tol{8, 16384};
@@ -1059,7 +1059,7 @@ void prop_sin_cos(fuzz_state& s, long iters) {
 }
 
 void prop_tan(fuzz_state& s, long iters) {
-    using A        = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_half_away>; // one branch
+    using A        = id<"[-3/2..3/2] 1/16384 round_half_away">; // one branch
     s.current_grid = "cmath";
     s.current_prop = "tan";
     const rational tol{16, 1024};
@@ -1080,7 +1080,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
     s.current_grid = "cmath";
 
     {
-        using In       = inside<{{-4, 4}, per<16384>}, round_half_away>;
+        using In       = id<"[-4..4] 1/16384 round_half_away">;
         s.current_prop = "exp2";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1090,7 +1090,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{0x1p-8_r, 256}, per<16384>}, round_half_away>;
+        using In       = id<"[0x1p-8..256] 1/16384 round_half_away">;
         s.current_prop = "log2";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1100,7 +1100,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{-10, 10}, per<16384>}, round_half_away>;
+        using In       = id<"[-10..10] 1/16384 round_half_away">;
         s.current_prop = "exp";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1110,7 +1110,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{0x1p-8_r, 256}, per<256>}, round_half_away>;
+        using In       = id<"[0x1p-8..256] 1/256 round_half_away">;
         s.current_prop = "log";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1121,7 +1121,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{-9, 9}, per<16384>}, round_half_away>;
+        using In       = id<"[-9..9] 1/16384 round_half_away">;
         s.current_prop = "pow_base";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1136,7 +1136,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
 }
 
 void prop_atan2(fuzz_state& s, long iters) {
-    using In       = inside<{{-1, 1}, per<16384>}, round_half_away>;
+    using In       = id<"[-1..1] 1/16384 round_half_away">;
     s.current_grid = "cmath";
     s.current_prop = "atan2";
     const rational tol{16, 16384}; // radians: a few output notches
@@ -1163,7 +1163,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // Inverse trig — input [-1, 1], output radians.
     {
-        using In = inside<{{-1, 1}, per<65536>}, round_half_away>;
+        using In = id<"[-1..1] 1/65536 round_half_away">;
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
@@ -1179,7 +1179,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // Hyperbolic — input [-10, 10].
     {
-        using In = inside<{{-10, 10}, per<65536>}, round_half_away>;
+        using In = id<"[-10..10] 1/65536 round_half_away">;
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng), unsafe);
@@ -1195,7 +1195,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // log10 — input (0, 1024].
     {
-        using In       = inside<{{1, 1024}, per<65536>}, round_half_away>;
+        using In       = id<"[1..1024] 1/65536 round_half_away">;
         s.current_prop = "log10";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1207,7 +1207,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // cbrt — signed input.
     {
-        using In       = inside<{{-16, 16}, per<65536>}, round_half_away>;
+        using In       = id<"[-16..16] 1/65536 round_half_away">;
         s.current_prop = "cbrt";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1219,7 +1219,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // hypot — two signed inputs.
     {
-        using In       = inside<{{-16, 16}, per<65536>}, round_half_away>;
+        using In       = id<"[-16..16] 1/65536 round_half_away">;
         s.current_prop = "hypot";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1233,8 +1233,8 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // pow — positive base, returns expected.
     {
-        using B        = inside<{{1, 16}, per<65536>}, round_half_away>;
-        using E        = inside<{{-4, 8}, per<65536>}, round_half_away>;
+        using B        = id<"[1..16] 1/65536 round_half_away">;
+        using E        = id<"[-4..8] 1/65536 round_half_away">;
         s.current_prop = "pow";
         for (long i = 0; i < iters; ++i) {
             s.iter        = i;
@@ -1279,18 +1279,18 @@ void prop_wrap_fractional(fuzz_state& s, long iters) {
         };
 
     struct A {
-        using type = inside<{{0, 1}, per<4>}, wrap | round_half_away>;
+        using type = id<"[0..1] 1/4 wrap|round_half_away">;
     };
     struct B1 {
-        using type = inside<{{-2, 2}, per<4>}, round_half_away>;
+        using type = id<"[-2..2] 1/4 round_half_away">;
     };
     check(A{}, B1{}, "wf_0_1_q4", rational{5, 4}, rational{0}, rational{1}, rational{1, 4});
 
     struct C {
-        using type = inside<{{rational{1, 2}, rational{5, 2}}, per<2>}, wrap | round_half_away>;
+        using type = id<"[1/2..5/2] 1/2 wrap|round_half_away">;
     };
     struct D {
-        using type = inside<{{-4, 4}, per<2>}, round_half_away>;
+        using type = id<"[-4..4] 1/2 round_half_away">;
     };
     check(C{}, D{}, "wf_half_q2", rational{5, 2}, rational{1, 2}, rational{5, 2}, rational{1, 2});
 }
@@ -1337,9 +1337,9 @@ void run_props(fuzz_state& s, long iters, const char* name) {
 //---------------------------------------------------------------------------
 void prop_math_tiers(fuzz_state& s, long iters) {
     namespace engine              = ins::math::detail::engine;
-    using A                       = inside<{{-8, 8}, per<16384>}, round_half_away>; // angle / general
-    using P                       = inside<{{0, 4}, per<16384>}, round_half_away>;  // sqrt domain
-    using O                       = inside<{{-8, 8}, per<1048576>}, round_half_away>;
+    using A                       = id<"[-8..8] 1/16384 round_half_away">;          // angle / general
+    using P                       = id<"[0..4] 1/16384 round_half_away">;           // sqrt domain
+    using O                       = id<"[-8..8] 1/1048576 round_half_away">;
     s.current_grid                = "cmath";
     s.current_prop                = "math_tiers";
     constexpr std::size_t E       = engine::input_limbs<A>;
@@ -1383,47 +1383,47 @@ int main(int argc, char** argv) {
 
     std::cout << "inside.fuzz: seed=" << s.seed << " iters=" << iters << "\n";
 
-    run_props<inside<{0, 100}>>(s, iters, "u100");
-    run_props<inside<{-100, 100}>>(s, iters, "s100");
-    run_props<inside<{0, 254}>>(s, iters, "u254");
-    run_props<inside<{0, 255}>>(s, iters, "u255");
-    run_props<inside<{0, 65535}>>(s, iters, "u16k");
-    run_props<inside<{-32768, 32767}>>(s, iters, "s16");
-    run_props<inside<{0, 1'000'000}>>(s, iters, "u1M");
-    run_props<inside<{1, 100}>>(s, iters, "u100off");
-    run_props<inside<{-3, 7}>>(s, iters, "small_signed");
-    run_props<inside<{{0, 50}, 0.5}>>(s, iters, "u50half");
-    run_props<inside<{{-50, 50}, 0.5}>>(s, iters, "s50half");
-    run_props<inside<{{0, 255}, 1.0 / 256}>>(s, iters, "Q8.8");
-    run_props<inside<{{-1, 1}, per<16384>}>>(s, iters, "Q1.14");
-    run_props<inside<{{0, 65535}, per<65536>}>>(s, iters, "Q16.16");
-    run_props<inside<{{0, 1'000'000}, per<100>}>>(s, iters, "money");
+    run_props<id<"[0..100]">>(s, iters, "u100");
+    run_props<id<"[-100..100]">>(s, iters, "s100");
+    run_props<id<"[0..254]">>(s, iters, "u254");
+    run_props<id<"[0..255]">>(s, iters, "u255");
+    run_props<id<"[0..65535]">>(s, iters, "u16k");
+    run_props<id<"[-32768..32767]">>(s, iters, "s16");
+    run_props<id<"[0..1'000'000]">>(s, iters, "u1M");
+    run_props<id<"[1..100]">>(s, iters, "u100off");
+    run_props<id<"[-3..7]">>(s, iters, "small_signed");
+    run_props<id<"[0..50] 0.5">>(s, iters, "u50half");
+    run_props<id<"[-50..50] 0.5">>(s, iters, "s50half");
+    run_props<id<key{grid{{0, 255}, 1.0 / 256}}>>(s, iters, "Q8.8");
+    run_props<id<"[-1..1] 1/16384">>(s, iters, "Q1.14");
+    run_props<id<"[0..65535] 1/65536">>(s, iters, "Q16.16");
+    run_props<id<"[0..1'000'000] 1/100">>(s, iters, "money");
     // Extended catalogue: extreme/asymmetric/tiny shapes through every property.
-    run_props<inside<{0, 1'000'000'000}>>(s, iters, "u1G");
-    run_props<inside<{-1'000'000'000, 1'000'000'000}>>(s, iters, "s1G");
-    run_props<inside<{{-7, 11}, 0.25}>>(s, iters, "asym_q");
+    run_props<id<"[0..1'000'000'000]">>(s, iters, "u1G");
+    run_props<id<"[-1'000'000'000..1'000'000'000]">>(s, iters, "s1G");
+    run_props<id<"[-7..11] 0.25">>(s, iters, "asym_q");
     // Fully-negative ranges: every notch is exercised with both round candidates
     // < 0, the strongest test of toward-zero / half-away-from-zero rounding.
-    run_props<inside<{-100, -10}>>(s, iters, "neg_int");
-    run_props<inside<{{-20, -5}, 0.25}>>(s, iters, "neg_q");
-    run_props<inside<{{-13, 5}, per<8>}>>(s, iters, "asym_q8");
-    run_props<inside<{{-50, -10}, 0.5}>>(s, iters, "neg_half");
-    run_props<inside<{0, 3}>>(s, iters, "tiny");
-    run_props<inside<{-1, 1}>>(s, iters, "unit_signed");
-    run_props<inside<{{0, 4}, per<65536>}>>(s, iters, "Q_sqrt");
+    run_props<id<"[-100..-10]">>(s, iters, "neg_int");
+    run_props<id<"[-20..-5] 0.25">>(s, iters, "neg_q");
+    run_props<id<"[-13..5] 1/8">>(s, iters, "asym_q8");
+    run_props<id<"[-50..-10] 0.5">>(s, iters, "neg_half");
+    run_props<id<"[0..3]">>(s, iters, "tiny");
+    run_props<id<"[-1..1]">>(s, iters, "unit_signed");
+    run_props<id<"[0..4] 1/65536">>(s, iters, "Q_sqrt");
     // Raw-rational grid (notch=0): exercises the rational-storage branches in
     // addition / multiplication / assignment. Default `checked` policy goes
     // through the overflow-checked rational arithmetic; the `none` variant
     // exercises rational::add_unchecked / mul_unchecked.
-    run_props<inside<{{-1000, 1000}, max_denominator{1000}}>>(s, iters, "raw_rat");
-    run_props<inside<{{-1000, 1000}, max_denominator{1000}}, checked>>(s, iters, "raw_rat_unck");
+    run_props<id<"[-1000..1000] <1000>">>(s, iters, "raw_rat");
+    run_props<id<"[-1000..1000] <1000>">>(s, iters, "raw_rat_unck");
     // Unanchored lattices (Lower off the notch's multiples): offset storage
     // whose values are not whole notches.
-    run_props<inside<{{0.5_r, 100.5_r}, 1}>>(s, iters, "half_off");
-    run_props<inside<{{-20.25_r, 20.25_r}, 0.5_r}>>(s, iters, "quarter_off");
-    run_props<inside<{{-7.1_r, 2.9_r}, 0.2_r}>>(s, iters, "tenth_off");
-    run_props<inside<{{-50.5_r, -10.5_r}, 1}>>(s, iters, "neg_off");
-    run_props<inside<{{0.5_r, 255.5_r}, 1}>>(s, iters, "byte_off");
+    run_props<id<"[0.5..100.5] 1">>(s, iters, "half_off");
+    run_props<id<"[-20.25..20.25] 0.5">>(s, iters, "quarter_off");
+    run_props<id<"[-7.1..2.9] 0.2">>(s, iters, "tenth_off");
+    run_props<id<"[-50.5..-10.5] 1">>(s, iters, "neg_off");
+    run_props<id<"[0.5..255.5] 1">>(s, iters, "byte_off");
 
     // Standalone (non-grid) properties.
     guarded(s, [&] { prop_interval_eq(s); });
@@ -1441,13 +1441,13 @@ int main(int argc, char** argv) {
     guarded(s, [&] { prop_math_tiers(s, iters); });
 
     // Cross-grid arithmetic: mix grids of different lower/upper but same notch.
-    guarded(s, [&] { prop_cross_add<inside<{0, 100}>, inside<{-100, 100}>>(s, iters, "u100+s100"); });
-    guarded(s, [&] { prop_cross_add<inside<{0, 100}>, inside<{0, 1000}>>(s, iters, "u100+u1k"); });
-    guarded(s, [&] { prop_cross_add<inside<{-50, 50}>, inside<{0, 100}>>(s, iters, "s50+u100"); });
-    guarded(s, [&] { prop_cross_add<inside<{{0, 50}, 0.5}>, inside<{{-50, 50}, 0.5}>>(s, iters, "u50half+s50half"); });
-    guarded(s, [&] { prop_cross_add<inside<{{0.5_r, 100.5_r}, 1}>, inside<{-100, 100}>>(s, iters, "half_off+s100"); });
+    guarded(s, [&] { prop_cross_add<id<"[0..100]">, id<"[-100..100]">>(s, iters, "u100+s100"); });
+    guarded(s, [&] { prop_cross_add<id<"[0..100]">, id<"[0..1000]">>(s, iters, "u100+u1k"); });
+    guarded(s, [&] { prop_cross_add<id<"[-50..50]">, id<"[0..100]">>(s, iters, "s50+u100"); });
+    guarded(s, [&] { prop_cross_add<id<"[0..50] 0.5">, id<"[-50..50] 0.5">>(s, iters, "u50half+s50half"); });
+    guarded(s, [&] { prop_cross_add<id<"[0.5..100.5] 1">, id<"[-100..100]">>(s, iters, "half_off+s100"); });
     guarded(s, [&] {
-        prop_cross_add<inside<{{0.5_r, 100.5_r}, 1}>, inside<{{-20.25_r, 20.25_r}, 0.5_r}>>(
+        prop_cross_add<id<"[0.5..100.5] 1">, id<"[-20.25..20.25] 0.5">>(
             s, iters, "half_off+quarter_off");
     });
 

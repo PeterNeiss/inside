@@ -354,7 +354,7 @@ namespace ins::detail::gaexp
   template <reference R, class V, class N>
   struct with_number<quantity_parts<R, V>, N>
   {
-    using type = quantity<R, N>;
+    using type = id<quantity_key<R, N>>;
   };
   template <key K, class N>
     requires unit_key<K>
@@ -364,7 +364,7 @@ namespace ins::detail::gaexp
   template <class F, std::size_t Q>
   using twin_part =
     typename with_number<std::tuple_element_t<Q, typename F::CP>,
-                         inside<twin_grid<F, Q>(), policy_of<num_t<std::tuple_element_t<Q, typename F::CP>>>>>::type;
+                         id<key{twin_grid<F, Q>(), policy_of<num_t<std::tuple_element_t<Q, typename F::CP>>>}>>::type;
   template <class Domain, class CoDomain>
   consteval auto twin_of()
   {
@@ -1490,7 +1490,7 @@ namespace ins::detail::gaexp
     using type = decltype([]<std::size_t... J>(std::index_sequence<J...>)
                           {
                             return std::type_identity<
-                              multivector<N<D::N>, quantity<D::template ypart<J>::reference, N<J>>...>>{};
+                              multivector<N<D::N>, id<quantity_key<D::template ypart<J>::reference, N<J>>>...>>{};
                           }(std::make_index_sequence<D::N>{}))::type;
   };
 
@@ -1530,10 +1530,9 @@ namespace ins::detail::gaexp
     }
     // Part J of y, or J = N for the scalar part.
     template <std::size_t J>
-    using number = inside<grid{{-limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N]),
+    using number = id<key{grid{{-limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N]),
                                 limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N])},
-                               notch},
-                          flags>;
+                               notch}, flags}>;
     using type = typename output_parts<Domain, number>::type;
   };
 

@@ -20,14 +20,14 @@
 // std::mdspan with insides (opt-in: include this header).
 //
 //   m[i, j]                    a std::mdspan takes an inside on non-negative
-//                               integers as it is (inside<{0, 479}>): an index
+//                               integers as it is (id<"[0..479]">): an index
 //                               converts to its value. A value that may lie
 //                               past an edge is stored into the index type
 //                               first, by its policy (clamp pads at the
 //                               edges, wrap is periodic)
 //   extents_of<I, J>            std::extents from index types: the extent of
-//                               inside<{0, 479}> is 480 (Upper + 1)
-//   extent_index_t<E, r>        inside<{0, N − 1}> for E's static extent N at
+//                               id<"[0..479]"> is 480 (Upper + 1)
+//   extent_index_t<E, r>        id<key{grid{0, N − 1}}> for E's static extent N at
 //                               rank r
 //   index_for<I, E, r>          I is an index whose every value lies within
 //                               E's static extent at rank r
@@ -75,7 +75,7 @@ namespace ins
       using type = std::extents<std::size_t, extent_of_index<Is>...>;
     };
 
-    // 0 … n − 1 in steps of 1 (inside<{0, n − 1}>, also for n = 1).
+    // 0 … n − 1 in steps of 1 (id<key{grid{0, n − 1}}>, also for n = 1).
     consteval grid index_range_grid(std::size_t n)
     {
       return grid{interval{grid_number{0}, grid_number{n - 1}}, grid_number{1}};
@@ -97,11 +97,11 @@ namespace ins
   template <class... Is>
   using extents_of = typename detail::extents_of_impl<Is...>::type;
 
-  // The index type of E's static extent N ≥ 1 at rank R: inside<{0, N − 1}>.
+  // The index type of E's static extent N ≥ 1 at rank R: id<key{grid{0, N − 1}}>.
   template <class E, std::size_t R>
     requires detail::is_extents_v<E> && (R < E::rank()) && (E::static_extent(R) != std::dynamic_extent)
           && (E::static_extent(R) > 0)
-  using extent_index_t = inside<detail::index_range_grid(E::static_extent(R))>;
+  using extent_index_t = id<key{detail::index_range_grid(E::static_extent(R))}>;
 
   // I indexes rank R of E within bounds, proven by the types:
   // I is an index and its Upper lies below E's static extent (a dynamic extent proves nothing).
@@ -412,7 +412,7 @@ namespace ins
     }
     template <insidable N, std::size_t Count>
       requires notched<N> || point_grid<N>
-    using n_fold_sum_t = inside<n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker>;
+    using n_fold_sum_t = id<key{n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker}>;
     // The same for an element (an inside or a quantity): its kind on that number.
     template <class E, std::size_t Count>
     using n_fold_t = typename element_traits<E>::template rebind<n_fold_sum_t<element_number_t<E>, Count>>;

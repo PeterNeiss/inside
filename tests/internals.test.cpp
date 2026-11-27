@@ -608,13 +608,13 @@ TEST(BigRationalTest, runtime_overflow_is_reported) {
 // argument - reduced, the sign on the denominator, zero all zero bits, inline
 // while it fits the 64-bit rational, an interned big_rational (Den == 0,
 // Num == 1) past it.
-using ins::grid_number, ins::inside, ins::per;
+using ins::grid, ins::grid_number, ins::id, ins::key, ins::per;
 template <grid_number V>
 struct gtag {};
 static_assert(grid_number{rational{2, 4}}.Num == 1 && grid_number{rational{2, 4}}.Den == 2); // reduced
 static_assert(std::is_same_v<gtag<grid_number{rational{2, 4}}>, gtag<grid_number{rational{1, 2}}>>);
 static_assert(std::is_same_v<gtag<grid_number{rational{3, 3}}>, gtag<grid_number{1}>>);
-static_assert(std::is_same_v<inside<{{0, 1}, grid_number{rational{2, 4}}}>, inside<{{0, 1}, per<2>}>>);
+static_assert(std::is_same_v<id<key{grid{{0, 1}, grid_number{rational{2, 4}}}}>, id<"[0..1] 1/2">>);
 static_assert(grid_number{-3}.Num == 3 && grid_number{-3}.Den == -1 && grid_number{-3}.negative());
 static_assert(-grid_number{0} == grid_number{0} && (-grid_number{0}).Den == 0); // no negative zero
 static_assert(std::is_same_v<gtag<-grid_number{0}>, gtag<grid_number{0}>>);

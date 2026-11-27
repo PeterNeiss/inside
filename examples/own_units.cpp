@@ -48,14 +48,14 @@ namespace
 int main()
 {
   // 1. A depth of 12 fathoms is 21.9456 m, exactly; prefixes apply: a kilofathom is 1828.8 m.
-  using fathoms = quantity<depth[fathom], inside<{0, 100}>>;
+  using fathoms = id<"[0..100] [ftm]{depth}">;
   const fathoms sounding{12, depth[fathom]};
   std::cout << "sounding   " << sounding << " = " << sounding.in(si::metre) << '\n';
   if (to_string(sounding.in(si::metre)) != "21.9456 m"
       || to_string((just<1> * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
     return 1;
   // Text names it too: parse finds every unit declared where it is called.
-  using metres = quantity<si::metre, inside<{{0, 1000}, per<10'000>}>>;
+  using metres = id<"[0..1000] 1/10'000 [m]">;
   const auto read{parse<metres>("12 ftm")};
   std::cout << "read       12 ftm = " << *read << '\n';
   if (to_string(*read) != "21.9456 m")
@@ -63,7 +63,7 @@ int main()
   static_assert(sounding.kind == depth);
 
   // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.
-  using rankine_point = quantity_point<rankine, si::absolute_zero, inside<{{0, 1000}, per<100>}>>;
+  using rankine_point = id<"[0..1000] 1/100 [`R] @absolute_zero">;
   const rankine_point freezing{just<49167, 100>, rankine};
   std::cout << "freezing   " << freezing << " = " << freezing.point_in(si::degree_Celsius) << " = "
             << freezing.point_in(international::degree_Fahrenheit) << '\n';
@@ -73,8 +73,8 @@ int main()
     return 1;
 
   // 3. 1.25 kg of coffee at 3.99 EUR/kg is 4.9875 EUR exactly; with a 50 ct tip the sum runs in cents.
-  using euros_per_kg = quantity<euro / si::kilogram, inside<{{0, 100}, per<100> }>>;
-  using kilograms    = quantity<si::kilogram       , inside<{{0, 10 }, per<1000>}>>;
+  using euros_per_kg = id<"[0..100] 1/100 [EUR/kg]">;
+  using kilograms    = id<"[0..10] 1/1000 [kg]">;
 
   const euros_per_kg price {just<399, 100> * (euro / si::kilogram)};
   const kilograms    coffee{just<1250, 1000> * si::kilogram};
@@ -86,8 +86,8 @@ int main()
   static_assert(!addable<decltype(cost), decltype(just<1> * si::metre)>); // money never adds to a length
 
   // 4. A file size over a bandwidth is a time: 64 KiB at 1 Mbit/s takes 64·1024·8 / 10^6 s = 0.524288 s.
-  using kibibytes      = quantity<kibibyte                  , inside<{0, 1024}>>;
-  using megabits_per_s = quantity<si::mega(bit) / si::second, inside<{1, 100 }>>;
+  using kibibytes      = id<"[0..1024] [KiB]">;
+  using megabits_per_s = id<"[1..100] [Mbit/s]">;
 
   const kibibytes      file{64, kibibyte};
   const megabits_per_s link{1 , si::mega(bit) / si::second};

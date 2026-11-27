@@ -6,7 +6,7 @@
 using namespace ins;
 
 int main() {
-    inside<{0, 100}, round_toward_zero> x{50};
-    const inside<{0, 10}>               d{2};
+    id<"[0..100] round_toward_zero"> x{50};
+    const id<"[0..10]">               d{2};
     x /= d;
 }

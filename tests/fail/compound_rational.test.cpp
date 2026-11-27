@@ -9,6 +9,6 @@ using namespace ins;
 using ins::detail::operator""_r; // the library's own literal
 
 int main() {
-    inside<{{0, 10}, per<4>}> x{1};
+    id<"[0..10] 1/4"> x{1};
     x += 0.5_r;
 }

@@ -5,6 +5,6 @@
 #include <inside/units.hpp>
 inline constexpr auto own_km = ins::base_unit<"km", "own_length">;
 int main() {
-    ins::quantity<own_km, ins::inside<{0, 9}>> x;
+    ins::id<ins::quantity_key<own_km, ins::id<ins::key{ins::grid{0, 9}}>>> x;
     (void)x;
 }

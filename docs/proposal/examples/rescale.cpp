@@ -12,14 +12,14 @@ concept addable = requires(A a, B b) { a + b; };
 int main() {
     // [listing]
     constexpr auto km = si::kilo(si::metre);
-    quantity<km, inside<{{0, 500}, per<1000>}>> trip{12.5, km};    // 12.5 km, to the metre
+    id<"[0..500] 1/1000 [km]"> trip{12.5, km};                     // 12.5 km, to the metre
     auto m = trip.in(si::metre);                                   // 12500 m: the same raw, grid × 1000
     static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
 
     auto total = trip + just<800> * si::metre;                     // 13300 m: the sum runs in metres
-    auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
+    auto speed = total / id<"[1..600] [min]">{20, si::minute};
     auto kmh   = speed.in(km / si::hour);                          // 39.9 km/h, exactly
-    inside<{0, 1000}, round_half_away | clamp> laps = trip / (just<400> * si::metre); // 31: km / m is a number
+    id<"[0..1000] round_half_away|clamp"> laps = trip / (just<400> * si::metre); // 31: km / m is a number
     static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
     // [/listing]
     if (m.numerical_value_in(si::metre).raw() != trip.numerical_value_in(km).raw() ||

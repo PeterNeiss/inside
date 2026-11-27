@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    using halves = inside<{{0, 5}, 0.5}>;
-    (void)halves::from_step(inside<{{0, 1}, 0.5}>{0.5});
+    using halves = id<"[0..5] 0.5">;
+    (void)halves::from_step(id<"[0..1] 0.5">{0.5});
 }

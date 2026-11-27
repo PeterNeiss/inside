@@ -23,24 +23,24 @@ alone. A quantity in metres prints in 232 characters instead of 404.
 
 ### Upgrading from 0.11.0
 
-- The inside type is `id<key K>`, and `inside<G, P>` an alias of it
-  (`id<key{G, P}>`), so every `inside<…>` spelling works as before. An alias
-  is not deduced and cannot be instantiated explicitly: write
-  `template <key K> f(id<K>)` for `template <grid G, policy_flag P>
-  f(inside<G, P>)`, a partial specialization on `id<K>`, and
-  `template struct id<…>` for `template class inside<…>`. `grid_of<T>` and
-  `policy_of<T>` read the grid and the policy as before.
-- Every quantity is an `id<K>` whose key has a unit, and `quantity<R, Rep>`
-  an alias of it; `basic_quantity` is gone. Deduce `quantity_like Q` (and
-  read `Q::reference` and `Q::rep`) where `quantity<R, Rep>` was deduced; a
-  partial specialization on a quantity takes `detail::basic_of_t<Q>` or a
-  constraint on `quantity_like`. Hooks (`on_wrap`, `on_clamp`, `on_error`)
-  get the quantity as its own type.
-- Every point is an `id<K>` whose key has an origin
-  (`id<"[-40..125] [`C] @ice_point">`), and `quantity_point<R, O, Rep>` an
-  alias of it. Deduce `point_like P` (and read `P::reference`, `P::origin`
-  and `P::rep`) where `quantity_point<R, O, Rep>` was deduced. A string
-  `_ins` literal with an origin is a point:
+- Every type is `id<key K>`: `inside<G, P>`, `quantity<R, Rep>`,
+  `quantity_point<R, O, Rep>` and `basic_quantity` are gone. Write the text
+  (`id<"[0..100] clamp">`, `id<"[0..300] [km/h]">`,
+  `id<"[-40..125] [`C] @ice_point">`), or for a type computed from values
+  `id<key{G, P}>`, `id<quantity_key<R, Rep>>` and `id<point_key<R, O, Rep>>`.
+  `tools/convert_ids.py` rewrites a code base: every spelling it can read as
+  text, as written, the rest in the computed form; with `--check` it writes
+  each rewrite as a type a build proves equal to the old one.
+- Deduce `template <key K> f(id<K>)` for `template <grid G, policy_flag P>
+  f(inside<G, P>)`, `quantity_like Q` (with `Q::reference` and `Q::rep`)
+  for `quantity<R, Rep>`, and `point_like P` (with `P::reference`,
+  `P::origin` and `P::rep`) for `quantity_point<R, O, Rep>`. A partial
+  specialization on a quantity takes `detail::basic_of_t<Q>` or a
+  constraint on `quantity_like`; an explicit instantiation is
+  `template struct id<…>`. `grid_of<T>` and `policy_of<T>` read the grid and
+  the policy as before. Hooks (`on_wrap`, `on_clamp`, `on_error`) get the
+  quantity as its own type.
+- A string `_ins` literal with an origin is a point:
   `"21.5 [-40..125] 1/10 [`C] @ice_point"_ins`.
 - A quantity's unit needs a text that reads back to it where the type is
   formed, or the quantity does not compile: give a unit of your own a symbol
@@ -50,9 +50,8 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   …) and tags of your own; no prefix is read into a symbol.
 - A unit whose plain symbol has an ASCII one of its own is read and printed
   in ASCII by that one: the speed of light is `c_0`, Boltzmann's constant
-  `k_B`, Planck's `h_P`,
-  Faraday's `F_Faraday` (`text_encoding::ascii`; the symbols print as
-  before).
+  `k_B`, Planck's `h_P`, Faraday's `F_Faraday` (`text_encoding::ascii`; the
+  symbols print as before).
 - Two units equal in every respect with one symbol (a unit declared twice,
   as a named definition and as a one-liner) are one quantity type: a type
   spells its unit by its symbol.

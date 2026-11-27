@@ -7,6 +7,6 @@
 using namespace ins;
 
 int main() {
-    inside<{0, 10}, round_floor | round_ceil> x{3};
+    id<key{grid{0, 10}, round_floor | round_ceil}> x{3};
     (void)x;
 }

@@ -7,7 +7,7 @@
 int main(int argc, char**) {
     using namespace ins;
     constexpr auto P = 1267650600228229401496703205376_g;
-    using residue    = inside<{0, P}>;
+    using residue    = id<key{grid{0, P}}>;
     residue ok{P - 2};
     residue bad{P - argc};
     (void)ok;

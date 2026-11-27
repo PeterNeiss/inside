@@ -312,7 +312,7 @@ namespace ins::detail
         return *(grid_of<L> / grid_of<R>);
     }();
 
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // The exact quotient of two anchored integer raws as one 64-bit fraction:
     // |J_L|·p_L·q_R and |J_R|·p_R·q_L stay below 2^62 for every value.
@@ -588,7 +588,7 @@ namespace ins::detail
         return grid{lo, hi};
     }();
 
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // Modulo never overflows (the remainder fits result_grid):
     // the only failure is a zero divisor, and a grid that excludes it gives a plain result.
@@ -680,7 +680,7 @@ namespace ins::detail
       if constexpr (integer_ops<L, R, FS>)
         return std::type_identity<typename division<L, R, FS>::result>{};
       else
-        return std::type_identity<inside<lattice_quotient_grid, result_flags<L, R>>>{};
+        return std::type_identity<id<key{lattice_quotient_grid, result_flags<L, R>}>>{};
     }
     using quotient = typename decltype(quotient_tag())::type;
 

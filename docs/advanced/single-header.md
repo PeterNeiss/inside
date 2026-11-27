@@ -45,22 +45,22 @@ using namespace ins;
 
 int main() {
     // inside: the range and the step are part of the type.
-    inside<{0, 100}> a{70}, b{58};
-    auto sum = a + b;                           // inside<{0, 200}>: cannot overflow
-    inside<{0, 100}, clamp> capped{sum};        // storing back: the policy decides
+    id<"[0..100]"> a{70}, b{58};
+    auto sum = a + b;                           // id<"[0..200]">: cannot overflow
+    id<"[0..100] clamp"> capped{sum};           // storing back: the policy decides
     std::cout << "70 + 58         = " << sum << ", capped " << capped << '\n';
 
     // units: a conversion rescales the grid, so mixed units add exactly.
-    quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>> leg{12.5, si::kilo(si::metre)};
+    id<"[0..500] 1/1000 [km]"> leg{12.5, si::kilo(si::metre)};
     auto total = leg + just<800> * si::metre;   // runs in metres
-    auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
+    auto speed = total / id<"[1..600] [min]">{20, si::minute};
     std::cout << "12.5 km + 800 m = " << total << '\n'
               << "in 20 min       = " << speed.in(si::kilo(si::metre) / si::hour) << '\n';
 
     // math: correctly rounded onto the output grid, the same bits everywhere.
-    using amplitude = inside<{{-1, 1}, per<1000>}, round_half_away>;
+    using amplitude = id<"[-1..1] 1/1000 round_half_away">;
     auto s = math::sin<amplitude>(just<30> * si::degree);
-    auto r = math::sqrt(inside<{{0, 10}, per<1000>}, round_half_away>{2});
+    auto r = math::sqrt(id<"[0..10] 1/1000 round_half_away">{2});
     std::cout << "sin 30°         = " << s << '\n'
               << "sqrt 2          = " << r << '\n';
 }

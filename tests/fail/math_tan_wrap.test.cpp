@@ -7,7 +7,7 @@
 
 int main() {
     using namespace ins;
-    using out_t = inside<{{-1, 1}, detail::rational{1, 1024}}, round_half_away | wrap>;
-    auto t      = math::tan<out_t>(inside<{{0, 3}, detail::rational{1, 16}}>{1});
+    using out_t = id<key{grid{{-1, 1}, detail::rational{1, 1024}}, round_half_away | wrap}>;
+    auto t      = math::tan<out_t>(id<key{grid{{0, 3}, detail::rational{1, 16}}}>{1});
     (void)t;
 }

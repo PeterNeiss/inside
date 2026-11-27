@@ -19,7 +19,7 @@ An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
 65536 bit patterns) is:
 
 ```cpp
-using uq8_8 = inside<{{0, just<65535, 256>}, per<(1 << 8)>}, round_half_away>;   // == ins::uq8_8
+using uq8_8 = id<"[0..65535/256] 1/256 round_half_away">;   // == ins::uq8_8
 ```
 
 `<inside/inside/formats.hpp>` has the common ones, in `ins::formats` ([Grids](../guide/grids.md#predefined-formats)):
@@ -31,8 +31,8 @@ using uq8_8 = inside<{{0, just<65535, 256>}, per<(1 << 8)>}, round_half_away>;  
 | `uint8` … `uint64`, `int8` … `int64` | the full integer ranges (`int64` from −(2⁶³ − 1)) | the same width |
 
 Any other format is one line: a signed Q1.14 sample is
-`inside<{{-1, 1}, per<(1 << 14)>}, round_half_away>`, a 0.5 °C step
-`inside<{{-40, 60}, 0.5}, round_half_away>`.
+`id<"[-1..1] 1/16384 round_half_away">`, a 0.5 °C step
+`id<"[-40..60] 0.5 round_half_away">`.
 
 ## What inside adds over a raw Qm.n integer
 
@@ -64,7 +64,7 @@ out of hot loops ([Storage](storage.md#which-raw-a-grid-gets)).
 
 ## Which grids are fast
 
-1. **Whole-number grids** (`inside<{0, N}>`, `inside<{a, b}>`): `+ − ×` run on
+1. **Whole-number grids** (`id<key{grid{0, N}}>`, `id<key{grid{a, b}}>`): `+ − ×` run on
    the raw integers, a product is one `imul`, and a division under a rounding mode is a
    native `a / b`. Byte-wide loops without checks vectorize at the native lane
    count.
@@ -96,14 +96,13 @@ A unit puts a meaning on the same raw at no cost (see [Units](../guide/units.md)
 #include <inside/units.hpp>
 using namespace ins;
 
-using celsius = quantity_point<si::degree_Celsius, si::ice_point,
-                               inside<{{-40, 60}, 0.5}, round_half_away>>;   // a 0.5 ℃ step, a uint8_t
+using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;   // a 0.5 ℃ step, a uint8_t
 celsius room{21.4, si::degree_Celsius};                      // 21.5 ℃: rounded onto the step
 celsius body{37, si::degree_Celsius};
 auto    diff = body - room;                                  // 15.5 ℃, a temperature difference
 
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{0, 10}>> d{7, km};
+id<"[0..10] [km]"> d{7, km};
 auto mm = d.in(si::milli(si::metre));                        // 7000000 mm: the same uint8_t raw
 ```
 

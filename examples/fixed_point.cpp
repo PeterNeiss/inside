@@ -18,8 +18,8 @@ using namespace ins::formats;
 int main()
 {
   // The predefined Q formats and two of our own.
-  using q1_7       = inside<{{0  , 1 }, per<(1 << 7)>}>; // Q1.7 in [0, 1]
-  using half_steps = inside<{{-50, 50}, 0.5}>;           // 201 half steps, offset-encoded
+  using q1_7       = id<"[0..1] 1/128">;                 // Q1.7 in [0, 1]
+  using half_steps = id<"[-50..50] 0.5">;                // 201 half steps, offset-encoded
   static_assert(sizeof(uq4_4) == 1 && sizeof(uq8_8) == 2 && sizeof(uq16_16) == 4);
   static_assert(sizeof(q1_7) == 1 && sizeof(half_steps) == 1);
 
@@ -52,7 +52,7 @@ int main()
 
   // A 0.5 ℃ grid with its unit: a reading is a point on the ℃ scale,
   // and body − room is a difference, 15.5 ℃.
-  using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-40, 60}, 0.5}, round_half_away>>;
+  using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;
   const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding: 21.5
   const celsius body{37, si::degree_Celsius};
   std::cout << "room " << room << ", body - room " << body - room << " = " << (body - room).in(si::kelvin) << "\n";

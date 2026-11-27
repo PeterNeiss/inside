@@ -23,15 +23,15 @@ int main()
 {
   // 16 slots; each holds a packet's offset from the playback base, 0..63 pkt
   // (in one byte, so whether a slot is filled is kept apart).
-  using slot_index  = inside<{0, 15}>;
-  using slot_offset = quantity<pkt, inside<{0, 63}>>;
+  using slot_index  = id<"[0..15]">;
+  using slot_offset = id<"[0..63] [pkt]">;
   constexpr std::size_t    window{values<slot_index>.size()}; // 16
   std::vector<slot_offset> slots(window, slot_offset{0, pkt});
   std::vector<bool>        filled(window, false);
   int                      dropped{0};
 
   // A packet's offset is seq − base; past 63 pkt the write is rejected and on_error fires.
-  using seq_offset = quantity<pkt, inside<{-1024, 1024}>>;
+  using seq_offset = id<"[-1024..1024] [pkt]">;
   auto insert = [&](int seq, int base)
   {
     const auto stored_offset{seq_offset::try_make(seq - base, pkt)}; // a run-time count: try_make reports
@@ -70,7 +70,7 @@ int main()
   std::cout << "\ndrop events: " << dropped << "\n";
 
   // Timestamps on a 1/8 ms notch meet sub-millisecond audio clocks without floating point.
-  using milliseconds = quantity<ms, inside<{{0, 8000}, per<8>}, round_half_away>>;
+  using milliseconds = id<"[0..8000] 1/8 [ms] round_half_away">;
   milliseconds arrival {125.375, ms};
   milliseconds playback{125.5  , ms};
   std::cout << "\nplayback - arrival (1/8 ms grid): " << (playback - arrival) << "\n";

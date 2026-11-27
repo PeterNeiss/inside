@@ -59,7 +59,7 @@ TEST(GridTest, just_inside_values_work_as_grid_corners) {
     static_assert(grid{just<2>} == grid{2}); // 1-arg point grid
     static_assert(grid{just<0>, just<8>, just<2>} == grid{0, 8, 2});
     // ...and as inside<> grid-spec corners (the rifle.cpp use case).
-    static_assert(grid_of<inside<{0, just<30>}, wrap>> == grid_of<inside<{0, 30}, wrap>>);
+    static_assert(grid_of<id<key{grid{0, just<30>}, wrap}>> == grid_of<id<key{grid{0, 30}, wrap}>>);
 }
 
 // grid raw_for selection
@@ -200,7 +200,7 @@ TEST(GridTest, two_limit_ctor_derives_the_notch) {
     static_assert(grid{0, 2.5_g}.Notch == rational{1, 2});
     static_assert(1'000_g == 1000 && 25e-2_g == rational{1, 4} && 1.5e3_g == 1500);
 
-    using half = inside<{0.5, 10}>;
+    using half = id<"[0.5..10]">;
     static_assert(std::is_same_v<half::raw_type, std::uint8_t>);
     static_assert(max_index_of<half> == 19);
     EXPECT_EQ(rational{half{2.5}}, (rational{5, 2}));
@@ -298,13 +298,13 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     static_assert(grid::validate<i>() && derived_notch_is_coarsest<i>() && max_index_matches<i>());
 
     // inside on derived fractional grids: storage, exact values, assignment.
-    using eightieths = inside<{just<3, 10>, just<13, 16>}>;
+    using eightieths = id<"[3/10..13/16]">;
     static_assert(std::is_same_v<eightieths::raw_type, std::uint8_t>);
     EXPECT_EQ(rational{eightieths{0.5}}, (rational{1, 2})); // 40/80
     EXPECT_EQ((rational{eightieths{just<13, 16>}}), (rational{13, 16}));
     EXPECT_EQ(eightieths::try_make(rational{just<1, 3>}).error(), error::rounding_error); // 1/3 is not k/80
 
-    using signed_63 = inside<{just<-5, 7>, just<4, 9>}, round_half_away>;
+    using signed_63 = id<"[-5/7..4/9] round_half_away">;
     EXPECT_EQ((rational{signed_63{just<-5, 7>}}), (rational{-5, 7}));
     EXPECT_EQ(rational{signed_63{0.0}}, rational{0});
     EXPECT_EQ((rational{signed_63{just<1, 4>}}), (rational{16, 63})); // 1/4 = 15.75/63 → nearest 16/63
@@ -313,8 +313,8 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
 // bounds: an open limit is a spelling, moved in by one notch; the grid is
 // stored closed, so both spellings are the same type.
 static_assert(grid{0, 10, bounds::closed} == grid{0, 10});
-static_assert(std::is_same_v<inside<{0, 360, bounds::half_open}>, inside<{0, 359}>>);
-static_assert(std::is_same_v<inside<{{0, 64}, per<16>, bounds::half_open}>, inside<{{0, 63.9375}, per<16>}>>);
+static_assert(std::is_same_v<id<"[0..360)">, id<"[0..359]">>);
+static_assert(std::is_same_v<id<"[0..64) 1/16">, id<"[0..63.9375] 1/16">>);
 static_assert(grid{0, 10, bounds::open} == grid{1, 9});
 static_assert(grid{0.5, 10, bounds::half_open} == grid{{0.5, 9.5}, 0.5}); // derived notch 1/2
 static_assert(grid{-8, -2, 2, bounds::open} == grid{{-6, -4}, 2});
@@ -322,12 +322,12 @@ static_assert(grid{{0.5, 10.5}, 1, bounds::half_open} == grid{{0.5, 9.5}, 1}); /
 static_assert(grid{0, 2, bounds::open} == grid{{1, 1}, 1});                    // one point left
 
 TEST(GridTest, half_open_wrap_has_the_written_period) {
-    inside<{0, 360, bounds::half_open}, wrap> deg{0};
+    id<"[0..360) wrap"> deg{0};
     deg = 370;
     EXPECT_EQ(deg, 10);
     deg = 360;
     EXPECT_EQ(deg, 0);
-    inside<{{0, 64}, per<16>, bounds::half_open}, wrap> x{0};
+    id<"[0..64) 1/16 wrap"> x{0};
     x = 66;
     EXPECT_EQ(x, 2);
 }
@@ -650,7 +650,7 @@ using namespace ins::detail;
 // A bound of 2^63 or more: the range prefilter's step 1/MaxDenominator
 // narrowed to int64 and did not compile.
 TEST(GridTest, max_denominator_past_int64) {
-    using B = inside<{{0, 1}, max_denominator{rational{std::uint64_t{1} << 63}}}, round_toward_zero>;
+    using B = id<key{grid{{0, 1}, max_denominator{rational{std::uint64_t{1} << 63}}}, round_toward_zero}>;
     B x{};
     x = 0.3;
     EXPECT_EQ(x, rational(0.3));
@@ -768,7 +768,7 @@ TEST(GridTest, spellings_past_64_bits) {
     static_assert(std::is_same_v<decltype(per<4>), const detail::rational>);
     static_assert(per<two_70> == grid_number{1} / two_70 && per<1024_g> == detail::rational{1, 1024});
     static_assert(per<(1ull << 63)> == grid_number{1} / 9223372036854775808_g);
-    static_assert(notch_of<inside<{{0, 1}, per<two_70>}>> == grid_number{1} / two_70);
+    static_assert(notch_of<id<key{grid{{0, 1}, per<two_70>}}>> == grid_number{1} / two_70);
     // just<N, D> with a grid-number D.
     static_assert(lower_of<decltype(just<1, two_70>)> == grid_number{1} / two_70);
     static_assert(lower_of<decltype(just<3, 6_g>)> == grid_number{detail::rational{1, 2}});
@@ -797,9 +797,9 @@ TEST(GridTest, zero_is_all_zero_bits) {
     static_assert(zero_bits(two_70 - two_70) && zero_bits(grid_number{3} - grid_number{3}));
     static_assert(zero_bits(abs(grid_number{0})) && zero_bits(lower_of<decltype(just<0>)>));
     static_assert(zero_bits(grid{{0, 10}, 1}.MaxDenominator) && zero_bits(grid{{0, 10}, 1}.Lower));
-    static_assert(std::is_same_v<inside<{0, 10}>, inside<{0.0, 10}>>);
-    static_assert(std::is_same_v<inside<{0, 10}>, inside<{0_g, 10}>>);
-    static_assert(std::is_same_v<inside<{0, 10}>, inside<{just<0>, 10}>>);
+    static_assert(std::is_same_v<id<"[0..10]">, id<"[0.0..10]">>);
+    static_assert(std::is_same_v<id<key{grid{0, 10}}>, id<key{grid{0_g, 10}}>>);
+    static_assert(std::is_same_v<id<key{grid{0, 10}}>, id<key{grid{just<0>, 10}}>>);
     // Zero takes the 64-bit paths.
     static_assert(grid_number{0}.is_zero() && grid_number{0}.is_integer() && !grid_number{0}.negative());
     static_assert(grid_number{0}.fits_rational() && detail::rational(grid_number{0}) == 0);

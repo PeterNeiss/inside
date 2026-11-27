@@ -15,9 +15,9 @@
 
 using namespace ins;
 
-using reading_volts = quantity<si::volt, inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>>; // ±100 mV to 1 µV
-using gain          = inside<{{0, 10}, per<100>}>; // 0 is possible: a dead channel
-using volts         = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round_half_away>>; // the result, to 1 µV
+using reading_volts = id<"[-1/10..1/10] 1/1'000'000 [V]">; // ±100 mV to 1 µV
+using gain          = id<"[0..10] 1/100">; // 0 is possible: a dead channel
+using volts         = id<"[-1..1] 1/1'000'000 [V] round_half_away">; // the result, to 1 µV
 
 constexpr reading_volts offset{just<1, 4000> * si::volt}; // 0.25 mV
 
@@ -77,7 +77,7 @@ int main()
   std::cout << "chained -> " << error_message(chained.error()) << "\n";
 
   // A gain that cannot be 0 makes the division total: a plain value.
-  using live_gain = inside<{{0.5, 10}, per<100>}>;
+  using live_gain = id<"[0.5..10] 1/100">;
   const auto always{(reading_volts{0.01_ins * si::volt} - offset) / live_gain{2}};
   static_assert(quantity_like<decltype(always)>);
   std::cout << "zero-free gain -> " << always << "\n";

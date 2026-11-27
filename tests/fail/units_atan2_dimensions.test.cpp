@@ -5,8 +5,8 @@
 
 int main() {
     using namespace ins;
-    using m_t = quantity<si::metre, inside<{{-1, 1}, per<8>}, round_half_away>>;
-    using s_t = quantity<si::second, inside<{{-1, 1}, per<8>}, round_half_away>>;
+    using m_t = id<"[-1..1] 1/8 [m] round_half_away">;
+    using s_t = id<"[-1..1] 1/8 [s] round_half_away">;
     auto a    = math::atan2(m_t{1, si::metre}, s_t{1, si::second});
     (void)a;
 }

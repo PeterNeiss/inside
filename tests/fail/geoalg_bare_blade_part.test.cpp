@@ -9,7 +9,7 @@ inline constexpr auto e2 = ins::basis_vector<"e2", ins::geometric<1>>;
 int main() {
     using namespace ins;
     constexpr auto i = e1 * e2;
-    using I          = inside<{-10, 10}>;
-    const multivector<I, quantity<i, I>> z{3, 4};
+    using I          = id<"[-10..10]">;
+    const multivector<I, id<quantity_key<i, I>>> z{3, 4};
     (void)z;
 }

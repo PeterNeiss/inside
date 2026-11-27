@@ -6,6 +6,6 @@
 
 int main() {
     using namespace ins;
-    extents_of<inside<{-1, 5}>> e;
+    extents_of<id<"[-1..5]">> e;
     (void)e;
 }

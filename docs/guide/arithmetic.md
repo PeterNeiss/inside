@@ -6,12 +6,12 @@ store into a narrower type can fail, and there the type's
 [policy](policies.md) decides.
 
 ```cpp
-using small = inside<{0, 255}>;
+using small = id<"[0..255]">;
 small a{100}, b{200};
 
-auto s = a + b;   // inside<{0, 510}>: 300
-auto d = a - b;   // inside<{-255, 255}>: -100
-auto p = a * b;   // inside<{0, 65025}>: 20000
+auto s = a + b;   // id<"[0..510]">: 300
+auto d = a - b;   // id<"[-255..255]">: -100
+auto p = a * b;   // id<"[0..65025]">: 20000
 auto q = a / b;   // std::expected (b's grid holds 0): exactly 1/2
 ```
 
@@ -39,7 +39,7 @@ result where the type allows it. Money is a quantity in a currency of your own
 
 ```cpp
 inline constexpr auto USD = base_unit<"USD", "dollar">;
-using money = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_half_away>>;
+using money = id<"[0..1'000'000] 1/100 [USD] round_half_away">;
 money subtotal{45.07, USD};
 money tax{subtotal * just<8, 100>};   // 3.61 USD: 8 %, rounded once to the cent
 ```
@@ -51,10 +51,10 @@ money tax{subtotal * just<8, 100>};   // 3.61 USD: 8 %, rounded once to the cent
 value depends on the divisor's grid:
 
 ```cpp
-using val = inside<{0, 100}>;
+using val = id<"[0..100]">;
 val x{7};
 auto e = x / val{3};                // std::expected: val's grid holds 0
-auto f = x / inside<{1, 10}>{3};    // a plain value, 7/3: this divisor cannot be 0
+auto f = x / id<"[1..10]">{3};      // a plain value, 7/3: this divisor cannot be 0
 auto g = x / 5_ins;                 // a plain value, 1.4, on notch 1/5
 ```
 
@@ -67,10 +67,10 @@ call, or store into a type that rounds:
 
 ```cpp
 auto i = div(x, val{3}, round_toward_zero);      // std::expected: 2
-using down = inside<{0, 100}, round_floor>;
+using down = id<"[0..100] round_floor">;
 down j{7};
-j /= inside<{1, 10}>{2};                         // 3: a store into a type that rounds
-down k{x / inside<{1, 10}>{2}};                  // 3: the exact 3.5, rounded by the store
+j /= id<"[1..10]">{2};                           // 3: a store into a type that rounds
+down k{x / id<"[1..10]">{2}};                    // 3: the exact 3.5, rounded by the store
 ```
 
 ## Round once: `mul<Out>` and `div<Out>`
@@ -81,14 +81,14 @@ once:
 
 ```cpp
 inline constexpr auto ETH = base_unit<"ETH", "ether">;   // USD as above
-using ether   = quantity<ETH, inside<{{0, 1'000'000'000}, 1e-18_ins}>>;   // to the wei
-using price   = quantity<USD / ETH, inside<{{0, 100'000'000}, per<100>}>>;
-using dollars = quantity<USD, inside<{{0, 100'000'000'000'000'000}, per<100>}, round_half_away>>;   // holds every product
+using ether   = id<"[0..1'000'000'000] 1e-18 [ETH]">;   // to the wei
+using price   = id<"[0..100'000'000] 1/100 [USD/ETH]">;
+using dollars = id<"[0..100'000'000'000'000'000] 1/100 [USD] round_half_away">;   // holds every product
 
 ether   balance{just<15, 10>, ETH};
 price   rate{just<345678, 100>, USD / ETH};
 dollars value = mul<dollars>(balance, rate);                   // 5185.17 USD
-auto    share = div<inside<{0, 100}, round_floor>>(val{50}, inside<{1, 10}>{3});   // 16
+auto    share = div<id<"[0..100] round_floor">>(val{50}, id<"[1..10]">{3});   // 16
 ```
 
 `mul<Out>(a, b)` and `div<Out>(a, b)` round by `Out`'s policy; a flag after
@@ -103,11 +103,11 @@ the divisor's grid holds 0.
 
 ```cpp
 val n{17};
-auto r1 = n % 5_ins;                  // inside<{0, 4}>: 2
-auto r2 = n % inside<{1, 10}>{5};     // inside<{0, 9}>: 2
+auto r1 = n % 5_ins;                  // id<"[0..4]">: 2
+auto r2 = n % id<"[1..10]">{5};       // id<"[0..9]">: 2
 auto r3 = n % val{5};                 // std::expected: val's grid holds 0
-auto [q, rest] = divmod(n, inside<{1, 10}>{5});   // 3 and 2, from one division
-auto r4 = inside<{{0, 8}, per<2>}>{7.5} % inside<{{1, 4}, per<3>}>{just<4, 3>};  // 7.5 − 5·4/3 = 5/6
+auto [q, rest] = divmod(n, id<"[1..10]">{5});   // 3 and 2, from one division
+auto r4 = id<"[0..8] 1/2">{7.5} % id<"[1..4] 1/3">{just<4, 3>};  // 7.5 − 5·4/3 = 5/6
 ```
 
 The remainder belongs to the rounded quotient: under `round_floor`,
@@ -122,10 +122,10 @@ whole number; a continuous grid has no lattice, so `%` does not take one.
 against `Target`'s policy:
 
 ```cpp
-using elem = inside<{0, 200'000}>;
+using elem = id<"[0..200'000]">;
 std::vector<elem> v{elem{100'000}, elem{150'000}, elem{20}};
-auto total   = sum<inside<{0, 1'000'000}>>(v);   // 250020
-auto clipped = sum<inside<{0, 100}, clamp>>(v);  // 100: the total, clamped once
+auto total   = sum<id<"[0..1'000'000]">>(v);     // 250020
+auto clipped = sum<id<"[0..100] clamp">>(v);     // 100: the total, clamped once
 ```
 
 A `total += x` loop checks at every step, which also stops the compiler from
@@ -140,7 +140,7 @@ with `t` in [0, 1] lies between `a` and `b`, and its type says so.
 `x op= y` computes `x op y` and stores the result back through `x`'s policy:
 
 ```cpp
-using bounded = inside<{0, 100}, clamp | round_toward_zero>;
+using bounded = id<"[0..100] clamp|round_toward_zero">;
 bounded p{50};
 p += 30;         // 80
 p *= 2;          // 100: clamped
@@ -156,7 +156,7 @@ takes it, a checked one names a channel: `x.on_error(ec) += n`). Everything
 else on the right is an inside (`p += 0.5_ins`, `p /= 3_ins`), never a
 `double`, and a division takes no builtin integer, whose
 range holds 0. `++` and `--` move one notch: ±1/4 on
-`inside<{{0, 2}, per<4>}>`.
+`id<"[0..2] 1/4">`.
 
 ## Results that are `std::expected`
 
@@ -166,7 +166,7 @@ unwrapping:
 
 ```cpp
 small zero{0};
-auto r1 = a / inside<{1, 255}>{4} + small{10};   // a plain value: 35
+auto r1 = a / id<"[1..255]">{4} + small{10};     // a plain value: 35
 auto r2 = a / zero + small{10};                  // std::expected: error::division_by_zero
 ```
 

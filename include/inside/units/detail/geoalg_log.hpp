@@ -502,10 +502,9 @@ namespace ins::detail::gaexp
       return ::ins::detail::grid_round<::ins::detail::round_mode::ceil>(grid_number{m} / notch) * notch;
     }
     template <std::size_t J>
-    using number = inside<grid{{-limit(J == D::N ? scalar_bound_of<Fn, D> : part_bound_of_fn<Fn, D>),
+    using number = id<key{grid{{-limit(J == D::N ? scalar_bound_of<Fn, D> : part_bound_of_fn<Fn, D>),
                                 limit(J == D::N ? scalar_bound_of<Fn, D> : part_bound_of_fn<Fn, D>)},
-                               notch},
-                          flags>;
+                               notch}, flags}>;
     using type = typename output_parts<Domain, number>::type;
   };
 

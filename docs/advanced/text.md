@@ -46,12 +46,12 @@ as `printf` does with a `double`. A width alone keeps the exact text.
 | prints | `0.12`, `-0.13` | `0.13`, `-0.13` | `0.12`, `-0.13` | `0.13`, `-0.12` | `0.12`, `-0.12` |
 
 ```cpp
-inside<{0, 100}> n{42};
+id<"[0..100]"> n{42};
 std::println("n = {}", n);                 // n = 42
 std::println("n = {:>5}", n);              // n =    42
 std::println("n = {:#04x}", n);            // n = 0x2a
 
-inside<{{0, 1}, per<(1 << 10)>}> g{0.125};
+id<"[0..1] 1/1024"> g{0.125};
 std::println("{} {:.2f} {:e}", g, g, g);   // 0.125 0.12 1.250000e-01
 ```
 
@@ -70,11 +70,11 @@ applies, and flags after the type add to it for the call. `parse_exact<B>`
 accepts only a value B holds exactly, whatever B's policy:
 
 ```cpp
-using hundredths = inside<{{0, 1'000'000}, per<100>}>;
+using hundredths = id<"[0..1'000'000] 1/100">;
 parse<hundredths>("1.005");                    // error::rounding_error
 parse<hundredths, round_half_away>("1.005");   // 1.01: the tie goes away from zero
 
-using rounded = inside<{{0, 1'000'000}, per<100>}, round_half_away | clamp>;
+using rounded = id<"[0..1'000'000] 1/100 round_half_away|clamp">;
 parse<rounded>("1.005");                   // 1.01: rounded rounds
 parse_exact<rounded>("1.005");             // error::rounding_error
 parse_exact<rounded>("2000000");           // error::overflow: not clamped
@@ -103,7 +103,7 @@ Text names its unit, and reads back what `to_string` writes, in either
 encoding: `parse<Q>(to_string(q)) == q` for every quantity and point.
 
 ```cpp
-using minutes = quantity<si::minute, inside<{{0, 600}, per<10>}>>;
+using minutes = id<"[0..600] 1/10 [min]">;
 parse<minutes>("1.5 h");          // 90.0 min: any unit that converts exactly
 parse<minutes>("90 s");           // 1.5 min
 parse<minutes>("90");             // error::missing_unit: a number alone names no unit

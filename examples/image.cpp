@@ -26,17 +26,17 @@ namespace
 } // namespace
 
 // Pixel values are quantities in DN; the indices stay plain insides.
-using pixel  = quantity<DN, inside<{0, 255}>>;
-using smooth = quantity<DN, inside<{0, 255}, round_half_away>>; // a blurred pixel: rounded once
-using row    = inside<{0 , 7}, clamp>;                           // clamp: an index past an edge is the edge
-using col    = inside<{0 , 7}, clamp>;
-using offset = inside<{-1, 1}, clamp>;
+using pixel  = id<"[0..255] [DN]">;
+using smooth = id<"[0..255] [DN] round_half_away">; // a blurred pixel: rounded once
+using row    = id<"[0..7] clamp">;                           // clamp: an index past an edge is the edge
+using col    = id<"[0..7] clamp">;
+using offset = id<"[-1..1] clamp">;
 
 using image        = std::mdspan<pixel , extents_of<row, col>>; // a std::mdspan takes the indices as they are
 using smooth_image = std::mdspan<smooth, extents_of<row, col>>;
 // The sum of 9 pixels: sum counts at run time, so its type cannot show they fit;
 // clamp names what would happen.
-using window = quantity<DN, inside<{0, 9 * 255}, clamp>>;
+using window = id<"[0..2295] [DN] clamp">;
 
 // out = the 3×3 mean of in: each 9-pixel sum is exact, then rounded once into the output pixel.
 void blur(const image& in, const smooth_image& out)
@@ -87,8 +87,8 @@ int main()
 
   // 2. Interior pixels need no clamp: 1 … 6 plus or minus 1 is on 0 … 7, proven by the grids.
   // The largest step between a pixel's left and right neighbours:
-  using inner_index = inside<{1, 6}>;
-  using image_index = inside<{0, 7}>;
+  using inner_index = id<"[1..6]">;
+  using image_index = id<"[0..7]">;
   pixel edge{0, DN};
   for (auto [r, c] : std::views::cartesian_product(values<inner_index>, values<inner_index>))
   {
@@ -101,7 +101,7 @@ int main()
     return 1;
 
   // 3. A heat map: 4×6 raw codes in 0.1 K steps from 200 K, as a sensor sends them, read as kelvin.
-  using cell_kelvins = quantity<si::kelvin, inside<{{200, 400}, per<10>}>>;
+  using cell_kelvins = id<"[200..400] 1/10 [K]">;
   using kelvin_view  = std::mdspan<cell_kelvins, std::extents<std::size_t, 4, 6>, std::layout_right,
                                    raw_accessor<cell_kelvins, const std::uint16_t>>;
   const std::array<std::uint16_t, 24> codes{
@@ -115,7 +115,7 @@ int main()
   std::cout << "heat: " << heat[0, 0] << " to " << heat[3, 5] << ", mean " << (heat_total / 24_ins) << "\n";
 
   // The hottest cell, by comparing quantities;
-  // the indices of the extents 4 × 6 are inside<{0, 3}>, <{0, 5}>.
+  // the indices of the extents 4 × 6 are id<"[0..3]">, <{0, 5}>.
   extent_index_t<kelvin_view::extents_type, 0> hot_r;
   extent_index_t<kelvin_view::extents_type, 1> hot_c;
   for (auto [r, c] : indices(heat))
@@ -125,7 +125,7 @@ int main()
 
   // The rise from each cell to its right neighbour: two shifted views of one buffer, subtracted elementwise.
   // (A rise past 20 K would not fit: transform_into reports it.)
-  using rise_kelvins = quantity<si::kelvin, inside<{{-20, 20}, per<10>}>>;
+  using rise_kelvins = id<"[-20..20] 1/10 [K]">;
   std::array<rise_kelvins, 20> g{};
   const std::mdspan gradient{g.data(), std::extents<std::size_t, 4, 5>{}};
   if (!transform_into(std::submdspan(heat, std::full_extent, std::pair{0, 5}),

@@ -65,9 +65,9 @@ int at_run_time(int v) {
     return x;
 }
 
-using pixel = inside<{0, 255}>;
-using row   = inside<{0, 3}>;
-using col   = inside<{0, 4}>;
+using pixel = id<"[0..255]">;
+using row   = id<"[0..3]">;
+using col   = id<"[0..4]">;
 using img_t = std::mdspan<pixel, extents_of<row, col>>;
 
 std::array<pixel, 20> ramp() {
@@ -79,7 +79,7 @@ std::array<pixel, 20> ramp() {
 } // namespace
 
 TEST(MdspanTest, an_index_converts_to_the_integers_that_hold_it) {
-    using wide = inside<{0, 300}>;
+    using wide = id<"[0..300]">;
     static_assert(std::is_convertible_v<row, std::size_t> && std::is_convertible_v<row, int> &&
                   std::is_convertible_v<row, signed char> && std::is_convertible_v<row, std::ptrdiff_t>);
     static_assert(std::is_nothrow_constructible_v<std::size_t, row>);
@@ -91,22 +91,22 @@ TEST(MdspanTest, an_index_converts_to_the_integers_that_hold_it) {
     static_assert(assigns_from<int, row> && assigns_from<std::size_t, row>);
     // An index is an inside on non-negative integers, under any policy; a
     // result is one where its grid is.
-    static_assert(std::is_convertible_v<inside<{3, 11}, clamp>, int> &&
-                  std::is_convertible_v<inside<{0, 9}, unsafe>, int>);
+    static_assert(std::is_convertible_v<id<"[3..11] clamp">, int> &&
+                  std::is_convertible_v<id<"[0..9] unsafe">, int>);
     static_assert(std::is_convertible_v<decltype(row{} + 1_ins), std::size_t>);
     static_assert(std::is_convertible_v<decltype(row{} * row{}), std::size_t>);
     // No index: a grid with a negative value, a fraction, or past int64; a
     // cursor, whose end is one past the last index.
-    static_assert(!std::is_convertible_v<inside<{-1, 3}>, int> && !std::is_convertible_v<decltype(-row{}), int>);
-    static_assert(!std::is_convertible_v<inside<{{0, 3}, per<2>}>, int>);
-    static_assert(!std::is_convertible_v<inside<{{0, 3}, per<2>}, round_half_away>, int>);
+    static_assert(!std::is_convertible_v<id<"[-1..3]">, int> && !std::is_convertible_v<decltype(-row{}), int>);
+    static_assert(!std::is_convertible_v<id<"[0..3] 1/2">, int>);
+    static_assert(!std::is_convertible_v<id<"[0..3] 1/2 round_half_away">, int>);
     static_assert(!std::is_convertible_v<cursor<row>, std::size_t>);
     // No builtin operator takes an index, but the subscript and the pointer
     // arithmetic behind it.
-    static_assert(!builtin_operand<row> && !builtin_operand<inside<{3, 11}, clamp>>);
+    static_assert(!builtin_operand<row> && !builtin_operand<id<"[3..11] clamp">>);
     static_assert(subscripts<int*, row> && subscripts<int[4], row>);
     // An index is a value, never a raw: from_raw does not take it.
-    static_assert(!from_raw_takes<inside<{{0, 255}, per<256>}>, row> && !from_raw_takes<inside<{100, 107}>, row> &&
+    static_assert(!from_raw_takes<id<"[0..255] 1/256">, row> && !from_raw_takes<id<"[100..107]">, row> &&
                   !from_raw_takes<row, row>);
     EXPECT_EQ(static_cast<int>(test::store<row>(at_run_time(3))), 3);
     EXPECT_EQ(std::size_t{wide{300}}, 300u);
@@ -118,10 +118,10 @@ TEST(MdspanTest, an_index_converts_to_the_integers_that_hold_it) {
 }
 
 TEST(MdspanTest, compound_assignment_takes_builtin_integers) {
-    using C = inside<{0, 100}, clamp>;
-    using W = inside<{0, 359}, wrap>;
-    using T = inside<{0, 100}>;
-    using F = inside<{{0, 10}, per<10>}, clamp>;
+    using C = id<"[0..100] clamp">;
+    using W = id<"[0..359] wrap">;
+    using T = id<"[0..100]">;
+    using F = id<"[0..10] 1/10 clamp">;
     static_assert(steps<C, int> && steps<W, int> && steps<F, int> && steps<C, long> && steps<C, unsigned> &&
                   steps<C, short>);
     // A checked type names a channel; no double, bool or character; no division.
@@ -164,7 +164,7 @@ TEST(MdspanTest, compound_assignment_takes_builtin_integers) {
 
 TEST(MdspanTest, an_index_need_not_start_at_zero) {
     // 3 … 11: positions of a larger array, the value is the position.
-    using win = inside<{3, 11}>;
+    using win = id<"[3..11]">;
     std::array<int, 12> a{};
     std::iota(a.begin(), a.end(), 0);
     const win              w = test::store<win>(at_run_time(5));
@@ -176,23 +176,23 @@ TEST(MdspanTest, an_index_need_not_start_at_zero) {
     static_assert(index_for<win, std::extents<std::size_t, 12>, 0>);
     static_assert(!index_for<win, std::extents<std::size_t, 11>, 0>);
     // Even indices only.
-    using even = inside<{{0, 10}, 2}>;
+    using even = id<"[0..10] 2">;
     EXPECT_EQ(a[even{4}], 4);
 }
 
 TEST(MdspanTest, extents_and_index_types) {
     static_assert(std::is_same_v<extents_of<row, col>, std::extents<std::size_t, 4, 5>>);
-    static_assert(std::is_same_v<extents_of<inside<{0, 0}>>, std::extents<std::size_t, 1>>);
+    static_assert(std::is_same_v<extents_of<id<"[0..0]">>, std::extents<std::size_t, 1>>);
     using E = std::extents<std::size_t, 4, std::dynamic_extent, 1>;
     static_assert(std::is_same_v<extent_index_t<E, 0>, row>);
-    static_assert(std::is_same_v<extent_index_t<E, 2>, inside<{0, 0}>>);
+    static_assert(std::is_same_v<extent_index_t<E, 2>, id<"[0..0]">>);
     static_assert(!has_extent_index<E, 1>); // dynamic
     // index_for: the index type proves the bounds of a static extent.
     using IE = img_t::extents_type;
     static_assert(index_for<row, IE, 0> && index_for<col, IE, 1>);
     static_assert(index_for<row, IE, 1>);                     // 0 … 3 within 5
     static_assert(!index_for<col, IE, 0>);                    // 0 … 4 past 4
-    static_assert(!index_for<inside<{-1, 3}>, IE, 0>);        // no index
+    static_assert(!index_for<id<"[-1..3]">, IE, 0>);          // no index
     static_assert(!index_for<row, IE, 2>);                    // no such rank
     static_assert(!index_for<row, std::dextents<int, 1>, 0>); // dynamic: nothing proven
     static_assert(index_for<extent_index_t<E, 0>, E, 0> && index_for<extent_index_t<E, 2>, E, 2>);
@@ -234,12 +234,12 @@ TEST(MdspanTest, indexing_std_mdspan) {
     EXPECT_TRUE((img[std::array{row{2}, row{3}}]) == 130);
     // An inside that is no index is no argument.
     static_assert(subscripts2<img_t, row, col>);
-    static_assert(!subscripts2<img_t, inside<{-1, 3}>, col>);
-    static_assert(!subscripts2<img_t, inside<{{0, 3}, per<2>}>, col>);
+    static_assert(!subscripts2<img_t, id<"[-1..3]">, col>);
+    static_assert(!subscripts2<img_t, id<"[0..3] 1/2">, col>);
     // A wider value is stored into the index type first, by its policy:
     // clamp pads at the edges, wrap is periodic.
-    using crow = inside<{0, 3}, clamp>;
-    using wcol = inside<{0, 4}, wrap>;
+    using crow = id<"[0..3] clamp">;
+    using wcol = id<"[0..4] wrap">;
     EXPECT_TRUE((img[crow{at_run_time(-1)}, col{0}]) == 0);
     EXPECT_TRUE((img[crow{at_run_time(9)}, col{1}]) == 160);
     EXPECT_TRUE((img[row{1}, wcol{at_run_time(-1)}]) == 90);
@@ -247,17 +247,17 @@ TEST(MdspanTest, indexing_std_mdspan) {
     const crow r = 0;
     EXPECT_TRUE((img[crow{r - 1_ins}, col{2}]) == 20);
     // An interior index plus an offset is proven within: no policy needed.
-    using inner             = inside<{1, 2}>;
+    using inner             = id<"[1..2]">;
     const inner           i = test::store<inner>(at_run_time(2));
-    const inside<{-1, 1}> d = test::store<inside<{-1, 1}>>(at_run_time(1));
+    const id<"[-1..1]"> d = test::store<id<"[-1..1]">>(at_run_time(1));
     EXPECT_TRUE((img[row{i + d}, col{0}]) == 150);
     // Dynamic extents: the index's value, bounds as std::mdspan states them.
     std::array<int, 6> dd{0, 1, 2, 3, 4, 5};
     const std::mdspan  dyn{dd.data(), 2, 3};
-    EXPECT_EQ((dyn[inside<{0, 1}>{1}, inside<{0, 2}>{2}]), 5);
+    EXPECT_EQ((dyn[id<"[0..1]">{1}, id<"[0..2]">{2}]), 5);
 #ifdef _GLIBCXX_ASSERTIONS
     // An index type wider than the extent: libstdc++'s own bounds check.
-    using wide_row = inside<{0, 10}>;
+    using wide_row = id<"[0..10]">;
     EXPECT_DEATH(((void)img[test::store<wide_row>(at_run_time(4)), col{0}]), "");
 #endif
 }
@@ -273,14 +273,14 @@ TEST(MdspanTest, submdspan_takes_indices) {
 }
 
 TEST(MdspanTest, value_accessor) {
-    using tenth = inside<{{-10, 10}, per<10>}, round_half_away>;
+    using tenth = id<"[-10..10] 1/10 round_half_away">;
     const std::array<double, 4> d{0.44, 1.56, 2.5, -0.7};
     const std::mdspan<tenth, std::extents<std::size_t, 4>, std::layout_right, value_accessor<tenth, const double>> v{
         d.data()};
     static_assert(std::is_same_v<decltype(v)::reference, tenth>); // read-only: by value
     EXPECT_TRUE((v[0] == rational{4, 10} && v[1] == rational{16, 10} && v[3] == rational{-7, 10}));
     // A value past the grid is reported by the element's policy.
-    using small = inside<{-100, 100}>;
+    using small = id<"[-100..100]">;
     const std::array<int, 2> big{5, 500};
     const std::mdspan<small, std::extents<std::size_t, 2>, std::layout_right, value_accessor<small, const int>> s{
         big.data()};
@@ -300,20 +300,20 @@ TEST(MdspanTest, value_accessor) {
 }
 
 TEST(MdspanTest, raw_accessor) {
-    using adc = inside<{0, 4095}>; // 12 bits in a uint16_t: spare raws
+    using adc = id<"[0..4095]">; // 12 bits in a uint16_t: spare raws
     const std::array<std::uint16_t, 3> raw{100, 4095, 5000};
     const std::mdspan<adc, std::extents<std::size_t, 3>, std::layout_right, raw_accessor<adc, const std::uint16_t>>
         checked_view{raw.data()};
     EXPECT_TRUE((checked_view[0] == 100 && checked_view[1] == 4095));
     EXPECT_DEATH(((void)adc{checked_view[2]}), "ins"); // raw memory read: a precondition
-    using adc_clamp = inside<{0, 4095}, clamp>;
+    using adc_clamp = id<"[0..4095] clamp">;
     const std::mdspan<adc_clamp,
                       std::extents<std::size_t, 3>,
                       std::layout_right,
                       raw_accessor<adc_clamp, const std::uint16_t>>
         clamped{raw.data()};
     EXPECT_TRUE((clamped[2] == 4095));
-    using adc_wrap = inside<{0, 4095}, wrap>;
+    using adc_wrap = id<"[0..4095] wrap">;
     const std::
         mdspan<adc_wrap, std::extents<std::size_t, 3>, std::layout_right, raw_accessor<adc_wrap, const std::uint16_t>>
             wrapped{raw.data()};
@@ -332,24 +332,24 @@ TEST(MdspanTest, sum) {
     const auto            s = sum(img);
     static_assert(grid_of<decltype(s)> == grid{0, 20 * 255});
     EXPECT_TRUE((s == 1900));
-    EXPECT_TRUE((sum<inside<{0, 2000}>>(img) == 1900));
+    EXPECT_TRUE((sum<id<"[0..2000]">>(img) == 1900));
     // A strided view sums through the mapping.
     const std::layout_stride::mapping<std::extents<std::size_t, 4>> every_fifth{std::extents<std::size_t, 4>{},
                                                                                 std::array<std::size_t, 1>{5}};
     const std::mdspan                                               column0{a.data(), every_fifth};
     EXPECT_TRUE((sum(column0) == 0 + 50 + 100 + 150));
     // An unanchored lattice: 4 values of {0.5, 1.5, …} sum on {2, 3, …}.
-    using half = inside<{{0.5, 9.5}, 1}>;
+    using half = id<"[0.5..9.5] 1">;
     std::array<half, 4> h{half{0.5}, half{1.5}, half{2.5}, half{9.5}};
     const auto          hs = sum(std::mdspan{h.data(), std::extents<std::size_t, 4>{}});
     static_assert(grid_of<decltype(hs)> == grid{{2, 38}, 1});
     EXPECT_TRUE((hs == 14));
     // Dynamic extents need a target.
-    EXPECT_TRUE((sum<inside<{0, 2000}>>(std::mdspan{a.data(), 4, 5}) == 1900));
+    EXPECT_TRUE((sum<id<"[0..2000]">>(std::mdspan{a.data(), 4, 5}) == 1900));
 }
 
 TEST(MdspanTest, dot_and_matrix_products) {
-    using v_t             = inside<{-10, 10}>;
+    using v_t             = id<"[-10..10]">;
     std::array<v_t, 3> x  = {1, 2, 3};
     std::array<v_t, 3> y  = {4, -5, 6};
     const std::mdspan  vx = {x.data(), std::extents<std::size_t, 3>{}};
@@ -357,28 +357,28 @@ TEST(MdspanTest, dot_and_matrix_products) {
     const auto         d  = dot(vx, vy);
     static_assert(grid_of<decltype(d)> == grid{-300, 300});
     EXPECT_TRUE((d == 12));
-    EXPECT_TRUE((dot<inside<{-1000, 1000}>>(std::mdspan{x.data(), 3}, std::mdspan{y.data(), 3}) == 12));
-    EXPECT_DEATH(((void)dot<inside<{-1000, 1000}>>(std::mdspan{x.data(), 3}, std::mdspan{y.data(), 2})),
+    EXPECT_TRUE((dot<id<"[-1000..1000]">>(std::mdspan{x.data(), 3}, std::mdspan{y.data(), 3}) == 12));
+    EXPECT_DEATH(((void)dot<id<"[-1000..1000]">>(std::mdspan{x.data(), 3}, std::mdspan{y.data(), 2})),
                  "ins: dot: the extents differ");
 
     // A = [[1, 2, 3], [4, 5, 6]]: A·x and A·Aᵀ against loops.
     std::array<v_t, 6>                 a{1, 2, 3, 4, 5, 6};
     const std::mdspan                  ma{a.data(), std::extents<std::size_t, 2, 3>{}};
-    std::array<inside<{-500, 500}>, 2> ax{};
+    std::array<id<"[-500..500]">, 2> ax{};
     matrix_vector_product(ma, vx, std::mdspan{ax.data(), std::extents<std::size_t, 2>{}});
     EXPECT_TRUE((ax[0] == 14 && ax[1] == 32));
     std::array<v_t, 6>                 at{1, 4, 2, 5, 3, 6};
-    std::array<inside<{-500, 500}>, 4> c{};
+    std::array<id<"[-500..500]">, 4> c{};
     matrix_product(ma,
                    std::mdspan{at.data(), std::extents<std::size_t, 3, 2>{}},
                    std::mdspan{c.data(), std::extents<std::size_t, 2, 2>{}});
     EXPECT_TRUE((c[0] == 14 && c[1] == 32 && c[2] == 32 && c[3] == 77));
     // The output rounds by its own policy: a sum stored once onto a coarser grid.
-    std::array<inside<{{-500, 500}, 10}, round_half_away>, 2> coarse{};
+    std::array<id<"[-500..500] 10 round_half_away">, 2> coarse{};
     matrix_vector_product(ma, vx, std::mdspan{coarse.data(), std::extents<std::size_t, 2>{}});
     EXPECT_TRUE((coarse[0] == 10 && coarse[1] == 30));
     // Exact past 64 bits: products of 2^40 accumulate in wide integers.
-    using big             = inside<{0, 1ll << 40}>;
+    using big             = id<key{grid{0, 1ll << 40}}>;
     std::array<big, 3> p  = {big{1ll << 40}, big{1ll << 40}, big{1ll << 40}};
     const auto         dp = dot(std::mdspan{p.data(), std::extents<std::size_t, 3>{}},
                                 std::mdspan{p.data(), std::extents<std::size_t, 3>{}});
@@ -386,14 +386,14 @@ TEST(MdspanTest, dot_and_matrix_products) {
 }
 
 TEST(MdspanTest, transform_into) {
-    using in_t  = inside<{0, 100}>;
-    using out_t = inside<{{0, 10}, per<1000>}, round_half_away>;
+    using in_t  = id<"[0..100]">;
+    using out_t = id<"[0..10] 1/1000 round_half_away">;
     std::array<in_t, 4>  in{1, 4, 9, 2};
     std::array<out_t, 4> out{};
     transform_into(std::mdspan{in.data(), 4}, std::mdspan{out.data(), 4}, [](in_t v) { return math::sqrt<out_t>(v); });
     EXPECT_TRUE((out[0] == 1 && out[1] == 2 && out[2] == 3 && out[3] == rational{1414, 1000}));
     // Two inputs, stored by the output's policy (clamp saturates).
-    std::array<inside<{0, 150}, clamp>, 4> s{};
+    std::array<id<"[0..150] clamp">, 4> s{};
     transform_into(std::mdspan{in.data(), 4}, std::mdspan{in.data(), 4}, std::mdspan{s.data(), 4}, [](in_t u, in_t v) {
         return u * v;
     });
@@ -417,9 +417,9 @@ using namespace ins;
 using namespace ins::formats;
 
 namespace {
-using metres = quantity<si::metre, inside<{0, 100}>>;
-using km     = quantity<si::kilo(si::metre), inside<{0, 10}>>;
-using kelvin = quantity<si::kelvin, inside<{{200, 400}, per<10>}>>;
+using metres = id<"[0..100] [m]">;
+using km     = id<"[0..10] [km]">;
+using kelvin = id<"[200..400] 1/10 [K]">;
 } // namespace
 
 TEST(UnitsMdspanTest, accessors) {
@@ -431,7 +431,7 @@ TEST(UnitsMdspanTest, accessors) {
     EXPECT_EQ(to_string(t[1]), "273.1 K");
     const auto total = sum(t);
     static_assert(
-        std::is_same_v<std::remove_const_t<decltype(total)>, quantity<si::kelvin, inside<{{600, 1200}, per<10>}>>>);
+        std::is_same_v<std::remove_const_t<decltype(total)>, id<"[600..1200] 1/10 [K]">>);
     EXPECT_EQ(to_string(total), "873.1 K");
     // Plain metres from an int array, written back through the quantity.
     std::array<int, 2>                                                                                      raw{3, 0};
@@ -460,22 +460,22 @@ TEST(UnitsMdspanTest, sums_and_products_carry_units) {
     const std::mdspan     v{a.data(), std::extents<std::size_t, 4>{}};
     EXPECT_EQ(to_string(sum(v)), "10 m");
     // A target in another unit: the exact total in metres, converted once.
-    EXPECT_EQ(to_string(*sum<quantity<si::kilo(si::metre), inside<{{0, 1}, per<1000>}>>>(v)), "0.010 km");
+    EXPECT_EQ(to_string(*sum<id<"[0..1] 1/1000 [km]">>(v)), "0.010 km");
     EXPECT_EQ(to_string(dot(v, v)), "30 m²");
     // A matrix of lengths times itself: areas.
     const std::mdspan                                                   m{a.data(), std::extents<std::size_t, 2, 2>{}};
-    std::array<quantity<si::metre * si::metre, inside<{0, 100000}>>, 4> c{};
+    std::array<id<"[0..100000] [m^2]">, 4> c{};
     EXPECT_TRUE(matrix_product(m, m, std::mdspan{c.data(), std::extents<std::size_t, 2, 2>{}}));
     EXPECT_EQ(to_string(c[0]), "7 m²");
     EXPECT_EQ(to_string(c[3]), "22 m²");
     // Lengths times plain numbers stay lengths.
-    std::array<inside<{0, 10}>, 2> n{inside<{0, 10}>{2}, inside<{0, 10}>{5}};
+    std::array<id<"[0..10]">, 2> n{id<"[0..10]">{2}, id<"[0..10]">{5}};
     std::array<metres, 2>          w{metres{3, si::metre}, metres{4, si::metre}};
     EXPECT_EQ(to_string(dot(std::mdspan{n.data(), std::extents<std::size_t, 2>{}},
                             std::mdspan{w.data(), std::extents<std::size_t, 2>{}})),
               "26 m");
     // Elementwise: m → m², each stored by the output's policy.
-    std::array<quantity<si::metre * si::metre, inside<{0, 100}, clamp>>, 4> sq{};
+    std::array<id<"[0..100] [m^2] clamp">, 4> sq{};
     transform_into(v, std::mdspan{sq.data(), std::extents<std::size_t, 4>{}}, [](metres x) { return x * x; });
     EXPECT_EQ(to_string(sq[3]), "16 m²");
 }
@@ -490,7 +490,7 @@ using detail::rational;
 
 // A writable value accessor over doubles writes each value rounded once.
 TEST(MdspanArmTest, value_accessor_writes_doubles) {
-    using tenth = inside<{{-10, 10}, per<10>}, round_half_away>;
+    using tenth = id<"[-10..10] 1/10 round_half_away">;
     std::array<double, 2>                                                                                    d{0, 0};
     const std::mdspan<tenth, std::extents<std::size_t, 2>, std::layout_right, value_accessor<tenth, double>> w{
         d.data()};
@@ -500,7 +500,7 @@ TEST(MdspanArmTest, value_accessor_writes_doubles) {
 
 // unsafe passes an out-of-grid raw through unchecked (the caller's promise).
 TEST(MdspanArmTest, unsafe_raws_pass_through) {
-    using adc = inside<{0, 4095}, unsafe>;
+    using adc = id<"[0..4095] unsafe">;
     const std::array<std::uint16_t, 1> raw{5000};
     const std::mdspan<adc, std::extents<std::size_t, 1>, std::layout_right, raw_accessor<adc, const std::uint16_t>> v{
         raw.data()};
@@ -531,16 +531,16 @@ TEST(MdspanTest, raw_accessor_past_int64) {
     m[0] = uint64{5};
     EXPECT_EQ(u[0], 5u);
 
-    using WS = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>;
+    using WS = id<"[-1180591620717411303424..1180591620717411303424]">;
     std::array<WS::raw_type, 2> w{WS{-3}.raw(), WS{1180591620717411303424_g}.raw()};
     const raw_view<WS, 2>       mw{w.data()};
     EXPECT_TRUE(mw[0].get() == -3 && mw[1].get() == WS{1180591620717411303424_g});
 
     // A wide raw past the grid: clamped by the policy, or reported.
-    using WC = inside<{0, 1180591620717411303424_g}, clamp>;
+    using WC = id<"[0..1180591620717411303424] clamp">;
     std::array<WC::raw_type, 1> c{static_cast<WC::raw_type>(~WC::raw_type{0})};
     EXPECT_TRUE((raw_view<WC, 1>{c.data()}[0].get() == WC{1180591620717411303424_g}));
-    using WE = inside<{0, 1180591620717411303424_g}>;
+    using WE = id<"[0..1180591620717411303424]">;
     std::array<WE::raw_type, 1> e{static_cast<WE::raw_type>(~WE::raw_type{0})};
     EXPECT_DEATH(((void)raw_view<WE, 1>{e.data()}[0].get()), "ins"); // a precondition
 }

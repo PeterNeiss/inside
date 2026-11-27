@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    quantity<si::metre, inside<{0, 10}>> q = just<1> * si::second;
+    id<"[0..10] [m]"> q = just<1> * si::second;
     (void)q;
 }

@@ -2,12 +2,12 @@
 // Opt-in: physical units and quantity kinds on inside, the main features of mp-units
 // with an inside as the only representation.
 //
-//   quantity<si::metre, inside<{0, 10}>> d{7, si::metre};   // 7 m: a number and its unit
+//   id<"[0..10] [m]"> d{7, si::metre};   // 7 m: a number and its unit
 //   auto k = just<5> * si::kilo(si::metre);                 // 5 km, a point grid
 //   auto s = k + d;                                         // 5007 m, exact
 //   auto v = d.in(si::milli(si::metre));                    // 7000 mm, the same raw
 //   d.numerical_value_in(si::metre);                        // 7: read in a named unit
-//   quantity<isq::height[si::metre], H> h{…};               // a quantity kind
+//   id<quantity_key<isq::height[si::metre], H>> h{…};               // a quantity kind
 //
 // A unit conversion is a grid rescale: km → m multiplies the interval and notch by 1000 and keeps the raw,
 // so it is exact, total and free.

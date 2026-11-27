@@ -5,15 +5,15 @@ limit in steps of a *notch*. This page shows how to write grids and their
 values, and the ready-made formats.
 
 ```cpp
-using integers   = inside<{0, 100}>;                    // 0, 1, …, 100
-using q14        = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
-using halves     = inside<{{-40, 60}, 0.5}>;            // −40 … 60 in steps of 0.5
-using hundredths = inside<{{0, 1'000'000}, per<100>}>;  // 0 … 1 000 000 in steps of 1/100
+using integers   = id<"[0..100]">;                      // 0, 1, …, 100
+using q14        = id<"[-1..1] 1/16384">;               // −1 … 1 in steps of 1/16384
+using halves     = id<"[-40..60] 0.5">;                 // −40 … 60 in steps of 0.5
+using hundredths = id<"[0..1'000'000] 1/100">;          // 0 … 1 000 000 in steps of 1/100
 ```
 
 A grid holds numbers. When they measure something, give them a unit:
-`quantity<si::metre, halves>` is a length on that grid, and money to the cent
-is `quantity<USD, hundredths>` with a currency of your own
+`id<"[-40..60] 0.5 [m]">` is a length on that grid, and money to the cent
+is `id<"[0..1'000'000] 1/100 [USD]">` with a currency of your own
 ([Units](units.md)).
 
 ## Writing a grid
@@ -46,7 +46,7 @@ The literals `_ins` and `_g` are also in `ins::literals`:
 
 `0.1` is not 1/10 in binary, so a grid or a constant that needs 1/10 says
 `0.1_ins`, `per<10>` or `just<1, 10>`. A value at run time can be a `double`:
-`inside<{{0, 1}, per<10>}, round_half_away>{0.1}` rounds it to the nearest notch,
+`id<"[0..1] 1/10 round_half_away">{0.1}` rounds it to the nearest notch,
 1/10.
 
 A point such as `just<440>` or `5_ins` holds its value in the type and takes no
@@ -59,16 +59,16 @@ For a range you think of as half-open, such as an index `[0, N)` or an angle
 so the grid is still closed and the type is the same:
 
 ```cpp
-using index      = inside<{0, 360, bounds::half_open}>;             // inside<{0, 359}>
-using sixteenths = inside<{{0, 64}, per<16>, bounds::half_open}>;   // inside<{{0, 63.9375}, per<16>}>
-using inner      = inside<{0, 10, bounds::open}>;                   // inside<{1, 9}>
-using heading    = quantity<si::degree, inside<{0, 360, bounds::half_open}>>;   // an angle: [0°, 359°]
+using index      = id<"[0..360)">;                                  // id<"[0..359]">
+using sixteenths = id<"[0..64) 1/16">;                              // id<"[0..63.9375] 1/16">
+using inner      = id<"(0..10)">;                                   // id<"[1..9]">
+using heading    = id<"[0..360) [deg]">;                            // an angle: [0°, 359°]
 ```
 
 ## The default value
 
 `T x;` and `T{}` hold 0, or Lower on a grid without 0:
-`inside<{5, 10}> x;` holds 5.
+`id<"[5..10]"> x;` holds 5.
 
 ## Continuous grids
 
@@ -76,7 +76,7 @@ A notch of 0 makes a *continuous* grid: any fraction in the interval whose
 denominator stays within a bound you name.
 
 ```cpp
-using thousandths = inside<{{0, 1}, max_denominator{1000}}>;
+using thousandths = id<"[0..1] <1000>">;
 thousandths t{just<1, 3>};                   // exactly 1/3
 ```
 
@@ -98,8 +98,8 @@ them in):
 | `int8`, `int16`, `int32`, `int64` | [−2ᴺ⁻¹, 2ᴺ⁻¹ − 1], 1 | `intN_t` | checked |
 | `unorm8`, `unorm16`, `unorm32` | [0, 1], 1/(2ᴺ − 1) | `uintN_t` | `round_half_away` |
 | `uq4_4`, `uq8_8`, `uq16_16` | [0, 2ᴹ − 2⁻ᴹ], 2⁻ᴹ: every bit pattern | `uint8_t`, `uint16_t`, `uint32_t` | `round_half_away` |
-| `clamp_counter<Max>` | `inside<{0, Max}, clamp>`: `++` stops at Max | the smallest that fits | `clamp` |
-| `wrap_counter<Max>` | `inside<{0, Max}, wrap>`: `++` wraps Max → 0 | the smallest that fits | `wrap` |
+| `clamp_counter<Max>` | `id<key{grid{0, Max}, clamp}>`: `++` stops at Max | the smallest that fits | `clamp` |
+| `wrap_counter<Max>` | `id<key{grid{0, Max}, wrap}>`: `++` wraps Max → 0 | the smallest that fits | `wrap` |
 
 ```cpp
 using namespace ins::formats;
@@ -115,12 +115,12 @@ integer, as every result type holds every result.
 ## How a grid is stored
 
 An inside stores one integer, its *raw*, and nothing else. The grid picks it:
-the smallest native integer that numbers every point. `inside<{0, 100}>` is a
-`uint8_t`, `inside<{-40, 85}>` an `int8_t`, a point takes no storage, and a
+the smallest native integer that numbers every point. `id<"[0..100]">` is a
+`uint8_t`, `id<"[-40..85]">` an `int8_t`, a point takes no storage, and a
 grid with more than 2⁶⁴ points gets a wider integer of 64-bit limbs. No flag
 chooses the storage; [Storage](../advanced/storage.md) has the rules.
 
-A grid's numbers have no size limit: `inside<{0, 0x1p100}>` and a notch of
+A grid's numbers have no size limit: `id<"[0..0x1p100]">` and a notch of
 10⁻⁴¹ are fine
 ([grids past 64 bits](../advanced/storage.md#grids-past-64-bits)).
 
@@ -129,11 +129,11 @@ A grid's numbers have no size limit: `inside<{0, 0x1p100}>` and a notch of
 | Spelling | Gives |
 |---|---|
 | `grid_of<T>` | the grid, as a value |
-| `lower_of<T>`, `upper_of<T>`, `notch_of<T>` | its numbers, grid numbers for spelling other grids (`inside<{lower_of<T>, 2 * upper_of<T>}>`) |
+| `lower_of<T>`, `upper_of<T>`, `notch_of<T>` | its numbers, grid numbers for spelling other grids (`id<key{grid{lower_of<T>, 2 * upper_of<T>}}>`) |
 | `policy_of<T>` | the policy |
 | `std::numeric_limits<T>::min()`, `max()` | the limits, as insides |
 | `step_count_of<T>` | (Upper − Lower)/Notch, as a point inside |
-| `x.step()`, `T::from_step(i)` | a value's step, its count of notches above Lower, as a `step_t<T>` = `inside<{0, step_count}>`, and back |
+| `x.step()`, `T::from_step(i)` | a value's step, its count of notches above Lower, as a `step_t<T>` = `id<key{grid{0, step_count}}>`, and back |
 
 Grid numbers are compile-time values: their arithmetic is `consteval`, so
 `N - 1` with a constant `N` is evaluated while compiling, wherever it appears.

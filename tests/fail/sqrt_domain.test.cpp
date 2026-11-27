@@ -7,7 +7,7 @@
 using namespace ins;
 
 int main() {
-    using level = inside<{{-4, 4}, per<256>}, round_half_away>;
+    using level = id<"[-4..4] 1/256 round_half_away">;
     auto r      = math::sqrt(level{2.25});
     (void)r;
 }

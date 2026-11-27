@@ -12,7 +12,7 @@
 
 #include <utility>
 
-// addition: add(L, R, policy) -> inside<G>, G = grid_of<L> + grid_of<R>.
+// addition: add(L, R, policy) -> id<key{G}>, G = grid_of<L> + grid_of<R>.
 // The result interval holds every run-time sum,
 // and a continuous result's raw is sized from its denominator bound, so a sum never fails.
 // The shapes: a continuous result (an exact fraction or a rational raw), a point,
@@ -23,7 +23,7 @@ namespace ins::detail
   struct addition
   {
     static constexpr grid result_grid = grid_of<L> + grid_of<R>;
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // Total: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>

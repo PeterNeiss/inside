@@ -23,6 +23,13 @@ printf '#include <inside/units.hpp>\nint main() {}\n' > "$DIR/include.cpp"
 {
   echo '#include <inside/units.hpp>'
   echo 'using namespace ins;'
+  echo '// The kernels keep the old spellings: names of the ids they mean.'
+  echo 'template <ins::grid G, ins::policy_flag P = ins::checked>'
+  echo 'using inside = ins::id<ins::key{G, P}>;'
+  echo 'template <ins::reference R, class Rep>'
+  echo 'using quantity = ins::id<ins::quantity_key<R, Rep>>;'
+  echo 'template <ins::reference R, ins::origin_ref O, class Rep>'
+  echo 'using quantity_point = ins::id<ins::point_key<R, O, Rep>>;'
   echo 'int sink(const auto& q) { return static_cast<int>(sizeof(q)); }'
   echo 'int main() {'
   echo '    int s = 0;'
@@ -42,6 +49,9 @@ printf '#include <inside/units.hpp>\nint main() {}\n' > "$DIR/include.cpp"
 {
   echo '#include <inside/inside.hpp>'
   echo 'using namespace ins;'
+  echo '// The kernels keep the old spelling: the name of the id it means.'
+  echo 'template <ins::grid G, ins::policy_flag P = ins::checked>'
+  echo 'using inside = ins::id<ins::key{G, P}>;'
   echo 'int sink(const auto& q) { return static_cast<int>(sizeof(q)); }'
   echo 'int main() {'
   echo '    int s = 0;'

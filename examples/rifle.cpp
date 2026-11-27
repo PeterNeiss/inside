@@ -23,15 +23,15 @@ namespace
   inline constexpr auto pull   = base_unit<"pull", "trigger_pulls">;
   inline constexpr auto reload = base_unit<"reload", "reloads">;
 
-  using pulls        = quantity<pull, clamp_counter<1'000'000>>; // saturating event tallies
-  using reload_count = quantity<reload, clamp_counter<1'000'000>>;
+  using pulls        = id<quantity_key<pull, clamp_counter<1'000'000>>>; // saturating event tallies
+  using reload_count = id<quantity_key<reload, clamp_counter<1'000'000>>>;
 } // namespace
 
 class magazine
 {
 public:
   static constexpr auto capacity = just<30> * rd;
-  using rounds_t = quantity<rd, inside<{0, 30}, wrap>>; // 31 states; wraps at empty
+  using rounds_t = id<"[0..30] [rd] wrap">; // 31 states; wraps at empty
 
   rounds_t rounds{capacity}; // starts full
 
@@ -41,7 +41,7 @@ public:
 class rifle
 {
 public:
-  using dropped_rounds = quantity<rd, inside<{0, 1'000'000}, clamp>>;
+  using dropped_rounds = id<"[0..1'000'000] [rd] clamp">;
 
   magazine       mag;
   pulls          pulled_trigger{0, pull};
@@ -53,7 +53,7 @@ public:
 class player
 {
 public:
-  using reserve_t = quantity<rd, inside<{0, 200}, clamp>>;
+  using reserve_t = id<"[0..200] [rd] clamp">;
 
   reserve_t reserve   {60, rd};  // two spare magazines' worth
   rifle     weapon;

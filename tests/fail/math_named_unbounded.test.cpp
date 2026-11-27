@@ -7,7 +7,7 @@
 using namespace ins;
 
 int main() {
-    const inside<{{0, 4}, per<4>}> b{2};
-    const inside<{{0, 2}, per<2>}> e{1};
-    (void)math::pow<inside<{{0, 16}, per<16>}, round_half_away>>(b, e);
+    const id<"[0..4] 1/4"> b{2};
+    const id<"[0..2] 1/2"> e{1};
+    (void)math::pow<id<"[0..16] 1/16 round_half_away">>(b, e);
 }

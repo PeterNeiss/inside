@@ -17,7 +17,7 @@ using namespace ins;
 
 inline constexpr auto cts = base_unit<"cts", "count">;
 constexpr auto        km  = si::kilo(si::metre);
-using I                   = inside<{0, 100}>;
+using I                   = id<key{grid{0, 100}}>;
 
 // The text a type's key holds.
 template <class T>
@@ -30,17 +30,17 @@ template <class T>
 constexpr std::string_view text_of = text_of_t<T>::value;
 
 TEST(IdQuantityTest, a_unit_with_a_text_names_the_type) {
-    static_assert(std::is_same_v<quantity<si::metre, I>, id<"[0..100] [m]">>);
-    static_assert(std::is_same_v<quantity<km / si::hour, I>, id<"[0..100] [km/h]">>);
-    static_assert(std::is_same_v<quantity<si::newton, I>, id<"[0..100] [N]">>);
-    static_assert(std::is_same_v<quantity<si::micro(si::second), I>, id<"[0..100] [us]">>);
-    static_assert(std::is_same_v<quantity<cts, I>, id<"[0..100] [cts]">>);
-    static_assert(std::is_same_v<quantity<cts / si::volt, I>, id<"[0..100] [cts/V]">>);
-    static_assert(std::is_same_v<quantity<si::kilogram * si::metre / (si::second * si::second), I>,
+    static_assert(std::is_same_v<id<quantity_key<si::metre, I>>, id<"[0..100] [m]">>);
+    static_assert(std::is_same_v<id<quantity_key<km / si::hour, I>>, id<"[0..100] [km/h]">>);
+    static_assert(std::is_same_v<id<quantity_key<si::newton, I>>, id<"[0..100] [N]">>);
+    static_assert(std::is_same_v<id<quantity_key<si::micro(si::second), I>>, id<"[0..100] [us]">>);
+    static_assert(std::is_same_v<id<quantity_key<cts, I>>, id<"[0..100] [cts]">>);
+    static_assert(std::is_same_v<id<quantity_key<cts / si::volt, I>>, id<"[0..100] [cts/V]">>);
+    static_assert(std::is_same_v<id<quantity_key<si::kilogram * si::metre / (si::second * si::second), I>>,
                                  id<"[0..100] [kg*m/s^2]">>);
-    static_assert(std::is_same_v<quantity<si::metre, inside<{0, 360, bounds::half_open}, wrap>>,
+    static_assert(std::is_same_v<id<quantity_key<si::metre, id<key{grid{0, 360, bounds::half_open}, wrap}>>>,
                                  id<"[0..360) [m] wrap">>);
-    static_assert(std::is_same_v<quantity<one, I>, id<"[0..100] [1]">>);
+    static_assert(std::is_same_v<id<quantity_key<one, I>>, id<"[0..100] [1]">>);
 }
 
 // A symbol is looked up in the catalog first (its units' own symbols and the prefixed units in wide use): a symbol
@@ -97,7 +97,7 @@ TEST(IdQuantityTest, the_types_hold_their_unit_and_number) {
     static_assert(Q::unit == (km / si::hour).value);
     static_assert(std::is_same_v<Q::rep, id<"[0..100]">>);
     constexpr Q v{42, km / si::hour};
-    static_assert(v == quantity<km / si::hour, I>{42, km / si::hour});
+    static_assert(v == id<quantity_key<km / si::hour, I>>{42, km / si::hour});
     EXPECT_EQ(to_string(v), "42 km/h");
 }
 
@@ -115,7 +115,7 @@ TEST(IdQuantityTest, results_read_as_ids_where_their_reference_is_a_unit) {
     static_assert(std::is_same_v<P, id<"[1..81] [m*s]{any duration*length}">>);
     static_assert(P::unit == (si::metre * si::second).value);
     // A kind is in the text too.
-    static_assert(std::is_same_v<quantity<isq::height[si::metre], I>, id<"[0..100] [m]{height}">>);
+    static_assert(std::is_same_v<id<quantity_key<isq::height[si::metre], I>>, id<"[0..100] [m]{height}">>);
 }
 
 TEST(IdQuantityTest, members_and_hooks_take_the_type_itself) {
@@ -135,7 +135,7 @@ TEST(IdQuantityTest, members_and_hooks_take_the_type_itself) {
 // A kind after the unit, in braces, when it is not the unit's own; a point's origin after @.
 TEST(IdQuantityTest, kinds_and_origins_in_the_text) {
     // An exact kind, as kind[unit] names it.
-    static_assert(std::is_same_v<quantity<isq::height[si::metre], I>, id<"[0..100] [m]{height}">>);
+    static_assert(std::is_same_v<id<quantity_key<isq::height[si::metre], I>>, id<"[0..100] [m]{height}">>);
     static_assert(id<"[0..100] [m]{height}">::reference == reference{isq::height[si::metre]});
     static_assert(text_of<id<"[0..100] [m]{ height }">> == "[0..100] [m]{height}");
     // The unit's own kind, any of it: no braces.
@@ -143,8 +143,8 @@ TEST(IdQuantityTest, kinds_and_origins_in_the_text) {
     // A product keeps its kinds: any length times any duration, or exact ones.
     using metres = id<"[1..9] [m]">;
     static_assert(std::is_same_v<decltype(metres{} * id<"[1..9] [s]">{}), id<"[1..81] [m*s]{any duration*length}">>);
-    using H = quantity<isq::height[si::metre], inside<{1, 9}>>;
-    using W = quantity<isq::width[si::metre], inside<{1, 9}>>;
+    using H = id<quantity_key<isq::height[si::metre], id<key{grid{1, 9}}>>>;
+    using W = id<quantity_key<isq::width[si::metre], id<key{grid{1, 9}}>>>;
     static_assert(text_of<decltype(H{} * W{})> == "[1..81] [m^2]{height*width}");
     static_assert(text_of<decltype(H{} / id<"[1..9] [s]">{})> == "[1/9..9] <9> [m/s]{height/duration}");
     // No kind.
@@ -166,11 +166,11 @@ TEST(IdQuantityTest, kinds_and_origins_in_the_text) {
 TEST(IdQuantityTest, points_are_ids) {
     using C = id<"[-40..125] [`C] @ice_point">;
     static_assert(point_like<C> && !quantity_like<C> && !insidable<C>);
-    static_assert(std::is_same_v<quantity_point<si::degree_Celsius, si::ice_point.value, inside<{-40, 125}>>, C>);
-    static_assert(std::is_same_v<decltype(point<si::degree_Celsius>(inside<{-40, 125}>{20})), C>);
+    static_assert(std::is_same_v<id<point_key<si::degree_Celsius, si::ice_point.value, id<key{grid{-40, 125}}>>>, C>);
+    static_assert(std::is_same_v<decltype(point<si::degree_Celsius>(id<key{grid{-40, 125}}>{20})), C>);
     static_assert(std::is_same_v<C::quantity_type, id<"[-40..125] [`C]">>);
     static_assert(text_of<decltype(si::absolute_zero + just<300> * si::kelvin)> == "[300] [K] @absolute_zero");
-    static_assert(text_of<decltype(point<si::metre>(inside<{0, 9}>{3}))> == "[0..9] [m] @0");
+    static_assert(text_of<decltype(point<si::metre>(id<key{grid{0, 9}}>{3}))> == "[0..9] [m] @0");
     // Shifts, differences and comparisons keep their types as texts.
     constexpr C t{20, si::degree_Celsius};
     static_assert(text_of<decltype(t - t)> == "[-165..165] [`C]");
@@ -191,7 +191,7 @@ TEST(IdQuantityTest, a_literal_with_an_origin) {
 TEST(IdQuantityTest, a_literal_with_a_unit) {
     constexpr auto v{"42 [1..100) [km/h]"_ins};
     static_assert(std::is_same_v<std::remove_const_t<decltype(v)>, id<"[1..99] [km/h]">>);
-    static_assert(v == quantity<km / si::hour, inside<{1, 99}>>{42, km / si::hour});
+    static_assert(v == id<quantity_key<km / si::hour, id<key{grid{1, 99}}>>>{42, km / si::hour});
     constexpr auto p{"42 [km/h]"_ins}; // a unit alone: the point
     static_assert(std::is_same_v<std::remove_const_t<decltype(p)>, id<"[42] [km/h]">>);
     static_assert("200 [0..99] [m] clamp"_ins == just<99> * si::metre);

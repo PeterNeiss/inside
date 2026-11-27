@@ -6,6 +6,6 @@
 using namespace ins;
 
 int main(int argc, char**) {
-    inside<{0, 100}> x{0};
+    id<"[0..100]"> x{0};
     x.with<round_floor>() = argc * 0.5;
 }
