@@ -10,6 +10,7 @@
 #include <inside/inside/detail/grid_rational.hpp>
 #include <inside/inside/detail/number_text.hpp>
 
+#include <bit> // std::countr_zero, std::bit_width
 #include <cstddef>
 #include <cstdint>
 #include <iterator> // std::size
@@ -81,17 +82,42 @@ namespace ins::detail
       for (std::size_t i = Size; i-- > Size - n; v /= 10)
         Out[i] = static_cast<char>('0' + v % 10);
     }
-    // An integer past one limb in hexadecimal, 16 digits a limb:
-    // linear in the limbs, where decimal digits would cost a division each.
+    // An integer past one limb in hexadecimal, 16 digits a limb (linear in the limbs, where decimal digits would
+    // cost a division each), or as m·2^e, 0x…p…, where that is shorter: 2^20000 is 0x1p20000.
     constexpr void put(const grid_int& v)
     {
       if (v.negative())
         put('-');
       if (v.fits_limb())
         return put(v.Small);
+      std::size_t zeros{0}, limb{0}; // the trailing zero bits
+      for (; v.Limbs[limb] == 0; ++limb)
+        zeros += 64;
+      zeros += static_cast<std::size_t>(std::countr_zero(v.Limbs[limb]));
+      const std::size_t bits{(v.Size - 1) * 64 + static_cast<std::size_t>(std::bit_width(v.Limbs[v.Size - 1]))};
+      const std::size_t plain{(bits + 3) / 4}, digits{(bits - zeros + 3) / 4};
+      std::size_t       exp_digits{1};
+      for (std::size_t t{zeros}; t >= 10; t /= 10)
+        ++exp_digits;
       put("0x");
-      for (std::size_t i = v.Size; i-- > 0;)
-        put_hex(v.Limbs[i], i + 1 != v.Size);
+      if (digits + 1 + exp_digits >= plain)
+      {
+        for (std::size_t i = v.Size; i-- > 0;)
+          put_hex(v.Limbs[i], i + 1 != v.Size);
+        return;
+      }
+      // The hexadecimal digits of v >> zeros, from the top.
+      room(digits);
+      for (std::size_t d = digits; d-- > 0;)
+      {
+        const std::size_t at{zeros + 4 * d}, i{at / 64}, s{at % 64};
+        std::uint64_t     nibble{v.Limbs[i] >> s};
+        if (s > 60 && i + 1 < v.Size)
+          nibble |= v.Limbs[i + 1] << (64 - s);
+        Out[Size++] = "0123456789abcdef"[nibble & 15];
+      }
+      put('p');
+      put(static_cast<std::uint64_t>(zeros));
     }
     constexpr void put_hex(std::uint64_t x, bool pad)
     {
@@ -193,10 +219,10 @@ namespace ins::detail
       if ((p & own) == own && !(toward_zero && carries_snap))
         word(f);
     }
-    if (named != p) // a mode without snap, or bits no flag names: the number itself
+    if (named != p) // a mode without snap, or bits no flag names: the bits themselves, bits_N
     {
       t.Size = start;
-      t.put(' ');
+      t.put(" bits_");
       t.put(static_cast<std::uint64_t>(p));
     }
   }
@@ -208,7 +234,7 @@ namespace ins::detail
     {
       t.put('[');
       t.put(g.Lower);
-      if (g.Lower != g.Upper) // continuous
+      if (g.Lower != g.Upper || !g.MaxDenominator.is_zero()) // continuous (or a point with a bound: no grid)
       {
         t.put("..");
         t.put(g.Upper);
@@ -331,7 +357,8 @@ namespace ins::detail
         out = grid_number{small};
         return true;
       }
-      if (scan_exact(Text.data() + first, Text.data() + At, out) != parse_fail::none)
+      // (An exponent to 100000, as scan_number reads it: 0x1p20000 is a canonical number.)
+      if (scan_exact(Text.data() + first, Text.data() + At, out, 100000) != parse_fail::none)
       {
         At = first;
         return false;
@@ -370,7 +397,10 @@ namespace ins::detail
   };
 
   // Reads any spelling of an id's text (see above) into its grid and policy.
-  consteval id_spec parse_id_text(std::string_view text)
+  // check: whether the grid must be one an inside holds. A key's own canonical text is read without it,
+  // so that it reads back every grid a type names, also one no inside has (a result past a bound, which an
+  // operator's constraint tests by its grid, and which grid::validate rejects when the type is used).
+  consteval id_spec parse_id_text(std::string_view text, bool check = true)
   {
     id_reader r{text};
     id_spec   s;
@@ -407,14 +437,14 @@ namespace ins::detail
     }
     else
       return stop(r.At, open_lo ? "'..'" : "'..', or ']' for a point");
-    if (hi < lo)
+    if (check && hi < lo)
       return stop(open_at, "an upper limit at least the lower");
 
     // The step, or a continuous grid's bound.
     r.skip_spaces();
     const std::size_t step_at{r.At};
     grid_number       notch, bound;
-    bool              has_notch{false};
+    bool              has_notch{false}, has_bound{false};
     if (r.eat("<"))
     {
       if (!r.number(bound, expected))
@@ -423,6 +453,10 @@ namespace ins::detail
         return stop(r.At, "'>' to close the max denominator");
       if (point)
         return stop(step_at, "no max denominator on a point");
+      has_bound = true;
+    }
+    if (has_bound && check)
+    {
       if (!(bound > 0) || !bound.is_integer())
         return stop(step_at + 1, "a max denominator that is a whole number above 0");
       if (bound < grid_number{grid_denominator(lo)} || bound < grid_number{grid_denominator(hi)})
@@ -432,13 +466,13 @@ namespace ins::detail
       if (lo == hi)
         return stop(open_at, "an upper limit above the lower on a continuous grid");
     }
-    else if (r.peek() == '-' || id_reader::is_digit(r.peek()))
+    else if (!has_bound && (r.peek() == '-' || id_reader::is_digit(r.peek())))
     {
       if (!r.number(notch, expected))
         return stop(r.At, expected);
       if (point)
         return stop(step_at, "no step on a point");
-      if (!(notch > 0))
+      if (check && !(notch > 0))
         return stop(step_at, "a step above 0");
       has_notch = true;
     }
@@ -457,16 +491,26 @@ namespace ins::detail
         while (end < text.size() && (id_reader::is_letter(text[end]) || text[end] == '_'))
           ++end;
         const std::string_view w{text.substr(at, end - at)};
-        const id_flag*         found{nullptr};
+        if (w == "bits_") // bits_N: the bits themselves (bits no flag names, as a type may hold them)
+        {
+          r.At = end;
+          grid_number bits;
+          if (!r.unsigned_number(bits) || !bits.is_integer() || !(bits <= grid_number{~policy_flag{0}}))
+            return stop(end, "the bits of a policy");
+          s.Policy |= static_cast<policy_flag>(bits.Num);
+          continue;
+        }
+        const id_flag* found{nullptr};
         for (const id_flag& f : id_flags)
           if (f.Word == w)
             found = &f;
         if (found == nullptr)
           return stop(at, id_flag_list);
-        if (found->Mode && ++modes > 1)
+        if (check && found->Mode && ++modes > 1)
           return stop(at, "one rounding mode");
-        if ((found->Bits == policy_flag{clamp} && (s.Policy & wrap) != 0)
-            || (found->Bits == policy_flag{wrap} && (s.Policy & clamp) != 0))
+        if (check
+            && ((found->Bits == policy_flag{clamp} && (s.Policy & wrap) != 0)
+                || (found->Bits == policy_flag{wrap} && (s.Policy & clamp) != 0)))
           return stop(at, "clamp or wrap, not both");
         s.Policy |= found->Bits;
         r.At      = end;
@@ -475,7 +519,7 @@ namespace ins::detail
     r.skip_spaces();
     if (r.At != text.size())
       return stop(r.At, has_flags                ? "'|' and a flag, or the end"
-                        : has_notch || bound > 0 ? "a flag, or the end"
+                        : has_notch || has_bound ? "a flag, or the end"
                                                  : "a step, <max denominator>, a flag, or the end");
 
     // The grid.
@@ -484,20 +528,21 @@ namespace ins::detail
       s.Grid = grid{lo};
       return s;
     }
-    if (bound > 0)
+    if (has_bound)
     {
-      s.Grid = grid{ins::interval{lo, hi}, max_denominator{bound}};
+      s.Grid                = grid{ins::interval{lo, hi}, grid_number{0}};
+      s.Grid.MaxDenominator = bound;
       return s;
     }
     if (!has_notch)
       notch = derived_notch(lo, hi);
-    if (!grid_divides_evenly(grid_number::sub(hi, lo), notch))
+    if (check && !grid_divides_evenly(grid_number::sub(hi, lo), notch))
       return stop(step_at, "a step that divides upper - lower");
     if (open_lo)
       lo = grid_number::add(lo, notch);
     if (open_hi)
       hi = grid_number::sub(hi, notch);
-    if (hi < lo)
+    if (check && hi < lo)
       return stop(open_at, "a grid point between the open limits");
     s.Grid = grid{ins::interval{lo, hi}, notch};
     return s;

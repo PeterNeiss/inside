@@ -868,14 +868,14 @@ namespace ins::detail
 // every other inside takes the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width),
 // rounded from the exact value by the type's rounding mode (ties to even without one),
 // and an integer grid past int64 the integer types too ({:#x}, {:b}, {:o}, {:d}).
-template <ins::grid G, ins::policy_flag P>
-struct std::formatter<ins::inside<G, P>>
+template <ins::key K>
+struct std::formatter<ins::id<K>>
   : ins::detail::numeric_spec_formatter<std::conditional_t<
-      ins::detail::integer_lattice<ins::inside<G, P>> && ins::detail::values_fit_int64<ins::inside<G, P>>,
+      ins::detail::integer_lattice<ins::id<K>> && ins::detail::values_fit_int64<ins::id<K>>,
       std::formatter<std::int64_t>,
-      ins::detail::exact_format_spec<ins::detail::integer_lattice<ins::inside<G, P>>>>>
+      ins::detail::exact_format_spec<ins::detail::integer_lattice<ins::id<K>>>>>
 {
-  using B = ins::inside<G, P>;
+  using B = ins::id<K>;
   // Integer formatting only for a notched integer grid:
   // a continuous grid (notch 0) holds fractions even between integer bounds.
   static constexpr bool integer_path = ins::detail::integer_lattice<B> && ins::detail::values_fit_int64<B>;

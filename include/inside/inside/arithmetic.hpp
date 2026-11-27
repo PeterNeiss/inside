@@ -1194,8 +1194,7 @@ namespace ins
 
 // std::common_type is the grid hull (ins::common_inside_t above),
 // so mixed-grid insides work in generic code (std::max over two grids, ranges).
-template <ins::grid G1, ins::policy_flag P1, ins::grid G2, ins::policy_flag P2>
-struct std::common_type<ins::inside<G1, P1>, ins::inside<G2, P2>>
-  : ins::detail::common_inside<ins::inside<G1, P1>, ins::inside<G2, P2>> {};
+template <ins::key K1, ins::key K2>
+struct std::common_type<ins::id<K1>, ins::id<K2>> : ins::detail::common_inside<ins::id<K1>, ins::id<K2>> {};
 
 #endif // INSIDE_INSIDE_ARITHMETIC_HPP

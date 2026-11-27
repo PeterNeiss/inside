@@ -6,6 +6,7 @@
 
 #include <inside/inside/detail/error.hpp>
 #include <inside/inside/grid.hpp>
+#include <inside/inside/key.hpp>
 #include <inside/inside/policy_flag.hpp>
 
 #include <bit>
@@ -18,15 +19,12 @@
 // The storage shapes build on it in inside/detail/storage.hpp.
 namespace ins
 {
-  template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
-  struct inside;
-
   namespace detail
   {
     template <class>
     inline constexpr bool is_inside_v = false;
-    template <grid G, policy_flag P>
-    inline constexpr bool is_inside_v<inside<G, P>> = true;
+    template <key K>
+    inline constexpr bool is_inside_v<id<K>> = true;
   } // namespace detail
 
   template <typename B>
@@ -39,10 +37,10 @@ namespace ins
   {
     template <typename B>
     struct inside_params;
-    template <grid G, policy_flag P>
-    struct inside_params<inside<G, P>>
+    template <key K>
+    struct inside_params<id<K>>
     {
-      static constexpr grid grid_v = G;
+      static constexpr grid grid_v = key_grid<K>;
     };
   } // namespace detail
 
@@ -53,8 +51,8 @@ namespace ins
   {
     template <typename T>
     inline constexpr policy_flag policy_of_impl = none;
-    template <grid G, policy_flag P>
-    inline constexpr policy_flag policy_of_impl<inside<G, P>> = P;
+    template <key K>
+    inline constexpr policy_flag policy_of_impl<id<K>> = key_policy<K>;
     template <policy_flag V>
     inline constexpr policy_flag policy_of_impl<flag<V>> = V;
   } // namespace detail

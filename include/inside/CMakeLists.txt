@@ -41,6 +41,7 @@ target_sources(
                 inside/grid.hpp
                 inside/interval.hpp
                 inside/io.hpp
+                inside/key.hpp
                 inside/mdspan.hpp
                 inside/numeric_limits.hpp
                 inside/policy_flag.hpp

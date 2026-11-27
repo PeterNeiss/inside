@@ -395,11 +395,11 @@ namespace ins::math
   template <detail::constant_id Id>
   struct constant
   {
-    // The constant correctly rounded onto inside<G, P> (a grid with a rounding mode), computed while compiling.
-    template <grid G, policy_flag P>
-    [[nodiscard]] constexpr operator inside<G, P>() const
+    // The constant correctly rounded onto an inside type (a grid with a rounding mode), computed while compiling.
+    template <key K>
+    [[nodiscard]] constexpr operator id<K>() const
     {
-      return detail::constants::stored<inside<G, P>, Id>;
+      return detail::constants::stored<id<K>, Id>;
     }
     // The point within Eps of the constant: its simplest such fraction.
     template <auto Eps>

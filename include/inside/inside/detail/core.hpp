@@ -201,15 +201,22 @@ namespace ins
       constexpr private_raw() = default;
       constexpr private_raw(R r) noexcept : Raw{r} {}
     };
-    template <grid G, policy_flag P>
-    using raw_holder = std::conditional_t<G.Lower == G.Upper,
-                                          public_raw<raw_for_t<G>>,
-                                          private_raw<raw_for_t<G>, inside<G, P>>>;
+    template <key K>
+    using raw_holder = std::conditional_t<key_grid<K>.Lower == key_grid<K>.Upper,
+                                          public_raw<raw_for_t<key_grid<K>>>,
+                                          private_raw<raw_for_t<key_grid<K>>, id<K>>>;
   } // namespace detail
 
-  template <grid G, policy_flag P>
-  struct inside : detail::raw_holder<G, P>
+  template <key Key>
+  struct id : detail::raw_holder<Key>
   {
+  private:
+    // The grid and policy the key spells, as values (grid_of<T> and policy_of<T> outside).
+    static constexpr grid        G{detail::key_grid<Key>};
+    static constexpr policy_flag P{detail::key_policy<Key>};
+
+  public:
+    static_assert(Key.ok(), detail::key_error(Key));
     static_assert(grid::validate<G>());
     static_assert((P & ~detail::known_bits) == 0,
                   "inside: the policy holds bits no flag names - build it from the flags (clamp | round_floor)");
@@ -223,7 +230,7 @@ namespace ins
     using raw_type     = detail::raw_for_t<G>;
 
   private:
-    using holder = detail::raw_holder<G, P>;
+    using holder = detail::raw_holder<Key>;
     using holder::Raw; // empty for a point grid
 
   public:
@@ -241,24 +248,24 @@ namespace ins
 
     // A default-constructed inside is 0, or Lower on a grid without 0:
     // a value of the grid, as every other inside holds.
-    constexpr inside()
+    constexpr id()
       requires(!has_flag(P, detail::cursor_marker))
-      : holder{detail::default_raw<inside>} {}
+      : holder{detail::default_raw<id>} {}
 
     // A cursor starts at Lower: slot 0.
-    constexpr inside()
+    constexpr id()
       requires(has_flag(P, detail::cursor_marker))
-      : holder{detail::raw_from_offset<inside>(std::uint64_t{0})} {}
+      : holder{detail::raw_from_offset<id>(std::uint64_t{0})} {}
 
   private:
     // from_raw's: the raw as given, without a default value first.
-    constexpr inside(detail::raw_tag, raw_type r) noexcept : holder{r} {}
+    constexpr id(detail::raw_tag, raw_type r) noexcept : holder{r} {}
 
     // The one store every constructor and assignment goes through, the same for every raw kind.
     template <detail::numeric A, typename Pol>
     constexpr void store_value(const A& value, Pol&& pol)
     {
-      detail::assignment<inside, A>::assign(*this, value, pol);
+      detail::assignment<id, A>::assign(*this, value, pol);
     }
 
     template <detail::numeric A>
@@ -284,14 +291,14 @@ namespace ins
     // store it with try_make, a policy with an error&, clamp, wrap or unsafe.
     // An inside they cannot prove is deleted below (INSIDE_WHY_unproven).
     template <detail::numeric A>
-      requires inside_assignable<inside, A, P> && detail::store_proven<inside, A, P>
-    constexpr inside(A value) : holder{detail::default_raw<inside>}
+      requires inside_assignable<id, A, P> && detail::store_proven<id, A, P>
+    constexpr id(A value) : holder{detail::default_raw<id>}
     {
       store_value(value);
     }
     template <detail::numeric A>
-      requires inside_assignable<inside, A, P> && (!detail::store_proven<inside, A, P>) && (!insidable<A>)
-    consteval inside(A value) : holder{detail::default_raw<inside>}
+      requires inside_assignable<id, A, P> && (!detail::store_proven<id, A, P>) && (!insidable<A>)
+    consteval id(A value) : holder{detail::default_raw<id>}
     {
       store_value(value);
     }
@@ -304,7 +311,7 @@ namespace ins
       requires(detail::flag_like<Pol> || detail::policy_like<Pol>)
            && inside_assignable<twin_with<Pol>, A, flags_with<Pol>>
            && (detail::store_proven<twin_with<Pol>, A, flags_with<Pol>> || detail::reports_into_errc<Pol>)
-    constexpr inside(A value, Pol&& pol) : holder{detail::default_raw<inside>}
+    constexpr id(A value, Pol&& pol) : holder{detail::default_raw<id>}
     {
       store_with(value, pol);
     }
@@ -313,7 +320,7 @@ namespace ins
            && inside_assignable<twin_with<Pol>, A, flags_with<Pol>>
            && (!detail::store_proven<twin_with<Pol>, A, flags_with<Pol>> && !detail::reports_into_errc<Pol>
                && !insidable<A>)
-    consteval inside(A value, Pol&& pol) : holder{detail::default_raw<inside>}
+    consteval id(A value, Pol&& pol) : holder{detail::default_raw<id>}
     {
       store_with(value, pol);
     }
@@ -321,7 +328,7 @@ namespace ins
       requires(detail::flag_like<Pol> || detail::policy_like<Pol>)
            && inside_assignable<twin_with<Pol>, A, flags_with<Pol>>
            && (!detail::store_proven<twin_with<Pol>, A, flags_with<Pol>> && !detail::reports_into_errc<Pol>)
-    inside(A, Pol&&) = delete ("inside: the source's values may fall outside this grid, or off its notch, at run "
+    id(A, Pol&&) = delete ("inside: the source's values may fall outside this grid, or off its notch, at run "
                                "time - store with clamp, wrap or a rounding mode, report with T::try_make(v) or "
                                "make_policy<F>(ec), or unsafe");
 
@@ -343,7 +350,7 @@ namespace ins
     // This overload only turns inside x(value, ec) into a readable error
     // (an error& would otherwise bind the Pol&& constructor above).
     template <detail::numeric A>
-    inside(A, error&) = delete ("inside(value, error&) was removed: use `auto r = B::try_make(value);` "
+    id(A, error&) = delete ("inside(value, error&) was removed: use `auto r = B::try_make(value);` "
                                 "(expected<B, error>), or `b.on_error(ec) = value` to assign with an error code");
 
     // A std::expected is never stored implicitly:
@@ -353,38 +360,38 @@ namespace ins
   "inside: a std::expected is not stored implicitly - check it and store *e, or use T::try_make(e), " \
   "which passes its error on"
     template <detail::numeric A>
-    inside(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
+    id(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
     template <detail::numeric A>
-    inside& operator=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
+    id& operator=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
     template <detail::numeric A>
-    inside& operator+=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
+    id& operator+=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
     template <detail::numeric A>
-    inside& operator-=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
+    id& operator-=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
     template <detail::numeric A>
-    inside& operator*=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
+    id& operator*=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
     template <detail::numeric A>
-    inside& operator/=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
+    id& operator/=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
     template <detail::numeric A>
-    inside& operator%=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
+    id& operator%=(const std::expected<A, error>&) = delete (INSIDE_WHY_expected);
 #undef INSIDE_WHY_expected
 
     // A grid number, read at run time (residue r = N - 1;, where N - 1 is formed during compilation):
     // checked like any store, since its interval is not part of its type.
     // (Exactly a grid number: templates, so nothing converts to one.)
     template <std::same_as<grid_number> V>
-    consteval inside(const V& value) : holder{detail::default_raw<inside>}
+    consteval id(const V& value) : holder{detail::default_raw<id>}
     {
       detail::assign_grid_number(*this, value, make_policy<P>());
     }
     template <std::same_as<grid_number> V, class Pol>
       requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && detail::reports_into_errc<Pol>
-    constexpr inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>}
+    constexpr id(const V& value, Pol&& pol) : holder{detail::default_raw<id>}
     {
       store_grid_number_with(value, pol);
     }
     template <std::same_as<grid_number> V, class Pol>
       requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && (!detail::reports_into_errc<Pol>)
-    consteval inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>}
+    consteval id(const V& value, Pol&& pol) : holder{detail::default_raw<id>}
     {
       store_grid_number_with(value, pol);
     }
@@ -404,8 +411,8 @@ namespace ins
     // (A plain number the grids cannot prove assigns through the consteval constructor
     // and the copy assignment: a constant only.)
     template <detail::numeric B>
-      requires inside_assignable<inside, B, P> && detail::store_proven<inside, B, P>
-    constexpr inside& operator=(const B& other)
+      requires inside_assignable<id, B, P> && detail::store_proven<id, B, P>
+    constexpr id& operator=(const B& other)
     {
       store_value(other);
       return *this;
@@ -416,11 +423,11 @@ namespace ins
   "wrap or a rounding mode (x.with<clamp>() = v, T{v, clamp}), report with T::try_make(v), x.on_error(ec) = v " \
   "or x.on_error(f) = v, or opt out with unsafe"
     template <insidable A>
-      requires inside_assignable<inside, A, P> && (!detail::store_proven<inside, A, P>)
-    inside(A) = delete (INSIDE_WHY_unproven);
+      requires inside_assignable<id, A, P> && (!detail::store_proven<id, A, P>)
+    id(A) = delete (INSIDE_WHY_unproven);
     template <insidable B>
-      requires inside_assignable<inside, B, P> && (!detail::store_proven<inside, B, P>)
-    inside& operator=(const B&) = delete (INSIDE_WHY_unproven);
+      requires inside_assignable<id, B, P> && (!detail::store_proven<id, B, P>)
+    id& operator=(const B&) = delete (INSIDE_WHY_unproven);
 
     // A store that can never succeed is deleted, with the clause that fails:
     // a trait or requires probe sees it as ill-formed, and the error names the fix.
@@ -432,33 +439,33 @@ namespace ins
   "inside: incompatible notches - the source's values miss this grid's notch; use x.with<round_toward_zero>() " \
   "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <detail::numeric A>
-      requires(!detail::assign_intervals_ok<inside, A, P>)
-    inside(A) = delete (INSIDE_WHY_disjoint);
+      requires(!detail::assign_intervals_ok<id, A, P>)
+    id(A) = delete (INSIDE_WHY_disjoint);
     template <detail::numeric A>
-      requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
-    inside(A) = delete (INSIDE_WHY_notch);
+      requires(detail::assign_intervals_ok<id, A, P> && !detail::assign_notch_ok<id, A, P>)
+    id(A) = delete (INSIDE_WHY_notch);
     template <detail::numeric B>
-      requires(!detail::assign_intervals_ok<inside, B, P>)
-    inside& operator=(const B&) = delete (INSIDE_WHY_disjoint);
+      requires(!detail::assign_intervals_ok<id, B, P>)
+    id& operator=(const B&) = delete (INSIDE_WHY_disjoint);
     template <detail::numeric B>
-      requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
-    inside& operator=(const B&) = delete (INSIDE_WHY_notch);
+      requires(detail::assign_intervals_ok<id, B, P> && !detail::assign_notch_ok<id, B, P>)
+    id& operator=(const B&) = delete (INSIDE_WHY_notch);
 #undef INSIDE_WHY_disjoint
 #undef INSIDE_WHY_notch
 
     // Trusted construction from a storage-layout raw, no validation: the caller asserts r is a valid slot.
     // The entry point for tests, fast paths and same-grid raw transfer.
-    [[nodiscard]] static constexpr inside from_raw(raw_type r, decltype(unsafe)) noexcept
+    [[nodiscard]] static constexpr id from_raw(raw_type r, decltype(unsafe)) noexcept
     {
-      return inside{detail::raw_tag{}, r};
+      return id{detail::raw_tag{}, r};
     }
     // (Unchecked, so it says so.
     // An inside is no raw either: an index would convert to its value and be read as one.)
     template <class X>
-    static inside from_raw(const X&) = delete ("from_raw is unchecked and says so: T::from_raw(r, unsafe) for a raw r "
+    static id from_raw(const X&) = delete ("from_raw is unchecked and says so: T::from_raw(r, unsafe) for a raw r "
                                                "(x.raw() of an inside x); to store a value, T{v} or T::try_make(v)");
     template <insidable X>
-    static inside from_raw(const X&, decltype(unsafe)) = delete ("from_raw takes a raw, not an inside: pass its raw "
+    static id from_raw(const X&, decltype(unsafe)) = delete ("from_raw takes a raw, not an inside: pass its raw "
                                                                  "(T::from_raw(x.raw(), unsafe)), or store it (T{x})");
 
     // Conversions:
@@ -477,47 +484,47 @@ namespace ins
     // those are deleted, as they would otherwise follow from the integer by a standard conversion.
     // (std::size_t is no template: a builtin subscript takes no other.)
     constexpr operator std::size_t() const noexcept
-      requires(detail::index_converts<inside, std::size_t>)
+      requires(detail::index_converts<id, std::size_t>)
     {
       return static_cast<std::size_t>(detail::to_value(*this));
     }
     template <detail::index_integer T>
-      requires(!std::same_as<T, std::size_t> && detail::index_converts<inside, T>)
+      requires(!std::same_as<T, std::size_t> && detail::index_converts<id, T>)
     constexpr operator T() const noexcept
     {
       return static_cast<T>(detail::to_value(*this));
     }
     template <class T>
-      requires(std::is_arithmetic_v<T> && detail::index_converts<inside, std::size_t>
-               && !detail::index_converts<inside, T>)
+      requires(std::is_arithmetic_v<T> && detail::index_converts<id, std::size_t>
+               && !detail::index_converts<id, T>)
     operator T() const = delete ("inside: an index converts to the builtin integers that hold its whole grid - "
                                  "not to a smaller one, bool, a character or a floating type (x.to<T>(), x != 0)");
 
     // A floating point is read with to<double>(), which names its rounding.
     template <std::floating_point T>
-      requires(!detail::index_converts<inside, std::size_t>)
+      requires(!detail::index_converts<id, std::size_t>)
     explicit operator T() const = delete (
       "inside: read a floating point with x.to<double>() - the value rounded once");
 
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).
     constexpr operator detail::rational() const
-      requires(detail::rational_readable<inside>)
+      requires(detail::rational_readable<id>)
     {
       if constexpr (G.Lower == G.Upper)
         return G.Lower;
-      else if constexpr (detail::value_storage<inside>)
+      else if constexpr (detail::value_storage<id>)
         return Raw;
       // The Q-format fast path (an integer Lower) skips the generic path's three rational ops.
       // It falls through to the rational path when a value times the notch's denominator could pass int64
       // (e.g. a Q16.16 × Q16.16 result).
-      else if constexpr (detail::q_format_fits<inside>)
+      else if constexpr (detail::q_format_fits<id>)
         return detail::q_format_decode(*this);
       else
       {
         // Raw·Notch can pass 64 bits on the way to a value that fits.
-        const auto scaled{detail::try_mul(detail::rational{Raw}, detail::notch64<inside>)};
-        const auto value{scaled ? detail::try_add(*scaled, detail::lower64<inside>) : scaled};
+        const auto scaled{detail::try_mul(detail::rational{Raw}, detail::notch64<id>)};
+        const auto value{scaled ? detail::try_add(*scaled, detail::lower64<id>) : scaled};
         if (value) [[likely]]
           return *value;
         if (const auto exact = detail::try_rational(detail::exact_of(*this)))
@@ -532,9 +539,9 @@ namespace ins
     // and every value is an integer or the call may round.
     template <std::integral T, policy_flag Round>
     static constexpr bool total_to =
-      !(lower_of<inside> < grid_number{std::numeric_limits<T>::min()})
-      && !(upper_of<inside> > grid_number{std::numeric_limits<T>::max()})
-      && (detail::integer_lattice<inside> || Round != detail::none || has_flag(P, detail::snap));
+      !(lower_of<id> < grid_number{std::numeric_limits<T>::min()})
+      && !(upper_of<id> > grid_number{std::numeric_limits<T>::max()})
+      && (detail::integer_lattice<id> || Round != detail::none || has_flag(P, detail::snap));
 
   public:
     // to<T>(): scalar extraction (rational::to<T>, extended to signed and floating point).
@@ -551,13 +558,13 @@ namespace ins
     [[nodiscard]] constexpr std::conditional_t<total_to<T, Round>, T, std::expected<T, error>> to() const
     {
       using lim = std::numeric_limits<T>;
-      constexpr bool               check_lo{lower_of<inside> < grid_number{lim::min()}};
-      constexpr bool               check_hi{upper_of<inside> > grid_number{lim::max()}};
+      constexpr bool               check_lo{lower_of<id> < grid_number{lim::min()}};
+      constexpr bool               check_hi{upper_of<id> > grid_number{lim::max()}};
       constexpr bool               rounds{Round != detail::none || has_flag(P, detail::snap)};
       constexpr detail::round_mode mode{detail::rounding_of(Round != detail::none ? Round : P)};
-      if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_int64<inside>)
+      if constexpr (detail::integer_lattice<id> && !check_lo && !check_hi && detail::values_fit_int64<id>)
         return static_cast<T>(detail::to_value(*this));
-      else if constexpr (detail::integer_lattice<inside> && detail::values_fit_int64<inside>)
+      else if constexpr (detail::integer_lattice<id> && detail::values_fit_int64<id>)
       {
         // An integer in int64: two compares at most.
         // (A limit that is checked lies inside the grid's interval, so it fits int64.)
@@ -570,11 +577,11 @@ namespace ins
             return std::unexpected{error::overflow};
         return static_cast<T>(v);
       }
-      else if constexpr (detail::wide_valued<inside>) // round first: -0.5 → unsigned is 0 when truncating
+      else if constexpr (detail::wide_valued<id>) // round first: -0.5 → unsigned is 0 when truncating
       {
         const auto f{detail::exact_of(*this)};
         const auto q{detail::rounded_div_exact<mode>(f.Num, f.Den)};
-        if constexpr (!rounds && !detail::integer_lattice<inside>)
+        if constexpr (!rounds && !detail::integer_lattice<id>)
           if (!q.Exact)
             return std::unexpected{error::rounding_error};
         const auto t{q.Quot};
@@ -586,12 +593,12 @@ namespace ins
             return std::unexpected{error::overflow};
         return static_cast<T>(t);
       }
-      else if constexpr (detail::q_format_fits<inside>)
+      else if constexpr (detail::q_format_fits<id>)
       {
         // Notch 1/K over an integer Lower: the value is n/K with n in int64 and K a constant,
         // so one division by a constant rounds it (no fraction to reduce).
-        constexpr std::int64_t K{detail::notch_int64<inside>.Q};
-        const std::int64_t     n{detail::raw_int64(*this) + detail::lower_int64<inside> * K};
+        constexpr std::int64_t K{detail::notch_int64<id>.Q};
+        const std::int64_t     n{detail::raw_int64(*this) + detail::lower_int64<id> * K};
         std::int64_t           t{n / K};
         if (const std::int64_t r{n % K}; r != 0)
         {
@@ -612,10 +619,10 @@ namespace ins
             return std::unexpected{error::overflow};
         return static_cast<T>(t);
       }
-      else if constexpr (detail::lattice_codec<inside>.Ok)
+      else if constexpr (detail::lattice_codec<id>.Ok)
       {
         // Any other lattice: the value is (slot·S + M)/K, one division by the constant K.
-        constexpr std::int64_t K{detail::lattice_codec<inside>.K};
+        constexpr std::int64_t K{detail::lattice_codec<id>.K};
         const std::int64_t     n{detail::lattice_numerator(*this)};
         std::int64_t           t{n / K};
         if (const std::int64_t r{n % K}; r != 0)
@@ -641,7 +648,7 @@ namespace ins
       {
         const auto v{detail::as_rational(*this)};
         const auto t{detail::round_to_integral(v, mode)};
-        if constexpr (!rounds && !detail::integer_lattice<inside>)
+        if constexpr (!rounds && !detail::integer_lattice<id>)
           if (t != v)
             return std::unexpected{error::rounding_error};
         if constexpr (check_lo)
@@ -692,7 +699,7 @@ namespace ins
         return N::from_raw({}, unsafe);
       else if constexpr (detail::numerator_grid(G) == G)
         return N::from_raw(Raw, unsafe); // the value itself, on the same grid
-      else if constexpr (detail::fraction_fits_int64<inside>)
+      else if constexpr (detail::fraction_fits_int64<id>)
         return detail::integer_inside<N>(fraction().first);
       else
         return detail::integer_inside<N>(detail::reduced_exact(*this).Num);
@@ -702,7 +709,7 @@ namespace ins
       using D = inside<detail::denominator_grid(G)>;
       if constexpr (detail::point_storage<D>)
         return D::from_raw({}, unsafe);
-      else if constexpr (detail::fraction_fits_int64<inside>)
+      else if constexpr (detail::fraction_fits_int64<id>)
         return detail::integer_inside<D>(fraction().second);
       else
         return detail::integer_inside<D>(detail::reduced_exact(*this).Den);
@@ -716,15 +723,15 @@ namespace ins
       requires(G.Notch != 0 || G.Lower == G.Upper)
     {
       using I = inside<detail::index_grid(G)>;
-      if constexpr (detail::point_storage<inside>)
+      if constexpr (detail::point_storage<id>)
         return I::from_raw({}, unsafe);
-      else if constexpr (detail::index_storage<inside>)
+      else if constexpr (detail::index_storage<id>)
       {
         static_assert(std::same_as<typename I::raw_type, raw_type>);
         return I::from_raw(Raw, unsafe);
       }
       else
-        return I::from_raw(detail::raw_cast<I>(detail::raw_offset<inside>(Raw)), unsafe);
+        return I::from_raw(detail::raw_cast<I>(detail::raw_offset<id>(Raw)), unsafe);
     }
 
 #define INSIDE_WHY_step_of "inside: step() counts notches - a continuous grid has none to count"
@@ -764,14 +771,14 @@ namespace ins
       constexpr bool within{lower_of<I> >= 0 && upper_of<I> <= G.step_count()};
       if constexpr (!within)
         return try_make(step_value(i));
-      else if constexpr (detail::point_storage<inside>)
+      else if constexpr (detail::point_storage<id>)
         return from_raw({}, unsafe);
-      else if constexpr (detail::index_storage<inside> && detail::raw_holds_value<I>)
-        return from_raw(detail::raw_cast<inside>(i.raw()), unsafe);
-      else if constexpr (!detail::wide_index_storage<inside> && detail::values_fit_int64<I>)
-        return from_raw(detail::raw_from_offset<inside>(detail::to_value(i)), unsafe);
+      else if constexpr (detail::index_storage<id> && detail::raw_holds_value<I>)
+        return from_raw(detail::raw_cast<id>(i.raw()), unsafe);
+      else if constexpr (!detail::wide_index_storage<id> && detail::values_fit_int64<I>)
+        return from_raw(detail::raw_from_offset<id>(detail::to_value(i)), unsafe);
       else
-        return detail::stored<inside>(step_value(i));
+        return detail::stored<id>(step_value(i));
     }
     template <insidable I, typename Pol>
       requires detail::integer_lattice<I> && (G.Notch != 0 || G.Lower == G.Upper)
@@ -781,31 +788,31 @@ namespace ins
       using V = decltype(step_value(i));
       constexpr policy_flag O{detail::override_flags(P, policy_of<Pol>)};
       if constexpr (detail::store_proven<inside<G, O>, V, O> || detail::reports_into_errc<Pol>)
-        return inside{step_value(i), std::forward<Pol>(pol)};
+        return id{step_value(i), std::forward<Pol>(pol)};
       else
-        return detail::try_store<inside, O>([&](inside& r, auto&& ec_pol) { r = inside{step_value(i), ec_pol}; });
+        return detail::try_store<id, O>([&](id& r, auto&& ec_pol) { r = id{step_value(i), ec_pol}; });
     }
 #define INSIDE_WHY_from_index \
   "inside: from_step(i) takes a notch index - an inside on the integers (step_t<T>, 3_ins) or a builtin integer"
     template <insidable I>
       requires(!detail::integer_lattice<I>)
-    static inside from_step(const I&) = delete (INSIDE_WHY_from_index);
+    static id from_step(const I&) = delete (INSIDE_WHY_from_index);
     template <insidable I, typename Pol>
       requires(!detail::integer_lattice<I>)
-    static inside from_step(const I&, Pol&&) = delete (INSIDE_WHY_from_index);
+    static id from_step(const I&, Pol&&) = delete (INSIDE_WHY_from_index);
 #undef INSIDE_WHY_from_index
     template <std::integral T>
       requires(G.Notch != 0 || G.Lower == G.Upper)
     [[nodiscard]] static constexpr auto from_step(T i)
     {
       // A builtin step: compare it with the step count, then it is the slot.
-      if constexpr (!detail::point_storage<inside> && !detail::wide_index_storage<inside>
-                    && detail::values_fit_int64<inside>
-                    && std::same_as<decltype(from_step(as_step_inside(i))), std::expected<inside, error>>)
+      if constexpr (!detail::point_storage<id> && !detail::wide_index_storage<id>
+                    && detail::values_fit_int64<id>
+                    && std::same_as<decltype(from_step(as_step_inside(i))), std::expected<id, error>>)
       {
-        if (std::cmp_less(i, 0) || std::cmp_greater(i, detail::max_index_of<inside>)) [[unlikely]]
-          return std::expected<inside, error>{std::unexpect, error::overflow};
-        return std::expected<inside, error>{from_raw(detail::raw_from_offset<inside>(static_cast<std::uint64_t>(i)),
+        if (std::cmp_less(i, 0) || std::cmp_greater(i, detail::max_index_of<id>)) [[unlikely]]
+          return std::expected<id, error>{std::unexpect, error::overflow};
+        return std::expected<id, error>{from_raw(detail::raw_from_offset<id>(static_cast<std::uint64_t>(i)),
                                                      unsafe)};
       }
       else
@@ -824,28 +831,28 @@ namespace ins
     // Integer grids need no division;
     // dyadic Q-format grids reduce by shifting out common factors of two instead of a gcd.
     constexpr std::pair<std::int64_t, std::int64_t> fraction() const
-      requires detail::fraction_fits_int64<inside>
+      requires detail::fraction_fits_int64<id>
     {
-      if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
+      if constexpr (detail::integer_storage<id> && detail::integer_lattice<id>)
         return {detail::to_value(*this), 1};
-      else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>
-                         && detail::notch_int64<inside>.QShift >= 0)
+      else if constexpr (detail::index_storage<id> && detail::q_format_fits<id>
+                         && detail::notch_int64<id>.QShift >= 0)
       {
-        constexpr std::int64_t nd {detail::notch_int64<inside>.Q};
-        const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<inside> * nd};
+        constexpr std::int64_t nd {detail::notch_int64<id>.Q};
+        const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<id> * nd};
         const int s{std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(nd))}; // 0 → 0/1
         return {num >> s, nd >> s};
       }
-      else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside>)
+      else if constexpr (detail::index_storage<id> && detail::q_format_fits<id>)
       {
-        constexpr std::int64_t nd {detail::notch_int64<inside>.Q};
-        const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<inside> * nd};
+        constexpr std::int64_t nd {detail::notch_int64<id>.Q};
+        const std::int64_t     num{detail::raw_int64(*this) + detail::lower_int64<id> * nd};
         const std::int64_t     g  {std::gcd(num, nd)};
         return {num / g, nd / g};
       }
-      else if constexpr (detail::lattice_codec<inside>.Ok)
+      else if constexpr (detail::lattice_codec<id>.Ok)
       {
-        constexpr std::int64_t K{detail::lattice_codec<inside>.K};
+        constexpr std::int64_t K{detail::lattice_codec<id>.K};
         const std::int64_t     num{detail::lattice_numerator(*this)};
         if constexpr (std::has_single_bit(static_cast<std::uint64_t>(K)))
         {
@@ -871,21 +878,21 @@ namespace ins
     // There is deliberately no member alias: one spelling, in <inside/math.hpp>.
 
     // +x is x, as for a builtin number (and a quantity's +q).
-    [[nodiscard]] constexpr inside operator+() const noexcept { return *this; }
+    [[nodiscard]] constexpr id operator+() const noexcept { return *this; }
 
     [[nodiscard]] constexpr negated_type operator-() const
     {
       negated_type neg;
-      if constexpr (detail::point_storage<inside>)
+      if constexpr (detail::point_storage<id>)
         neg = negated_type::from_raw({}, unsafe); // −point is a point: no raw
-      else if constexpr (!detail::notched<inside>) // continuous: the raw is the value
+      else if constexpr (!detail::notched<id>) // continuous: the raw is the value
         neg = negated_type::from_raw(-(Raw), unsafe);
       else
       {
         // Integer raws: the negated value index is −J (wide_value.hpp), in int64 when the bounds allow,
         // else by wrapping. Index storage on both sides counts the slot from the opposite end instead.
-        using W = detail::index_work_t<negated_type, inside, G.Notch, inside, G.Notch>;
-        if constexpr (detail::index_storage<inside> && detail::index_storage<negated_type>)
+        using W = detail::index_work_t<negated_type, id, G.Notch, id, G.Notch>;
+        if constexpr (detail::index_storage<id> && detail::index_storage<negated_type>)
         {
           constexpr W count{static_cast<W>(G.step_count())};
           neg = negated_type::from_raw(static_cast<detail::raw_t<negated_type>>(count - static_cast<W>(Raw)), unsafe);
@@ -907,9 +914,9 @@ namespace ins
     {
       auto pol{make_policy<P | F>()};
       if constexpr (std::is_lvalue_reference_v<Self>)
-        return detail::policy_ref<inside, decltype(pol)>{self, pol, {}};
+        return detail::policy_ref<id, decltype(pol)>{self, pol, {}};
       else
-        return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol, {}};
+        return detail::policy_buffer<id, decltype(pol)>{std::move(self), pol, {}};
     }
 
     // on_error(ec): a failure of this operation sets ec (the first one is kept) and leaves the value;
@@ -918,7 +925,7 @@ namespace ins
     [[nodiscard]] constexpr auto on_error(error& ec)
     {
       auto pol{make_policy<P | F>(ec)};
-      return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
+      return detail::policy_ref<id, decltype(pol)>{*this, pol, {}};
     }
 
   private:
@@ -930,7 +937,7 @@ namespace ins
     {
       using tag = Tag<std::remove_cvref_t<A>>;
       auto pol{make_policy<P | detail::implied_flags<tag>>()};
-      return detail::policy_ref<inside, decltype(pol), tag>{*this, pol, tag{std::forward<A>(action)}};
+      return detail::policy_ref<id, decltype(pol), tag>{*this, pol, tag{std::forward<A>(action)}};
     }
 
   public:
@@ -963,15 +970,15 @@ namespace ins
     // int64 for every grid within int64, a wide_int beyond, never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
-      detail::notched<inside> && detail::point_grid<R> && detail::grid_divides_evenly(lower_of<R>, notch_of<inside>);
+      detail::notched<id> && detail::point_grid<R> && detail::grid_divides_evenly(lower_of<R>, notch_of<id>);
 
     // (R anchored: its Lower is a whole number of notches, the bias; then both raws are integers.)
     template <insidable R>
     static constexpr bool raw_add_ok =
-      detail::notched<inside> && notch_of<inside> == notch_of<R> && !detail::point_storage<R> && detail::anchored<R>;
+      detail::notched<id> && notch_of<id> == notch_of<R> && !detail::point_storage<R> && detail::anchored<R>;
 
     template <insidable R>
-    static constexpr detail::grid_int point_delta = detail::exact_quotient(lower_of<R>, notch_of<inside>);
+    static constexpr detail::grid_int point_delta = detail::exact_quotient(lower_of<R>, notch_of<id>);
     template <insidable R>
     static constexpr detail::grid_int add_bias = []
     {
@@ -989,7 +996,7 @@ namespace ins
     static constexpr int raw_work_bits = []
     {
       using W = detail::grid_int;
-      constexpr W lo{detail::raw_lo_exact<inside>}, hi{detail::raw_hi_exact<inside>};
+      constexpr W lo{detail::raw_lo_exact<id>}, hi{detail::raw_hi_exact<id>};
       return detail::signed_value_bits({lo, hi, Dlo, Dhi, lo + Dlo, hi + Dhi, hi - lo + W{1}, hi - lo + Dhi});
     }();
     template <detail::grid_int Dlo, detail::grid_int Dhi>
@@ -1012,11 +1019,11 @@ namespace ins
     // A compound op's constraint: its binary op's result (an expected's value) assigns to this type,
     // so requires { x op= y; } is honest.
     template <typename Result>
-    static constexpr bool compound_assignable = inside_assignable<inside, detail::unwrap_t<Result>, P>;
+    static constexpr bool compound_assignable = inside_assignable<id, detail::unwrap_t<Result>, P>;
     // ... and the grids prove the store back (detail::store_proven):
     // the result's values fit this grid, or the policy clamps, wraps or is unsafe.
     template <typename Result>
-    static constexpr bool compound_proven = detail::store_proven<inside, detail::unwrap_t<Result>, P>;
+    static constexpr bool compound_proven = detail::store_proven<id, detail::unwrap_t<Result>, P>;
     // A divisor whose grid holds 0 under a checked policy:
     // /= and %= need a channel for it (on_error(ec) or an on_error hook), or unsafe on either operand.
     template <insidable R>
@@ -1024,20 +1031,20 @@ namespace ins
       detail::is_checked(P | policy_of<R>) && grid_of<R>.representable(grid_number{0});
 
     template <insidable R>
-    using sum_t = decltype(std::declval<const inside&>() + std::declval<const R&>());
+    using sum_t = decltype(std::declval<const id&>() + std::declval<const R&>());
     template <insidable R>
-    using difference_t = decltype(std::declval<const inside&>() - std::declval<const R&>());
+    using difference_t = decltype(std::declval<const id&>() - std::declval<const R&>());
     template <insidable R>
-    using product_t = decltype(std::declval<const inside&>() * std::declval<const R&>());
+    using product_t = decltype(std::declval<const id&>() * std::declval<const R&>());
     template <insidable R>
-    using quotient_t = decltype(std::declval<const inside&>() / std::declval<const R&>());
+    using quotient_t = decltype(std::declval<const id&>() / std::declval<const R&>());
     template <insidable R>
-    using remainder_t = decltype(mod(std::declval<const inside&>(), std::declval<const R&>(), make_policy<P>()));
+    using remainder_t = decltype(mod(std::declval<const id&>(), std::declval<const R&>(), make_policy<P>()));
 
   public:
     template <insidable R>
       requires(point_delta_ok<R> || raw_add_ok<R> || compound_assignable<sum_t<R>>) && compound_proven<sum_t<R>>
-    constexpr inside& operator+=(const R& rhs)
+    constexpr id& operator+=(const R& rhs)
     {
       // A point rhs (just<v>, 1_ins, ++) whose value is a whole number of this grid's notches:
       // the raw delta is a compile-time constant and the raw encoding cancels every Lower term
@@ -1066,7 +1073,7 @@ namespace ins
     // a wrap is then one add or subtract, not a modulo.
     static consteval bool one_period(const detail::grid_int& lo, const detail::grid_int& hi)
     {
-      const detail::grid_int period{detail::raw_hi_exact<inside> - detail::raw_lo_exact<inside> + detail::grid_int{1}};
+      const detail::grid_int period{detail::raw_hi_exact<id> - detail::raw_lo_exact<id> + detail::grid_int{1}};
       return !(lo < -period) && !(period < hi);
     }
 
@@ -1074,10 +1081,10 @@ namespace ins
     // Under clamp, wrap or checked an out-of-range raw is clamped, wrapped or reported.
     // Near: the delta is within one period (one_period).
     template <detail::raw_integer W, bool Near = false>
-    constexpr inside& store_raw(W new_raw)
+    constexpr id& store_raw(W new_raw)
     {
-      constexpr W lo{static_cast<W>(detail::raw_lo_exact<inside>)};
-      constexpr W hi{static_cast<W>(detail::raw_hi_exact<inside>)};
+      constexpr W lo{static_cast<W>(detail::raw_lo_exact<id>)};
+      constexpr W hi{static_cast<W>(detail::raw_hi_exact<id>)};
       if constexpr (detail::range_handled(P))
         if (new_raw < lo || new_raw > hi)
         {
@@ -1101,7 +1108,7 @@ namespace ins
     // An expected result (/ and % by a grid that holds 0) holds a value here:
     // its only error is the zero divisor, which /= and %= report first.
     template <typename Result>
-    constexpr inside& assign_op_result(const Result& r)
+    constexpr id& assign_op_result(const Result& r)
     {
       if constexpr (detail::expected_like<Result>)
         *this = *r;
@@ -1116,7 +1123,7 @@ namespace ins
     // (arithmetic.hpp deletes inside ⋈ rational the same way).
 #define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                         \
   template <std::same_as<detail::rational> A>                                                                 \
-  inside& operator op(const A&) = delete ("an inside cannot be combined with a rational: write the constant " \
+  id& operator op(const A&) = delete ("an inside cannot be combined with a rational: write the constant " \
                                           "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
                                           "inside first");
     INSIDE_NO_RATIONAL_ASSIGN(+=)
@@ -1128,7 +1135,7 @@ namespace ins
 
     template <insidable R>
       requires(raw_add_ok<R> || compound_assignable<difference_t<R>>) && compound_proven<difference_t<R>>
-    constexpr inside& operator-=(const R& rhs)
+    constexpr id& operator-=(const R& rhs)
     {
       // The raw-space fast path, the subtraction mirror of +='s.
       if constexpr (raw_add_ok<R>)
@@ -1147,7 +1154,7 @@ namespace ins
 
     template <insidable R>
       requires compound_assignable<product_t<R>> && compound_proven<product_t<R>>
-    constexpr inside& operator*=(const R& rhs)
+    constexpr id& operator*=(const R& rhs)
     {
       return assign_op_result(*this * rhs);
     }
@@ -1158,13 +1165,13 @@ namespace ins
     // (Under unsafe on either operand a zero divisor is a precondition: /= 0 leaves the value.)
     template <insidable R>
       requires compound_assignable<quotient_t<R>> && compound_proven<quotient_t<R>> && (!zero_divisor_possible<R>)
-    constexpr inside& operator/=(const R& rhs)
+    constexpr id& operator/=(const R& rhs)
     {
       if (rhs == 0)
         return *this;
       // (A store into this type: its rounding mode divides on the native grids;
       // any other quotient is exact, and the store rounds it once onto this type's own lattice.)
-      if constexpr (has_flag(P, detail::snap) && detail::division<inside, R, P>::native_div)
+      if constexpr (has_flag(P, detail::snap) && detail::division<id, R, P>::native_div)
         return assign_op_result(div(*this, rhs, make_policy<P>()));
       else
         return assign_op_result(*this / rhs);
@@ -1172,7 +1179,7 @@ namespace ins
 
     template <insidable R>
       requires compound_assignable<remainder_t<R>> && compound_proven<remainder_t<R>> && (!zero_divisor_possible<R>)
-    constexpr inside& operator%=(const R& rhs)
+    constexpr id& operator%=(const R& rhs)
     {
       if (rhs == 0)
         return *this;
@@ -1182,28 +1189,28 @@ namespace ins
     // A compound assignment the grids cannot prove is deleted with the fix.
     template <insidable R>
       requires(point_delta_ok<R> || raw_add_ok<R> || compound_assignable<sum_t<R>>) && (!compound_proven<sum_t<R>>)
-    inside& operator+=(const R&) = delete (INSIDE_WHY_unproven);
+    id& operator+=(const R&) = delete (INSIDE_WHY_unproven);
     template <insidable R>
       requires(raw_add_ok<R> || compound_assignable<difference_t<R>>) && (!compound_proven<difference_t<R>>)
-    inside& operator-=(const R&) = delete (INSIDE_WHY_unproven);
+    id& operator-=(const R&) = delete (INSIDE_WHY_unproven);
     template <insidable R>
       requires compound_assignable<product_t<R>> && (!compound_proven<product_t<R>>)
-    inside& operator*=(const R&) = delete (INSIDE_WHY_unproven);
+    id& operator*=(const R&) = delete (INSIDE_WHY_unproven);
     template <insidable R>
       requires compound_assignable<quotient_t<R>> && (!compound_proven<quotient_t<R>>)
-    inside& operator/=(const R&) = delete (INSIDE_WHY_unproven);
+    id& operator/=(const R&) = delete (INSIDE_WHY_unproven);
     template <insidable R>
       requires compound_assignable<remainder_t<R>> && (!compound_proven<remainder_t<R>>)
-    inside& operator%=(const R&) = delete (INSIDE_WHY_unproven);
+    id& operator%=(const R&) = delete (INSIDE_WHY_unproven);
 #define INSIDE_WHY_zero                                                                                         \
   "inside: the divisor's grid holds 0 - report it with x.on_error(ec) /= d (or a hook, x.on_error(f)), divide " \
   "with div(x, d) (a std::expected), or give the divisor a grid without 0"
     template <insidable R>
       requires compound_assignable<quotient_t<R>> && compound_proven<quotient_t<R>> && zero_divisor_possible<R>
-    inside& operator/=(const R&) = delete (INSIDE_WHY_zero);
+    id& operator/=(const R&) = delete (INSIDE_WHY_zero);
     template <insidable R>
       requires compound_assignable<remainder_t<R>> && compound_proven<remainder_t<R>> && zero_divisor_possible<R>
-    inside& operator%=(const R&) = delete (INSIDE_WHY_zero);
+    id& operator%=(const R&) = delete (INSIDE_WHY_zero);
 #undef INSIDE_WHY_zero
 
     // ++ and -- move one notch: they add the point inside of ±Notch through the insidable +=
@@ -1224,7 +1231,7 @@ namespace ins
 
     // The raw-space store of one ±notch step (a cursor's precondition check).
     template <insidable S>
-    constexpr inside& step_by()
+    constexpr id& step_by()
     {
       using W = raw_work_t<point_delta<S>, point_delta<S>>;
       constexpr W delta{static_cast<W>(point_delta<S>)};
@@ -1232,7 +1239,7 @@ namespace ins
     }
 
   public:
-    constexpr inside& operator++()
+    constexpr id& operator++()
       requires(G.Notch != 0 && step_proven<up_step_t>)
     {
       if constexpr (is_cursor)
@@ -1244,14 +1251,14 @@ namespace ins
         return *this += notch_step;
       }
     }
-    constexpr inside operator++(int)
+    constexpr id operator++(int)
       requires(G.Notch != 0 && step_proven<up_step_t>)
     {
-      inside t{*this};
+      id t{*this};
       ++*this;
       return t;
     }
-    constexpr inside& operator--()
+    constexpr id& operator--()
       requires(G.Notch != 0 && step_proven<down_step_t>)
     {
       if constexpr (is_cursor)
@@ -1262,40 +1269,40 @@ namespace ins
         return *this += notch_step;
       }
     }
-    constexpr inside operator--(int)
+    constexpr id operator--(int)
       requires(G.Notch != 0 && step_proven<down_step_t>)
     {
-      inside t{*this};
+      id t{*this};
       --*this;
       return t;
     }
 #define INSIDE_WHY_step_out                                                                                         \
   "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_ins, x.on_error(f) " \
   "+= 1_ins, or iterate with a cursor"
-    inside& operator++()
+    id& operator++()
       requires(G.Notch != 0 && !step_proven<up_step_t>)
     = delete (INSIDE_WHY_step_out);
-    inside operator++(int)
+    id operator++(int)
       requires(G.Notch != 0 && !step_proven<up_step_t>)
     = delete (INSIDE_WHY_step_out);
-    inside& operator--()
+    id& operator--()
       requires(G.Notch != 0 && !step_proven<down_step_t>)
     = delete (INSIDE_WHY_step_out);
-    inside operator--(int)
+    id operator--(int)
       requires(G.Notch != 0 && !step_proven<down_step_t>)
     = delete (INSIDE_WHY_step_out);
 #undef INSIDE_WHY_step_out
 #define INSIDE_WHY_step "inside: ++ and -- step one notch - a grid without a notch has none to step"
-    inside& operator++()
+    id& operator++()
       requires(G.Notch == 0)
     = delete (INSIDE_WHY_step);
-    inside operator++(int)
+    id operator++(int)
       requires(G.Notch == 0)
     = delete (INSIDE_WHY_step);
-    inside& operator--()
+    id& operator--()
       requires(G.Notch == 0)
     = delete (INSIDE_WHY_step);
-    inside operator--(int)
+    id operator--(int)
       requires(G.Notch == 0)
     = delete (INSIDE_WHY_step);
 #undef INSIDE_WHY_step
@@ -1309,29 +1316,29 @@ namespace ins
       // Past the end is a precondition: the policy reports it to the handler.
       using value_t = detail::cursor_value_t<G, P>;
       value_t v;
-      detail::assignment<value_t, inside>::assign(v, *this, make_policy<policy_of<value_t>>());
+      detail::assignment<value_t, id>::assign(v, *this, make_policy<policy_of<value_t>>());
       return v;
     }
 
     // try_make<F>(value): the constructors' store under this type's policy plus the flags F,
     // with the failure as the error. An expected value passes its error on, so fallible steps chain.
     template <policy_flag F = detail::none, detail::numeric A>
-      requires inside_assignable<inside, A, P | F>
-    [[nodiscard]] static constexpr std::expected<inside, error> try_make(A value)
+      requires inside_assignable<id, A, P | F>
+    [[nodiscard]] static constexpr std::expected<id, error> try_make(A value)
     {
-      return detail::try_store<inside, P | F>([&](inside& r, auto&& pol) { r.store_value(value, pol); });
+      return detail::try_store<id, P | F>([&](id& r, auto&& pol) { r.store_value(value, pol); });
     }
     template <policy_flag F = detail::none, detail::numeric A>
-      requires inside_assignable<inside, A, P | F>
-    [[nodiscard]] static constexpr std::expected<inside, error> try_make(const std::expected<A, error>& value)
+      requires inside_assignable<id, A, P | F>
+    [[nodiscard]] static constexpr std::expected<id, error> try_make(const std::expected<A, error>& value)
     {
       return value.and_then([](const A& a) { return try_make<F>(a); });
     }
     template <policy_flag F = detail::none, std::same_as<grid_number> V>
-    [[nodiscard]] static constexpr std::expected<inside, error> try_make(const V& value)
+    [[nodiscard]] static constexpr std::expected<id, error> try_make(const V& value)
     {
-      return detail::try_store<inside, P | F>(
-        [&](inside& r, auto&& pol) { detail::assign_grid_number(r, value, pol); });
+      return detail::try_store<id, P | F>(
+        [&](id& r, auto&& pol) { detail::assign_grid_number(r, value, pol); });
     }
   };
 
@@ -1544,18 +1551,18 @@ namespace ins
 // A cursor is a bidirectional iterator: it steps by ++/--, *t reads its value, and end(t) is its sentinel.
 // Not random access: t - u is arithmetic, an inside, not a distance.
 // Plain insides get no traits, so they stay numbers.
-template <ins::grid G, ins::policy_flag P>
-  requires(ins::has_flag(P, ins::detail::cursor_marker))
-struct std::incrementable_traits<ins::inside<G, P>>
+template <ins::key K>
+  requires(ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
+struct std::incrementable_traits<ins::id<K>>
 {
   using difference_type = std::ptrdiff_t;
 };
 
-template <ins::grid G, ins::policy_flag P>
-  requires(ins::has_flag(P, ins::detail::cursor_marker))
-struct std::indirectly_readable_traits<ins::inside<G, P>>
+template <ins::key K>
+  requires(ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
+struct std::indirectly_readable_traits<ins::id<K>>
 {
-  using value_type = ins::detail::cursor_value_t<G, P>;
+  using value_type = ins::detail::cursor_value_t<ins::detail::key_grid<K>, ins::detail::key_policy<K>>;
 };
 
 #endif // INSIDE_INSIDE_DETAIL_CORE_HPP

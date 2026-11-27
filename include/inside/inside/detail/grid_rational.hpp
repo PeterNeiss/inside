@@ -348,9 +348,9 @@ namespace ins::detail
 
   // An unsigned number in [first, last) in the whole literal grammar
   // (scan_number: 0x and 0b prefixes, ' separators, a point, an e±n or p±n exponent), taken exactly, of any size:
-  // the scan's failure (e_exponent_numerator_overflow: an exponent past 10000), else none and the value in out.
+  // the scan's failure (e_exponent_numerator_overflow: an exponent past max_exp), else none and the value in out.
   // The _g and _ins literals (parse_grid_literal) and an id's text (detail/id_text.hpp) read numbers here.
-  consteval parse_fail scan_exact(const char* first, const char* last, grid_number& out)
+  consteval parse_fail scan_exact(const char* first, const char* last, grid_number& out, int max_exp = 10000)
   {
     // The value is m·B^e (B the radix), times 2^±n or 10^±n.
     // Zero digits are held back (zeros) and multiplied in only before a later nonzero digit,
@@ -374,7 +374,7 @@ namespace ins::detail
       })};
     if (sc.Fail != parse_fail::none)
       return sc.Fail;
-    if (sc.Exp > 10000)
+    if (sc.Exp > max_exp)
       return parse_fail::e_exponent_numerator_overflow;
     if (m == grid_int{0})
     {

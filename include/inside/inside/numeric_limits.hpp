@@ -16,10 +16,15 @@
 // std::hash hashes the Raw member (rational raw: Num+Den, boost-style combine).
 // (std::common_type lives in arithmetic.hpp, always on.)
 
-template <ins::grid G, ins::policy_flag P>
-struct std::numeric_limits<ins::inside<G, P>>
+template <ins::key K>
+struct std::numeric_limits<ins::id<K>>
 {
-  using B = ins::inside<G, P>;
+private:
+  static constexpr ins::grid        G{ins::detail::key_grid<K>};
+  static constexpr ins::policy_flag P{ins::detail::key_policy<K>};
+
+public:
+  using B = ins::id<K>;
 
   static constexpr bool is_specialized = true;
   static constexpr bool is_signed      = (G.Lower < ins::detail::rational{0});
@@ -102,10 +107,10 @@ public:
   }
 };
 
-template <ins::grid G, ins::policy_flag P>
-struct std::hash<ins::inside<G, P>>
+template <ins::key K>
+struct std::hash<ins::id<K>>
 {
-  using B = ins::inside<G, P>;
+  using B = ins::id<K>;
 
   // Boost-style combine of h with v, and with the limbs of a wide integer.
   template <class V>

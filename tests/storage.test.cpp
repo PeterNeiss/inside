@@ -495,9 +495,9 @@ namespace {
 // A cursor's own policy: policy_of drops the cursor marker.
 template <class>
 struct policy_param;
-template <grid G, policy_flag P>
-struct policy_param<inside<G, P>> {
-    static constexpr policy_flag value = P;
+template <key K>
+struct policy_param<id<K>> {
+    static constexpr policy_flag value = detail::key_policy<K>;
 };
 using cur = cursor<inside<{0, 60}, round_floor>, 5>;
 using pt  = decltype(point<si::degree_Celsius>(inside<{-50, 50}>{0}));
@@ -507,12 +507,12 @@ concept steps = requires(T x) { ++x; };
 
 // Insides: an integer grid, a Q format with a rounding and clamp, a bounded
 // continuous grid, a grid past 64 bits, a point, a cursor.
-template class ins::inside<grid{0, 100}>;
-template class ins::inside<grid{{0, 1}, per<4>}, round_half_away | clamp>;
-template class ins::inside<grid{{-1, 1}, max_denominator{8}}, wrap>;
-template class ins::inside<grid{{0, 0x1p70}, per<4>}>;
-template class ins::inside<grid{7}>;
-template class ins::inside<grid_of<cur>, policy_param<cur>::value>;
+template struct ins::id<"[0..100]">;
+template struct ins::id<"[0..1] 1/4 clamp|round_half_away">;
+template struct ins::id<"[-1..1] <8> wrap">;
+template struct ins::id<"[0..0x1p70] 1/4">;
+template struct ins::id<"[7]">;
+template struct ins::id<key{grid_of<cur>, policy_param<cur>::value}>;
 
 // Quantities and a point.
 template class ins::quantity<si::metre, inside<{0, 100}>>;

@@ -46,7 +46,7 @@ consteval bool stops(std::string_view text, std::size_t at, std::string_view exp
 // grid → text → grid, and text → grid → text.
 consteval bool round_trips(const grid& g, policy_flag p = 0) {
     const written         w{write(g, p)};
-    const detail::id_spec s{parse_id_text(w.view())};
+    const detail::id_spec s{parse_id_text(w.view(), false)};
     return s.Expected.empty() && s.Grid == g && s.Policy == p && write(s.Grid, s.Policy).view() == w.view();
 }
 
@@ -130,7 +130,11 @@ TEST(IdTextTest, the_canonical_text) {
     static_assert(canonical("[3..3]", "[3..3]"));
     static_assert(canonical("[0..1e9]", "[0..1000000000]"));
     static_assert(canonical("[0..0.25]", "[0..1/2) 1/4"));                // {0, 1/4}
-    static_assert(canonical("[0..1180591620717411303424]", "[0..0x400000000000000000]")); // past 64 bits: hex
+    static_assert(canonical("[0..1180591620717411303424]", "[0..0x1p70]"));             // past 64 bits: hex,
+    static_assert(canonical("[0..1180591620717411303423]", "[0..0x3fffffffffffffffff]")); // m·2^e where shorter
+    static_assert(canonical("[0..0x1p20000]", "[0..0x1p20000]"));
+    static_assert(canonical("[0..1] 1/0x1p100", "[0..1] 1/0x1p100"));
+    static_assert(canonical("[-0x3p200..0]", "[-0x3p200..0]"));
     static_assert(canonical("[0..9] round_floor|clamp", "[0..9] clamp|round_floor"));
     static_assert(canonical("[0..9] round_toward_zero", "[0..9] round_toward_zero"));
     static_assert(canonical("[0..9] unsafe", "[0..9] unsafe"));
@@ -156,6 +160,16 @@ TEST(IdTextTest, the_canonical_text_reads_back) {
     static_assert(round_trips(grid{{0, 1}, grid_number{1} / two_70}));
     static_assert(round_trips(grid{{-two_70, two_70}, grid_number{1} / two_70}));
     static_assert(round_trips(grid{0, 18446744073709551615ull}));
+    static_assert(round_trips(grid{0, grid_number{detail::grid_int{1} << 20000}}));
+    static_assert(round_trips(grid{{0, 1}, grid_number{1} / grid_number{detail::grid_int{3} << 150}}));
+    // Grids no inside holds read back too: a type names them (an operator's constraint tests the grid).
+    static_assert(round_trips(grid{{0, 1}, grid_number{0}}));            // continuous, unbounded
+    static_assert(round_trips(grid{{0, 10}, 3}));                        // a notch that does not divide
+    static_assert(round_trips(grid{{1, 1}, max_denominator{10}}));       // a point with a bound
+    static_assert(round_trips(grid{0, 9}, round_floor | round_ceil));    // two rounding modes
+    static_assert(round_trips(grid{0, 9}, clamp | wrap));
+    static_assert(round_trips(grid{0, 9}, 7));                           // bits no flag names: bits_7
+    static_assert(write(grid{0, 9}, 7).view() == "[0..9] bits_7");
     static_assert(round_trips(grid{0, 9}, clamp | round_half_away));
     static_assert(round_trips(grid{0, 9}, round_toward_zero));
     static_assert(round_trips(grid{0, 9}, unsafe));
