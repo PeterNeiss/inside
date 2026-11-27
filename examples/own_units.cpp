@@ -18,7 +18,7 @@ namespace
   inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;
 
   // 2. A temperature unit whose points count from absolute zero; the options name its ASCII symbol and origin.
-  inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
+  inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "`R", .origin = si::absolute_zero}>;
 
   // 3. Currency: a base dimension, its base quantity and two units, as named definitions:
   //    diagnostics and symbols spell them money_def, euro_def and cent_def, not their content.
@@ -36,6 +36,10 @@ namespace
   inline constexpr auto bit         = unit<"bit", amount>;
   inline constexpr auto byte        = unit<"B"  , just<8> * bit>;
   inline constexpr auto kibibyte    = unit<"KiB", just<1024> * byte>;
+
+  // 5. A prefixed unit of your own is named by a tag of it: a quantity's type spells its unit by symbol (kftm, Mbit).
+  inline constexpr auto kilofathom = si::kilo(fathom);
+  inline constexpr auto megabit    = si::mega(bit);
 
   template <class A, class B>
   concept addable = requires(const A& a, const B& b) { a + b; };
@@ -65,7 +69,7 @@ int main()
             << freezing.point_in(international::degree_Fahrenheit) << '\n';
   if (!(freezing == point<si::degree_Celsius>(just<0>))
       || to_string(freezing.point_in(international::degree_Fahrenheit)) != "32.00 ℉"
-      || to_string(freezing, text_encoding::ascii) != "491.67 R")
+      || to_string(freezing, text_encoding::ascii) != "491.67 `R")
     return 1;
 
   // 3. 1.25 kg of coffee at 3.99 EUR/kg is 4.9875 EUR exactly; with a 50 ct tip the sum runs in cents.

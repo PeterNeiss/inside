@@ -18,7 +18,7 @@
 //   inline constexpr auto fathom  = unit<"ftm", 1.8288_ins * si::metre>;
 //   inline constexpr auto depth   = kind<"depth", isq::length>;
 //   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin,
-//                                        {.ascii = "R", .origin = si::absolute_zero}>;
+//                                        {.ascii = "`R", .origin = si::absolute_zero}>;
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
 //   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
 //   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>;
@@ -165,18 +165,18 @@ namespace ins
   inline constexpr auto pi = detail::mag_pi * one;
   // A quantity times or over pi: the same number, in a unit scaled by π (pi * (2 * si::second) is 2 [π s]);
   // value_cast rounds it once.
-  template <reference R, class V>
-  [[nodiscard]] constexpr auto operator*(decltype(pi), const basic_quantity<R, V>& q)
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator*(decltype(pi), const QR& q)
   {
     return detail::mag_pi * q;
   }
-  template <reference R, class V>
-  [[nodiscard]] constexpr auto operator*(const basic_quantity<R, V>& q, decltype(pi))
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator*(const QR& q, decltype(pi))
   {
     return q * detail::mag_pi;
   }
-  template <reference R, class V>
-  [[nodiscard]] constexpr auto operator/(const basic_quantity<R, V>& q, decltype(pi))
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator/(const QR& q, decltype(pi))
   {
     return q / detail::mag_pi;
   }

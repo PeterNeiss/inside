@@ -490,7 +490,7 @@ namespace ins
       using type = T;
     };
     template <reference R, class V>
-    struct part_number<basic_quantity<R, V>>
+    struct part_number<quantity_parts<R, V>>
     {
       using type = V;
     };
@@ -741,45 +741,45 @@ namespace ins
                                                "their blades), or parts of one blade that do not add");
 
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const basic_quantity<A, VA>& a, const basic_quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator+(const QA& a, const QB& b)
   {
     return detail::mv_add(a, b);
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const basic_quantity<A, VA>& a, const basic_quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator-(const QA& a, const QB& b)
   {
     return detail::mv_add(a, -b);
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr bool operator==(const basic_quantity<A, VA>& a, const basic_quantity<B, VB>& b)
+  [[nodiscard]] constexpr bool operator==(const QA& a, const QB& b)
   {
     return detail::mv_equal(a, b);
   }
-  template <insidable V, reference A, class VA>
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const V& v, const basic_quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator+(const V& v, const QA& a)
   {
     return detail::mv_add(v, a);
   }
-  template <reference A, class VA, insidable V>
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const basic_quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator+(const QA& a, const V& v)
   {
     return detail::mv_add(a, v);
   }
-  template <insidable V, reference A, class VA>
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const V& v, const basic_quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator-(const V& v, const QA& a)
   {
     return detail::mv_add(v, -a);
   }
-  template <reference A, class VA, insidable V>
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const basic_quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator-(const QA& a, const V& v)
   {
     return detail::mv_add(a, detail::as_part(-v));
   }

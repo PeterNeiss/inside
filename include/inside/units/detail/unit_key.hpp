@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator> // std::size
 #include <string_view>
 #include <vector>
 
@@ -27,7 +28,17 @@ namespace ins::detail::catalog_index
 
 namespace ins::detail
 {
-  // The catalog's units, kinds and origins, interned.
+  // The catalog's units (each with its prefix), kinds and origins, interned.
+  // (Two arrays of scalars, not one of unit_atom: GCC 16 interns an array of a class type with its first elements
+  // zeroed.)
+  struct atom_set
+  {
+    const unit_def* const* Units{};
+    const std::int8_t*     Prefixes{};
+    std::size_t            Size{0};
+
+    [[nodiscard]] constexpr unit_atom operator[](std::size_t i) const { return unit_atom{Units[i], Prefixes[i], 1}; }
+  };
   struct kind_set
   {
     const kind_def* const* Data{};
@@ -40,28 +51,47 @@ namespace ins::detail
   };
   struct catalog_sets
   {
-    unit_set   Units;
+    atom_set   Units;
     kind_set   Kinds;
     origin_set Origins;
   };
   consteval catalog_sets intern_tags(const tag_vectors& v)
   {
-    const auto u{std::define_static_array(v.Units)};
+    std::vector<const unit_def*> defs;
+    std::vector<std::int8_t>     prefixes;
+    for (const unit_atom& a : v.Units)
+    {
+      defs.push_back(a.U);
+      prefixes.push_back(a.Prefix);
+    }
+    const auto u{std::define_static_array(defs)};
+    const auto p{std::define_static_array(prefixes)};
     const auto k{std::define_static_array(v.Kinds)};
     const auto o{std::define_static_array(v.Origins)};
-    return {{u.data(), u.size()}, {k.data(), k.size()}, {o.data(), o.size()}};
+    return {{u.data(), p.data(), u.size()}, {k.data(), k.size()}, {o.data(), o.size()}};
   }
+  // The catalog's tables in their order: units/systems.hpp's (the units, then si2019's constants, whose symbols c,
+  // e, k would be others' prefixes), then units/constants.hpp's when it is included.
+  struct catalog_list
+  {
+    catalog_sets Sets[4]{};
+    std::size_t  Size{0};
+  };
 
-  // The catalog's tags where they have been read, else none (inside the catalog itself, while it is declared).
+  // The catalog's tables where they have been read, else none (inside the catalog itself, while it is declared).
   // (A template on what asks, a text or a literal: a call without arguments is evaluated once, where it is first
   // asked, which is inside the catalog.)
   template <class Context>
-  consteval catalog_sets catalog_table()
+  consteval catalog_list catalog_table()
   {
-    for (const std::meta::info m : std::meta::members_of(^^catalog_index, std::meta::access_context::unchecked()))
-      if (std::meta::is_variable(m) && std::meta::identifier_of(m) == "table")
-        return std::meta::extract<const catalog_sets&>(m);
-    return {};
+    // (The catalog's units first, by name: reflection lists a namespace's members in no promised order.)
+    catalog_list c;
+    for (const bool main : {true, false})
+      for (const std::meta::info m : std::meta::members_of(^^catalog_index, std::meta::access_context::unchecked()))
+        if (std::meta::is_variable(m) && std::meta::remove_cvref(std::meta::type_of(m)) == (^^catalog_sets)
+            && (std::meta::identifier_of(m) == "table") == main && c.Size < std::size(c.Sets))
+          c.Sets[c.Size++] = std::meta::extract<const catalog_sets&>(m);
+    return c;
   }
 
   // A name of a kind or an origin: letters, digits and _ (a key's text spells it).
@@ -83,12 +113,14 @@ namespace ins::detail
   //   kind: none, any, or [any] names with exponents joined by '*' and '/' (length*duration, area/duration).
   //   origin: a name, or 0.
   // False where it does not read, with what was expected.
-  // A symbol or name is looked up in the catalog first (catalog_table, read once), a symbol with a prefix too: one
-  // the catalog reads names the catalog's. Only one it does not read reads every other tag visible here, once
-  // (the walk, which costs most of a lookup); inside the catalog, before its table, every one does.
+  // A symbol is a whole one: a unit's own, or a prefixed unit's that a tag names (the catalog's km, ms, kHz, …;
+  // a tag of your own, inline constexpr auto kftm = si::kilo(ftm)). No prefix is read into a symbol (rd is no
+  // ronto-day). A symbol or name is looked up in the catalog first (catalog_table, read once): one the catalog has
+  // names the catalog's. Only one it does not have reads every other tag visible here, once (the walk, which costs
+  // most of a lookup); inside the catalog, before its table, every one does.
   struct quantity_key_reader
   {
-    catalog_sets     Catalog;
+    catalog_list     Catalog;
     tag_vectors      Others{};
     bool             Walked{false};
     std::string_view Expected{};
@@ -102,55 +134,56 @@ namespace ins::detail
     {
       if (!Walked) // every other tag (all of them before the catalog's table: ins is skipped only after it)
       {
-        collect_tags(^^::, Others, Catalog.Units.Size != 0 ? ^^ins : std::meta::info{});
+        collect_tags(^^::, Others, Catalog.Size != 0 ? ^^ins : std::meta::info{});
         Walked = true;
       }
       return Others;
     }
 
-    // The one unit of units[0, n) a symbol names exactly (several units equal by content are one).
-    // (By index: GCC under -fsanitize=pointer-compare rejects a pointer test in a constant evaluation.)
-    static consteval bool match_exact(const unit_def* const* units, std::size_t n, std::string_view w,
-                                      const unit_def*& found, bool& ambiguous)
+    // Whether w is the symbol of the prefixed unit a: the prefix's symbol (µ, μ or u for micro) and the unit's ASCII
+    // symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its own is only
+    // printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
+    static consteval bool symbol_is(const unit_atom& a, std::string_view w)
+    {
+      const auto rest = [&](std::string_view s)
+      {
+        if (s == a.U->ascii())
+          return true;
+        bool plain{true};
+        for (char c : a.U->Utf8)
+          plain = plain && static_cast<unsigned char>(c) < 0x80;
+        return !plain && s == a.U->Utf8;
+      };
+      if (a.Prefix == 0)
+        return rest(w);
+      for (const text_prefix& p : text_prefixes)
+        if (p.Pow == a.Prefix && w.starts_with(p.Sym) && rest(w.substr(p.Sym.size())))
+          return true;
+      return false;
+    }
+    // The one unit of units[0, n) a symbol names (several units equal by content are one).
+    template <class Units>
+    static consteval bool match_in(const Units& units, std::size_t n, std::string_view w, unit_atom& a,
+                                   bool& ambiguous)
     {
       std::size_t hits{0};
       for (std::size_t i = 0; i < n; ++i)
-        if (units[i]->Utf8 == w || units[i]->ascii() == w)
+        if (const unit_atom u{units[i]}; symbol_is(u, w))
         {
           if (hits++ > 0)
             ambiguous = true;
-          found = units[i];
+          a = u;
         }
       return hits == 1;
     }
-    // A symbol exactly, else a prefix and a symbol (min is the minute, mm the millimetre).
-    static consteval bool match_in(const unit_def* const* units, std::size_t n, std::string_view w, unit_atom& a,
-                                   bool& ambiguous)
-    {
-      const unit_def* u{};
-      if (match_exact(units, n, w, u, ambiguous))
-      {
-        a = unit_atom{u, 0, 1};
-        return true;
-      }
-      if (ambiguous)
-        return false;
-      for (const text_prefix& p : text_prefixes)
-        if (w.size() > p.Sym.size() && w.starts_with(p.Sym)
-            && match_exact(units, n, w.substr(p.Sym.size()), u, ambiguous))
-        {
-          a = unit_atom{u, p.Pow, 1};
-          return true;
-        }
-      return false;
-    }
+    // The catalog's units first (every table, so that a symbol names one unit wherever it is first read), then the
+    // program's own.
     consteval bool match_symbol(std::string_view w, unit_atom& a, bool& ambiguous)
     {
-      if (Catalog.Units.Size != 0 && match_in(Catalog.Units.Data, Catalog.Units.Size, w, a, ambiguous))
-        return true;
-      if (ambiguous)
-        return false;
-      return match_in(others().Units.data(), others().Units.size(), w, a, ambiguous);
+      for (std::size_t t = 0; t < Catalog.Size && !ambiguous; ++t)
+        if (match_in(Catalog.Sets[t].Units, Catalog.Sets[t].Units.Size, w, a, ambiguous))
+          return true;
+      return !ambiguous && match_in(others().Units, others().Units.size(), w, a, ambiguous);
     }
 
     // factors ['/' (symbol | '(' factors ')')], or 1/…
@@ -167,7 +200,8 @@ namespace ins::detail
         bool      ambiguous{false};
         if (!match_symbol(t.substr(i, end - i), a, ambiguous))
           return fail(ambiguous ? "a symbol one visible unit has (several have this one)"
-                                : "a unit visible here (its symbol, with a prefix: km, us, kg*m/s^2)");
+                                : "a unit visible here: its symbol, or a prefixed unit's that a tag names (the "
+                                  "catalog's km, ms, us; your own: inline constexpr auto kftm = si::kilo(ftm))");
         i = end;
         const int e{read_text_exponent(t, i)};
         total += e < 0 ? -e : e;
@@ -283,8 +317,9 @@ namespace ins::detail
     consteval bool match_kind(std::string_view w, const kind_def*& k)
     {
       bool ambiguous{false};
-      if (Catalog.Kinds.Size != 0 && match_kind_in(Catalog.Kinds.Data, Catalog.Kinds.Size, w, k, ambiguous))
-        return true;
+      for (std::size_t t = 0; t < Catalog.Size && !ambiguous; ++t)
+        if (match_kind_in(Catalog.Sets[t].Kinds.Data, Catalog.Sets[t].Kinds.Size, w, k, ambiguous))
+          return true;
       if (!ambiguous && match_kind_in(others().Kinds.data(), others().Kinds.size(), w, k, ambiguous))
         return true;
       return fail(ambiguous ? "a name one visible kind has (several have this one)" : "a kind visible here");
@@ -367,8 +402,9 @@ namespace ins::detail
         return hits == 1;
       };
       bool ambiguous{false};
-      if (Catalog.Origins.Size != 0 && match_in(Catalog.Origins.Data, Catalog.Origins.Size, ambiguous))
-        return true;
+      for (std::size_t t = 0; t < Catalog.Size && !ambiguous; ++t)
+        if (match_in(Catalog.Sets[t].Origins.Data, Catalog.Sets[t].Origins.Size, ambiguous))
+          return true;
       if (!ambiguous && match_in(others().Origins.data(), others().Origins.size(), ambiguous))
         return true;
       return fail(ambiguous ? "a name one visible origin has (several have this one)"
@@ -425,10 +461,6 @@ namespace ins::detail
       num += u.Atoms[i].Exp > 0;
       blades = blades || is_basis_atom(u.Atoms[i]);
     }
-    // (A basis vector or a polynomial variable gets its text with the flat quantity type: until then a sum of
-    // blades takes the base class's type of its parts.)
-    if (blades)
-      return false;
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
     const auto atoms = [&](int sign)
     {

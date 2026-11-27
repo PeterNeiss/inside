@@ -4,6 +4,7 @@
 
 #include <inside/inside.hpp>
 #include <inside/units.hpp>
+#include <inside/units/constants.hpp>
 #include <inside/units/io.hpp>
 
 #include <gtest/gtest.h>
@@ -15,8 +16,6 @@ namespace id_quantity_tests {
 using namespace ins;
 
 inline constexpr auto cts = base_unit<"cts", "count">;
-// A unit of one's own whose symbol the catalog reads (k and m): the catalog's kilometre wins.
-inline constexpr auto own_km = base_unit<"km", "own_length">;
 constexpr auto        km  = si::kilo(si::metre);
 using I                   = inside<{0, 100}>;
 
@@ -44,12 +43,41 @@ TEST(IdQuantityTest, a_unit_with_a_text_names_the_type) {
     static_assert(std::is_same_v<quantity<one, I>, id<"[0..100] [1]">>);
 }
 
-// A symbol is looked up in the catalog first, with a prefix too: a symbol the catalog reads names its unit,
-// so one's own units need symbols of their own.
+// A symbol is looked up in the catalog first (its units' own symbols and the prefixed units in wide use): a symbol
+// the catalog reads names its unit, so one's own units need symbols of their own
+// (tests/fail/id_unit_symbol_of_the_catalog.test.cpp).
 TEST(IdQuantityTest, a_symbol_the_catalog_reads_names_the_catalog_unit) {
     static_assert(id<"[0..100] [km]">::unit == km.value);
-    static_assert(!std::is_same_v<quantity<own_km, I>, id<"[0..100] [km]">>); // own_km keeps a type of its own
-    static_assert(std::is_same_v<quantity<own_km, I>, basic_quantity<own_km, I>>);
+}
+
+// Every unit of the catalog's tables (the constants' too) reads back from its text: no two share a symbol.
+// The symbol of the first that does not, else nothing.
+struct round_trip_context {};
+consteval std::string_view catalog_unit_without_its_text() {
+    const detail::catalog_list c{detail::catalog_table<round_trip_context>()};
+    for (std::size_t t = 0; t < c.Size; ++t)
+        for (std::size_t i = 0; i < c.Sets[t].Units.Size; ++i) {
+            const unit_atom          a{c.Sets[t].Units[i]};
+            const unit_value         u{a};
+            const auto               n{detail::quantity_name_for(reference_of(u), &origin_def::none, false)};
+            if (!n.Ok)
+                return a.U->Utf8;
+            const auto q{detail::read_quantity<round_trip_context>(n.Name.Unit.view(), n.Name.Kind.view(), {})};
+            if (!q.Ok || !(q.Ref == reference_of(u)))
+                return a.U->Utf8;
+        }
+    return {};
+}
+
+TEST(IdQuantityTest, every_unit_of_the_catalog_reads_back) {
+    static_assert(detail::catalog_table<round_trip_context>().Size == 3); // the catalog, si2019, the constants
+    constexpr std::string_view s{catalog_unit_without_its_text()};
+    static_assert(s.empty(), s);
+    // A plain symbol with an ASCII one of its own reads only as that: k is free, k_B is Boltzmann's.
+    static_assert(id<"[0..9] [k_B]">::unit == si2019::boltzmann_constant.value);
+    static_assert(id<"[0..9] [c_0]">::unit == si2019::speed_of_light_in_vacuum.value);
+    static_assert(id<"[0..9] [h_P]">::unit == si2019::planck_constant.value);
+    static_assert(id<"[0..9] [R]">::unit == si2019::molar_gas_constant.value);
 }
 
 TEST(IdQuantityTest, every_spelling_of_a_unit_is_one_type) {

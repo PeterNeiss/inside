@@ -612,18 +612,25 @@ TEST(UnitsApiTest, points_from_zero_and_their_constraints) {
     static_assert(!can_in_seconds<decltype(c)> && !can_point_in_seconds<decltype(c)>);
 }
 
+// (A quantity's type spells its unit by symbol, found among the tags at namespace scope.)
+namespace {
+inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "`R", .origin = si::absolute_zero}>;
+} // namespace
+
 TEST(UnitsApiTest, unit_options) {
-    constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
-    EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "R");
+    EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "`R");
     EXPECT_EQ(to_string(point<rankine>(just<9>).point_in(si::kelvin)), "5 K"); // counted from absolute zero
     EXPECT_EQ(to_string(just<1> * turn_unit), "1tr");
     static_assert(kind_of(rpm_unit.value)->Name == "frequency");
     static_assert(!addable_units<decltype(just<1> * rpm_unit), decltype(just<1> * si::becquerel)>());
 }
 
+namespace {
+inline constexpr auto euro = unit<"EUR", money_kind>;
+inline constexpr auto cent = unit<"ct", just<1, 100> * euro>;
+} // namespace
+
 TEST(UnitsApiTest, base_dimensions_of_your_own) {
-    constexpr auto euro = unit<"EUR", money_kind>;
-    constexpr auto cent = unit<"ct", just<1, 100> * euro>;
     const auto     sum  = just<2> * euro + just<5> * cent;
     EXPECT_EQ(to_string(sum), "205 ct");
     static_assert(!can_add<decltype(just<1> * euro), decltype(just<1> * si::metre)>);
@@ -634,9 +641,12 @@ TEST(UnitsApiTest, base_dimensions_of_your_own) {
     EXPECT_EQ(to_string((just<3> * euro) / (just<2> * si::kilogram)), "1.5 EUR/kg");
 }
 
+namespace {
+inline constexpr auto loot = unit<"loot", gold_u * health_u * mana_u * stamina::st>;
+inline constexpr auto net  = unit<"net", xp_u * pixel_u * packet_u * token_u>;
+} // namespace
+
 TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
-    constexpr auto      loot  = unit<"loot", gold_u * health_u * mana_u * stamina::st>;
-    constexpr auto      net   = unit<"net", xp_u * pixel_u * packet_u * token_u>;
     constexpr dimension eight = dimension_of((loot * net).value);
     static_assert(eight.Size == 8);
     // By content, in any order.
@@ -683,8 +693,9 @@ namespace {
 inline constexpr auto             line_fathom = unit<"ftm", 1.8288_ins * si::metre>;
 inline constexpr unit_def         named_fathom_def{"ftm", 1.8288_ins * si::metre};
 inline constexpr auto             named_fathom = defined_by<named_fathom_def>;
+inline constexpr auto             kilo_named_fathom = si::kilo(named_fathom); // (its text, kftm, names it)
 inline constexpr kind_def         named_count_def{"count", base_dimension<"count">};
-inline constexpr unit_def         named_cts_def{"cts", defined_by<named_count_def>};
+inline constexpr unit_def         named_cts_def{"cnt", defined_by<named_count_def>};
 inline constexpr auto             named_cts = defined_by<named_cts_def>;
 inline constexpr unit_def         named_watt_def{"W", si::joule / si::second};
 inline constexpr kind_def         named_velocity_def{"velocity", isq::speed,
@@ -699,7 +710,7 @@ inline constexpr basis_vector_def named_e1_def{"e1", geometric<+1>};
 TEST(UnitsApiTest, named_definitions) {
     using I = inside<{0, 100}>;
     static_assert(named_fathom == line_fathom);
-    static_assert(named_cts == base_unit<"cts", "count">);
+    static_assert(named_cts == base_unit<"cnt", "count">);
     static_assert(defined_by<named_watt_def> == si::watt);
     static_assert(defined_by<named_velocity_def> == isq::velocity);
     static_assert(defined_by<named_angle_def> == isq::angular_measure);
@@ -723,7 +734,7 @@ TEST(UnitsApiTest, named_definitions) {
     // Prefixes, conversions, products, points and text, as for any unit.
     EXPECT_EQ(to_string(quantity<si::kilo(named_fathom), I>{2, si::kilo(named_fathom)}), "2 kftm");
     EXPECT_EQ(to_string(b.in(si::metre)), "21.9456 m");
-    EXPECT_EQ(to_string(quantity<named_cts, I>{7, named_cts} / si::second), "7 cts/s");
+    EXPECT_EQ(to_string(quantity<named_cts, I>{7, named_cts} / si::second), "7 cnt/s");
     constexpr auto ice = defined_by<named_ice_def>;
     EXPECT_EQ(to_string(point<si::degree_Celsius>(inside<{-5, 5}>{1}).point_for(ice).quantity_from_origin()), "1 ℃");
     constexpr auto e1 = defined_by<named_e1_def>;
@@ -732,6 +743,10 @@ TEST(UnitsApiTest, named_definitions) {
 
 // A named unit (with a prefix too) and its own kind is held as that unit alone, any other reference as its parts.
 // Each reference has one form, however it is reached, so equal references are one type.
+namespace {
+inline constexpr auto metre_second = unit<"m_s", si::metre * si::second>; // (no separator in a symbol: m·s is two)
+} // namespace
+
 TEST(UnitsApiTest, a_reference_has_one_form) {
     using num = inside<{0, 100}>;
     using m_t = quantity<si::metre, num>;
@@ -749,13 +764,15 @@ TEST(UnitsApiTest, a_reference_has_one_form) {
     static_assert(quantity<si::metre / si::second, num>::reference.HasParts);
     static_assert(quantity<si::metre * si::metre, num>::reference.HasParts);
     // A named unit without a kind: the unit alone too, and kind() is kind_def::none.
-    constexpr auto metre_second = unit<"m·s", si::metre * si::second>;
     static_assert(!quantity<metre_second, num>::reference.HasParts);
     static_assert(quantity<metre_second, num>::reference.kind()->Name.empty());
 }
 
+namespace {
+inline constexpr auto cts = unit<"cts", adc_counts_kind>;
+} // namespace
+
 TEST(UnitsApiTest, adc_counts) {
-    constexpr auto cts = unit<"cts", adc_counts_kind>;
     using reading      = quantity<cts, inside<{0, 4095}>>;
     using gain_t       = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
     using volts_t      = quantity<si::volt, inside<{{0, 5}, per<1000>}>>;
@@ -792,7 +809,7 @@ inline constexpr auto health_kind = kind<"health", health_dim>;
 inline constexpr auto HP          = unit<"HP", health_kind>;
 inline constexpr auto slot        = unit<"slot", just<1, 32768> * pi * si::radian>;
 // π/2^70 rad: a factor past the 64-bit rational.
-inline constexpr auto fine_turn = unit<"ft", just<1, 1180591620717411303424_g> * pi * si::radian>;
+inline constexpr auto fine_turn = unit<"fturn", just<1, 1180591620717411303424_g> * pi * si::radian>; // (ft: foot)
 
 constexpr auto ms = si::milli(si::second);
 

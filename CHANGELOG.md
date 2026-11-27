@@ -11,7 +11,9 @@ read the same way: `decltype(id<"[1..9]">{} + id<"[1..9]">{})` is
 `"42 [1..100)"_ins` ([spelling a type as text](docs/guide/id.md)).
 A quantity's type adds its unit: `id<"[0..300] [km/h] clamp">` is a quantity
 in km/h, read by the unit's symbol among the units visible where it is named,
-and `"42 [1..100) [km/h]"_ins` a quantity value.
+with a kind that is not the unit's own after it in braces
+(`id<"[0..9] [m]{height}">`, `[m*s]{any duration*length}`), and
+`"42 [1..100) [km/h]"_ins` a quantity value. Every quantity is an `id`.
 
 Shorter type names for insides and quantities: a grid holds its limits as
 members of their own, a zero grid number is all zero bits (so a mangled name
@@ -28,15 +30,23 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   f(inside<G, P>)`, a partial specialization on `id<K>`, and
   `template struct id<…>` for `template class inside<…>`. `grid_of<T>` and
   `policy_of<T>` read the grid and the policy as before.
-- The quantity class is `basic_quantity<R, Rep>`, and `quantity<R, Rep>` an
-  alias: `id<"[…] [unit]">` when R is a unit and its own kind whose symbol
-  names it (a class derived from `basic_quantity`), else `basic_quantity`
-  itself (a kind such as `isq::height[m]`, and a product or quotient of
-  quantities, which keeps the kinds it is made of). Deduce
-  `basic_quantity<R, Rep>` where `quantity<R, Rep>` was deduced (a function
-  parameter takes an `id` too); a partial specialization on a quantity takes
-  `detail::basic_of_t<Q>` or a constraint on `quantity_like`. Hooks
-  (`on_wrap`, `on_clamp`, `on_error`) get the quantity as its own type.
+- Every quantity is an `id<K>` whose key has a unit, and `quantity<R, Rep>`
+  an alias of it; `basic_quantity` is gone. Deduce `quantity_like Q` (and
+  read `Q::reference` and `Q::rep`) where `quantity<R, Rep>` was deduced; a
+  partial specialization on a quantity takes `detail::basic_of_t<Q>` or a
+  constraint on `quantity_like`. Hooks (`on_wrap`, `on_clamp`, `on_error`)
+  get the quantity as its own type.
+- A quantity's unit needs a text that reads back to it where the type is
+  formed, or the quantity does not compile: give a unit of your own a symbol
+  the catalog does not read, and a prefixed unit of your own a tag
+  (`inline constexpr auto kftm = si::kilo(ftm);`). A text reads whole symbols
+  only: a unit's own, the catalog's prefixed units in wide use (km, ms, kHz,
+  …) and tags of your own; no prefix is read into a symbol.
+- A unit whose plain symbol has an ASCII one of its own is read and printed
+  in ASCII by that one: the speed of light is `c_0`, Boltzmann's constant
+  `k_B`, Planck's `h_P`,
+  Faraday's `F_Faraday` (`text_encoding::ascii`; the symbols print as
+  before).
 - Two units equal in every respect with one symbol (a unit declared twice,
   as a named definition and as a one-liner) are one quantity type: a type
   spells its unit by its symbol.

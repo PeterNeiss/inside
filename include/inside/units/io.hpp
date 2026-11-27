@@ -208,8 +208,8 @@ namespace ins
   }
 
   // "5 km", "90°", "3" (unit one).
-  template <reference R, class V>
-  std::string to_string(const basic_quantity<R, V>& q, text_encoding enc = text_encoding::utf8)
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  std::string to_string(const QR& q, text_encoding enc = text_encoding::utf8)
   {
     std::string       s  {ins::to_string(ins::detail::value_of(q))};
     const std::string sym{unit_symbol(R.unit(), enc)};
@@ -218,8 +218,8 @@ namespace ins
     return s + (detail::space_before(R.unit()) ? " " : "") + sym;
   }
 
-  template <reference R, class V>
-  std::ostream& operator<<(std::ostream& os, const basic_quantity<R, V>& q)
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  std::ostream& operator<<(std::ostream& os, const QR& q)
   {
     return os << ins::to_string(q);
   }

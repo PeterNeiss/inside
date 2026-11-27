@@ -352,7 +352,7 @@ namespace ins::detail::gaexp
     using type = N;
   };
   template <reference R, class V, class N>
-  struct with_number<basic_quantity<R, V>, N>
+  struct with_number<quantity_parts<R, V>, N>
   {
     using type = quantity<R, N>;
   };

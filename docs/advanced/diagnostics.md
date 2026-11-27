@@ -1,8 +1,7 @@
 # Reading compiler errors
 
 An inside is `id<key K>`, its grid and policy as text (`inside<G, P>` names
-the same type), and so is a quantity whose unit has a text; any other
-quantity is `basic_quantity<reference R, Rep>`. Compilers
+the same type), and so is a quantity, its unit and kind in the text too. Compilers
 print template arguments structurally, so an error shows the *whole* type.
 This page decodes the types, lists the named messages the library gives
 instead of bare "could not convert" errors, and shows how to probe an
@@ -38,41 +37,46 @@ text above are one type.
 
 ## Decoding a quantity
 
-A quantity in a unit and the unit's own kind, the most common one
-(`si::metre`, `si::kilo(si::metre) / si::hour`, a unit of your own), prints
-as its text, the unit in brackets after the number's
+A quantity prints as its text, the unit in brackets after the number's, and a
+kind that is not the unit's own after it in braces
 ([quantities](../guide/id.md#quantities)):
 
 ```text
 ins::id<ins::key{"[0..100] [km/h]"}>
+ins::id<ins::key{"[0..100] [m]{height}"}>
+ins::id<ins::key{"[1..81] [m*s]{any duration*length}"}>
 ```
 
-A member of a quantity is `basic_quantity`'s, the class every quantity is,
-and prints its reference as the structure behind it. A unit and its own kind
-holds that unit alone, here km:
+| Text | Means |
+|---|---|
+| `[km/h]` | the unit: symbols with powers, `*` and `/`, in ASCII (`us` for µs, `` `C `` for ℃, `ohm` for Ω); a scaled unit in brackets (`[[1/381*ft]]`); `[1]` the unit one |
+| `{height}` | exactly that kind (`isq::height[si::metre]`); no braces for the unit's own kind, any of it |
+| `{any duration*length}` | the kinds a product or quotient is made of, `any` when any kind of each will do |
+| `{none}`, `{any}` | no kind; any kind of the dimension |
+
+Where a reference itself is a template argument (a quantity whose unit has no
+text, which does not compile, or a trait's parts), it prints as the structure
+behind it. A unit and its own kind holds that unit alone, here km:
 
 ```text
-basic_quantity<reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}, id<…>>
+reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}
 ```
 
 | Part | Means |
 |---|---|
 | `unit_atom{(& si::metre_def), 3, 1}` | a named unit (`si::metre`, by its definition object), its decimal prefix as a power of 10 (3: kilo), and its exponent (1). Its kind is the unit's own (any length) |
 | `false` | the reference holds the unit alone |
-| `id<…>` | the number, decoded as above |
 
 Any other reference holds its parts: a kind, a unit of several factors or a
-scale, or a product of kinds. Such a quantity has no text: it is the
-`basic_quantity` itself. A velocity in m/s:
+scale, or a product of kinds. A velocity in m/s:
 
 ```text
-basic_quantity<reference{ref_form{ref_parts{(& isq::velocity_def),
-                                            unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 0, 1},
-                                                                     unit_atom{(& si::second_def), 0, -1}},
-                                                       magnitude{grid_number{1, 1, 0}, 0}},
-                                            false, recipe{kind_factor [6](), 0}}},
-                         true},
-               id<…>>
+reference{ref_form{ref_parts{(& isq::velocity_def),
+                             unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 0, 1},
+                                                      unit_atom{(& si::second_def), 0, -1}},
+                                        magnitude{grid_number{1, 1, 0}, 0}},
+                             false, recipe{kind_factor [6](), 0}}},
+          true}
 ```
 
 | Part | Means |

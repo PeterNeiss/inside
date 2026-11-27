@@ -8,6 +8,8 @@
 
 #include <inside/units/core.hpp>
 
+#include <initializer_list>
+
 namespace ins
 {
 
@@ -369,7 +371,8 @@ namespace ins
       "Δν_Cs", detail::mag<9'192'631'770> * si::hertz, {.ascii = "dv_Cs"}};
     inline constexpr auto     hyperfine_structure_transition_frequency_of_cs =
       defined_by<hyperfine_structure_transition_frequency_of_cs_def>;
-    inline constexpr unit_def speed_of_light_in_vacuum_def{"c", detail::mag<299'792'458> * (si::metre / si::second)};
+    inline constexpr unit_def speed_of_light_in_vacuum_def{"c", detail::mag<299'792'458> * (si::metre / si::second),
+                                                           {.ascii = "c_0"}}; // (c is free: a cent's)
     inline constexpr auto     speed_of_light_in_vacuum = defined_by<speed_of_light_in_vacuum_def>;
     inline constexpr unit_def luminous_efficacy_def{"K_cd", detail::mag<683> * (si::lumen / si::watt)};
     inline constexpr auto     luminous_efficacy = defined_by<luminous_efficacy_def>;
@@ -377,11 +380,13 @@ namespace ins
                                                    detail::mag<980665_g / 100000_g> * (si::metre / square(si::second)),
                                                    {.ascii = "g_0"}};
     inline constexpr auto     standard_gravity = defined_by<standard_gravity_def>;
-    inline constexpr unit_def planck_constant_def{"h", detail::mag<6.62607015e-34_g> * si::joule * si::second};
+    inline constexpr unit_def planck_constant_def{"h", detail::mag<6.62607015e-34_g> * si::joule * si::second,
+                                                  {.ascii = "h_P"}}; // (h is the hour)
     inline constexpr auto     planck_constant = defined_by<planck_constant_def>;
     inline constexpr unit_def elementary_charge_def{"e", detail::mag<1.602176634e-19_g> * si::coulomb};
     inline constexpr auto     elementary_charge = defined_by<elementary_charge_def>;
-    inline constexpr unit_def boltzmann_constant_def{"k", detail::mag<1.380649e-23_g> * (si::joule / si::kelvin)};
+    inline constexpr unit_def boltzmann_constant_def{"k", detail::mag<1.380649e-23_g> * (si::joule / si::kelvin),
+                                                     {.ascii = "k_B"}}; // (k is free: a quaternion's)
     inline constexpr auto     boltzmann_constant = defined_by<boltzmann_constant_def>;
     inline constexpr unit_def avogadro_constant_def{"N_A", detail::mag<6.02214076e23_g> / si::mole};
     inline constexpr auto     avogadro_constant = defined_by<avogadro_constant_def>;
@@ -430,9 +435,19 @@ namespace ins
 
 // The catalog's units, kinds and origins, read once here after the catalog: a quantity type's unit, kind and origin
 // are looked up here first (units/detail/unit_key.hpp), so a type of the catalog's searches nothing else.
-// Its tags are in ins itself (one, percent, …), ins::isq, ins::si and ins::international.
+// Its tags are in ins itself (one, percent, …), ins::isq, ins::si and ins::international; the constants of
+// ins::si2019 come after them.
 namespace ins::detail::catalog_index
 {
+  // The widely used prefixed units, which a quantity's text names by their symbols (km, ms, kHz, mV). No other
+  // prefix is read into a symbol: a prefixed unit of your own is named by a tag of it
+  // (inline constexpr auto kftm = si::kilo(ftm)).
+  consteval void add_prefixed(tag_vectors& t, const unit_def& u, std::initializer_list<int> powers)
+  {
+    for (const int p : powers)
+      t.add(unit_atom{&u, static_cast<std::int8_t>(p), 1});
+  }
+
   inline constexpr catalog_sets table = []
   {
     tag_vectors tags;
@@ -440,6 +455,36 @@ namespace ins::detail::catalog_index
     collect_tags(^^ins::isq, tags);
     collect_tags(^^ins::si, tags);
     collect_tags(^^ins::international, tags);
+    add_prefixed(tags, si::metre_def, {3, -2, -3, -6, -9, -12});
+    add_prefixed(tags, si::gram_def, {-3, -6, -9});
+    add_prefixed(tags, si::second_def, {-3, -6, -9, -12});
+    add_prefixed(tags, si::litre_def, {-1, -2, -3, -6});
+    add_prefixed(tags, si::hertz_def, {3, 6, 9, 12});
+    add_prefixed(tags, si::watt_def, {-6, -3, 3, 6, 9});
+    add_prefixed(tags, si::volt_def, {-6, -3, 3, 6});
+    add_prefixed(tags, si::ampere_def, {-9, -6, -3, 3});
+    add_prefixed(tags, si::ohm_def, {-3, 3, 6});
+    add_prefixed(tags, si::siemens_def, {-6, -3});
+    add_prefixed(tags, si::farad_def, {-12, -9, -6, -3});
+    add_prefixed(tags, si::henry_def, {-9, -6, -3});
+    add_prefixed(tags, si::newton_def, {-3, 3, 6});
+    add_prefixed(tags, si::joule_def, {3, 6, 9});
+    add_prefixed(tags, si::pascal_def, {2, 3, 6, 9});
+    add_prefixed(tags, si::coulomb_def, {-9, -6, -3});
+    add_prefixed(tags, si::mole_def, {-9, -6, -3});
+    add_prefixed(tags, si::kelvin_def, {-3});
+    add_prefixed(tags, si::becquerel_def, {3, 6, 9});
+    add_prefixed(tags, si::gray_def, {-3});
+    add_prefixed(tags, si::sievert_def, {-6, -3});
+    add_prefixed(tags, si::tesla_def, {-9, -6, -3});
+    add_prefixed(tags, si::radian_def, {-6, -3});
+    add_prefixed(tags, si::electronvolt_def, {3, 6, 9, 12});
+    return intern_tags(tags);
+  }();
+  inline constexpr catalog_sets si2019_table = []
+  {
+    tag_vectors tags;
+    collect_tags(^^ins::si2019, tags);
     return intern_tags(tags);
   }();
 } // namespace ins::detail::catalog_index

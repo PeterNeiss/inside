@@ -72,12 +72,22 @@ namespace ins::detail
       }
   }
 
-  // The tags' definitions a key's text may name: the units, kinds and origins of every tag variable read.
+  // The tags' definitions a key's text may name: the units (each with its prefix: a tag of km names km), kinds and
+  // origins of every tag variable read.
   struct tag_vectors
   {
-    std::vector<const unit_def*>   Units;
+    std::vector<unit_atom>         Units; // (exponent 1)
     std::vector<const kind_def*>   Kinds;
     std::vector<const origin_def*> Origins;
+
+    consteval void add(unit_atom a)
+    {
+      a.Exp = 1;
+      for (const unit_atom& v : Units)
+        if (v.Prefix == a.Prefix && same(v.U, a.U))
+          return;
+      Units.push_back(a);
+    }
   };
 
   // The units, kinds and origins of the tags only (si::metre, isq::height, si::ice_point, defined_by<cent_def>, a
@@ -104,13 +114,7 @@ namespace ins::detail
         {
           const unit_value u{std::meta::extract<unit_value>(std::meta::template_arguments_of(t)[0])};
           for (std::int8_t i = 0; i < u.size(); ++i)
-          {
-            bool known{false};
-            for (const unit_def* v : out.Units)
-              known = known || same(v, u.Atoms[i].U);
-            if (!known)
-              out.Units.push_back(u.Atoms[i].U);
-          }
+            out.add(u.Atoms[i]);
         }
         else if (of == ^^kind_t)
         {

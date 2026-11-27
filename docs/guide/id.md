@@ -66,13 +66,23 @@ A type's text has room for 2048 characters; a grid whose numbers need more
 
 A unit in brackets, after the step, makes the type a quantity:
 `id<"[0..300] [km/h]">` is `quantity<si::kilo(si::metre) / si::hour, id<"[0..300]">>`,
-the same type. The unit is read by its symbol, with prefixes and powers, as a
-quantity's text reads one (`km/h`, `kg*m^2/s^2`, `µs`, `[1/381 ft]` for a
-scaled unit), among the unit tags visible where the type is named: the
-catalog's and your own (`base_unit<"cts", "count">`, `defined_by<cent_def>`,
-`unit<"ftm", …>`). The canonical text is ASCII (`us`, not `µs`).
+the same type. The unit is read as a quantity's text reads one, by symbols
+with powers (`km/h`, `kg*m^2/s^2`, `µs`, `[1/381 ft]` for a scaled unit),
+among the unit tags visible where the type is named: the catalog's and your
+own (`base_unit<"cts", "count">`, `defined_by<cent_def>`, `unit<"ftm", …>`).
+The canonical text is ASCII (`us`, not `µs`).
 
-Results read the same way where their unit is a unit's own:
+A symbol is a whole one: a unit's own, or a prefixed unit's that a tag names.
+The catalog names the prefixed units in wide use (`km`, `mm`, `ms`, `us`,
+`kHz`, `MW`, `mA`, `kPa`, `keV`, …); no prefix is read into another symbol
+(`rd` is no ronto-day). A prefixed unit of your own is a tag of your own:
+
+```cpp
+inline constexpr auto fathom     = ins::unit<"ftm", 1.8288_ins * ins::si::metre>;
+inline constexpr auto kilofathom = ins::si::kilo(fathom);   // [kftm]
+```
+
+Results read the same way:
 
 ```cpp
 using metres = ins::id<"[1..9] [m]">;
@@ -80,22 +90,53 @@ static_assert(std::is_same_v<decltype(metres{} + metres{}), ins::id<"[2..18] [m]
 static_assert(std::is_same_v<decltype(ins::id<"[0..1] [km]">{} + metres{}), ins::id<"[1..1009] [m]">>);
 ```
 
-A quantity whose reference is more than a unit has no text, and keeps the
-class every quantity is, `basic_quantity<R, Rep>`: a kind (`isq::height[m]`),
-and a product or quotient of quantities, which remembers the kinds it is made
-of (a length times a time), so that they come back when the units cancel.
+A kind that is not the unit's own follows the unit, in braces:
 
-A symbol is looked up in the catalog first, with its prefixes: a symbol the
-catalog reads (`km`, `Pa`, `ms`) names the catalog's unit, and a unit of your
-own with such a symbol keeps a type of its own, `basic_quantity`. Only a symbol
-the catalog does not read is looked up among the other units, where the type
-is first named, so give your own units symbols of their own: two of them with
-one symbol and different definitions make the symbol unreadable (an error that
-says so), and a symbol
-that names one unit in one file and another in a second file makes one type
-mean two units (the program is ill-formed, and no compiler is required to say
-so). Two units equal in every respect, such as a unit declared twice, are one
-type.
+| Text | Kind | C++ spelling |
+|---|---|---|
+| `[m]` | the unit's own kind, any length | `si::metre` |
+| `[m]{height}` | height | `isq::height[si::metre]` |
+| `[m*s]{any duration*length}` | any length times any duration | a quantity in m times one in s |
+| `[m^2]{height*width}` | a height times a width | `isq::height[m] * isq::width[m]` |
+| `[J]{none}` | no kind | |
+
+A product or quotient of quantities remembers the kinds it is made of, so that
+they come back when the units cancel, and its text says so:
+
+```cpp
+static_assert(std::is_same_v<decltype(metres{} * ins::id<"[1..9] [s]">{}),
+                             ins::id<"[1..81] [m*s]{any duration*length}">>);
+```
+
+Kind names are identifiers (letters, digits and `_`), as a key spells them.
+
+### Which unit a symbol names
+
+A symbol is looked up in the catalog first, every table of it (the constants'
+too, where `<inside/units/constants.hpp>` is included): a symbol the catalog
+reads (`km`, `Pa`, `ms`, `R`) names the catalog's unit, wherever the type is
+first named. Only a symbol the catalog does not read is looked up among the
+other units, where the type is first named.
+
+A unit is read by its ASCII symbol, and by its symbol where that is not ASCII
+(`µs`, `Ω`, `℃`). A unit whose plain symbol has an ASCII one of its own is
+read only by that one, which keeps the plain symbol free: the speed of light
+`c` is `c_0`, Boltzmann's `k` is `k_B`, Planck's `h` is `h_P` (`h` is the
+hour), Faraday's `F` is `F_Faraday` (`F` is the farad), so a cent's `c` and a
+quaternion's `k` are yours.
+
+So give your own units symbols of their own. A unit whose symbol the catalog
+reads, or two of your own with one symbol and different definitions, have no
+text, and a quantity of one does not compile:
+
+```text
+error: units: this quantity's unit or kind has no text that names it here - give a unit of your own a symbol of its own ...
+```
+
+A symbol that names one unit in one file and another in a second file makes
+one type mean two units (the program is ill-formed, and no compiler is
+required to say so). Two units equal in every respect, such as a unit declared
+twice, are one type.
 
 ## A value with its type
 
@@ -133,10 +174,10 @@ auto square(ins::id<K> x) { return x * x; }
 (`inside<G, P>` is an alias, so `template <grid G, policy_flag P>
 f(inside<G, P>)` deduces nothing.)
 
-Every quantity is a `basic_quantity<R, Rep>` (an `id` with a unit derives
-from it), so a function over quantities deduces that:
+Every quantity is an `id` too, so a function over quantities takes one and
+reads its reference and number type:
 
 ```cpp
-template <ins::reference R, class Rep>
-auto twice(const ins::basic_quantity<R, Rep>& q) { return q + q; }
+template <ins::quantity_like Q>
+auto twice(const Q& q) { return q + q; }   // Q::reference, Q::rep
 ```

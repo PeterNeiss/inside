@@ -29,7 +29,8 @@ namespace ins
     inline constexpr auto     reduced_planck_constant = defined_by<reduced_planck_constant_def>;
     inline constexpr unit_def molar_gas_constant_def{"R", si2019::avogadro_constant * si2019::boltzmann_constant};
     inline constexpr auto     molar_gas_constant = defined_by<molar_gas_constant_def>;
-    inline constexpr unit_def faraday_constant_def{"F", si2019::avogadro_constant * si2019::elementary_charge};
+    inline constexpr unit_def faraday_constant_def{"F", si2019::avogadro_constant * si2019::elementary_charge,
+                                                   {.ascii = "F_Faraday"}}; // (F is the farad)
     inline constexpr auto     faraday_constant = defined_by<faraday_constant_def>;
     inline constexpr unit_def josephson_constant_def{
       "K_J", detail::mag<2> * si2019::elementary_charge / si2019::planck_constant};
@@ -92,6 +93,19 @@ namespace ins
                                                                {.ascii = "epsilon_0"}};
     inline constexpr auto     vacuum_electric_permittivity = defined_by<vacuum_electric_permittivity_def>;
   } // namespace codata2022
+
+  // The constants declared here, read once after them (before any quantity of them is formed), after the catalog's
+  // tables (units/detail/unit_key.hpp).
+  namespace detail::catalog_index
+  {
+    inline constexpr catalog_sets constants_table = []
+    {
+      tag_vectors tags;
+      collect_tags(^^ins::si2019, tags);
+      collect_tags(^^ins::codata2022, tags);
+      return intern_tags(tags);
+    }();
+  } // namespace detail::catalog_index
 
   // The constants as quantities: the number 1 of the constant's unit, under its ISQ kind where the kind is
   // unambiguous.
