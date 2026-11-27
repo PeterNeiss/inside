@@ -15,6 +15,8 @@ namespace id_quantity_tests {
 using namespace ins;
 
 inline constexpr auto cts = base_unit<"cts", "count">;
+// A unit of one's own whose symbol the catalog reads (k and m): the catalog's kilometre wins.
+inline constexpr auto own_km = base_unit<"km", "own_length">;
 constexpr auto        km  = si::kilo(si::metre);
 using I                   = inside<{0, 100}>;
 
@@ -40,6 +42,14 @@ TEST(IdQuantityTest, a_unit_with_a_text_names_the_type) {
     static_assert(std::is_same_v<quantity<si::metre, inside<{0, 360, bounds::half_open}, wrap>>,
                                  id<"[0..360) [m] wrap">>);
     static_assert(std::is_same_v<quantity<one, I>, id<"[0..100] [1]">>);
+}
+
+// A symbol is looked up in the catalog first, with a prefix too: a symbol the catalog reads names its unit,
+// so one's own units need symbols of their own.
+TEST(IdQuantityTest, a_symbol_the_catalog_reads_names_the_catalog_unit) {
+    static_assert(id<"[0..100] [km]">::unit == km.value);
+    static_assert(!std::is_same_v<quantity<own_km, I>, id<"[0..100] [km]">>); // own_km keeps a type of its own
+    static_assert(std::is_same_v<quantity<own_km, I>, basic_quantity<own_km, I>>);
 }
 
 TEST(IdQuantityTest, every_spelling_of_a_unit_is_one_type) {

@@ -85,9 +85,13 @@ class every quantity is, `basic_quantity<R, Rep>`: a kind (`isq::height[m]`),
 and a product or quotient of quantities, which remembers the kinds it is made
 of (a length times a time), so that they come back when the units cancel.
 
-A unit is found by its symbol where the type is first named, so give your own
-units symbols of their own: two units with one symbol and different
-definitions make the symbol unreadable (an error that says so), and a symbol
+A symbol is looked up in the catalog first, with its prefixes: a symbol the
+catalog reads (`km`, `Pa`, `ms`) names the catalog's unit, and a unit of your
+own with such a symbol keeps a type of its own, `basic_quantity`. Only a symbol
+the catalog does not read is looked up among the other units, where the type
+is first named, so give your own units symbols of their own: two of them with
+one symbol and different definitions make the symbol unreadable (an error that
+says so), and a symbol
 that names one unit in one file and another in a second file makes one type
 mean two units (the program is ill-formed, and no compiler is required to say
 so). Two units equal in every respect, such as a unit declared twice, are one

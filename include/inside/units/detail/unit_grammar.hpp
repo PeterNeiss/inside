@@ -76,13 +76,15 @@ namespace ins::detail
   // definition objects: a type named while a definition object is initialized (unit_def cent_def{"ct", 0.01_ins *
   // euro}) would read that object before its value exists. A tag's unit is in its type, and a tag exists only once
   // its definition does. Every catalog definition has its tag.
-  consteval void collect_tag_units(std::meta::info ns, std::vector<const unit_def*>& out)
+  // (skip: a namespace already read, the catalog's; nested: whether to read the namespaces within ns too.)
+  consteval void collect_tag_units(std::meta::info ns, std::vector<const unit_def*>& out, std::meta::info skip = {},
+                                   bool nested = true)
   {
     for (const std::meta::info m : std::meta::members_of(ns, std::meta::access_context::unchecked()))
       if (std::meta::is_namespace(m))
       {
-        if (searched_namespace(m))
-          collect_tag_units(m, out);
+        if (nested && m != skip && searched_namespace(m))
+          collect_tag_units(m, out, skip);
       }
       else if (std::meta::is_variable(m))
       {

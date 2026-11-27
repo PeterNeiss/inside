@@ -80,6 +80,17 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   +8 %. Run time: the instruction counts of the perf workload are unchanged.
   The tests and examples form 4018 types; their longest text is 1033
   characters, of the 2048 a key holds.
+- A quantity whose unit has a text prints it too: a quantity in metres in 33
+  characters (the shorter names: 232; 0.11.0: 404), km/h in 36 (448), a
+  one-line unit of your own in 35 (530 to 780); mangled about half. A unit's
+  symbol is looked up in the catalog's table first (read once after the
+  catalog), and only a symbol it does not read searches the program's other
+  unit tags. Compile time against the insides spelled as text:
+  `units.hpp` +15 %, 200 quantity expressions +12 %, `units.test.cpp` +36 %
+  (its many units of its own each search the program), `arithmetic.test.cpp`
+  +2 %. The 12 injected errors print 100 630 characters: a conversion error
+  names an inherited constructor first, with the base's reference. Run time:
+  unchanged.
 - Type names (`tools/symbol_lengths.sh`, GCC 16, characters):
 
   | Type | Mangled before → now | Printed before → now |

@@ -26999,13 +26999,15 @@ namespace ins::detail
   // definition objects: a type named while a definition object is initialized (unit_def cent_def{"ct", 0.01_ins *
   // euro}) would read that object before its value exists. A tag's unit is in its type, and a tag exists only once
   // its definition does. Every catalog definition has its tag.
-  consteval void collect_tag_units(std::meta::info ns, std::vector<const unit_def*>& out)
+  // (skip: a namespace already read, the catalog's; nested: whether to read the namespaces within ns too.)
+  consteval void collect_tag_units(std::meta::info ns, std::vector<const unit_def*>& out, std::meta::info skip = {},
+                                   bool nested = true)
   {
     for (const std::meta::info m : std::meta::members_of(ns, std::meta::access_context::unchecked()))
       if (std::meta::is_namespace(m))
       {
-        if (searched_namespace(m))
-          collect_tag_units(m, out);
+        if (nested && m != skip && searched_namespace(m))
+          collect_tag_units(m, out, skip);
       }
       else if (std::meta::is_variable(m))
       {
@@ -27169,14 +27171,23 @@ namespace ins::detail
 #include <string_view>
 #include <vector>
 
+// The catalog's units, read once after the catalog (units/systems.hpp defines catalog_index::table).
+namespace ins::detail::catalog_index
+{
+}
+
 namespace ins::detail
 {
-  // The units a key's text may name: the unit of every unit tag visible where it is read (collect_tag_units).
-  consteval std::vector<const unit_def*> key_text_units()
+  // The catalog's units where they have been read, else none (inside the catalog itself, while it is declared).
+  // (A template on what asks, a unit's text or a literal: a call without arguments is evaluated once, where it is
+  // first asked, which is inside the catalog.)
+  template <class Context>
+  consteval unit_set catalog_table()
   {
-    std::vector<const unit_def*> units;
-    collect_tag_units(^^::, units);
-    return units;
+    for (const std::meta::info m : std::meta::members_of(^^catalog_index, std::meta::access_context::unchecked()))
+      if (std::meta::is_variable(m) && std::meta::identifier_of(m) == "table")
+        return std::meta::extract<const unit_set&>(m);
+    return {};
   }
 
   // ---- Reading ----
@@ -27185,10 +27196,15 @@ namespace ins::detail
   // superscripts), joined by '*', '·' or a space, then '/' and a symbol or a parenthesized product (or 1/…);
   // a scaled unit in brackets ([1/381*ft], [pi*rad], [2*pi^-1]); 1 is the unit one.
   // False where it does not read, with what was expected.
+  // A symbol is looked up in the catalog first (catalog_table, read once), with a prefix too: a symbol the
+  // catalog reads names the catalog's unit. Only a symbol it does not read reads every other unit tag visible
+  // here, once (the walk, which costs most of a lookup); inside the catalog, before its table, every symbol does.
   struct unit_key_reader
   {
-    const std::vector<const unit_def*>& Units;
-    std::string_view                    Expected{};
+    unit_set                     Catalog;
+    std::vector<const unit_def*> Others{};
+    bool                         Walked{false};
+    std::string_view             Expected{};
 
     consteval bool fail(std::string_view expected)
     {
@@ -27196,38 +27212,54 @@ namespace ins::detail
       return false;
     }
 
-    // The one unit a symbol names exactly (several units equal by content are one), else null.
+    // The one unit of units[0, n) a symbol names exactly (several units equal by content are one).
     // (By index: GCC under -fsanitize=pointer-compare rejects a pointer test in a constant evaluation.)
-    consteval bool match_exact(std::string_view w, std::size_t& found, bool& ambiguous) const
+    static consteval bool match_exact(const unit_def* const* units, std::size_t n, std::string_view w,
+                                      const unit_def*& found, bool& ambiguous)
     {
-      std::size_t n{0};
-      for (std::size_t i = 0; i < Units.size(); ++i)
-        if (Units[i]->Utf8 == w || Units[i]->ascii() == w)
+      std::size_t hits{0};
+      for (std::size_t i = 0; i < n; ++i)
+        if (units[i]->Utf8 == w || units[i]->ascii() == w)
         {
-          if (n++ > 0)
+          if (hits++ > 0)
             ambiguous = true;
-          found = i;
+          found = units[i];
         }
-      return n == 1;
+      return hits == 1;
     }
     // A symbol exactly, else a prefix and a symbol (min is the minute, mm the millimetre).
-    consteval bool match_symbol(std::string_view w, unit_atom& a, bool& ambiguous) const
+    static consteval bool match_in(const unit_def* const* units, std::size_t n, std::string_view w, unit_atom& a,
+                                   bool& ambiguous)
     {
-      std::size_t i{0};
-      if (match_exact(w, i, ambiguous))
+      const unit_def* u{};
+      if (match_exact(units, n, w, u, ambiguous))
       {
-        a = unit_atom{Units[i], 0, 1};
+        a = unit_atom{u, 0, 1};
         return true;
       }
       if (ambiguous)
         return false;
       for (const text_prefix& p : text_prefixes)
-        if (w.size() > p.Sym.size() && w.starts_with(p.Sym) && match_exact(w.substr(p.Sym.size()), i, ambiguous))
+        if (w.size() > p.Sym.size() && w.starts_with(p.Sym)
+            && match_exact(units, n, w.substr(p.Sym.size()), u, ambiguous))
         {
-          a = unit_atom{Units[i], p.Pow, 1};
+          a = unit_atom{u, p.Pow, 1};
           return true;
         }
       return false;
+    }
+    consteval bool match_symbol(std::string_view w, unit_atom& a, bool& ambiguous)
+    {
+      if (Catalog.Size != 0 && match_in(Catalog.Data, Catalog.Size, w, a, ambiguous))
+        return true;
+      if (ambiguous)
+        return false;
+      if (!Walked) // every other unit tag (all of them before the catalog's table: ins is skipped only after it)
+      {
+        collect_tag_units(^^::, Others, Catalog.Size != 0 ? ^^ins : std::meta::info{});
+        Walked = true;
+      }
+      return match_in(Others.data(), Others.size(), w, a, ambiguous);
     }
 
     // factors ['/' (symbol | '(' factors ')')], or 1/…
@@ -27461,9 +27493,8 @@ namespace ins::detail
   template <std::size_t N>
   consteval bool canonical_unit_text(text_hook<N>, std::string_view text, text_out& out, std::string_view& expected)
   {
-    const std::vector<const unit_def*> units{key_text_units()};
-    unit_key_reader                    r{units};
-    unit_value                         u;
+    unit_key_reader r{catalog_table<text_hook<N>>()};
+    unit_value      u;
     if (!r.read(text, u))
     {
       expected = r.Expected;
@@ -27484,16 +27515,20 @@ namespace ins::detail
     unit_value U{};
     bool       Ok{false};
   };
-  consteval unit_read read_unit_name(std::string_view text)
+  template <unit_name T>
+  struct unit_name_context
   {
-    const std::vector<const unit_def*> units{key_text_units()};
-    unit_key_reader                    r{units};
-    unit_read                          u;
-    u.Ok = r.read(text, u.U);
+  };
+  template <unit_name T>
+  consteval unit_read read_unit_name()
+  {
+    unit_key_reader r{catalog_table<unit_name_context<T>>()};
+    unit_read       u;
+    u.Ok = r.read(T.view(), u.U);
     return u;
   }
   template <unit_name T>
-  inline constexpr unit_read unit_of_name = read_unit_name(T.view());
+  inline constexpr unit_read unit_of_name = read_unit_name<T>();
 
   // A key's unit text, as a unit_name.
   consteval unit_name unit_name_of(std::string_view text)
@@ -30291,6 +30326,22 @@ namespace ins
   inline constexpr auto     per_mille = defined_by<per_mille_def>;
 
 } // namespace ins
+
+// The catalog's units, read once here after the catalog: a quantity type's unit symbol is looked up here first
+// (units/detail/unit_key.hpp), so a type of the catalog's units searches nothing else.
+// Its tags are in ins itself (one, percent, …), ins::si and ins::international.
+namespace ins::detail::catalog_index
+{
+  inline constexpr unit_set table = []
+  {
+    std::vector<const unit_def*> units;
+    collect_tag_units(^^ins, units, {}, false);
+    collect_tag_units(^^ins::si, units);
+    collect_tag_units(^^ins::international, units);
+    const auto s{std::define_static_array(units)};
+    return unit_set{s.data(), s.size()};
+  }();
+} // namespace ins::detail::catalog_index
 
 
 
