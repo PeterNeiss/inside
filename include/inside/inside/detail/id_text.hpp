@@ -221,6 +221,8 @@ namespace ins::detail
     }
     if (named != p) // a mode without snap, or bits no flag names: the bits themselves, bits_N
     {
+      for (std::size_t i = start; i < t.Size; ++i) // (the words written: a key holds what it reads)
+        t.Out[i] = '\0';
       t.Size = start;
       t.put(" bits_");
       t.put(static_cast<std::uint64_t>(p));

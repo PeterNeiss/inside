@@ -249,6 +249,7 @@ TEST(IdTypeTest, a_key_holds_its_text) {
     static_assert(key{grid{0, 9}, wrap}.text() == "[0..9] wrap");
     static_assert(key{grid{0, 9}}.Text[6] == '\0');                     // nothing after the text
     static_assert(!key{"[0..10x"}.ok() && key{"[0..10x"}.text() == "![0..10x");
+    static_assert(key{grid{0, 9}, 1ull << 6}.text() == "[0..9] bits_64");        // round_floor's bit without snap
 }
 
 // An id is a type like any: a member, a template argument, deduced by its key.
