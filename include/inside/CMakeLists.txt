@@ -22,6 +22,7 @@ target_sources(
                 inside/detail/error.hpp
                 inside/detail/float_bits.hpp
                 inside/detail/grid_rational.hpp
+                inside/detail/id_text.hpp
                 inside/detail/introspection.hpp
                 inside/detail/lift.hpp
                 inside/detail/limb_algorithms.hpp

@@ -1,0 +1,507 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Internal: include <inside/inside.hpp> (the umbrella), not this directly.
+#ifndef INSIDE_INSIDE_DETAIL_ID_TEXT_HPP
+#define INSIDE_INSIDE_DETAIL_ID_TEXT_HPP
+
+#include <inside/inside/detail/config.hpp>
+
+#include <inside/inside/grid.hpp>
+#include <inside/inside/policy_flag.hpp>
+#include <inside/inside/detail/grid_rational.hpp>
+#include <inside/inside/detail/number_text.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <iterator> // std::size
+#include <limits>
+#include <numeric> // std::gcd
+#include <string_view>
+
+// The text of an id: ins::id<"[0..10) 1/4 clamp"> is a grid and a policy.
+//   id       := interval [step] [flags]                 fields apart by spaces (optional where nothing is ambiguous)
+//   interval := ("[" | "(") num ".." num ("]" | ")")    closed or open limits
+//             | "[" num "]"                            a point
+//   step     := num                                    the notch
+//             | "<" num ">"                            a continuous grid's max denominator
+//   num      := ["-"] number ["/" number]              number: as the _ins literal reads it (0.25, 1e9, 0x1p-4, 1'000)
+//   flags    := flag {"|" flag}                        clamp, wrap, a rounding mode, unsafe
+// Without a step the notch is the one the written limits derive, gcd(1, lo, hi), as grid{lo, hi} derives it,
+// and an open limit moves in by one notch, as bounds::open and bounds::half_open do:
+// "[0..10)" is the grid {0, 9}, "(0..1) 1/4" is {{1/4, 3/4}, per<4>}.
+//
+// The canonical text, one per grid and policy (write_id_text), which parse_id_text reads back:
+//   a notched grid    the limits with the smallest common denominator: [L..U], [L..U+n), (L−n..U] or (L−n..U+n),
+//                     the first of them on a tie (so an integer grid is closed);
+//                     then the notch, unless the written limits derive it
+//                     ([1..9], [0..10) 1/4, [2/5..3/5] 1/10, [1/2..21/2] 1)
+//   a continuous      [L..U] <D>
+//   a point           [v]
+//   numbers           integers in decimal while they fit 64 bits, else 0x and 16 hexadecimal digits a limb;
+//                     a fraction is N/D
+//   flags             clamp or wrap, the rounding mode, unsafe, joined by "|"; the default policy has none
+namespace ins::detail
+{
+  // The capacity of an id's text: a type whose text passes it fails to build.
+  inline constexpr std::size_t key_capacity = 2048;
+
+  // ---- Writing ----
+
+  // Appends to a fixed buffer, and fails the build past its end.
+  // (One check and one loop per piece: every call costs a lot in a constant evaluation.)
+  struct text_out
+  {
+    char*       Out;
+    std::size_t Cap;
+    std::size_t Size{0};
+
+    constexpr void room(std::size_t n) const
+    {
+      if (Size + n >= Cap)
+        constexpr_error<"inside: an id's text passes 2048 characters (detail::key_capacity)">();
+    }
+    constexpr void put(char c)
+    {
+      room(1);
+      Out[Size++] = c;
+    }
+    constexpr void put(std::string_view s)
+    {
+      room(s.size());
+      for (std::size_t i = 0; i < s.size(); ++i)
+        Out[Size++] = s[i];
+    }
+    // A builtin magnitude in decimal: the common case, without a big value.
+    constexpr void put(std::uint64_t v)
+    {
+      std::size_t n{1};
+      for (std::uint64_t t{v}; t >= 10; t /= 10)
+        ++n;
+      room(n);
+      Size += n;
+      for (std::size_t i = Size; i-- > Size - n; v /= 10)
+        Out[i] = static_cast<char>('0' + v % 10);
+    }
+    // An integer past one limb in hexadecimal, 16 digits a limb:
+    // linear in the limbs, where decimal digits would cost a division each.
+    constexpr void put(const grid_int& v)
+    {
+      if (v.negative())
+        put('-');
+      if (v.fits_limb())
+        return put(v.Small);
+      put("0x");
+      for (std::size_t i = v.Size; i-- > 0;)
+        put_hex(v.Limbs[i], i + 1 != v.Size);
+    }
+    constexpr void put_hex(std::uint64_t x, bool pad)
+    {
+      std::size_t n{16};
+      if (!pad)
+      {
+        n = 1;
+        for (std::uint64_t t{x}; t >= 16; t >>= 4)
+          ++n;
+      }
+      room(n);
+      Size += n;
+      for (std::size_t i = Size; i-- > Size - n; x >>= 4)
+        Out[i] = "0123456789abcdef"[x & 15];
+    }
+    // An integer, or N/D.
+    constexpr void put(const grid_number& r)
+    {
+      if (r.fits_rational()) // inline: Num the magnitude, Den the denominator with the sign (0 for zero)
+      {
+        if (r.Den < 0)
+          put('-');
+        put(r.Num);
+        if (const std::uint64_t den{r.Den == 0 ? 1 : abs_den(r.Den)}; den != 1)
+        {
+          put('/');
+          put(den);
+        }
+        return;
+      }
+      put(grid_numerator(r));
+      if (const grid_int d{grid_denominator(r)}; !(d == grid_int{1}))
+      {
+        put('/');
+        put(d);
+      }
+    }
+  };
+
+  // gcd(1, lo, hi), the notch grid{lo, hi} derives: 1 / the lcm of the limits' denominators.
+  // In 64 bits while they fit, else as grid numbers.
+  constexpr grid_number derived_notch(const grid_number& lo, const grid_number& hi)
+  {
+    if (lo.fits_rational() && hi.fits_rational())
+    {
+      const auto den = [](const grid_number& x) { return x.Den == 0 ? std::uint64_t{1} : abs_den(x.Den); };
+      const std::uint64_t a{den(lo)}, b{den(hi)}, q{a / std::gcd(a, b)};
+      if (b <= std::uint64_t{std::numeric_limits<std::int64_t>::max()} / q)
+      {
+        grid_number n;
+        n.Num = 1;
+        n.Den = static_cast<std::int64_t>(q * b);
+        return n;
+      }
+    }
+    return gcd(gcd(grid_number{1}, lo), hi);
+  }
+
+  // The words of the flags, in the order the canonical text writes them, and their bits.
+  struct id_flag
+  {
+    std::string_view Word;
+    policy_flag      Bits;
+    bool             Mode; // a rounding mode: one at most
+  };
+  inline constexpr id_flag id_flags[]{
+    {"clamp"            , clamp            , false},
+    {"wrap"             , wrap             , false},
+    {"round_half_away"  , round_half_away  , true },
+    {"round_half_even"  , round_half_even  , true },
+    {"round_floor"      , round_floor      , true },
+    {"round_ceil"       , round_ceil       , true },
+    {"round_toward_zero", round_toward_zero, true },
+    {"unsafe"           , unsafe           , false},
+    {"cursor"           , cursor_marker    , false}, // the library's mark of a cursor's grid
+  };
+  inline constexpr std::string_view id_flag_list{
+    "a flag: clamp, wrap, round_half_away, round_half_even, round_floor, round_ceil, round_toward_zero or unsafe"};
+
+  // The flags of p: each word whose own bits p holds (a mode and unsafe carry snap, round_toward_zero's bit,
+  // so round_toward_zero is written only for snap alone); bits no word names as a number.
+  consteval void write_flags(text_out& t, policy_flag p)
+  {
+    if (p == 0)
+      return; // checked, the default
+    policy_flag named{0};
+    std::size_t start{t.Size};
+    const auto  word = [&](const id_flag& f)
+    {
+      t.put(t.Size == start ? ' ' : '|');
+      t.put(f.Word);
+      named |= f.Bits;
+    };
+    const bool carries_snap{(p & (mode_bits | unsafe_marker)) != 0};
+    for (const id_flag& f : id_flags)
+    {
+      const bool toward_zero{f.Bits == policy_flag{round_toward_zero}};
+      const policy_flag own{toward_zero ? f.Bits : f.Bits & ~policy_flag{snap}};
+      if ((p & own) == own && !(toward_zero && carries_snap))
+        word(f);
+    }
+    if (named != p) // a mode without snap, or bits no flag names: the number itself
+    {
+      t.Size = start;
+      t.put(' ');
+      t.put(static_cast<std::uint64_t>(p));
+    }
+  }
+
+  // The canonical text of a grid and a policy.
+  consteval void write_id_text(text_out& t, const grid& g, policy_flag p)
+  {
+    if (g.Notch.is_zero())
+    {
+      t.put('[');
+      t.put(g.Lower);
+      if (g.Lower != g.Upper) // continuous
+      {
+        t.put("..");
+        t.put(g.Upper);
+        t.put("] <");
+        t.put(g.MaxDenominator);
+        t.put('>');
+      }
+      else
+        t.put(']');
+      write_flags(t, p);
+      return;
+    }
+    // The limits as written: the four spellings, the smallest common denominator first, closed on a tie.
+    // Integer limits are closed outright (nothing beats a denominator of 1).
+    grid_number lo{g.Lower}, hi{g.Upper};
+    char        open{'['}, close{']'};
+    if (!(g.Lower.is_integer() && g.Upper.is_integer()))
+    {
+      const grid_number below{grid_number::sub(g.Lower, g.Notch)}, above{grid_number::add(g.Upper, g.Notch)};
+      const auto        den = [](const grid_number& a, const grid_number& b)
+      {
+        const grid_int x{grid_denominator(a)}, y{grid_denominator(b)};
+        return x / gcd(x, y) * y;
+      };
+      grid_int best{den(lo, hi)};
+      const auto try_form = [&](const grid_number& l, const grid_number& h, char o, char c)
+      {
+        if (const grid_int d{den(l, h)}; d < best)
+        {
+          best  = d;
+          lo    = l;
+          hi    = h;
+          open  = o;
+          close = c;
+        }
+      };
+      try_form(g.Lower, above, '[', ')');
+      try_form(below, g.Upper, '(', ']');
+      try_form(below, above, '(', ')');
+    }
+    t.put(open);
+    t.put(lo);
+    t.put("..");
+    t.put(hi);
+    t.put(close);
+    if (g.Notch != derived_notch(lo, hi))
+    {
+      t.put(' ');
+      t.put(g.Notch);
+    }
+    write_flags(t, p);
+  }
+
+  // ---- Reading ----
+
+  // What a text spells: a grid and a policy,
+  // or where the reading stopped (Stop, an index into the text) and what was expected there (Expected, else empty).
+  struct id_spec
+  {
+    grid             Grid{};
+    policy_flag      Policy{0};
+    std::size_t      Stop{0};
+    std::string_view Expected{};
+  };
+
+  struct id_reader
+  {
+    std::string_view Text;
+    std::size_t      At{0};
+
+    static constexpr bool is_digit(char c) noexcept { return c >= '0' && c <= '9'; }
+    static constexpr bool is_letter(char c) noexcept { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+
+    [[nodiscard]] constexpr char peek() const noexcept { return At < Text.size() ? Text[At] : '\0'; }
+    constexpr void               skip_spaces() noexcept
+    {
+      while (At < Text.size() && (Text[At] == ' ' || Text[At] == '\t'))
+        ++At;
+    }
+    // Reads s after any spaces, if it comes next.
+    constexpr bool eat(std::string_view s) noexcept
+    {
+      skip_spaces();
+      if (!Text.substr(At).starts_with(s))
+        return false;
+      At += s.size();
+      return true;
+    }
+
+    // An unsigned number token from At: digits and letters, ' separators, a point (not "..") and an exponent's sign.
+    consteval bool unsigned_number(grid_number& out)
+    {
+      const std::size_t first{At};
+      if (!is_digit(peek()))
+        return false;
+      std::uint64_t small{0};
+      bool          plain{true}; // decimal digits only, at most 19: the value without a big number
+      for (; At < Text.size(); ++At)
+      {
+        const char c{Text[At]};
+        if (is_digit(c))
+        {
+          if (At - first == 19)
+            plain = false;
+          small = small * 10 + static_cast<std::uint64_t>(c - '0');
+          continue;
+        }
+        if (is_letter(c) || c == '\'')
+          plain = false;
+        else if (c == '.' && !(At + 1 < Text.size() && Text[At + 1] == '.'))
+          plain = false;
+        else if ((c == '+' || c == '-') && At > first
+                 && (Text[At - 1] == 'e' || Text[At - 1] == 'E' || Text[At - 1] == 'p' || Text[At - 1] == 'P'))
+          plain = false;
+        else
+          break;
+      }
+      if (plain)
+      {
+        out = grid_number{small};
+        return true;
+      }
+      if (scan_exact(Text.data() + first, Text.data() + At, out) != parse_fail::none)
+      {
+        At = first;
+        return false;
+      }
+      return true;
+    }
+    // ["-"] number ["/" number]: true with the value, or false where it stops, with what it expected.
+    consteval bool number(grid_number& out, std::string_view& expected)
+    {
+      skip_spaces();
+      const bool neg{peek() == '-'};
+      if (neg)
+        ++At;
+      if (!unsigned_number(out))
+      {
+        expected = "a number";
+        return false;
+      }
+      if (eat("/"))
+      {
+        skip_spaces();
+        grid_number d;
+        const std::size_t at{At};
+        if (!unsigned_number(d) || d.is_zero())
+        {
+          At       = at;
+          expected = "a denominator above 0";
+          return false;
+        }
+        out = grid_number::div(out, d);
+      }
+      if (neg)
+        out = grid_number::neg(out);
+      return true;
+    }
+  };
+
+  // Reads any spelling of an id's text (see above) into its grid and policy.
+  consteval id_spec parse_id_text(std::string_view text)
+  {
+    id_reader r{text};
+    id_spec   s;
+    const auto stop = [&](std::size_t at, std::string_view expected)
+    {
+      s.Stop     = at;
+      s.Expected = expected;
+      return s;
+    };
+
+    // The interval.
+    r.skip_spaces();
+    const std::size_t open_at{r.At};
+    const bool        open_lo{r.eat("(")};
+    if (!open_lo && !r.eat("["))
+      return stop(r.At, "'[' or '(' to open the interval");
+    grid_number      lo, hi;
+    std::string_view expected;
+    if (!r.number(lo, expected))
+      return stop(r.At, expected);
+    bool point{false}, open_hi{false};
+    if (r.eat(".."))
+    {
+      if (!r.number(hi, expected))
+        return stop(r.At, expected);
+      open_hi = r.eat(")");
+      if (!open_hi && !r.eat("]"))
+        return stop(r.At, "']' or ')' to close the interval");
+    }
+    else if (!open_lo && r.eat("]"))
+    {
+      point = true;
+      hi    = lo;
+    }
+    else
+      return stop(r.At, open_lo ? "'..'" : "'..', or ']' for a point");
+    if (hi < lo)
+      return stop(open_at, "an upper limit at least the lower");
+
+    // The step, or a continuous grid's bound.
+    r.skip_spaces();
+    const std::size_t step_at{r.At};
+    grid_number       notch, bound;
+    bool              has_notch{false};
+    if (r.eat("<"))
+    {
+      if (!r.number(bound, expected))
+        return stop(r.At, expected);
+      if (!r.eat(">"))
+        return stop(r.At, "'>' to close the max denominator");
+      if (point)
+        return stop(step_at, "no max denominator on a point");
+      if (!(bound > 0) || !bound.is_integer())
+        return stop(step_at + 1, "a max denominator that is a whole number above 0");
+      if (bound < grid_number{grid_denominator(lo)} || bound < grid_number{grid_denominator(hi)})
+        return stop(step_at + 1, "a max denominator at least the limits' denominators");
+      if (open_lo || open_hi)
+        return stop(open_lo ? open_at : step_at, "closed limits: a continuous grid has no next point to move in to");
+      if (lo == hi)
+        return stop(open_at, "an upper limit above the lower on a continuous grid");
+    }
+    else if (r.peek() == '-' || id_reader::is_digit(r.peek()))
+    {
+      if (!r.number(notch, expected))
+        return stop(r.At, expected);
+      if (point)
+        return stop(step_at, "no step on a point");
+      if (!(notch > 0))
+        return stop(step_at, "a step above 0");
+      has_notch = true;
+    }
+
+    // The flags.
+    r.skip_spaces();
+    const bool has_flags{id_reader::is_letter(r.peek())};
+    if (has_flags)
+    {
+      int modes{0};
+      do
+      {
+        r.skip_spaces();
+        const std::size_t at{r.At};
+        std::size_t       end{at};
+        while (end < text.size() && (id_reader::is_letter(text[end]) || text[end] == '_'))
+          ++end;
+        const std::string_view w{text.substr(at, end - at)};
+        const id_flag*         found{nullptr};
+        for (const id_flag& f : id_flags)
+          if (f.Word == w)
+            found = &f;
+        if (found == nullptr)
+          return stop(at, id_flag_list);
+        if (found->Mode && ++modes > 1)
+          return stop(at, "one rounding mode");
+        if ((found->Bits == policy_flag{clamp} && (s.Policy & wrap) != 0)
+            || (found->Bits == policy_flag{wrap} && (s.Policy & clamp) != 0))
+          return stop(at, "clamp or wrap, not both");
+        s.Policy |= found->Bits;
+        r.At      = end;
+      } while (r.eat("|"));
+    }
+    r.skip_spaces();
+    if (r.At != text.size())
+      return stop(r.At, has_flags                ? "'|' and a flag, or the end"
+                        : has_notch || bound > 0 ? "a flag, or the end"
+                                                 : "a step, <max denominator>, a flag, or the end");
+
+    // The grid.
+    if (point)
+    {
+      s.Grid = grid{lo};
+      return s;
+    }
+    if (bound > 0)
+    {
+      s.Grid = grid{ins::interval{lo, hi}, max_denominator{bound}};
+      return s;
+    }
+    if (!has_notch)
+      notch = derived_notch(lo, hi);
+    if (!grid_divides_evenly(grid_number::sub(hi, lo), notch))
+      return stop(step_at, "a step that divides upper - lower");
+    if (open_lo)
+      lo = grid_number::add(lo, notch);
+    if (open_hi)
+      hi = grid_number::sub(hi, notch);
+    if (hi < lo)
+      return stop(open_at, "a grid point between the open limits");
+    s.Grid = grid{ins::interval{lo, hi}, notch};
+    return s;
+  }
+} // namespace ins::detail
+
+#endif // INSIDE_INSIDE_DETAIL_ID_TEXT_HPP

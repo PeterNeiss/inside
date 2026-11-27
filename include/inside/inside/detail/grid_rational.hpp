@@ -346,22 +346,19 @@ namespace ins::detail
     return grid_number{q};
   }
 
-  // parse_grid_literal: the exact literal, the whole literal grammar
-  // (scan_number: 0x and 0b prefixes, ' separators, a point, an e±n or p±n exponent) taken exactly, of any size.
-  // The _g literal, and _ins (its point); _r parses the same grammar into the 64-bit rational.
-  template <char... Chars>
-  consteval grid_number parse_grid_literal()
+  // An unsigned number in [first, last) in the whole literal grammar
+  // (scan_number: 0x and 0b prefixes, ' separators, a point, an e±n or p±n exponent), taken exactly, of any size:
+  // the scan's failure (e_exponent_numerator_overflow: an exponent past 10000), else none and the value in out.
+  // The _g and _ins literals (parse_grid_literal) and an id's text (detail/id_text.hpp) read numbers here.
+  consteval parse_fail scan_exact(const char* first, const char* last, grid_number& out)
   {
-    if constexpr (octal_literal<Chars...>())
-      constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
-    constexpr char text[] = {Chars...};
     // The value is m·B^e (B the radix), times 2^±n or 10^±n.
     // Zero digits are held back (zeros) and multiplied in only before a later nonzero digit,
     // so trailing zeros (1.000…) never grow m.
     grid_int m{0};
     int      e{0}, zeros{0};
     const scanned_number sc{scan_number(
-      text, text + sizeof(text),
+      first, last,
       [&](int d, bool in_frac, int b)
       {
         if (d == 0)
@@ -375,14 +372,15 @@ namespace ins::detail
         e -= in_frac;
         return true;
       })};
-    if (sc.Fail == parse_fail::empty)
-      constexpr_error<"_g/_ins literal: expected digits">();
     if (sc.Fail != parse_fail::none)
-      constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
+      return sc.Fail;
     if (sc.Exp > 10000)
-      constexpr_error<"_g/_ins literal: exponent too large">();
+      return parse_fail::e_exponent_numerator_overflow;
     if (m == grid_int{0})
-      return grid_number{0};
+    {
+      out = grid_number{0};
+      return parse_fail::none;
+    }
     grid_int num{m}, den{1};
     const auto scale = [&](int x, int k) // ·x^k
     {
@@ -392,7 +390,27 @@ namespace ins::detail
     scale(sc.Base, e + zeros);
     if (sc.HasP || sc.HasE)
       scale(sc.HasP ? 2 : 10, sc.ExpNeg ? -sc.Exp : sc.Exp);
-    return grid_number{num, den};
+    out = grid_number{num, den};
+    return parse_fail::none;
+  }
+
+  // parse_grid_literal: the exact literal (scan_exact), of any size.
+  // The _g literal, and _ins (its point); _r parses the same grammar into the 64-bit rational.
+  template <char... Chars>
+  consteval grid_number parse_grid_literal()
+  {
+    if constexpr (octal_literal<Chars...>())
+      constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
+    constexpr char text[] = {Chars...};
+    grid_number    out;
+    const parse_fail f{scan_exact(text, text + sizeof(text), out)};
+    if (f == parse_fail::empty)
+      constexpr_error<"_g/_ins literal: expected digits">();
+    if (f == parse_fail::e_exponent_numerator_overflow)
+      constexpr_error<"_g/_ins literal: exponent too large">();
+    if (f != parse_fail::none)
+      constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
+    return out;
   }
 } // namespace ins::detail
 
