@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+An inside type can be spelled as text, and prints the same way:
+`ins::id<"[0..10) 1/4 clamp">` is the grid from 0 to 39/4 in quarters that
+clamps, and diagnostics print it as `ins::id<ins::key{"[0..10) 1/4 clamp"}>`.
+Every spelling of a grid and policy is one type, and the operators' results
+read the same way: `decltype(id<"[1..9]">{} + id<"[1..9]">{})` is
+`id<"[2..18]">`. A string `_ins` literal is a value with its type:
+`"42 [1..100)"_ins` ([spelling a type as text](docs/guide/id.md)).
+
 Shorter type names for insides and quantities: a grid holds its limits as
 members of their own, a zero grid number is all zero bits (so a mangled name
 leaves it out), kind and origin references are plain pointers, and a
@@ -10,6 +18,13 @@ alone. A quantity in metres prints in 232 characters instead of 404.
 
 ### Upgrading from 0.11.0
 
+- The inside type is `id<key K>`, and `inside<G, P>` an alias of it
+  (`id<key{G, P}>`), so every `inside<…>` spelling works as before. An alias
+  is not deduced and cannot be instantiated explicitly: write
+  `template <key K> f(id<K>)` for `template <grid G, policy_flag P>
+  f(inside<G, P>)`, a partial specialization on `id<K>`, and
+  `template struct id<…>` for `template class inside<…>`. `grid_of<T>` and
+  `policy_of<T>` read the grid and the policy as before.
 - `grid`'s members are `Lower`, `Upper`, `Notch` and `MaxDenominator`; the
   nested `Interval` is gone. `g.interval()` gives the limits as an interval,
   and a structured binding of a grid takes four names. `grid{{lo, hi}, notch}`
