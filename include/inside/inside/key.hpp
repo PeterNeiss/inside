@@ -206,7 +206,25 @@ namespace ins
         }
         r.skip_spaces();
         Typed = r.At != text.size();
-        Key   = Typed ? key_of_text<text_hook<N>>(raw_key(text.substr(r.At))) : key_of(grid{Value}, 0);
+        if (!Typed)
+        {
+          Key = key_of(grid{Value}, 0);
+          return;
+        }
+        // A unit alone ("42 [km/h]"): the point in that unit, [42] [km/h].
+        const std::string_view rest{text.substr(r.At)};
+        if (const id_spec s{parse_id_text(rest)}; rest.starts_with('[') && s.Stop == 1 && !s.Expected.empty())
+        {
+          char     typed[key_capacity]{};
+          text_out t{typed, sizeof typed};
+          t.put('[');
+          t.put(Value);
+          t.put("] ");
+          t.put(rest);
+          Key = key_of_text<text_hook<N>>(raw_key({typed, t.Size}));
+          return;
+        }
+        Key = key_of_text<text_hook<N>>(raw_key(rest));
       }
     };
 

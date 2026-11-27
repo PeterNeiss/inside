@@ -1551,7 +1551,9 @@ namespace ins
     // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{just<v>} stores it:
     // "200 [0..99] clamp"_ins is 99, "0.3 [0..1] 1/4 round_half_away"_ins is 1/4, and a value the type cannot hold
     // does not compile. Without a type, "42"_ins is the point 42_ins.
+    // (A type with a unit is a quantity's: units/detail/quantity.hpp has that literal.)
     template <detail::value_text T>
+      requires(!detail::unit_key<T.Key>)
     consteval auto operator""_ins()
     {
       static_assert(T.NumberOk, detail::value_text_error(T.Key));

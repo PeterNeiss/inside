@@ -6147,7 +6147,25 @@ namespace ins
         }
         r.skip_spaces();
         Typed = r.At != text.size();
-        Key   = Typed ? key_of_text<text_hook<N>>(raw_key(text.substr(r.At))) : key_of(grid{Value}, 0);
+        if (!Typed)
+        {
+          Key = key_of(grid{Value}, 0);
+          return;
+        }
+        // A unit alone ("42 [km/h]"): the point in that unit, [42] [km/h].
+        const std::string_view rest{text.substr(r.At)};
+        if (const id_spec s{parse_id_text(rest)}; rest.starts_with('[') && s.Stop == 1 && !s.Expected.empty())
+        {
+          char     typed[key_capacity]{};
+          text_out t{typed, sizeof typed};
+          t.put('[');
+          t.put(Value);
+          t.put("] ");
+          t.put(rest);
+          Key = key_of_text<text_hook<N>>(raw_key({typed, t.Size}));
+          return;
+        }
+        Key = key_of_text<text_hook<N>>(raw_key(rest));
       }
     };
 
@@ -13373,7 +13391,9 @@ namespace ins
     // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{just<v>} stores it:
     // "200 [0..99] clamp"_ins is 99, "0.3 [0..1] 1/4 round_half_away"_ins is 1/4, and a value the type cannot hold
     // does not compile. Without a type, "42"_ins is the point 42_ins.
+    // (A type with a unit is a quantity's: units/detail/quantity.hpp has that literal.)
     template <detail::value_text T>
+      requires(!detail::unit_key<T.Key>)
     consteval auto operator""_ins()
     {
       static_assert(T.NumberOk, detail::value_text_error(T.Key));
@@ -28388,6 +28408,22 @@ namespace ins
     template <class V>
     constexpr basic_quantity(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
   };
+
+  // A value with its quantity type: "42 [1..100) [km/h]"_ins is 42 km/h of type id<"[1..99] [km/h]">, the number
+  // in the type's unit, stored while compiling as Q{just<v>, unit} stores it; "42 [km/h]"_ins is the point 42 km/h.
+  // (Without a unit, the literal is an inside's: inside/detail/core.hpp.)
+  template <key K>
+    requires detail::unit_key<K>
+  struct id<K>;
+  inline namespace literals
+  {
+    template <detail::value_text T>
+      requires detail::unit_key<T.Key>
+    consteval auto operator""_ins()
+    {
+      return id<T.Key>{just<T.Value>, unit_t<detail::key_unit<T.Key>>{}};
+    }
+  } // namespace literals
 
   // The type a key with a unit names: id<"[0..100] [km/h]">, a quantity on that unit and its own kind,
   // whose number is id<"[0..100]">. Every member is basic_quantity's.

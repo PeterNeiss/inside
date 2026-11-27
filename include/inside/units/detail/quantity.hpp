@@ -873,6 +873,22 @@ namespace ins
     constexpr basic_quantity(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
   };
 
+  // A value with its quantity type: "42 [1..100) [km/h]"_ins is 42 km/h of type id<"[1..99] [km/h]">, the number
+  // in the type's unit, stored while compiling as Q{just<v>, unit} stores it; "42 [km/h]"_ins is the point 42 km/h.
+  // (Without a unit, the literal is an inside's: inside/detail/core.hpp.)
+  template <key K>
+    requires detail::unit_key<K>
+  struct id<K>;
+  inline namespace literals
+  {
+    template <detail::value_text T>
+      requires detail::unit_key<T.Key>
+    consteval auto operator""_ins()
+    {
+      return id<T.Key>{just<T.Value>, unit_t<detail::key_unit<T.Key>>{}};
+    }
+  } // namespace literals
+
   // The type a key with a unit names: id<"[0..100] [km/h]">, a quantity on that unit and its own kind,
   // whose number is id<"[0..100]">. Every member is basic_quantity's.
   template <key K>
