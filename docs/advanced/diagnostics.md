@@ -1,48 +1,39 @@
 # Reading compiler errors
 
-An inside is `inside<grid G, policy_flag P>`, and a quantity is
-`quantity<reference R, Rep>`. Compilers print template arguments
-structurally, so an error shows the *whole* type. That looks noisy until you
-know what each part is. This page decodes the types, lists the named messages
-the library gives instead of bare "could not convert" errors, and shows how to
-probe an operation without an error at all.
+An inside is `id<key K>`, its grid and policy as text (`inside<G, P>` names
+the same type), and a quantity is `quantity<reference R, Rep>`. Compilers
+print template arguments structurally, so an error shows the *whole* type.
+This page decodes the types, lists the named messages the library gives
+instead of bare "could not convert" errors, and shows how to probe an
+operation without an error at all.
 
 ## Decoding an inside
 
-GCC spells every name out. The point `3_ins`:
+An inside prints as the text that spells it ([spelling a type as
+text](../guide/id.md)). The point `3_ins`, the sum of two digits, and a
+heading:
 
 ```text
-inside<grid{grid_number{3, 1, 0}, grid_number{3, 1, 0},
-            grid_number{0, 0, 0}, grid_number{0, 0, 0}}, 0>
+ins::id<ins::key{"[3]"}>
+ins::id<ins::key{"[2..18]"}>
+ins::id<ins::key{"[0..359] wrap"}>
 ```
 
-GCC also prefixes `ins::`, shortened here. The first two grid numbers are
-the limits, the next one the notch, the last the bound:
+The text is canonical: one per grid and policy, however the type was written,
+so `id<"[0..360) wrap">`, `inside<{0, 360, bounds::half_open}, wrap>` and the
+text above are one type.
 
-| Part | Means |
+| Text | Means |
 |---|---|
-| `grid_number{num, den, big}` | a grid number, an exact fraction in lowest terms: `num` the numerator's magnitude, `den` the denominator with the sign, so −3 is `grid_number{3, -1, 0}` and 1/100 is `grid_number{1, 100, 0}`. Zero is `grid_number{0, 0, 0}`. A value past 64 bits is `grid_number{1, 0, …}`, with `big` pointing at the interned value |
-| limits | `Lower` and `Upper`, both included |
-| notch | the step. 0 is a *continuous* grid or a point, not a missing value |
-| bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([exact arithmetic](exact-arithmetic.md#bounded-continuous-grids)); 0 otherwise |
-| the policy `P` | a bitset, printed as an integer: decode it with the table below |
-
-| Bit | Decimal | Flag |
-|---|---:|---|
-| `1<<4` | 16 | `round_toward_zero`: the rounding bit, which every rounding mode carries |
-| `1<<5` | 32 | `round_half_away` (with the rounding bit: 48) |
-| `1<<6` | 64 | `round_floor` (with the rounding bit: 80) |
-| `1<<7` | 128 | `round_ceil` (with the rounding bit: 144) |
-| `1<<8` | 256 | `round_half_even` (with the rounding bit: 272) |
-| `1<<32` | 4294967296 | `clamp` |
-| `1<<33` | 8589934592 | `wrap` |
-| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds the rounding bit: 68719476752); the only bit that turns runtime checks off |
-| `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
-
-The other bits are unused, and an inside rejects a policy that holds one or
-names two rounding modes. `checked`, the default, has no bits: `0` is
-`inside<G>`, and `48` is `round_half_away`. Every policy without the `unsafe`
-bit is checked. (The definitions are in `include/inside/inside/policy_flag.hpp`.)
+| `[0..9]` | the limits, both included, and the step the limits derive: 1 here |
+| `[0..10) 1/4` | the limits written with the smallest common denominator (an open limit moves in by one step: the last value is 39/4), then the step |
+| `(0..1) 1/1000` | both limits open: 1/1000 … 999/1000 |
+| `[0..1] <1000>` | a continuous grid: every fraction with a denominator of at most 1000 ([exact arithmetic](exact-arithmetic.md#bounded-continuous-grids)) |
+| `[3]` | a point: one value, held in the type (`[3..3]` is a grid of step 1 with one value) |
+| `0x1p70`, `0x3fffffffffffffffff` | a number past 64 bits, in hexadecimal, as m·2^e where shorter |
+| `clamp`, `wrap`, `round_half_away`, `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`, `unsafe` | the policy, joined by `\|`; no word is `checked`, the default |
+| `cursor` | a `cursor<T, Step>` |
+| `bits_N` | policy bits no flag names: a type the library rejects |
 
 ## Decoding a quantity
 
@@ -52,14 +43,14 @@ a named unit and its own kind, the most common one (`si::metre`,
 km:
 
 ```text
-quantity<reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}, inside<…>>
+quantity<reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}, id<…>>
 ```
 
 | Part | Means |
 |---|---|
 | `unit_atom{(& si::metre_def), 3, 1}` | a named unit (`si::metre`, by its definition object), its decimal prefix as a power of 10 (3: kilo), and its exponent (1). Its kind is the unit's own (any length) |
 | `false` | the reference holds the unit alone |
-| `inside<…>` | the number, decoded as above |
+| `id<…>` | the number, decoded as above |
 
 Any other reference holds its parts: a kind, a unit of several factors or a
 scale, or a product of kinds. A velocity in m/s:
@@ -71,7 +62,7 @@ quantity<reference{ref_form{ref_parts{(& isq::velocity_def),
                                                  magnitude{grid_number{1, 1, 0}, 0}},
                                       false, recipe{kind_factor [6](), 0}}},
                    true},
-         inside<…>>
+         id<…>>
 ```
 
 | Part | Means |
@@ -120,8 +111,8 @@ fit. The fix is in *your* signature: give it a wide enough grid, or make it
 generic:
 
 ```cpp
-template <grid G, policy_flag P>
-auto square(inside<G, P> x) { return x * x; }
+template <key K>
+auto square(id<K> x) { return x * x; }
 ```
 
 ## Named reasons for a store
@@ -163,7 +154,7 @@ A plain number (an `int`, a `double`) goes through a
 run-time value is the compiler's own message, with the variable named:
 
 ```text
-error: call to consteval function 'inside<…>(n)' is not a constant expression
+error: call to consteval function 'x.ins::id<ins::key{"[0..9]"}>::id<int>(n)' is not a constant expression
 error: 'n' is not a constant expression
 ```
 
