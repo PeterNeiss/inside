@@ -43,6 +43,28 @@ alone. A quantity in metres prints in 232 characters instead of 404.
 
 ### Changed
 
+- An inside type holds its grid and policy as text (`ins::key`), so it
+  prints as it is spelled. `tools/symbol_lengths.sh`, GCC 16, characters,
+  0.11.0 → the shorter names below → the text:
+
+  | Type | Mangled | Printed |
+  |---|---|---|
+  | `inside<{0, 100}>` | 135 → 96 → 86 | 147 → 132 → 29 |
+  | `inside<{{0, 1}, per<100>}, round_half_away>` | 136 → 97 → 196 | 151 → 136 → 49 |
+  | `inside<{{0, 1}, max_denominator{1000}}>` | 136 → 103 → 111 | 148 → 133 → 34 |
+  | `quantity<si::metre, …>` | 373 → 206 → 196 | 404 → 232 → 129 |
+  | a point in ℃ | 469 → 260 → 246 | 508 → 276 → 173 |
+  | km/h | 377 → 350 → 355 | 429 → 448 → 345 |
+
+  A mangled name holds about 5 characters per character of the text, so a
+  long text (flag words) mangles longer than the grid numbers did. The 12
+  injected errors of `examples/` print 95 507 characters (0.11.0: 122 484).
+  Compile time (`perf stat`, instructions, against the shorter names):
+  `inside.hpp` +2.0 %, `units.hpp` +0.5 %, 200 inside expressions +15 %, 200
+  quantity expressions +9 %, `units.test.cpp` +6 %, `arithmetic.test.cpp`
+  +8 %. Run time: the instruction counts of the perf workload are unchanged.
+  The tests and examples form 4018 types; their longest text is 1033
+  characters, of the 2048 a key holds.
 - Type names (`tools/symbol_lengths.sh`, GCC 16, characters):
 
   | Type | Mangled before → now | Printed before → now |

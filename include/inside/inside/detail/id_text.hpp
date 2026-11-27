@@ -502,19 +502,20 @@ namespace ins::detail
           s.Policy |= static_cast<policy_flag>(bits.Num);
           continue;
         }
-        const id_flag* found{nullptr};
-        for (const id_flag& f : id_flags)
-          if (f.Word == w)
-            found = &f;
-        if (found == nullptr)
+        // (By index: GCC under -fsanitize=pointer-compare rejects a pointer test in a constant evaluation.)
+        std::size_t i{0};
+        while (i < std::size(id_flags) && id_flags[i].Word != w)
+          ++i;
+        if (i == std::size(id_flags))
           return stop(at, id_flag_list);
-        if (check && found->Mode && ++modes > 1)
+        const id_flag& found{id_flags[i]};
+        if (check && found.Mode && ++modes > 1)
           return stop(at, "one rounding mode");
         if (check
-            && ((found->Bits == policy_flag{clamp} && (s.Policy & wrap) != 0)
-                || (found->Bits == policy_flag{wrap} && (s.Policy & clamp) != 0)))
+            && ((found.Bits == policy_flag{clamp} && (s.Policy & wrap) != 0)
+                || (found.Bits == policy_flag{wrap} && (s.Policy & clamp) != 0)))
           return stop(at, "clamp or wrap, not both");
-        s.Policy |= found->Bits;
+        s.Policy |= found.Bits;
         r.At      = end;
       } while (r.eat("|"));
     }
