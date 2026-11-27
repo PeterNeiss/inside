@@ -397,6 +397,7 @@ namespace ins::math
   {
     // The constant correctly rounded onto an inside type (a grid with a rounding mode), computed while compiling.
     template <key K>
+      requires(!ins::detail::unit_key<K>)
     [[nodiscard]] constexpr operator id<K>() const
     {
       return detail::constants::stored<id<K>, Id>;

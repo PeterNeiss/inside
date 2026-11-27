@@ -216,7 +216,9 @@ namespace ins
     static constexpr policy_flag P{detail::key_policy<Key>};
 
   public:
-    static_assert(Key.ok(), detail::key_error(Key));
+    static_assert(Key.ok(), detail::key_error<detail::text_hook<0>>(Key));
+    static_assert(detail::key_spec<Key>.Unit.empty(),
+                  "inside: a type with a unit is a quantity - include <inside/units.hpp> before naming it");
     static_assert(grid::validate<G>());
     static_assert((P & ~detail::known_bits) == 0,
                   "inside: the policy holds bits no flag names - build it from the flags (clamp | round_floor)");
@@ -1568,14 +1570,14 @@ namespace ins
 // Not random access: t - u is arithmetic, an inside, not a distance.
 // Plain insides get no traits, so they stay numbers.
 template <ins::key K>
-  requires(ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
+  requires(!ins::detail::unit_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
 struct std::incrementable_traits<ins::id<K>>
 {
   using difference_type = std::ptrdiff_t;
 };
 
 template <ins::key K>
-  requires(ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
+  requires(!ins::detail::unit_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
 struct std::indirectly_readable_traits<ins::id<K>>
 {
   using value_type = ins::detail::cursor_value_t<ins::detail::key_grid<K>, ins::detail::key_policy<K>>;

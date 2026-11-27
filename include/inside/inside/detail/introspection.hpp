@@ -24,6 +24,7 @@ namespace ins
     template <class>
     inline constexpr bool is_inside_v = false;
     template <key K>
+      requires(!unit_key<K>)
     inline constexpr bool is_inside_v<id<K>> = true;
   } // namespace detail
 
@@ -38,6 +39,7 @@ namespace ins
     template <typename B>
     struct inside_params;
     template <key K>
+      requires(!unit_key<K>)
     struct inside_params<id<K>>
     {
       static constexpr grid grid_v = key_grid<K>;
@@ -52,6 +54,7 @@ namespace ins
     template <typename T>
     inline constexpr policy_flag policy_of_impl = none;
     template <key K>
+      requires(!unit_key<K>)
     inline constexpr policy_flag policy_of_impl<id<K>> = key_policy<K>;
     template <policy_flag V>
     inline constexpr policy_flag policy_of_impl<flag<V>> = V;

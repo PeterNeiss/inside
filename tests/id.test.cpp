@@ -204,7 +204,7 @@ TEST(IdTextTest, a_wrong_text_stops_where_it_goes_wrong) {
     static_assert(stops("[0..9] clampy", 7, "a flag:"));
     static_assert(stops("[0..9] clamp|wrap", 13, "clamp or wrap"));
     static_assert(stops("[0..9] round_floor|round_ceil", 19, "one rounding mode"));
-    static_assert(stops("[0..9] 1 2", 9, "a flag, or the end"));
+    static_assert(stops("[0..9] 1 2", 9, "a [unit], a flag, or the end"));
     static_assert(stops("[0..9] clamp 2", 13, "'|' and a flag, or the end"));
     static_assert(stops("[0..9] 2", 7, "a step that divides"));
     static_assert(stops("[0..9] x", 7, "a flag:"));

@@ -68,6 +68,8 @@ target_sources(
                 units/detail/point.hpp
                 units/detail/define.hpp
                 units/detail/quantity.hpp
+                units/detail/unit_grammar.hpp
+                units/detail/unit_key.hpp
                 units/geoalg.hpp
                 units/io.hpp
                 units/mdspan.hpp

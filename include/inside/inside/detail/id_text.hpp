@@ -19,12 +19,13 @@
 #include <string_view>
 
 // The text of an id: ins::id<"[0..10) 1/4 clamp"> is a grid and a policy.
-//   id       := interval [step] [flags]                 fields apart by spaces (optional where nothing is ambiguous)
+//   id       := interval [step] ["[" unit "]"] [flags]  fields apart by spaces (optional where nothing is ambiguous)
 //   interval := ("[" | "(") num ".." num ("]" | ")")    closed or open limits
 //             | "[" num "]"                            a point
 //   step     := num                                    the notch
 //             | "<" num ">"                            a continuous grid's max denominator
 //   num      := ["-"] number ["/" number]              number: as the _ins literal reads it (0.25, 1e9, 0x1p-4, 1'000)
+//   unit     := a unit's text (km/h, kg*m^2/s^2, [1/381*ft]): a quantity (units/detail/unit_key.hpp reads it)
 //   flags    := flag {"|" flag}                        clamp, wrap, a rounding mode, unsafe
 // Without a step the notch is the one the written limits derive, gcd(1, lo, hi), as grid{lo, hi} derives it,
 // and an open limit moves in by one notch, as bounds::open and bounds::half_open do:
@@ -230,8 +231,19 @@ namespace ins::detail
   }
 
   // The canonical text of a grid and a policy.
-  consteval void write_id_text(text_out& t, const grid& g, policy_flag p)
+  // (unit: a quantity's unit, its canonical text, written in brackets before the flags.)
+  consteval void write_id_text(text_out& t, const grid& g, policy_flag p, std::string_view unit = {})
   {
+    const auto unit_and_flags = [&]
+    {
+      if (!unit.empty())
+      {
+        t.put(" [");
+        t.put(unit);
+        t.put(']');
+      }
+      write_flags(t, p);
+    };
     if (g.Notch.is_zero())
     {
       t.put('[');
@@ -246,7 +258,7 @@ namespace ins::detail
       }
       else
         t.put(']');
-      write_flags(t, p);
+      unit_and_flags();
       return;
     }
     // The limits as written: the four spellings, the smallest common denominator first, closed on a tie.
@@ -287,7 +299,7 @@ namespace ins::detail
       t.put(' ');
       t.put(g.Notch);
     }
-    write_flags(t, p);
+    unit_and_flags();
   }
 
   // ---- Reading ----
@@ -300,6 +312,8 @@ namespace ins::detail
     policy_flag      Policy{0};
     std::size_t      Stop{0};
     std::string_view Expected{};
+    std::string_view Unit{}; // a quantity's unit, as written (empty: an inside); within the text read
+    std::size_t      UnitAt{0};
   };
 
   struct id_reader
@@ -479,6 +493,33 @@ namespace ins::detail
       has_notch = true;
     }
 
+    // A unit: what lies between "[" and its "]" (a scaled unit has brackets of its own: [[1/381*ft]]).
+    r.skip_spaces();
+    bool has_unit{false};
+    if (r.peek() == '[')
+    {
+      std::size_t       depth{0}, end{r.At};
+      const std::size_t first{r.At + 1};
+      for (; end < text.size(); ++end)
+        if (text[end] == '[')
+          ++depth;
+        else if (text[end] == ']' && --depth == 0)
+          break;
+      if (end == text.size())
+        return stop(r.At, "']' to close the unit");
+      std::size_t ub{first}, ue{end}; // (by index: a sanitized build rejects pointer arithmetic across views)
+      while (ub < ue && text[ub] == ' ')
+        ++ub;
+      while (ue > ub && text[ue - 1] == ' ')
+        --ue;
+      if (ub == ue)
+        return stop(first, "a unit");
+      s.Unit   = text.substr(ub, ue - ub);
+      s.UnitAt = ub;
+      r.At     = end + 1;
+      has_unit = true;
+    }
+
     // The flags.
     r.skip_spaces();
     const bool has_flags{id_reader::is_letter(r.peek())};
@@ -522,8 +563,9 @@ namespace ins::detail
     r.skip_spaces();
     if (r.At != text.size())
       return stop(r.At, has_flags                ? "'|' and a flag, or the end"
-                        : has_notch || has_bound ? "a flag, or the end"
-                                                 : "a step, <max denominator>, a flag, or the end");
+                        : has_unit               ? "a flag, or the end"
+                        : has_notch || has_bound ? "a [unit], a flag, or the end"
+                                                 : "a step, <max denominator>, a [unit], a flag, or the end");
 
     // The grid.
     if (point)
