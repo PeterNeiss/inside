@@ -1,7 +1,8 @@
 # Reading compiler errors
 
 An inside is `id<key K>`, its grid and policy as text (`inside<G, P>` names
-the same type), and a quantity is `quantity<reference R, Rep>`. Compilers
+the same type), and so is a quantity whose unit has a text; any other
+quantity is `basic_quantity<reference R, Rep>`. Compilers
 print template arguments structurally, so an error shows the *whole* type.
 This page decodes the types, lists the named messages the library gives
 instead of bare "could not convert" errors, and shows how to probe an
@@ -37,13 +38,21 @@ text above are one type.
 
 ## Decoding a quantity
 
-GCC prints a quantity's reference as the structure behind it. A quantity in
-a named unit and its own kind, the most common one (`si::metre`,
-`si::kilogram`, `si::kilo(si::metre)`), holds that unit alone. A quantity in
-km:
+A quantity in a unit and the unit's own kind, the most common one
+(`si::metre`, `si::kilo(si::metre) / si::hour`, a unit of your own), prints
+as its text, the unit in brackets after the number's
+([quantities](../guide/id.md#quantities)):
 
 ```text
-quantity<reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}, id<…>>
+ins::id<ins::key{"[0..100] [km/h]"}>
+```
+
+A member of a quantity is `basic_quantity`'s, the class every quantity is,
+and prints its reference as the structure behind it. A unit and its own kind
+holds that unit alone, here km:
+
+```text
+basic_quantity<reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}, id<…>>
 ```
 
 | Part | Means |
@@ -53,16 +62,17 @@ quantity<reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}, id<…>
 | `id<…>` | the number, decoded as above |
 
 Any other reference holds its parts: a kind, a unit of several factors or a
-scale, or a product of kinds. A velocity in m/s:
+scale, or a product of kinds. Such a quantity has no text: it is the
+`basic_quantity` itself. A velocity in m/s:
 
 ```text
-quantity<reference{ref_form{ref_parts{(& isq::velocity_def),
-                                      unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 0, 1},
-                                                               unit_atom{(& si::second_def), 0, -1}},
-                                                 magnitude{grid_number{1, 1, 0}, 0}},
-                                      false, recipe{kind_factor [6](), 0}}},
-                   true},
-         id<…>>
+basic_quantity<reference{ref_form{ref_parts{(& isq::velocity_def),
+                                            unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 0, 1},
+                                                                     unit_atom{(& si::second_def), 0, -1}},
+                                                       magnitude{grid_number{1, 1, 0}, 0}},
+                                            false, recipe{kind_factor [6](), 0}}},
+                         true},
+               id<…>>
 ```
 
 | Part | Means |

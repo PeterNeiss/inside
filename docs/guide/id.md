@@ -1,12 +1,14 @@
 # Spelling a type as text
 
-An inside type can be written as one string, its interval, step and policy:
+An inside type can be written as one string, its interval, step and policy,
+and a quantity's type adds its unit:
 
 ```cpp
 using digit    = ins::id<"[0..9]">;
 using quarters = ins::id<"[0..10) 1/4">;              // 0, 1/4, …, 39/4
 using heading  = ins::id<"[0..360) wrap">;            // 0 … 359, modular
 using ratio    = ins::id<"[0..1] 1/1000 clamp|round_half_away">;
+using speed    = ins::id<"[0..300] [km/h] clamp">;      // a quantity
 ```
 
 The type prints as it is written, `ins::id<ins::key{"[0..10) 1/4"}>`, and so
@@ -28,6 +30,7 @@ A string names the same type as the grid and policy written as values:
 | `[0..10) 1/4` | a step: any positive number that divides the interval as written |
 | `[0..1] <1000>` | a continuous grid: every fraction in the interval with a denominator of at most 1000 ([exact arithmetic](../advanced/exact-arithmetic.md#bounded-continuous-grids)). Its limits are closed |
 | `[3]` | a point: one value, held in the type (`3_ins`) |
+| `[km/h]` | a unit: the type is a quantity ([quantities](#quantities)) |
 | `clamp`, `wrap`, `round_half_away`, `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`, `unsafe` | the policy ([policies](policies.md)), joined by `\|`: at most one rounding mode, not both `clamp` and `wrap`. No word is `checked`, the default |
 
 Numbers read as the `_ins` literal reads them: `-5`, `2/5`, `0.25`, `1e9`,
@@ -59,6 +62,37 @@ error: static assertion failed: inside: id<"[0..10] 3">: expected a step that di
 A type's text has room for 2048 characters; a grid whose numbers need more
 (limits of thousands of digits) has no name, and says so.
 
+## Quantities
+
+A unit in brackets, after the step, makes the type a quantity:
+`id<"[0..300] [km/h]">` is `quantity<si::kilo(si::metre) / si::hour, id<"[0..300]">>`,
+the same type. The unit is read by its symbol, with prefixes and powers, as a
+quantity's text reads one (`km/h`, `kg*m^2/s^2`, `µs`, `[1/381 ft]` for a
+scaled unit), among the unit tags visible where the type is named: the
+catalog's and your own (`base_unit<"cts", "count">`, `defined_by<cent_def>`,
+`unit<"ftm", …>`). The canonical text is ASCII (`us`, not `µs`).
+
+Results read the same way where their unit is a unit's own:
+
+```cpp
+using metres = ins::id<"[1..9] [m]">;
+static_assert(std::is_same_v<decltype(metres{} + metres{}), ins::id<"[2..18] [m]">>);
+static_assert(std::is_same_v<decltype(ins::id<"[0..1] [km]">{} + metres{}), ins::id<"[1..1009] [m]">>);
+```
+
+A quantity whose reference is more than a unit has no text, and keeps the
+class every quantity is, `basic_quantity<R, Rep>`: a kind (`isq::height[m]`),
+and a product or quotient of quantities, which remembers the kinds it is made
+of (a length times a time), so that they come back when the units cancel.
+
+A unit is found by its symbol where the type is first named, so give your own
+units symbols of their own: two units with one symbol and different
+definitions make the symbol unreadable (an error that says so), and a symbol
+that names one unit in one file and another in a second file makes one type
+mean two units (the program is ill-formed, and no compiler is required to say
+so). Two units equal in every respect, such as a unit declared twice, are one
+type.
+
 ## A value with its type
 
 A string `_ins` literal is a number and then the text of its type:
@@ -74,6 +108,14 @@ The number is stored while compiling, as `T{just<v>}` stores it: the type's
 policy decides, and a value the type cannot hold (`"200 [0..99]"_ins`) does
 not compile. Without a type, `"42"_ins` is the point `42_ins`.
 
+With a unit the value is a quantity, its number in the type's unit, and a
+unit alone makes the point:
+
+```cpp
+constexpr auto v{"42 [1..100) [km/h]"_ins};           // 42 km/h, of type id<"[1..99] [km/h]">
+constexpr auto p{"42 [km/h]"_ins};                    // the point 42 km/h, id<"[42] [km/h]">
+```
+
 ## Generic code
 
 An inside type is `id<K>` for a `key K`, so a function deduces the key:
@@ -86,3 +128,11 @@ auto square(ins::id<K> x) { return x * x; }
 `grid_of<T>` and `policy_of<T>` give the grid and the policy as values.
 (`inside<G, P>` is an alias, so `template <grid G, policy_flag P>
 f(inside<G, P>)` deduces nothing.)
+
+Every quantity is a `basic_quantity<R, Rep>` (an `id` with a unit derives
+from it), so a function over quantities deduces that:
+
+```cpp
+template <ins::reference R, class Rep>
+auto twice(const ins::basic_quantity<R, Rep>& q) { return q + q; }
+```
