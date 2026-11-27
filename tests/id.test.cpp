@@ -266,4 +266,33 @@ TEST(IdTypeTest, ids_as_members_and_deduced) {
     static_assert(r.raw == 2048 && r.quarters == just<5, 2> && reading::nine == 9);
     static_assert(policy_param(id<"[0..9] wrap">{}) == wrap);
 }
+// "42 [1..100)"_ins: a value with its type, stored while compiling under the type's policy.
+TEST(IdLiteralTest, a_value_with_its_type) {
+    constexpr auto a{"42 [1..100)"_ins};
+    static_assert(std::is_same_v<std::remove_const_t<decltype(a)>, id<"[1..99]">> && a == 42);
+    constexpr auto q{"0.25 [0..1) 1/4"_ins};
+    static_assert(std::is_same_v<std::remove_const_t<decltype(q)>, id<"[0..1) 1/4">> && q == just<1, 4>);
+    static_assert("-1/2 [-1..1] 1/2"_ins == just<-1, 2>);
+    static_assert("1e3 [0..1e6]"_ins == 1000);
+    static_assert("0x1p70 [0..0x1p80]"_ins == just<1180591620717411303424_g>);
+    static_assert("  7   [0..9]  wrap "_ins == 7);
+    static_assert(std::is_same_v<decltype("7 [0..9] wrap"_ins), id<"[0..9] wrap">>);
+    // The type's policy stores it: clamp saturates, a rounding mode rounds.
+    static_assert("200 [0..99] clamp"_ins == 99);
+    static_assert("0.3 [0..1] 1/4 round_half_away"_ins == just<1, 4>);
+    static_assert("0.4 [0..1] 1/4 round_half_away"_ins == just<1, 2>);
+    // Without a type: the point, as the numeric literal.
+    static_assert(std::is_same_v<decltype("42"_ins), decltype(42_ins)> && "42"_ins == 42_ins);
+    static_assert(std::is_same_v<decltype("2.5"_ins), decltype(2.5_ins)>);
+    static_assert(std::is_same_v<decltype("1/3"_ins), std::remove_const_t<decltype(just<1, 3>)>>);
+    EXPECT_EQ("42 [1..100)"_ins, 42);
+}
+
+struct calibrated {
+    decltype("0 [0..4095]"_ins) raw{"2048 [0..4095]"_ins};
+};
+TEST(IdLiteralTest, a_literal_initializes_a_member) {
+    constexpr calibrated c{};
+    static_assert(c.raw == 2048);
+}
 } // namespace id_tests

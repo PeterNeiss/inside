@@ -1544,6 +1544,22 @@ namespace ins
     {
       return just<detail::parse_grid_literal<Chars...>()>;
     }
+
+    // A value with its type: "42 [1..100)"_ins is 42 of type id<"[1..99]">, the number (as an id's text reads one:
+    // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{just<v>} stores it:
+    // "200 [0..99] clamp"_ins is 99, "0.3 [0..1] 1/4 round_half_away"_ins is 1/4, and a value the type cannot hold
+    // does not compile. Without a type, "42"_ins is the point 42_ins.
+    template <detail::value_text T>
+    consteval auto operator""_ins()
+    {
+      static_assert(T.NumberOk, detail::value_text_error(T.Key));
+      if constexpr (!T.Typed)
+        return just<T.Value>;
+      else if constexpr (!T.Key.ok())
+        return id<T.Key>{}; // the type fails with where its text went wrong, and nothing else
+      else
+        return id<T.Key>{just<T.Value>};
+    }
   } // namespace literals
 
 } // namespace ins

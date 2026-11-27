@@ -5922,6 +5922,8 @@ namespace ins
   {
     consteval key key_of(grid g, policy_flag p);
     consteval key key_of_text(key raw);
+    consteval key raw_key(std::string_view text);
+    consteval key marked_key(const key& raw);
   } // namespace detail
 
   struct key
@@ -5933,7 +5935,7 @@ namespace ins
     // (Through detail::key_of_text, a function of the text alone, whose results GCC keeps:
     // each text is read once however often a type names it.)
     template <std::size_t N>
-    consteval key(const char (&text)[N]) : key{detail::key_of_text(key{raw{}, text})} {}
+    consteval key(const char (&text)[N]) : key{detail::key_of_text(detail::raw_key({text, N - 1}))} {}
     // A grid and a policy as values (inside<G, P>, and the result types of the operators).
     consteval key(const grid& g, policy_flag p = checked) : key{detail::key_of(g, p)} {}
 
@@ -5944,25 +5946,15 @@ namespace ins
     friend constexpr bool operator==(const key&, const key&) = default;
 
   private:
-    struct raw
-    {
-    };
     struct written
     {
     };
-    // The characters as given (without the terminating zero, which a diagnostic would print).
-    template <std::size_t N>
-    consteval key(raw, const char (&text)[N])
-    {
-      if (N > detail::key_capacity)
-        detail::constexpr_error<"inside: an id's text passes 2048 characters (detail::key_capacity)">();
-      for (std::size_t i = 0; i + 1 < N && text[i] != '\0'; ++i)
-        Text[i] = text[i];
-    }
     consteval key(written) {}
 
     friend consteval key detail::key_of(grid g, policy_flag p);
     friend consteval key detail::key_of_text(key raw);
+    friend consteval key detail::raw_key(std::string_view text);
+    friend consteval key detail::marked_key(const key& raw);
   };
 
   namespace detail
@@ -5978,8 +5970,21 @@ namespace ins
     consteval key key_of_text(key raw)
     {
       const id_spec s{parse_id_text(raw.text())};
-      if (s.Expected.empty())
-        return key_of(s.Grid, s.Policy);
+      return s.Expected.empty() ? key_of(s.Grid, s.Policy) : marked_key(raw);
+    }
+    // The characters as given (a literal without its terminating zero, which a diagnostic would print).
+    consteval key raw_key(std::string_view text)
+    {
+      if (text.size() >= key_capacity)
+        constexpr_error<"inside: an id's text passes 2048 characters (detail::key_capacity)">();
+      key k{key::written{}};
+      for (std::size_t i = 0; i < text.size() && text[i] != '\0'; ++i)
+        k.Text[i] = text[i];
+      return k;
+    }
+    // A text that spells no type, kept with the mark.
+    consteval key marked_key(const key& raw)
+    {
       key k{key::written{}};
       k.Text[0] = '!';
       for (std::size_t i = 0; i + 2 < sizeof k.Text && raw.Text[i] != '\0'; ++i)
@@ -6016,8 +6021,53 @@ namespace ins
     }
   } // namespace detail
 
+  namespace detail
+  {
+    // The text of a value literal, "42 [1..100)"_ins (inside/detail/core.hpp): a number, as id's text reads one,
+    // then the text of its type, or nothing for the point. A plain class, so the literal deduces nothing.
+    // A number that does not read keeps the whole text in Key, with the mark, and NumberOk false.
+    struct value_text
+    {
+      grid_number Value{};
+      key         Key;
+      bool        Typed{false};
+      bool        NumberOk{true};
+
+      template <std::size_t N>
+      consteval value_text(const char (&text)[N]) : value_text{std::string_view{text, N - 1}}
+      {
+      }
+      consteval value_text(std::string_view text) : Key{raw_key(text)}
+      {
+        id_reader        r{text};
+        std::string_view expected;
+        if (!r.number(Value, expected))
+        {
+          Value    = grid_number{};
+          Key      = marked_key(Key);
+          NumberOk = false;
+          return;
+        }
+        r.skip_spaces();
+        Typed = r.At != text.size();
+        Key   = Typed ? key_of_text(raw_key(text.substr(r.At))) : key_of(grid{Value}, 0);
+      }
+    };
+
+    // Where a value literal's number stopped.
+    consteval diag_text value_text_error(const key& k)
+    {
+      const std::string_view text{k.text().substr(1)};
+      id_reader              r{text};
+      grid_number            v;
+      std::string_view       expected;
+      (void)r.number(v, expected);
+      return diag_text{} << "inside: \"" << text << "\"_ins: expected " << expected << " at " << grid_number{r.At};
+    }
+  } // namespace detail
+
   // An inside type: the grid and the policy its key spells (inside/detail/core.hpp).
-  template <key K>
+  template <key Key>
   struct id;
 
   // The grid and policy as values: the same type as the id whose key spells them.
@@ -13215,6 +13265,22 @@ namespace ins
     constexpr auto operator""_ins()
     {
       return just<detail::parse_grid_literal<Chars...>()>;
+    }
+
+    // A value with its type: "42 [1..100)"_ins is 42 of type id<"[1..99]">, the number (as an id's text reads one:
+    // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{just<v>} stores it:
+    // "200 [0..99] clamp"_ins is 99, "0.3 [0..1] 1/4 round_half_away"_ins is 1/4, and a value the type cannot hold
+    // does not compile. Without a type, "42"_ins is the point 42_ins.
+    template <detail::value_text T>
+    consteval auto operator""_ins()
+    {
+      static_assert(T.NumberOk, detail::value_text_error(T.Key));
+      if constexpr (!T.Typed)
+        return just<T.Value>;
+      else if constexpr (!T.Key.ok())
+        return id<T.Key>{}; // the type fails with where its text went wrong, and nothing else
+      else
+        return id<T.Key>{just<T.Value>};
     }
   } // namespace literals
 
