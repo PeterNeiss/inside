@@ -149,7 +149,8 @@ TEST(UnitsParityTest, every_inside_function_has_a_quantity_form_or_a_reason) {
 }
 
 TEST(UnitsParityTest, every_inside_member_has_a_quantity_member_or_a_reason) {
-    const auto quantity_members = function_names<^^metres, true>();
+    // (The members are basic_quantity's: an id with a unit derives from it.)
+    const auto quantity_members = function_names<^^ins::detail::basic_of_t<metres>, true>();
     for (const auto& n : function_names<^^num, true>())
         EXPECT_TRUE(std::ranges::find(quantity_members, n) != quantity_members.end() || listed(member_only, n))
             << "inside::" << n << " has no quantity member: add one or list why not";

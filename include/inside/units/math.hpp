@@ -425,7 +425,7 @@ namespace ins
     // sin or cos of a π-scaled angle: one rounding onto Out.
     // The factor n/d in one limb when it is a 64-bit rational, else in as many as it needs.
     template <insidable Out, bool Cos, reference R, class V>
-    constexpr Out pi_trig_exact(const quantity<R, V>& q)
+    constexpr Out pi_trig_exact(const basic_quantity<R, V>& q)
     {
       namespace engine = ins::math::detail::engine;
       using ins::detail::grid_int;
@@ -441,7 +441,7 @@ namespace ins
         engine::exact_input(ins::detail::value_of(q)), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng});
     }
     template <insidable Out, bool Cos, reference R, class V>
-    constexpr Out pi_trig(const quantity<R, V>& q)
+    constexpr Out pi_trig(const basic_quantity<R, V>& q)
     {
       ins::math::detail::entry::require_rounding<Out>();
 #ifndef INSIDE_MATH_NO_FP
@@ -461,9 +461,12 @@ namespace ins
     template <class C>
     inline constexpr bool pi_angle_output_v = false;
     template <reference R, class V>
-    inline constexpr bool pi_angle_output_v<quantity<R, V>> =
+    inline constexpr bool pi_angle_output_v<basic_quantity<R, V>> =
       pi_angle_v<R> && grid_number{0} < magnitude_of(R.unit()).Ratio
       && ins::detail::fits_rational(magnitude_of(R.unit()).Ratio);
+    template <key K>
+      requires unit_key<K>
+    inline constexpr bool pi_angle_output_v<id<K>> = pi_angle_output_v<basic_of_t<id<K>>>;
 
 #ifndef INSIDE_MATH_NO_FP
     // The double tier of pi_arc: the radian kernel's value v within its bound, times c = fl(d/(n·π)) (within 3·2^-53
@@ -635,7 +638,7 @@ namespace ins
     // tan of an angle with a factor of π (°, a turn), rounded once onto Out: Out where its range holds every value tan
     // takes over the angle's grid, else std::expected<Out, error>.
     template <insidable Out, reference R, class V>
-    constexpr auto pi_tan(const quantity<R, V>& q)
+    constexpr auto pi_tan(const basic_quantity<R, V>& q)
     {
       namespace engine = ins::math::detail::engine;
       ins::math::detail::entry::require_rounding<Out>();
@@ -661,7 +664,7 @@ namespace ins
   {
     // x·(n/d)·π^±1 rounded once onto Out, exactly (the engine).
     template <magnitude F, insidable Out, reference R, class V>
-    constexpr Out pi_cast_exact(const quantity<R, V>& q)
+    constexpr Out pi_cast_exact(const basic_quantity<R, V>& q)
     {
       namespace engine = ins::math::detail::engine;
       // The factor n/d in one limb when it is a 64-bit rational, else in as many as it needs (ħ = h/2π in J·s).
@@ -684,7 +687,7 @@ namespace ins
   template <auto U, insidable Out, reference R, class V>
     requires detail::is_unit_tag_v<decltype(U)>
           && (!detail::exact_factor_v<detail::conversion_factor<R.unit(), decltype(U)::value>>)
-  [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
+  [[nodiscard]] constexpr auto value_cast(const basic_quantity<R, V>& q)
   {
     constexpr ins::unit_value u{decltype(U)::value};
     constexpr magnitude       f{detail::conversion_factor<R.unit(), u>};
@@ -870,7 +873,7 @@ namespace ins
 
     template <math_rule Rule, class F, reference R, class V>
       requires(Rule == math_rule::same || Rule == math_rule::root2 || Rule == math_rule::root3)
-    struct quantity_rule<Rule, F, quantity<R, V>> : rule_base
+    struct quantity_rule<Rule, F, basic_quantity<R, V>> : rule_base
     {
       using NK = m::kind<F, 1, V>;
       static constexpr bool      takes  = NK::takes;
@@ -884,7 +887,7 @@ namespace ins
     // with a factor of π (sin and cos): reduced exactly by quarter turns, the result on the named notch.
     template <math_rule Rule, class F, reference R, class V>
       requires(Rule == math_rule::trig || Rule == math_rule::tan)
-    struct quantity_rule<Rule, F, quantity<R, V>>
+    struct quantity_rule<Rule, F, basic_quantity<R, V>>
     {
       static_assert(radians_v<R> || pi_angle_v<R>,
                     "units: sin, cos and tan take an angle in radians, or in a unit with a factor of pi (°, a turn) - "
@@ -939,7 +942,7 @@ namespace ins
     };
     template <math_rule Rule, class F, reference A, class VA, reference B, class VB>
       requires(Rule == math_rule::arc2 || Rule == math_rule::common)
-    struct quantity_rule<Rule, F, quantity<A, VA>, quantity<B, VB>> : rule_base
+    struct quantity_rule<Rule, F, basic_quantity<A, VA>, basic_quantity<B, VB>> : rule_base
     {
       using C  = common_rule<F, A, VA, B, VB>;
       using NK = typename C::NK;
@@ -972,7 +975,7 @@ namespace ins::math::detail
   template <class F, class... Args>
   struct kind<F, 2, Args...>
   {
-    using rule = ins::detail::quantity_rule<ins::detail::rule_of<F>, F, Args...>;
+    using rule = ins::detail::quantity_rule<ins::detail::rule_of<F>, F, ins::detail::basic_of_t<Args>...>;
     static constexpr bool takes = rule::takes;
     using io = ins::detail::output_in<typename rule::NK, rule::number, rule::to,
                                       ins::detail::rule_of<F> == ins::detail::math_rule::arc
@@ -1052,19 +1055,19 @@ namespace ins::math
   // atan2, hypot, gcd and lcm of two quantities that do not add (another dimension or kind, no common unit).
   template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void atan2(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void atan2(const ins::basic_quantity<A, VA>&, const ins::basic_quantity<B, VB>&) = delete (
     "units: atan2 takes two quantities that add - one dimension and kind, a common unit");
   template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void hypot(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void hypot(const ins::basic_quantity<A, VA>&, const ins::basic_quantity<B, VB>&) = delete (
     "units: hypot takes two quantities that add - one dimension and kind, a common unit");
   template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void gcd(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void gcd(const ins::basic_quantity<A, VA>&, const ins::basic_quantity<B, VB>&) = delete (
     "units: gcd takes two quantities that add - one dimension and kind, a common unit");
   template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void lcm(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void lcm(const ins::basic_quantity<A, VA>&, const ins::basic_quantity<B, VB>&) = delete (
     "units: lcm takes two quantities that add - one dimension and kind, a common unit");
 } // namespace ins::math
 

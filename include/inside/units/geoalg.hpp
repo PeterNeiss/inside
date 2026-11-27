@@ -490,9 +490,14 @@ namespace ins
       using type = T;
     };
     template <reference R, class V>
-    struct part_number<quantity<R, V>>
+    struct part_number<basic_quantity<R, V>>
     {
       using type = V;
+    };
+    template <key K>
+      requires unit_key<K>
+    struct part_number<id<K>> : part_number<basic_of_t<id<K>>>
+    {
     };
     // Whether part T is made from its source in PX (or from 0), with policies.
     template <class T, class PX, class... Pol>
@@ -738,43 +743,43 @@ namespace ins
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
   template <reference A, class VA, reference B, class VB>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator+(const basic_quantity<A, VA>& a, const basic_quantity<B, VB>& b)
   {
     return detail::mv_add(a, b);
   }
   template <reference A, class VA, reference B, class VB>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator-(const basic_quantity<A, VA>& a, const basic_quantity<B, VB>& b)
   {
     return detail::mv_add(a, -b);
   }
   template <reference A, class VA, reference B, class VB>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr bool operator==(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr bool operator==(const basic_quantity<A, VA>& a, const basic_quantity<B, VB>& b)
   {
     return detail::mv_equal(a, b);
   }
   template <insidable V, reference A, class VA>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const V& v, const quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator+(const V& v, const basic_quantity<A, VA>& a)
   {
     return detail::mv_add(v, a);
   }
   template <reference A, class VA, insidable V>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator+(const basic_quantity<A, VA>& a, const V& v)
   {
     return detail::mv_add(a, v);
   }
   template <insidable V, reference A, class VA>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const V& v, const quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator-(const V& v, const basic_quantity<A, VA>& a)
   {
     return detail::mv_add(v, -a);
   }
   template <reference A, class VA, insidable V>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator-(const basic_quantity<A, VA>& a, const V& v)
   {
     return detail::mv_add(a, detail::as_part(-v));
   }

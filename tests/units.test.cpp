@@ -656,14 +656,14 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
 }
 
 // The SI base dimensions are declared as one of your own is, and a base
-// dimension is its name: base_unit<"m", "length"> equals si::metre. The
-// catalog's metre is a named definition, so the re-declared one is another
-// type, which converts.
+// dimension is its name: base_unit<"m", "length"> equals si::metre. A
+// quantity's type spells its unit by its symbol, so the re-declared metre and
+// the catalog's are one type.
 TEST(UnitsApiTest, si_base_dimensions_are_base_dimensions) {
     static_assert(dimension_of(si::metre.value) == base_dimension<"length">);
     static_assert(base_unit<"m", "length"> == si::metre);
     using I = inside<{0, 100}>;
-    static_assert(!std::is_same_v<quantity<base_unit<"m", "length">, I>, quantity<si::metre, I>>);
+    static_assert(std::is_same_v<quantity<base_unit<"m", "length">, I>, quantity<si::metre, I>>);
     constexpr quantity<si::metre, I> m = quantity<base_unit<"m", "length">, I>{3, base_unit<"m", "length">};
     static_assert(m == quantity<si::metre, I>{3, si::metre});
     static_assert(dimension_of(si::newton.value).Size == 3);
@@ -714,8 +714,8 @@ TEST(UnitsApiTest, named_definitions) {
     static_assert(std::is_same_v<decltype(defined_by<named_count_def>), const kind_t<&named_count_def>>);
     static_assert(std::is_same_v<decltype(defined_by<named_ice_def>), const origin_t<origin_ref{&named_ice_def}>>);
 
-    // Another type than the one-liner's, which converts both ways.
-    static_assert(!std::is_same_v<quantity<named_fathom, I>, quantity<line_fathom, I>>);
+    // The one-liner's type: a quantity's type spells its unit by its symbol, and the two are equal.
+    static_assert(std::is_same_v<quantity<named_fathom, I>, quantity<line_fathom, I>>);
     constexpr quantity<line_fathom, I>  a = quantity<named_fathom, I>{12, named_fathom};
     constexpr quantity<named_fathom, I> b = a;
     static_assert(a == b);

@@ -166,17 +166,17 @@ namespace ins
   // A quantity times or over pi: the same number, in a unit scaled by π (pi * (2 * si::second) is 2 [π s]);
   // value_cast rounds it once.
   template <reference R, class V>
-  [[nodiscard]] constexpr auto operator*(decltype(pi), const quantity<R, V>& q)
+  [[nodiscard]] constexpr auto operator*(decltype(pi), const basic_quantity<R, V>& q)
   {
     return detail::mag_pi * q;
   }
   template <reference R, class V>
-  [[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, decltype(pi))
+  [[nodiscard]] constexpr auto operator*(const basic_quantity<R, V>& q, decltype(pi))
   {
     return q * detail::mag_pi;
   }
   template <reference R, class V>
-  [[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, decltype(pi))
+  [[nodiscard]] constexpr auto operator/(const basic_quantity<R, V>& q, decltype(pi))
   {
     return q / detail::mag_pi;
   }

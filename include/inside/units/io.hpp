@@ -209,7 +209,7 @@ namespace ins
 
   // "5 km", "90°", "3" (unit one).
   template <reference R, class V>
-  std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8)
+  std::string to_string(const basic_quantity<R, V>& q, text_encoding enc = text_encoding::utf8)
   {
     std::string       s  {ins::to_string(ins::detail::value_of(q))};
     const std::string sym{unit_symbol(R.unit(), enc)};
@@ -219,7 +219,7 @@ namespace ins
   }
 
   template <reference R, class V>
-  std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q)
+  std::ostream& operator<<(std::ostream& os, const basic_quantity<R, V>& q)
   {
     return os << ins::to_string(q);
   }
@@ -273,14 +273,16 @@ namespace ins
 
 // std::format: the spec formats the number as for its inside ({:.2f}, {:>8}), then the unit symbol follows
 // ("5 km", "90°").
-template <ins::reference R, class V>
-struct std::formatter<ins::quantity<R, V>> : std::formatter<V>
+template <class Q>
+  requires ins::detail::is_quantity_v<Q>
+struct std::formatter<Q> : std::formatter<typename Q::rep>
 {
   template <typename Ctx>
-  auto format(const ins::quantity<R, V>& q, Ctx& ctx) const
+  auto format(const Q& q, Ctx& ctx) const
   {
     namespace u = ins;
-    auto              out{std::formatter<V>::format(ins::detail::value_of(q), ctx)};
+    constexpr ins::reference R{Q::reference};
+    auto              out{std::formatter<typename Q::rep>::format(ins::detail::value_of(q), ctx)};
     const std::string sym{u::unit_symbol(R.unit())};
     if (sym.empty())
       return out;

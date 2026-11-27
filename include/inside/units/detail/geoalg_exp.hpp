@@ -352,9 +352,14 @@ namespace ins::detail::gaexp
     using type = N;
   };
   template <reference R, class V, class N>
-  struct with_number<quantity<R, V>, N>
+  struct with_number<basic_quantity<R, V>, N>
   {
     using type = quantity<R, N>;
+  };
+  template <key K, class N>
+    requires unit_key<K>
+  struct with_number<id<K>, N> : with_number<basic_of_t<id<K>>, N>
+  {
   };
   template <class F, std::size_t Q>
   using twin_part =

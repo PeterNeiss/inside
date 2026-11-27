@@ -515,9 +515,9 @@ template struct ins::id<"[7]">;
 template struct ins::id<key{grid_of<cur>, policy_param<cur>::value}>;
 
 // Quantities and a point.
-template class ins::quantity<si::metre, inside<{0, 100}>>;
-template class ins::quantity<percent, inside<{{0, 100}, per<4>}, round_half_away>>;
-template class ins::quantity<si::second, cur>;
+template class ins::basic_quantity<si::metre, inside<{0, 100}>>;
+template class ins::basic_quantity<percent, inside<{{0, 100}, per<4>}, round_half_away>>;
+template class ins::basic_quantity<si::second, cur>;
 template class ins::quantity_point<pt::reference, pt::origin, pt::rep>;
 
 TEST(ExplicitInstantiationTest, every_member_compiles_or_is_constrained) {
