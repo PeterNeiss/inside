@@ -869,7 +869,7 @@ namespace ins::detail
 // rounded from the exact value by the type's rounding mode (ties to even without one),
 // and an integer grid past int64 the integer types too ({:#x}, {:b}, {:o}, {:d}).
 template <ins::key K>
-  requires(!ins::detail::unit_key<K>)
+  requires(ins::detail::inside_key<K>)
 struct std::formatter<ins::id<K>>
   : ins::detail::numeric_spec_formatter<std::conditional_t<
       ins::detail::integer_lattice<ins::id<K>> && ins::detail::values_fit_int64<ins::id<K>>,

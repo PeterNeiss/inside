@@ -72,28 +72,63 @@ namespace ins::detail
       }
   }
 
-  // The named units of the unit tags only (si::metre, defined_by<cent_def>, a one-line unit<"ftm", …>), not of the
-  // definition objects: a type named while a definition object is initialized (unit_def cent_def{"ct", 0.01_ins *
-  // euro}) would read that object before its value exists. A tag's unit is in its type, and a tag exists only once
-  // its definition does. Every catalog definition has its tag.
+  // The tags' definitions a key's text may name: the units, kinds and origins of every tag variable read.
+  struct tag_vectors
+  {
+    std::vector<const unit_def*>   Units;
+    std::vector<const kind_def*>   Kinds;
+    std::vector<const origin_def*> Origins;
+  };
+
+  // The units, kinds and origins of the tags only (si::metre, isq::height, si::ice_point, defined_by<cent_def>, a
+  // one-line unit<"ftm", …>), not of the definition objects: a type named while a definition object is initialized
+  // (unit_def cent_def{"ct", 0.01_ins * euro}) would read that object before its value exists. A tag's value is in
+  // its type, and a tag exists only once its definition does. Every catalog definition has its tag.
+  // Basis vectors and polynomial variables are units too here.
   // (skip: a namespace already read, the catalog's; nested: whether to read the namespaces within ns too.)
-  consteval void collect_tag_units(std::meta::info ns, std::vector<const unit_def*>& out, std::meta::info skip = {},
-                                   bool nested = true)
+  consteval void collect_tags(std::meta::info ns, tag_vectors& out, std::meta::info skip = {}, bool nested = true)
   {
     for (const std::meta::info m : std::meta::members_of(ns, std::meta::access_context::unchecked()))
       if (std::meta::is_namespace(m))
       {
         if (nested && m != skip && searched_namespace(m))
-          collect_tag_units(m, out, skip);
+          collect_tags(m, out, skip);
       }
       else if (std::meta::is_variable(m))
       {
         const std::meta::info t{std::meta::remove_cvref(std::meta::type_of(m))};
-        if (std::meta::has_template_arguments(t) && std::meta::template_of(t) == ^^unit_t)
+        if (!std::meta::has_template_arguments(t))
+          continue;
+        const std::meta::info of{std::meta::template_of(t)};
+        if (of == ^^unit_t)
         {
           const unit_value u{std::meta::extract<unit_value>(std::meta::template_arguments_of(t)[0])};
           for (std::int8_t i = 0; i < u.size(); ++i)
-            add_text_unit(out, u.Atoms[i].U);
+          {
+            bool known{false};
+            for (const unit_def* v : out.Units)
+              known = known || same(v, u.Atoms[i].U);
+            if (!known)
+              out.Units.push_back(u.Atoms[i].U);
+          }
+        }
+        else if (of == ^^kind_t)
+        {
+          const kind_def* k{std::meta::extract<const kind_def*>(std::meta::template_arguments_of(t)[0])};
+          bool            known{false};
+          for (const kind_def* v : out.Kinds)
+            known = known || same(v, k);
+          if (!known)
+            out.Kinds.push_back(k);
+        }
+        else if (of == ^^origin_t)
+        {
+          const origin_def* o{std::meta::extract<origin_ref>(std::meta::template_arguments_of(t)[0])};
+          bool              known{false};
+          for (const origin_def* v : out.Origins)
+            known = known || same(v, o);
+          if (!known)
+            out.Origins.push_back(o);
         }
       }
   }

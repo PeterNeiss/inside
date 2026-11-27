@@ -1553,7 +1553,7 @@ namespace ins
     // does not compile. Without a type, "42"_ins is the point 42_ins.
     // (A type with a unit is a quantity's: units/detail/quantity.hpp has that literal.)
     template <detail::value_text T>
-      requires(!detail::unit_key<T.Key>)
+      requires(detail::inside_key<T.Key>)
     consteval auto operator""_ins()
     {
       static_assert(T.NumberOk, detail::value_text_error(T.Key));
@@ -1572,14 +1572,14 @@ namespace ins
 // Not random access: t - u is arithmetic, an inside, not a distance.
 // Plain insides get no traits, so they stay numbers.
 template <ins::key K>
-  requires(!ins::detail::unit_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
+  requires(ins::detail::inside_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
 struct std::incrementable_traits<ins::id<K>>
 {
   using difference_type = std::ptrdiff_t;
 };
 
 template <ins::key K>
-  requires(!ins::detail::unit_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
+  requires(ins::detail::inside_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
 struct std::indirectly_readable_traits<ins::id<K>>
 {
   using value_type = ins::detail::cursor_value_t<ins::detail::key_grid<K>, ins::detail::key_policy<K>>;

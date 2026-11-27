@@ -17,7 +17,7 @@
 // (std::common_type lives in arithmetic.hpp, always on.)
 
 template <ins::key K>
-  requires(!ins::detail::unit_key<K>)
+  requires(ins::detail::inside_key<K>)
 struct std::numeric_limits<ins::id<K>>
 {
 private:
@@ -109,7 +109,7 @@ public:
 };
 
 template <ins::key K>
-  requires(!ins::detail::unit_key<K>)
+  requires(ins::detail::inside_key<K>)
 struct std::hash<ins::id<K>>
 {
   using B = ins::id<K>;

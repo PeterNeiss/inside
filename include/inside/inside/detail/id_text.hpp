@@ -19,13 +19,16 @@
 #include <string_view>
 
 // The text of an id: ins::id<"[0..10) 1/4 clamp"> is a grid and a policy.
-//   id       := interval [step] ["[" unit "]"] [flags]  fields apart by spaces (optional where nothing is ambiguous)
+//   id       := interval [step] [quantity] [flags]       fields apart by spaces (optional where nothing is ambiguous)
+//   quantity := "[" unit "]" ["{" kind "}"] ["@" origin]   a quantity, its kind, a point and its origin
 //   interval := ("[" | "(") num ".." num ("]" | ")")    closed or open limits
 //             | "[" num "]"                            a point
 //   step     := num                                    the notch
 //             | "<" num ">"                            a continuous grid's max denominator
 //   num      := ["-"] number ["/" number]              number: as the _ins literal reads it (0.25, 1e9, 0x1p-4, 1'000)
-//   unit     := a unit's text (km/h, kg*m^2/s^2, [1/381*ft]): a quantity (units/detail/unit_key.hpp reads it)
+//   unit     := a unit's text (km/h, kg*m^2/s^2, [1/381*ft]) (units/detail/unit_key.hpp reads these three)
+//   kind     := none | any | [any] kinds (height, length*duration): the kind when not the unit's own
+//   origin   := a name (ice_point), or 0 for the zero of the dimension
 //   flags    := flag {"|" flag}                        clamp, wrap, a rounding mode, unsafe
 // Without a step the notch is the one the written limits derive, gcd(1, lo, hi), as grid{lo, hi} derives it,
 // and an open limit moves in by one notch, as bounds::open and bounds::half_open do:
@@ -231,8 +234,9 @@ namespace ins::detail
   }
 
   // The canonical text of a grid and a policy.
-  // (unit: a quantity's unit, its canonical text, written in brackets before the flags.)
-  consteval void write_id_text(text_out& t, const grid& g, policy_flag p, std::string_view unit = {})
+  // (unit, kind, origin: a quantity's, their canonical texts, written before the flags: [km/h]{speed} @origin.)
+  consteval void write_id_text(text_out& t, const grid& g, policy_flag p, std::string_view unit = {},
+                               std::string_view kind = {}, std::string_view origin = {})
   {
     const auto unit_and_flags = [&]
     {
@@ -241,6 +245,17 @@ namespace ins::detail
         t.put(" [");
         t.put(unit);
         t.put(']');
+        if (!kind.empty())
+        {
+          t.put('{');
+          t.put(kind);
+          t.put('}');
+        }
+        if (!origin.empty())
+        {
+          t.put(" @");
+          t.put(origin);
+        }
       }
       write_flags(t, p);
     };
@@ -314,6 +329,10 @@ namespace ins::detail
     std::string_view Expected{};
     std::string_view Unit{}; // a quantity's unit, as written (empty: an inside); within the text read
     std::size_t      UnitAt{0};
+    std::string_view Kind{}; // its kind, between braces (empty: the unit's own)
+    std::size_t      KindAt{0};
+    std::string_view Origin{}; // a point's origin, after @ (empty: a quantity)
+    std::size_t      OriginAt{0};
   };
 
   struct id_reader
@@ -518,6 +537,40 @@ namespace ins::detail
       s.UnitAt = ub;
       r.At     = end + 1;
       has_unit = true;
+      // Its kind, right after it.
+      if (r.peek() == '{')
+      {
+        const std::size_t kb{r.At + 1};
+        std::size_t       ke{kb};
+        while (ke < text.size() && text[ke] != '}')
+          ++ke;
+        if (ke == text.size())
+          return stop(r.At, "'}' to close the kind");
+        std::size_t b{kb}, e{ke};
+        while (b < e && text[b] == ' ')
+          ++b;
+        while (e > b && text[e - 1] == ' ')
+          --e;
+        if (b == e)
+          return stop(kb, "a kind (none, any, or kinds: height, length*duration)");
+        s.Kind   = text.substr(b, e - b);
+        s.KindAt = b;
+        r.At     = ke + 1;
+      }
+      // A point's origin.
+      if (r.eat("@"))
+      {
+        r.skip_spaces();
+        const std::size_t ob{r.At};
+        std::size_t       oe{ob};
+        while (oe < text.size() && (id_reader::is_letter(text[oe]) || id_reader::is_digit(text[oe]) || text[oe] == '_'))
+          ++oe;
+        if (oe == ob)
+          return stop(ob, "an origin: its name, or 0");
+        s.Origin   = text.substr(ob, oe - ob);
+        s.OriginAt = ob;
+        r.At       = oe;
+      }
     }
 
     // The flags.

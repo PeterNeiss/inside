@@ -24,33 +24,46 @@ namespace ins
   struct key;
   namespace detail
   {
-    // A quantity's unit as a key holds it, its canonical text (units/detail/unit_key.hpp): by value, so that a
-    // function of it is one call per unit.
+    // A quantity's unit (or its kind, or a point's origin) as a key holds it, its canonical text
+    // (units/detail/unit_key.hpp): by value, so that a function of it is one call per unit.
     struct unit_name
     {
       char Text[256]{};
       [[nodiscard]] constexpr std::string_view view() const { return Text; }
       friend constexpr bool operator==(const unit_name&, const unit_name&) = default;
     };
+    // The canonical texts of a quantity's unit, its kind (empty: the unit's own) and a point's origin (empty: a
+    // quantity): [km/h]{speed} @origin.
+    struct quantity_name
+    {
+      unit_name Unit;
+      unit_name Kind;
+      unit_name Origin;
+      friend constexpr bool operator==(const quantity_name&, const quantity_name&) = default;
+    };
 
     consteval key key_of(grid g, policy_flag p);
-    consteval key key_of(grid g, policy_flag p, unit_name u);
+    consteval key key_of(grid g, policy_flag p, quantity_name q);
     template <class Hook>
     consteval key key_of_text(key raw);
     consteval key raw_key(std::string_view text);
     consteval key marked_key(const key& raw);
 
-    // How a key reads a unit's text: canonical_unit_text(text_hook<N>{}, …), found by argument-dependent lookup
-    // where the key is formed, so that units/detail/unit_key.hpp, included after this header, provides it.
-    // Without it, a unit is an error.
+    struct id_spec;
+
+    // How a key reads a quantity's text (its unit, kind and origin): canonical_quantity_text(text_hook<N>{}, …),
+    // found by argument-dependent lookup where the key is formed, so that units/detail/unit_key.hpp, included
+    // after this header, provides it. Without it, a unit is an error. (at: where the text went wrong.)
     template <std::size_t N>
     struct text_hook
     {
     };
     template <class Hook>
-    consteval bool canonical_unit_text(Hook, std::string_view, text_out&, std::string_view& expected)
+    consteval bool canonical_quantity_text(Hook, const id_spec& s, quantity_name&, std::string_view& expected,
+                                           std::size_t& at)
     {
       expected = "no unit: a quantity's type needs <inside/units.hpp>";
+      at       = s.UnitAt;
       return false;
     }
   } // namespace detail
@@ -82,7 +95,7 @@ namespace ins
     consteval key(written) {}
 
     friend consteval key detail::key_of(grid g, policy_flag p);
-    friend consteval key detail::key_of(grid g, policy_flag p, detail::unit_name u);
+    friend consteval key detail::key_of(grid g, policy_flag p, detail::quantity_name q);
     friend consteval key detail::raw_key(std::string_view text);
     friend consteval key detail::marked_key(const key& raw);
   };
@@ -97,31 +110,29 @@ namespace ins
       write_id_text(t, g, p);
       return k;
     }
-    consteval key key_of(grid g, policy_flag p, unit_name u)
+    consteval key key_of(grid g, policy_flag p, quantity_name q)
     {
       key      k{key::written{}};
       text_out t{k.Text, sizeof k.Text};
-      write_id_text(t, g, p, u.view());
+      write_id_text(t, g, p, q.Unit.view(), q.Kind.view(), q.Origin.view());
       return k;
     }
-    // A text's unit, canonical (empty for an inside), or where it went wrong.
+    // A text's quantity, canonical (nothing for an inside), or where it went wrong.
     template <class Hook>
-    consteval bool read_unit_of(const id_spec& s, unit_name& u, std::string_view& expected)
+    consteval bool read_quantity_of(const id_spec& s, quantity_name& q, std::string_view& expected, std::size_t& at)
     {
-      if (s.Unit.empty())
-        return true;
-      text_out t{u.Text, sizeof u.Text};
-      return canonical_unit_text(Hook{}, s.Unit, t, expected);
+      return s.Unit.empty() || canonical_quantity_text(Hook{}, s, q, expected, at);
     }
     template <class Hook>
     consteval key key_of_text(key raw)
     {
       const id_spec    s{parse_id_text(raw.text())};
-      unit_name        u;
+      quantity_name    q;
       std::string_view expected;
-      if (!s.Expected.empty() || !read_unit_of<Hook>(s, u, expected))
+      std::size_t      at{0};
+      if (!s.Expected.empty() || !read_quantity_of<Hook>(s, q, expected, at))
         return marked_key(raw);
-      return s.Unit.empty() ? key_of(s.Grid, s.Policy) : key_of(s.Grid, s.Policy, u);
+      return s.Unit.empty() ? key_of(s.Grid, s.Policy) : key_of(s.Grid, s.Policy, q);
     }
     // The characters as given (a literal without its terminating zero, which a diagnostic would print).
     consteval key raw_key(std::string_view text)
@@ -163,7 +174,13 @@ namespace ins
     inline constexpr policy_flag key_policy = key_spec<K>.Policy;
     // A key with a unit names a quantity (units/detail/quantity.hpp), one without an inside.
     template <key K>
-    concept unit_key = !key_spec<K>.Unit.empty();
+    concept unit_key = !key_spec<K>.Unit.empty() && key_spec<K>.Origin.empty();
+    // A key with an origin names a point.
+    template <key K>
+    concept point_key = !key_spec<K>.Origin.empty();
+    // A key without a unit names an inside.
+    template <key K>
+    concept inside_key = key_spec<K>.Unit.empty();
 
     // Where a text stopped making sense, and what it expected there.
     template <class Hook>
@@ -171,9 +188,9 @@ namespace ins
     {
       const std::string_view text{k.text().substr(1)};
       id_spec                s{parse_id_text(text)};
-      unit_name              u;
-      if (s.Expected.empty() && !read_unit_of<Hook>(s, u, s.Expected))
-        s.Stop = s.UnitAt;
+      quantity_name          q;
+      if (s.Expected.empty())
+        (void)read_quantity_of<Hook>(s, q, s.Expected, s.Stop);
       return diag_text{} << "inside: id<\"" << text << "\">: expected " << s.Expected << " at "
                          << grid_number{s.Stop} << " (\"" << text.substr(0, s.Stop) << "\" read)";
     }

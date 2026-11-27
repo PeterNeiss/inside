@@ -593,10 +593,15 @@ namespace ins
 
   private:
     // A kind has a name (kind_def::none is the one without).
+    // (Letters, digits and _: a quantity's type spells it, [m]{height}.)
     static constexpr std::string_view named(std::string_view name)
     {
       if (name.empty())
         ins::detail::constexpr_error<"units: a kind needs a name">();
+      for (char c : name)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
+          ins::detail::constexpr_error<"units: a kind's name is letters, digits and _ (a quantity's type spells it, "
+                                       "[m]{height})">();
       return name;
     }
   };
@@ -803,17 +808,22 @@ namespace ins
     constexpr origin_def(std::string_view name, dimension d) : Name{named(name)}, Dim{d} {}
     template <const kind_def* K>
     constexpr origin_def(std::string_view name, kind_t<K>) : Name{named(name)}, Dim{K->Dim} {}
-    // One at a constant point of another origin: origin_def{"ice point", si::absolute_zero + 273.15_ins * si::kelvin}
+    // One at a constant point of another origin: origin_def{"ice_point", si::absolute_zero + 273.15_ins * si::kelvin}
     // (defined in units/detail/define.hpp).
     template <class P>
       requires requires(const P& p) { p.quantity_from_origin(); }
     constexpr origin_def(std::string_view name, const P&);
 
     // An origin has a name (origin_def::none is the one without).
+    // (Letters, digits and _: a point's type spells it, @ice_point.)
     static constexpr std::string_view named(std::string_view name)
     {
       if (name.empty())
         ins::detail::constexpr_error<"units: an origin needs a name">();
+      for (char c : name)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
+          ins::detail::constexpr_error<"units: an origin's name is letters, digits and _ (a point's type spells it, "
+                                       "@ice_point)">();
       return name;
     }
   };

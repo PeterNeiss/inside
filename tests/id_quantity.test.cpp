@@ -82,12 +82,12 @@ TEST(IdQuantityTest, results_read_as_ids_where_their_reference_is_a_unit) {
     // A sum in two units takes their common unit.
     static_assert(std::is_same_v<decltype(id<"[0..1] [km]">{} + id<"[0..1] [m]">{}), id<"[0..1001] [m]">>);
     static_assert(std::is_same_v<decltype(id<"[0..1] [km]">{}.in(si::metre)), id<"[0..1000] 1000 [m]">>);
-    // A product keeps the kinds it is made of, so it is no unit's own: a basic_quantity (a text has no kinds).
+    // A product keeps the kinds it is made of: any length times any duration, in its text after the unit.
     using P = decltype(metres{} * id<"[1..9] [s]">{});
-    static_assert(quantity_like<P> && std::is_same_v<P, detail::basic_of_t<P>>);
+    static_assert(std::is_same_v<P, id<"[1..81] [m*s]{any duration*length}">>);
     static_assert(P::unit == (si::metre * si::second).value);
-    // A kind is no unit's own either.
-    static_assert(std::is_same_v<quantity<isq::height[si::metre], I>, basic_quantity<isq::height[si::metre], I>>);
+    // A kind is in the text too.
+    static_assert(std::is_same_v<quantity<isq::height[si::metre], I>, id<"[0..100] [m]{height}">>);
 }
 
 TEST(IdQuantityTest, members_and_hooks_take_the_type_itself) {
@@ -102,6 +102,36 @@ TEST(IdQuantityTest, members_and_hooks_take_the_type_itself) {
     EXPECT_EQ(m, just<1> * si::metre);
     const auto old{m++};
     static_assert(std::is_same_v<std::remove_const_t<decltype(old)>, metres>);
+}
+
+// A kind after the unit, in braces, when it is not the unit's own; a point's origin after @.
+TEST(IdQuantityTest, kinds_and_origins_in_the_text) {
+    // An exact kind, as kind[unit] names it.
+    static_assert(std::is_same_v<quantity<isq::height[si::metre], I>, id<"[0..100] [m]{height}">>);
+    static_assert(id<"[0..100] [m]{height}">::reference == reference{isq::height[si::metre]});
+    static_assert(text_of<id<"[0..100] [m]{ height }">> == "[0..100] [m]{height}");
+    // The unit's own kind, any of it: no braces.
+    static_assert(text_of<id<"[0..100] [m]{any length}">> == "[0..100] [m]");
+    // A product keeps its kinds: any length times any duration, or exact ones.
+    using metres = id<"[1..9] [m]">;
+    static_assert(std::is_same_v<decltype(metres{} * id<"[1..9] [s]">{}), id<"[1..81] [m*s]{any duration*length}">>);
+    using H = quantity<isq::height[si::metre], inside<{1, 9}>>;
+    using W = quantity<isq::width[si::metre], inside<{1, 9}>>;
+    static_assert(text_of<decltype(H{} * W{})> == "[1..81] [m^2]{height*width}");
+    static_assert(text_of<decltype(H{} / id<"[1..9] [s]">{})> == "[1/9..9] <9> [m/s]{height/duration}");
+    // No kind.
+    static_assert(text_of<id<"[0..9] [J]{none}">> == "[0..9] [J]{none}");
+    static_assert(id<"[0..9] [J]{none}">::reference == reference{&kind_def::none, false, {}, si::joule.value});
+    // A point's origin (the types are ids once points are: here the texts).
+    static_assert(key{"[-40..125] [`C] @ice_point"}.text() == "[-40..125] [`C] @ice_point");
+    static_assert(key{"[-40..125] [℃]  @ ice_point clamp"}.text() == "[-40..125] [`C] @ice_point clamp");
+    static_assert(key{"[0..400] [K] @absolute_zero"}.text() == "[0..400] [K] @absolute_zero");
+    static_assert(key{"[0..9] [m] @0"}.text() == "[0..9] [m] @0");
+    // What does not read.
+    static_assert(!key{"[0..9] [m]{mass}"}.ok());          // another dimension
+    static_assert(!key{"[0..9] [m]{nothing}"}.ok());       // no such kind
+    static_assert(!key{"[0..9] [m] @nowhere"}.ok());       // no such origin
+    static_assert(!key{"[0..9] [m] @ice_point"}.ok());     // an origin of another dimension
 }
 
 // "42 [1..100) [km/h]"_ins: a value with its quantity type, the number in the type's unit.

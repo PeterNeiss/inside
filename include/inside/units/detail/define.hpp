@@ -21,7 +21,7 @@
 //                                        {.ascii = "R", .origin = si::absolute_zero}>;
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
 //   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
-//   inline constexpr auto ice     = origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>;
+//   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>;
 //   inline constexpr auto e1      = basis_vector<"e₁", geometric<+1>>;
 //
 // The name is a template argument and the definition a static member of a class template,
@@ -133,7 +133,7 @@ namespace ins
 
   // origin<"name", where>: where points count from.
   // An absolute origin is named by a kind or a dimension; any other lies at a point of one:
-  // origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>.
+  // origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>.
   template <symbol_text Name, auto Def>
   inline constexpr auto origin = detail::origin_tag<origin_holder<Name, Def>::value>;
 

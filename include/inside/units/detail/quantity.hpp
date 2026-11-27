@@ -38,7 +38,7 @@ namespace ins
     struct quantity_type<R, Rep>
     {
       using type = id<key_of(key_grid<number_key<Rep>::value>, key_policy<number_key<Rep>::value>,
-                             unit_name_for(R.unit()).Name)>;
+                             quantity_name_for(R, &origin_def::none, false).Name)>;
     };
   } // namespace detail
 
@@ -885,7 +885,7 @@ namespace ins
       requires detail::unit_key<T.Key>
     consteval auto operator""_ins()
     {
-      return id<T.Key>{just<T.Value>, unit_t<detail::key_unit<T.Key>>{}};
+      return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
     }
   } // namespace literals
 

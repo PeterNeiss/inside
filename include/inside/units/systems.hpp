@@ -428,19 +428,19 @@ namespace ins
 
 } // namespace ins
 
-// The catalog's units, read once here after the catalog: a quantity type's unit symbol is looked up here first
-// (units/detail/unit_key.hpp), so a type of the catalog's units searches nothing else.
-// Its tags are in ins itself (one, percent, …), ins::si and ins::international.
+// The catalog's units, kinds and origins, read once here after the catalog: a quantity type's unit, kind and origin
+// are looked up here first (units/detail/unit_key.hpp), so a type of the catalog's searches nothing else.
+// Its tags are in ins itself (one, percent, …), ins::isq, ins::si and ins::international.
 namespace ins::detail::catalog_index
 {
-  inline constexpr unit_set table = []
+  inline constexpr catalog_sets table = []
   {
-    std::vector<const unit_def*> units;
-    collect_tag_units(^^ins, units, {}, false);
-    collect_tag_units(^^ins::si, units);
-    collect_tag_units(^^ins::international, units);
-    const auto s{std::define_static_array(units)};
-    return unit_set{s.data(), s.size()};
+    tag_vectors tags;
+    collect_tags(^^ins, tags, {}, false);
+    collect_tags(^^ins::isq, tags);
+    collect_tags(^^ins::si, tags);
+    collect_tags(^^ins::international, tags);
+    return intern_tags(tags);
   }();
 } // namespace ins::detail::catalog_index
 
