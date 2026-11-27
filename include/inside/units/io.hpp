@@ -259,13 +259,13 @@ namespace ins
   }
 
   // A point as its quantity from its origin: "20 ℃".
-  template <reference R, origin_ref O, class V>
-  std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8)
+  template <point_like P>
+  std::string to_string(const P& p, text_encoding enc = text_encoding::utf8)
   {
     return ins::to_string(p.quantity_from_origin(), enc);
   }
-  template <reference R, origin_ref O, class V>
-  std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p)
+  template <point_like P>
+  std::ostream& operator<<(std::ostream& os, const P& p)
   {
     return os << ins::to_string(p);
   }
@@ -303,13 +303,13 @@ struct std::formatter<ins::multivector<P...>> : std::formatter<std::string_view>
   }
 };
 
-template <ins::reference R, ins::origin_ref O, class V>
-struct std::formatter<ins::quantity_point<R, O, V>> : std::formatter<ins::quantity<R, V>>
+template <ins::point_like P>
+struct std::formatter<P> : std::formatter<typename P::quantity_type>
 {
   template <typename Ctx>
-  auto format(const ins::quantity_point<R, O, V>& p, Ctx& ctx) const
+  auto format(const P& p, Ctx& ctx) const
   {
-    return std::formatter<ins::quantity<R, V>>::format(p.quantity_from_origin(), ctx);
+    return std::formatter<typename P::quantity_type>::format(p.quantity_from_origin(), ctx);
   }
 };
 

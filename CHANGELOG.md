@@ -36,6 +36,12 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   partial specialization on a quantity takes `detail::basic_of_t<Q>` or a
   constraint on `quantity_like`. Hooks (`on_wrap`, `on_clamp`, `on_error`)
   get the quantity as its own type.
+- Every point is an `id<K>` whose key has an origin
+  (`id<"[-40..125] [`C] @ice_point">`), and `quantity_point<R, O, Rep>` an
+  alias of it. Deduce `point_like P` (and read `P::reference`, `P::origin`
+  and `P::rep`) where `quantity_point<R, O, Rep>` was deduced. A string
+  `_ins` literal with an origin is a point:
+  `"21.5 [-40..125] 1/10 [`C] @ice_point"_ins`.
 - A quantity's unit needs a text that reads back to it where the type is
   formed, or the quantity does not compile: give a unit of your own a symbol
   the catalog does not read, and a prefixed unit of your own a tag

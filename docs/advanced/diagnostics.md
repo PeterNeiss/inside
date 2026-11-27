@@ -37,14 +37,16 @@ text above are one type.
 
 ## Decoding a quantity
 
-A quantity prints as its text, the unit in brackets after the number's, and a
-kind that is not the unit's own after it in braces
+A quantity prints as its text, the unit in brackets after the number's, a
+kind that is not the unit's own after it in braces, and a point's origin
+after `@`
 ([quantities](../guide/id.md#quantities)):
 
 ```text
 ins::id<ins::key{"[0..100] [km/h]"}>
 ins::id<ins::key{"[0..100] [m]{height}"}>
 ins::id<ins::key{"[1..81] [m*s]{any duration*length}"}>
+ins::id<ins::key{"[-40..125] [`C] @ice_point"}>
 ```
 
 | Text | Means |
@@ -53,6 +55,7 @@ ins::id<ins::key{"[1..81] [m*s]{any duration*length}"}>
 | `{height}` | exactly that kind (`isq::height[si::metre]`); no braces for the unit's own kind, any of it |
 | `{any duration*length}` | the kinds a product or quotient is made of, `any` when any kind of each will do |
 | `{none}`, `{any}` | no kind; any kind of the dimension |
+| `@ice_point`, `@0` | a point: the quantity counted from that origin; `@0` from the implicit zero of the dimension |
 
 Where a reference itself is a template argument (a quantity whose unit has no
 text, which does not compile, or a trait's parts), it prints as the structure

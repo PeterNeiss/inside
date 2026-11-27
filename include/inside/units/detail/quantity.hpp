@@ -34,18 +34,18 @@ namespace ins
     {
       static constexpr key value = K;
     };
-    template <reference R, insidable Rep>
+    template <reference R, insidable Rep, origin_ref O = &origin_def::none, bool Point = false>
     consteval key quantity_key()
     {
       if constexpr (R.unit().Scale.Ratio.negative() || R.unit().Scale.Ratio.is_zero())
         constexpr_error<"units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order "
                         "and negate the number">();
-      else if constexpr (!reference_has_text<R>())
+      else if constexpr (!reference_has_text<R, O, Point>())
         constexpr_error<"units: this quantity's unit or kind has no text that names it here - give a unit of your "
                         "own a symbol of its own (a symbol the catalog reads names the catalog's unit), and a kind "
-                        "a name of its own">();
+                        "or an origin a name of its own">();
       return key_of(key_grid<number_key<Rep>::value>, key_policy<number_key<Rep>::value>,
-                    quantity_name_for(R, &origin_def::none, false).Name);
+                    quantity_name_for(R, O, Point).Name);
     }
     // A key's number: the inside with the key's grid and policy.
     template <key K>

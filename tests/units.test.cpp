@@ -552,9 +552,11 @@ TEST(UnitsApiTest, a_unit_is_one_of_itself_in_arithmetic) {
     static_assert(!can_scale_raw<decltype(si::metre)> && !can_times<decltype(si::metre), decltype(just<2>)>);
 }
 
+// A tag of one's own is at namespace scope, where a type's text finds it.
+inline constexpr auto zero_origin = origin<"zero", base_dimension<"thermodynamic_temperature">>;
+
 TEST(UnitsApiTest, tags_for_your_own_entries) {
-    constexpr auto zero = origin<"zero", base_dimension<"thermodynamic_temperature">>;
-    const auto     p    = zero + just<5> * si::kelvin;
+    const auto p = zero_origin + just<5> * si::kelvin;
     EXPECT_EQ(p.quantity_from_origin().numerical_value_in(si::kelvin), 5);
     static_assert(!can_subtract<decltype(p), decltype(point<si::kelvin>(just<1>))>); // two absolute origins
 }
@@ -703,6 +705,7 @@ inline constexpr kind_def         named_velocity_def{"velocity", isq::speed,
 inline constexpr kind_def         named_angle_def{"angular_measure", isq::dimensionless,
                                                   {.distinct = true, .recipe = isq::arc_length / isq::radius}};
 inline constexpr origin_def       named_ice_def{"ice", si::absolute_zero + just<27315, 100> * si::kelvin};
+inline constexpr auto             named_ice = defined_by<named_ice_def>;
 inline constexpr origin_def       named_zero_def{"zero", base_dimension<"thermodynamic_temperature">};
 inline constexpr basis_vector_def named_e1_def{"e1", geometric<+1>};
 } // namespace
@@ -735,8 +738,8 @@ TEST(UnitsApiTest, named_definitions) {
     EXPECT_EQ(to_string(quantity<si::kilo(named_fathom), I>{2, si::kilo(named_fathom)}), "2 kftm");
     EXPECT_EQ(to_string(b.in(si::metre)), "21.9456 m");
     EXPECT_EQ(to_string(quantity<named_cts, I>{7, named_cts} / si::second), "7 cnt/s");
-    constexpr auto ice = defined_by<named_ice_def>;
-    EXPECT_EQ(to_string(point<si::degree_Celsius>(inside<{-5, 5}>{1}).point_for(ice).quantity_from_origin()), "1 ℃");
+    EXPECT_EQ(to_string(point<si::degree_Celsius>(inside<{-5, 5}>{1}).point_for(named_ice).quantity_from_origin()),
+              "1 ℃");
     constexpr auto e1 = defined_by<named_e1_def>;
     static_assert(dimension_of((e1 * e1).value) == dim_one);
 }
