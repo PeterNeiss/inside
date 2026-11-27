@@ -1,4 +1,7 @@
-// Every unit, kind and origin tag of the catalog with the text a key spells it by: "unit si::metre m".
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Every unit, kind and origin tag of the catalog with the text a key spells it by ("unit si::metre m"), the table
+// tools/convert_ids.py reads:
+//   g++-16 -std=c++26 -freflection -I include tools/convert_ids_symbols.cpp -o symtab && ./symtab > symtab.txt
 #include <inside/units.hpp>
 #include <inside/units/constants.hpp>
 #include <cstdio>

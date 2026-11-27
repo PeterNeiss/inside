@@ -73,39 +73,30 @@ alone. A quantity in metres prints in 232 characters instead of 404.
 
 ### Changed
 
-- An inside type holds its grid and policy as text (`ins::key`), so it
-  prints as it is spelled. `tools/symbol_lengths.sh`, GCC 16, characters,
-  0.11.0 → the shorter names below → the text:
+- Every type holds its grid, policy, unit, kind and origin as text
+  (`ins::key`), so it prints as it is spelled. `tools/symbol_lengths.sh`,
+  GCC 16, characters, 0.11.0 → the shorter names below → the text:
 
   | Type | Mangled | Printed |
   |---|---|---|
-  | `inside<{0, 100}>` | 135 → 96 → 86 | 147 → 132 → 29 |
-  | `inside<{{0, 1}, per<100>}, round_half_away>` | 136 → 97 → 196 | 151 → 136 → 49 |
-  | `inside<{{0, 1}, max_denominator{1000}}>` | 136 → 103 → 111 | 148 → 133 → 34 |
-  | `quantity<si::metre, …>` | 373 → 206 → 196 | 404 → 232 → 129 |
-  | a point in ℃ | 469 → 260 → 246 | 508 → 276 → 173 |
-  | km/h | 377 → 350 → 355 | 429 → 448 → 345 |
+  | `id<"[0..100]">` | 135 → 96 → 86 | 147 → 132 → 29 |
+  | `id<"[0..1] 1/100 round_half_away">` | 136 → 97 → 196 | 151 → 136 → 49 |
+  | `id<"[0..1] <1000>">` | 136 → 103 → 111 | 148 → 133 → 34 |
+  | `id<"[0..100] [m]">` | 373 → 206 → 107 | 404 → 232 → 33 |
+  | `id<"[0..100] [km/h]">` | 377 → 350 → 124 | 429 → 448 → 36 |
+  | `id<"[-50..50] [`C] @ice_point">` | 469 → 260 → 178 | 508 → 276 → 46 |
 
   A mangled name holds about 5 characters per character of the text, so a
   long text (flag words) mangles longer than the grid numbers did. The 12
-  injected errors of `examples/` print 95 507 characters (0.11.0: 122 484).
+  injected errors of `examples/` print 99 578 characters (0.11.0: 122 484).
   Compile time (`perf stat`, instructions, against the shorter names):
-  `inside.hpp` +2.0 %, `units.hpp` +0.5 %, 200 inside expressions +15 %, 200
-  quantity expressions +9 %, `units.test.cpp` +6 %, `arithmetic.test.cpp`
-  +8 %. Run time: the instruction counts of the perf workload are unchanged.
-  The tests and examples form 4018 types; their longest text is 1033
-  characters, of the 2048 a key holds.
-- A quantity whose unit has a text prints it too: a quantity in metres in 33
-  characters (the shorter names: 232; 0.11.0: 404), km/h in 36 (448), a
-  one-line unit of your own in 35 (530 to 780); mangled about half. A unit's
-  symbol is looked up in the catalog's table first (read once after the
-  catalog), and only a symbol it does not read searches the program's other
-  unit tags. Compile time against the insides spelled as text:
-  `units.hpp` +15 %, 200 quantity expressions +12 %, `units.test.cpp` +36 %
-  (its many units of its own each search the program), `arithmetic.test.cpp`
-  +2 %. The 12 injected errors print 100 630 characters: a conversion error
-  names an inherited constructor first, with the base's reference. Run time:
-  unchanged.
+  `inside.hpp` +2.5 %, `units.hpp` +61 %, 200 inside expressions +18 %, 200
+  quantity expressions +49 %, `units.test.cpp` +80 %, `arithmetic.test.cpp`
+  +20 %. A quantity's type reads its text back where it is formed (a lookup
+  of each symbol, the catalog's tables first), and the catalog's kinds and
+  origins have tables of their own. Run time: the instruction counts of the
+  perf workload are unchanged. The tests and examples form 4018 types; their
+  longest text is 1033 characters, of the 2048 a key holds.
 - Type names (`tools/symbol_lengths.sh`, GCC 16, characters):
 
   | Type | Mangled before → now | Printed before → now |
