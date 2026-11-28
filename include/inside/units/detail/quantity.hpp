@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// quantity<R, Rep>: construction, arithmetic, casts and inside's algorithms on quantities.
+// id<quantity_key<R, Rep>>: construction, arithmetic, casts and inside's algorithms on quantities.
 // Internal: include <inside/units.hpp> or <inside/units/core.hpp>.
 #ifndef INSIDE_UNITS_DETAIL_QUANTITY_HPP
 #define INSIDE_UNITS_DETAIL_QUANTITY_HPP
@@ -7,13 +7,98 @@
 #include <inside/inside/detail/config.hpp>
 
 #include <inside/units/detail/algebra.hpp>
+#include <inside/units/detail/unit_key.hpp>
 
 namespace ins
 {
+  // A quantity: id<K> for a key with a unit (and no origin).
+  namespace detail
+  {
+    template <key K>
+      requires unit_key<K>
+    inline constexpr bool is_quantity_v<id<K>> = true;
+  } // namespace detail
 
-  // quantity<R, Rep>: a number Rep (an inside) of the reference R.
+  template <class T>
+  concept quantity_like = detail::is_quantity_v<std::remove_cvref_t<T>>;
+
+  namespace detail
+  {
+    // The key of a quantity on R, its number Rep: id<"[0..100] [km/h]">, the type every quantity is
+    // (units/detail/unit_key.hpp writes and reads its text). A reference whose text names another one where the
+    // type is formed (a symbol of your own the catalog reads, a symbol several visible units share) has no type.
+    template <class Rep>
+    struct number_key;
+    template <key K>
+    struct number_key<id<K>>
+    {
+      static constexpr key value = K;
+    };
+    template <reference R, insidable Rep, origin_ref O = &origin_def::none, bool Point = false>
+    consteval key quantity_key_of()
+    {
+      if constexpr (R.unit().Scale.Ratio.negative() || R.unit().Scale.Ratio.is_zero())
+        constexpr_error<"units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order "
+                        "and negate the number">();
+      else if constexpr (!reference_has_text<R, O, Point>())
+        constexpr_error<"units: this quantity's unit or kind has no text that names it here - give a unit of your "
+                        "own a symbol of its own (a symbol the catalog reads names the catalog's unit), and a kind "
+                        "or an origin a name of its own">();
+      return key_of(key_grid<number_key<Rep>::value>, key_policy<number_key<Rep>::value>,
+                    quantity_name_for(R, O, Point).Name);
+    }
+    // A key's number: the inside with the key's grid and policy.
+    template <key K>
+    using key_rep = id<key_of(key_grid<K>, key_policy<K>)>;
+  } // namespace detail
+
+  namespace detail
+  {
+    // Whether Rep{n} (Rep{n, pol}) stores at run time, as the constructor an inside chooses: an inside, a number
+    // the grids prove, or a policy that reports; else only while compiling (a consteval store of a constant).
+    // A quantity's constructors split the same way (constexpr and consteval): GCC 16 does not reliably carry a
+    // constructor that becomes consteval through what it calls over to the code that calls it (it calls a function
+    // it never emits).
+    template <class Rep, class N>
+    consteval bool runtime_store()
+    {
+      using A = std::remove_cvref_t<N>;
+      return insidable<A> || store_proven<Rep, A>;
+    }
+    template <class Rep, class N, class Pol>
+    consteval bool runtime_store_with()
+    {
+      using A = std::remove_cvref_t<N>;
+      using P = std::remove_cvref_t<Pol>;
+      constexpr policy_flag F{override_flags(policy_of<Rep>, policy_of<P>)};
+      return insidable<A> || store_proven<id<key{grid_of<Rep>, F}>, A, F> || reports_into_errc<P>;
+    }
+
+    // A quantity's reference and number as a type, for traits specialized on them (quantity_rule, part_number):
+    // a quantity maps to quantity_parts<R, Rep>, every other type to itself.
+    template <reference R, class Rep>
+    struct quantity_parts
+    {
+    };
+    template <class T>
+    struct basic_of
+    {
+      using type = T;
+    };
+    template <key K>
+      requires unit_key<K>
+    struct basic_of<id<K>>
+    {
+      using type = quantity_parts<key_reference<K>, key_rep<K>>;
+    };
+    template <class T>
+    using basic_of_t = typename basic_of<T>::type;
+  } // namespace detail
+
+  // The key of a quantity on R with the number Rep, for a type computed from them:
+  // id<quantity_key<si::metre, id<"[0..100]">>> is id<"[0..100] [m]">.
   template <reference R, insidable Rep>
-  class quantity;
+  inline constexpr key quantity_key = detail::quantity_key_of<R, Rep>();
 
   namespace detail
   {
@@ -26,15 +111,15 @@ namespace ins
       {
         return Q{typename Q::from_number{}, std::forward<V>(v)};
       }
-      template <reference R, class V>
-      static constexpr const V& number(const quantity<R, V>& q) noexcept
+      template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+      static constexpr const V& number(const QR& q) noexcept
       {
         return q.Value;
       }
     };
     // q's number in its own unit R.
-    template <reference R, class V>
-    constexpr const V& value_of(const quantity<R, V>& q) noexcept
+    template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    constexpr const V& value_of(const QR& q) noexcept
     {
       return quantity_access::number(q);
     }
@@ -50,15 +135,6 @@ namespace ins
   public:
     friend constexpr bool operator==(const multivector&, const multivector&) = default;
   };
-
-  namespace detail
-  {
-    template <reference R, class Rep>
-    inline constexpr bool is_quantity_v<quantity<R, Rep>> = true;
-  } // namespace detail
-
-  template <class T>
-  concept quantity_like = detail::is_quantity_v<std::remove_cvref_t<T>>;
 
   namespace detail
   {
@@ -90,15 +166,16 @@ namespace ins
       if constexpr (From == To)
         return true;
       else
-        return exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
+        return exact_rescale_v<From.unit(), To.unit()> && dimension_of(From.unit()) == dimension_of(To.unit())
+            && kind_converts(From, To);
     }
     template <reference From, reference To>
     inline constexpr bool implicit_v = implicit_conversion<From, To>();
     // A quantity of From on V that converts implicitly to To; one of R that converts to unit U (q.in<U>()).
     template <reference From, reference To, class V>
-    concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V>;
+    concept implicit_rescalable = implicit_v<From, To> && rescalable<From.unit(), To.unit(), V>;
     template <reference R, unit_value U, class V>
-    concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
+    concept in_rescalable = in_error_of<R.unit(), U>() == in_error::none && rescalable<R.unit(), U, V>;
 
     // A dimensionless quantity that is a plain number: no distinct kind (an angle), and an exact factor to unit one.
     // (A branch: a quantity type names number_like_v<R> in a declaration, so every quantity forms it, and the factor
@@ -106,10 +183,11 @@ namespace ins
     template <reference R>
     consteval bool number_like()
     {
-      if constexpr (!(dimension_of(R.U) == dim_one))
+      if constexpr (!(dimension_of(R.unit()) == dim_one))
         return false;
       else
-        return exact_factor_v<conversion_factor<R.U, unit_value{}>> && (!R.Kind || !kind_root(R.Kind.P)->Distinct);
+        return exact_factor_v<conversion_factor<R.unit(), unit_value{}>>
+            && (!has(R.kind()) || !kind_root(R.kind())->Distinct);
     }
     template <reference R>
     inline constexpr bool number_like_v = number_like<R>();
@@ -124,19 +202,19 @@ namespace ins
     template <reference R, class V>
     struct number_type<R, V, true>
     {
-      using type = decltype(rescale<conversion_factor<R.U, unit_value{}>>(std::declval<const V&>()));
+      using type = decltype(rescale<conversion_factor<R.unit(), unit_value{}>>(std::declval<const V&>()));
     };
     template <reference R, class V>
     using number_t = typename number_type<R, V>::type;
 
     template <reference From, reference To, insidable V>
-    using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
+    using rescaled_t = decltype(rescale<conversion_factor<From.unit(), To.unit()>>(std::declval<const V&>()));
 
     // q's number in unit U: exact, its grid rescaled.
-    template <unit_value U, reference R, class V>
-    constexpr auto number_in_unit(const quantity<R, V>& q)
+    template <unit_value U, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    constexpr auto number_in_unit(const QR& q)
     {
-      return rescale<conversion_factor<R.U, U>>(value_of(q));
+      return rescale<conversion_factor<R.unit(), U>>(value_of(q));
     }
 
     // A one-shot store's source (Q{x, clamp}, exact_cast<Q>(x)): a quantity, converted to Q's unit exactly first.
@@ -144,11 +222,12 @@ namespace ins
     template <class Q, class X>
     constexpr auto number_in(const X& x)
     {
-      return number_in_unit<Q::reference.U>(x);
+      return number_in_unit<Q::reference.unit()>(x);
     }
     template <class Q, class X>
     concept castable_quantity =
-      quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
+      quantity_like<X> && implicit_v<X::reference, Q::reference>
+      && exact_rescale_v<X::reference.unit(), Q::reference.unit()>;
     template <class Q, class X>
     concept castable_from = quantity_like<Q> && castable_quantity<Q, X>;
     // A number: an inside, a built-in, a rational or a grid number.
@@ -172,7 +251,7 @@ namespace ins
     concept unit_tag_of = is_reference_tag_v<std::remove_cvref_t<Tag>>
                        && implicit_v<reference_of_tag<std::remove_cvref_t<Tag>>, std::remove_cvref_t<Q>::reference>;
     template <class Q, class Tag>
-    inline constexpr bool own_unit_v = reference_of_tag<std::remove_cvref_t<Tag>>.U == Q::reference.U;
+    inline constexpr bool own_unit_v = reference_of_tag<std::remove_cvref_t<Tag>>.unit() == Q::reference.unit();
     template <class Q, class V, class Tag>
     concept number_in_tag =
       unit_tag_of<Q, Tag> && !quantity_like<V>
@@ -187,7 +266,7 @@ namespace ins
       if constexpr (own_unit_v<Q, Tag>)
         return std::forward<V>(v);
       else
-        return rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.U, Q::reference.U>>(v);
+        return rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.unit(), Q::reference.unit()>>(v);
     }
     template <class Q, class V, class Tag>
     using number_from_tag_t = decltype(number_from_tag<Q, Tag>(std::declval<V>()));
@@ -197,10 +276,12 @@ namespace ins
       unit_tag_of<Q, Tag> && !own_unit_v<Q, Tag> && number_value<V> && !insidable<std::remove_cvref_t<V>>;
     // Rep's twin in the unit of Tag (unit_tag_of: the factor holds no pi).
     template <class Q, class Tag>
-    concept twin_forms = rescalable<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U, typename Q::rep>;
+    concept twin_forms =
+      rescalable<Q::reference.unit(), reference_of_tag<std::remove_cvref_t<Tag>>.unit(), typename Q::rep>;
     template <class Q, class Tag>
-    using twin_t = decltype(rescale<conversion_factor<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U>>(
-      std::declval<const typename Q::rep&>()));
+    using twin_t =
+      decltype(rescale<conversion_factor<Q::reference.unit(), reference_of_tag<std::remove_cvref_t<Tag>>.unit()>>(
+        std::declval<const typename Q::rep&>()));
     template <class Q, class V, class Tag>
     concept raw_in_twin = raw_in_other_unit<Q, V, Tag> && twin_forms<Q, Tag>;
     // The twin's value as Q's number: the same value on the same grid, or an expected of it (try_make).
@@ -211,7 +292,8 @@ namespace ins
       if constexpr (is_expected_v<T>)
         return t.transform([](const auto& x) { return from_twin<Q, Tag>(x); });
       else
-        return Rep(rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.U, Q::reference.U>>(t));
+        return Rep(
+          rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.unit(), Q::reference.unit()>>(t));
     }
     // A unit of another quantity than Q's.
     template <class Q, class Tag>
@@ -234,9 +316,9 @@ namespace ins
     template <reference R>
     consteval reference unsigned_reference()
     {
-      reference r{R};
-      r.U.Scale.Ratio = abs(r.U.Scale.Ratio);
-      return r;
+      unit_value u{R.unit()};
+      u.Scale.Ratio = abs(u.Scale.Ratio);
+      return R.with_unit(u);
     }
 
     // A quantity of reference R on a number that inside's arithmetic returned:
@@ -246,9 +328,9 @@ namespace ins
     template <reference R, class V>
     constexpr auto make_quantity(V&& v)
     {
-      if constexpr (R.U.Scale.Ratio.is_zero())
+      if constexpr (R.unit().Scale.Ratio.is_zero())
         return multivector<>{};
-      else if constexpr (R.U.Scale.Ratio.negative())
+      else if constexpr (R.unit().Scale.Ratio.negative())
       {
         constexpr reference P{unsigned_reference<R>()};
         if constexpr (is_expected_v<std::remove_cvref_t<V>>)
@@ -257,7 +339,7 @@ namespace ins
           return make_quantity<P>(-v);
       }
       else
-        return lift_to<quantity<R, ins::detail::unwrap_t<V>>>(std::forward<V>(v));
+        return lift_to<id<quantity_key<R, ins::detail::unwrap_t<V>>>>(std::forward<V>(v));
     }
 
     // q.on_wrap(f) and the other hooks: the inside's policy_ref on q's number,
@@ -335,25 +417,25 @@ namespace ins
       Q&  Self;
       Ref NumRef;
 
-      template <reference R2, class V2>
+      template <quantity_like QR2, reference R2 = QR2::reference, class V2 = typename QR2::rep>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r = v; }
-      constexpr Q& operator=(const quantity<R2, V2>& q)
+      constexpr Q& operator=(const QR2& q)
       {
-        NumRef = number_in_unit<R.U>(q);
+        NumRef = number_in_unit<R.unit()>(q);
         return Self;
       }
-      template <reference R2, class V2>
+      template <quantity_like QR2, reference R2 = QR2::reference, class V2 = typename QR2::rep>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r += v; }
-      constexpr Q& operator+=(const quantity<R2, V2>& q)
+      constexpr Q& operator+=(const QR2& q)
       {
-        NumRef += number_in_unit<R.U>(q);
+        NumRef += number_in_unit<R.unit()>(q);
         return Self;
       }
-      template <reference R2, class V2>
+      template <quantity_like QR2, reference R2 = QR2::reference, class V2 = typename QR2::rep>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
-      constexpr Q& operator-=(const quantity<R2, V2>& q)
+      constexpr Q& operator-=(const QR2& q)
       {
-        NumRef -= number_in_unit<R.U>(q);
+        NumRef -= number_in_unit<R.unit()>(q);
         return Self;
       }
       template <insidable V>
@@ -415,99 +497,146 @@ namespace ins
       std::conditional_t<lower_of<Rep> == upper_of<Rep>, public_member<T>, private_member<T, Owner>>;
   } // namespace detail
 
-  template <reference R, insidable Rep>
-  class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>>
+  // A quantity: a number Rep (an inside, the key's grid and policy) of the reference R (the key's unit and kind),
+  // the type id<"[0..100] [km/h]">, which id<quantity_key<R, Rep>> names.
+  template <key K>
+    requires detail::unit_key<K>
+  struct id<K> : public detail::member_holder<detail::key_rep<K>, detail::key_rep<K>, id<K>>
   {
-    static_assert(!R.U.Scale.Ratio.negative() && !R.U.Scale.Ratio.is_zero(),
+  private:
+    static constexpr ins::reference R{detail::key_reference<K>};
+    using Rep = detail::key_rep<K>;
+
+    static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
-    using holder = detail::member_holder<Rep, Rep, quantity<R, Rep>>;
+    using holder = detail::member_holder<Rep, Rep, id>;
     using holder::Value;
 
   public:
     using rep = Rep;
     static constexpr ins::reference  reference = R;
-    static constexpr ins::unit_value unit      = R.U;
-    static constexpr ins::dimension  dimension = dimension_of(R.U);
+    static constexpr ins::unit_value unit      = R.unit();
+    static constexpr ins::dimension  dimension = dimension_of(R.unit());
     // The kind as a value: its tag for a named kind (isq::height), else the expression of its recipe.
     // Compare with ==: q.kind == isq::length.
     static constexpr auto kind = []
     {
-      if constexpr (static_cast<bool>(R.Kind))
-        return kind_t<R.Kind.P>{};
+      if constexpr (detail::has(R.kind()))
+        return kind_t<R.kind()>{};
       else
-        return kind_expr{R.Derived, dimension_of(R.U)};
+        return kind_expr{R.derived(), dimension_of(R.unit())};
     }();
 
-    constexpr quantity() = default;
+    constexpr id() = default;
 
-    // From a number and its unit: quantity<si::metre, inside<{0, 100}>>{42, si::metre} is 42 m,
+    // From a number and its unit: id<"[0..100] [m]">{42, si::metre} is 42 m,
     // stored under Rep's policy.
     // An inside in another unit of the same quantity converts exactly first: Q{n, si::kilo(si::metre)}.
+    // (Each store twice: constexpr where it runs at run time, consteval where only a constant can make it,
+    // detail::runtime_store.)
     template <class V, class Tag>
-      requires detail::number_in_tag<quantity, V, Tag>
-            && std::constructible_from<Rep, detail::number_from_tag_t<quantity, V, Tag>>
-    constexpr quantity(V&& v, Tag) : holder(Rep(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)))) {}
+      requires detail::number_in_tag<id, V, Tag>
+            && std::constructible_from<Rep, detail::number_from_tag_t<id, V, Tag>>
+            && (detail::runtime_store<Rep, detail::number_from_tag_t<id, V, Tag>>())
+    constexpr id(V&& v, Tag)
+      : holder(Rep(detail::number_from_tag<id, Tag>(std::forward<V>(v)))) {}
+    template <class V, class Tag>
+      requires detail::number_in_tag<id, V, Tag>
+            && std::constructible_from<Rep, detail::number_from_tag_t<id, V, Tag>>
+            && (!detail::runtime_store<Rep, detail::number_from_tag_t<id, V, Tag>>())
+    consteval id(V&& v, Tag)
+      : holder(Rep(detail::number_from_tag<id, Tag>(std::forward<V>(v)))) {}
     // A one-shot policy for this store, as for an inside:
     // a flag or make_policy<F>(ec) (Q{v, si::metre, clamp}, Q{q, round_floor}).
     template <class V, class Tag, class Pol>
       requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>)
-           && detail::number_in_tag<quantity, V, Tag>
-           && std::constructible_from<Rep, detail::number_from_tag_t<quantity, V, Tag>, Pol>
-    constexpr quantity(V&& v, Tag, Pol&& pol)
-      : holder(Rep(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)), std::forward<Pol>(pol))) {}
+           && detail::number_in_tag<id, V, Tag>
+           && std::constructible_from<Rep, detail::number_from_tag_t<id, V, Tag>, Pol>
+           && (detail::runtime_store_with<Rep, detail::number_from_tag_t<id, V, Tag>, Pol>())
+    constexpr id(V&& v, Tag, Pol&& pol)
+      : holder(Rep(detail::number_from_tag<id, Tag>(std::forward<V>(v)), std::forward<Pol>(pol))) {}
+    template <class V, class Tag, class Pol>
+      requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>)
+           && detail::number_in_tag<id, V, Tag>
+           && std::constructible_from<Rep, detail::number_from_tag_t<id, V, Tag>, Pol>
+           && (!detail::runtime_store_with<Rep, detail::number_from_tag_t<id, V, Tag>, Pol>())
+    consteval id(V&& v, Tag, Pol&& pol)
+      : holder(Rep(detail::number_from_tag<id, Tag>(std::forward<V>(v)), std::forward<Pol>(pol))) {}
     // x a quantity, converted to R's unit exactly first.
     template <class X, class Pol>
-      requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>) && detail::castable_from<quantity, X>
-           && std::constructible_from<Rep, decltype(detail::number_in<quantity>(std::declval<const X&>())), Pol>
-    constexpr quantity(const X& x, Pol&& pol) : holder(Rep(detail::number_in<quantity>(x), std::forward<Pol>(pol))) {}
+      requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>)
+           && detail::castable_from<id, X>
+           && std::constructible_from<Rep, decltype(detail::number_in<id>(std::declval<const X&>())), Pol>
+    constexpr id(const X& x, Pol&& pol)
+      : holder(Rep(detail::number_in<id>(x), std::forward<Pol>(pol))) {}
 
     // A number alone names no unit.
     template <class V>
-      requires detail::bare_number_for<quantity, V>
-    quantity(V&&) = delete ("units: a number alone has no unit - write Q{42, si::metre}, or just<42> * si::metre");
+      requires detail::bare_number_for<id, V>
+    id(V&&) = delete ("units: a number alone has no unit - write Q{42, si::metre}, or "
+                                  "just<42> * si::metre");
     template <class V, class Pol>
       requires(ins::detail::flag_like<std::remove_cvref_t<Pol>> || ins::detail::policy_like<std::remove_cvref_t<Pol>>)
-           && detail::bare_number_for<quantity, V>
-    quantity(V&&, Pol&&) = delete ("units: a number alone has no unit - write Q{v, si::metre, clamp}");
+           && detail::bare_number_for<id, V>
+    id(V&&, Pol&&) = delete ("units: a number alone has no unit - write Q{v, si::metre, clamp}");
     // A plain number in another unit of the quantity:
     // minutes{90, si::second} is stored once, onto Rep's grid in seconds, and converts exactly.
     template <class V, class Tag>
-      requires detail::raw_in_twin<quantity, V, Tag> && std::constructible_from<detail::twin_t<quantity, Tag>, V>
-    constexpr quantity(V&& v, Tag)
-      : holder(detail::from_twin<quantity, Tag>(detail::twin_t<quantity, Tag>(std::forward<V>(v)))) {}
+      requires detail::raw_in_twin<id, V, Tag>
+            && std::constructible_from<detail::twin_t<id, Tag>, V>
+            && (detail::runtime_store<detail::twin_t<id, Tag>, V>())
+    constexpr id(V&& v, Tag)
+      : holder(detail::from_twin<id, Tag>(detail::twin_t<id, Tag>(std::forward<V>(v)))) {}
+    template <class V, class Tag>
+      requires detail::raw_in_twin<id, V, Tag>
+            && std::constructible_from<detail::twin_t<id, Tag>, V>
+            && (!detail::runtime_store<detail::twin_t<id, Tag>, V>())
+    consteval id(V&& v, Tag)
+      : holder(detail::from_twin<id, Tag>(detail::twin_t<id, Tag>(std::forward<V>(v)))) {}
     template <class V, class Tag, class Pol>
-      requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>) && detail::raw_in_twin<quantity, V, Tag>
-           && std::constructible_from<detail::twin_t<quantity, Tag>, V, Pol>
-    constexpr quantity(V&& v, Tag, Pol&& pol)
-      : holder(detail::from_twin<quantity, Tag>(
-          detail::twin_t<quantity, Tag>(std::forward<V>(v), std::forward<Pol>(pol)))) {}
+      requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>)
+           && detail::raw_in_twin<id, V, Tag>
+           && std::constructible_from<detail::twin_t<id, Tag>, V, Pol>
+           && (detail::runtime_store_with<detail::twin_t<id, Tag>, V, Pol>())
+    constexpr id(V&& v, Tag, Pol&& pol)
+      : holder(detail::from_twin<id, Tag>(
+          detail::twin_t<id, Tag>(std::forward<V>(v), std::forward<Pol>(pol)))) {}
+    template <class V, class Tag, class Pol>
+      requires(ins::detail::flag_like<Pol> || ins::detail::policy_like<Pol>)
+           && detail::raw_in_twin<id, V, Tag>
+           && std::constructible_from<detail::twin_t<id, Tag>, V, Pol>
+           && (!detail::runtime_store_with<detail::twin_t<id, Tag>, V, Pol>())
+    consteval id(V&& v, Tag, Pol&& pol)
+      : holder(detail::from_twin<id, Tag>(
+          detail::twin_t<id, Tag>(std::forward<V>(v), std::forward<Pol>(pol)))) {}
     template <class V, class Tag, class... Pol>
-      requires detail::foreign_unit_tag<quantity, Tag>
-    quantity(V&&, Tag, Pol&&...) = delete ("units: Q{v, u} - u is a unit of another quantity than Q's");
+      requires detail::foreign_unit_tag<id, Tag>
+    id(V&&, Tag, Pol&&...) = delete ("units: Q{v, u} - u is a unit of another quantity than Q's");
 
     // From another quantity: implicit when the kind converts implicitly
     // and the number, in R's unit, converts implicitly into Rep.
-    template <ins::reference R2, class V2>
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
       requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
-    constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
-      : holder(Rep(detail::number_in_unit<R.U>(q))) {}
+    constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>)
+      id(const QR2& q)
+      : holder(Rep(detail::number_in_unit<R.unit()>(q))) {}
     // Any other quantity names why it does not convert.
-    template <ins::reference R2, class V2>
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
       requires detail::implicit_rescalable<R2, R, V2> && (!std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>)
-    quantity(const quantity<R2, V2>&) = delete ("units: the number, in this unit, may fall off this quantity's grid "
-                                                "- store it with Q{q, round_half_away} or Q{q, clamp}, or check it "
-                                                "with exact_cast<Q>(q)");
-    template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::dimension)
-    quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another dimension");
-    template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::pi)
-    quantity(const quantity<R2, V2>&) = delete (INSIDE_UNITS_WHY_PI);
-    template <ins::reference R2, class V2>
-      requires(detail::in_error_of<R2.U, R.U>() == detail::in_error::none && !detail::kind_converts(R2, R))
-    quantity(const quantity<R2, V2>&) = delete ("units: a quantity of another kind - read it as this kind with "
-                                                "kind_cast<K>(q)");
+    id(const QR2&) = delete ("units: the number, in this unit, may fall off this "
+                                                            "quantity's grid - store it with Q{q, round_half_away} or "
+                                                            "Q{q, clamp}, or check it with exact_cast<Q>(q)");
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::dimension)
+    id(const QR2&) = delete ("units: a quantity of another dimension");
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::pi)
+    id(const QR2&) = delete (INSIDE_UNITS_WHY_PI);
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
+      requires(detail::in_error_of<R2.unit(), R.unit()>() == detail::in_error::none && !detail::kind_converts(R2, R))
+    id(const QR2&) = delete ("units: a quantity of another kind - read it as this "
+                                                            "kind with kind_cast<K>(q)");
 
     void numerical_value() const = delete ("units: a number alone has no unit - read q.numerical_value_in(si::metre)");
 
@@ -516,8 +645,8 @@ namespace ins
       requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in() const
     {
-      constexpr ins::reference to{R.Kind, R.KindOf, R.Derived, U};
-      return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Value));
+      constexpr ins::reference to{R.kind(), R.kind_of(), R.derived(), U};
+      return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.unit(), U>>(Value));
     }
     template <ins::unit_value U>
       requires detail::in_rescalable<R, U, Rep>
@@ -530,22 +659,22 @@ namespace ins
       requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto numerical_value_in(ins::unit_t<U>) const
     {
-      if constexpr (U == R.U)
+      if constexpr (U == R.unit())
         return Value;
       else
         return detail::value_of(in<U>());
     }
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::dimension)
     void in() const = delete ("units: in() - the unit has another dimension");
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::dimension)
     void in(ins::unit_t<U>) const = delete ("units: in() - the unit has another dimension");
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::pi)
     void in() const = delete (INSIDE_UNITS_WHY_PI);
     template <ins::unit_value U>
-      requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+      requires(detail::in_error_of<R.unit(), U>() == detail::in_error::pi)
     void in(ins::unit_t<U>) const = delete (INSIDE_UNITS_WHY_PI);
 
     // A dimensionless quantity is a number: its value in unit one (km/m is ×1000, % is ×1/100),
@@ -555,10 +684,10 @@ namespace ins
       requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const
     {
-      return T(detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
+      return T(detail::rescale<detail::conversion_factor<R.unit(), ins::unit_value{}>>(Value));
     }
     template <insidable T>
-      requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
+      requires(dimension_of(R.unit()) == dim_one && !detail::number_like_v<R>)
     operator T() const = delete ("units: an angle (a distinct kind) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value_in(si::radian), or value_cast it first");
 
@@ -568,32 +697,32 @@ namespace ins
       requires detail::number_like_v<R> && requires(const detail::number_t<R, Rep>& n) { ins::to<T, Round>(n); }
     [[nodiscard]] constexpr auto to() const
     {
-      return ins::to<T, Round>(detail::rescale<detail::conversion_factor<R.U, ins::unit_value{}>>(Value));
+      return ins::to<T, Round>(detail::rescale<detail::conversion_factor<R.unit(), ins::unit_value{}>>(Value));
     }
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
     [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Value); }
 
     // Compound assignment keeps the type: the number is stored back under Rep's policy (checked by default).
-    template <ins::reference R2, class V2>
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
       requires detail::implicit_rescalable<R2, R, V2>
             && requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n += r; }
-    constexpr quantity& operator+=(const quantity<R2, V2>& q)
+    constexpr id& operator+=(const QR2& q)
     {
-      Value += detail::number_in_unit<R.U>(q);
+      Value += detail::number_in_unit<R.unit()>(q);
       return *this;
     }
-    template <ins::reference R2, class V2>
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
       requires detail::implicit_rescalable<R2, R, V2>
             && requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n -= r; }
-    constexpr quantity& operator-=(const quantity<R2, V2>& q)
+    constexpr id& operator-=(const QR2& q)
     {
-      Value -= detail::number_in_unit<R.U>(q);
+      Value -= detail::number_in_unit<R.unit()>(q);
       return *this;
     }
     template <insidable V>
       requires requires(Rep& n, const V& v) { n *= v; }
-    constexpr quantity& operator*=(const V& v)
+    constexpr id& operator*=(const V& v)
     {
       Value *= v;
       return *this;
@@ -602,14 +731,14 @@ namespace ins
     // the result is stored back by the number's rules.
     template <ins::detail::step_integer N>
       requires requires(Rep& r, N n) { r *= n; }
-    constexpr quantity& operator*=(N n)
+    constexpr id& operator*=(N n)
     {
       Value *= n;
       return *this;
     }
     template <insidable V>
       requires requires(Rep& n, const V& v) { n /= v; }
-    constexpr quantity& operator/=(const V& v)
+    constexpr id& operator/=(const V& v)
     {
       Value /= v;
       return *this;
@@ -620,62 +749,63 @@ namespace ins
 #define INSIDE_UNITS_WHY_unproven                                                                     \
   "units: the result may fall outside this quantity's number at run time - store with clamp or wrap " \
   "(q.with<clamp>() += d), report with q.on_error(ec) += d or q.on_error(f) += d, or opt out with unsafe"
-    template <ins::reference R2, class V2>
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
       requires detail::implicit_rescalable<R2, R, V2>
             && detail::needs_channel<Rep, detail::rescaled_t<R2, R, V2>, detail::plus_assign>
-    quantity& operator+=(const quantity<R2, V2>&) = delete (INSIDE_UNITS_WHY_unproven);
-    template <ins::reference R2, class V2>
+    id& operator+=(const QR2&) = delete (INSIDE_UNITS_WHY_unproven);
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
       requires detail::implicit_rescalable<R2, R, V2>
             && detail::needs_channel<Rep, detail::rescaled_t<R2, R, V2>, detail::minus_assign>
-    quantity& operator-=(const quantity<R2, V2>&) = delete (INSIDE_UNITS_WHY_unproven);
+    id& operator-=(const QR2&) = delete (INSIDE_UNITS_WHY_unproven);
     template <insidable V>
       requires detail::needs_channel<Rep, V, detail::times_assign>
-    quantity& operator*=(const V&) = delete (INSIDE_UNITS_WHY_unproven);
+    id& operator*=(const V&) = delete (INSIDE_UNITS_WHY_unproven);
     template <insidable V>
       requires detail::needs_channel<Rep, V, detail::divide_assign>
-    quantity& operator/=(const V&) = delete (INSIDE_UNITS_WHY_unproven);
+    id& operator/=(const V&) = delete (INSIDE_UNITS_WHY_unproven);
 #undef INSIDE_UNITS_WHY_unproven
 
     // One notch of the number up or down, as on an inside, under Rep's policy.
-    constexpr quantity& operator++()
+    constexpr id& operator++()
       requires requires(Rep& n) { ++n; }
     {
       ++Value;
       return *this;
     }
-    constexpr quantity& operator--()
+    constexpr id& operator--()
       requires requires(Rep& n) { --n; }
     {
       --Value;
       return *this;
     }
-    constexpr quantity operator++(int)
+    // (The old value as the quantity type, id<"…"> where the unit has a text, not this base.)
+    constexpr auto operator++(int)
       requires requires(Rep& n) { ++n; }
     {
-      auto old{*this};
+      auto old{detail::make_quantity<R>(Value)};
       ++Value;
       return old;
     }
-    constexpr quantity operator--(int)
+    constexpr auto operator--(int)
       requires requires(Rep& n) { --n; }
     {
-      auto old{*this};
+      auto old{detail::make_quantity<R>(Value)};
       --Value;
       return old;
     }
 #define INSIDE_UNITS_WHY_step                                                                                      \
   "units: ++ and -- may step out of this quantity's number - use a clamp or wrap number, q.on_error(ec) += step, " \
   "or iterate with a cursor"
-    quantity& operator++()
+    id& operator++()
       requires detail::step_needs_channel<Rep>
     = delete (INSIDE_UNITS_WHY_step);
-    quantity& operator--()
+    id& operator--()
       requires detail::step_needs_channel<Rep>
     = delete (INSIDE_UNITS_WHY_step);
-    quantity operator++(int)
+    id operator++(int)
       requires detail::step_needs_channel<Rep>
     = delete (INSIDE_UNITS_WHY_step);
-    quantity operator--(int)
+    id operator--(int)
       requires detail::step_needs_channel<Rep>
     = delete (INSIDE_UNITS_WHY_step);
 #undef INSIDE_UNITS_WHY_step
@@ -691,22 +821,25 @@ namespace ins
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry) when the sum wraps.
     // Stores take quantities; f gets the quantity,
     // then the carry (a count of periods), the overshoot (a quantity) or the error.
-    template <class F>
-    [[nodiscard]] constexpr auto on_wrap(F&& f)
+    // (f gets the quantity as its own type, an id<…> where the unit has a text: self, not this base.)
+    template <class Self, class F>
+    [[nodiscard]] constexpr auto on_wrap(this Self& self, F&& f)
     {
-      return detail::make_action_ref<R>(*this, Value.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
+      id& q{self};
+      return detail::make_action_ref<R>(q, q.Value.on_wrap(detail::on_quantity(self, std::forward<F>(f))));
     }
-    template <class F>
-    [[nodiscard]] constexpr auto on_clamp(F&& f)
+    template <class Self, class F>
+    [[nodiscard]] constexpr auto on_clamp(this Self& self, F&& f)
     {
-      return detail::make_action_ref<R>(
-        *this, Value.on_clamp(detail::on_quantity_clamp<R>(*this, std::forward<F>(f))));
+      id& q{self};
+      return detail::make_action_ref<R>(q, q.Value.on_clamp(detail::on_quantity_clamp<R>(self, std::forward<F>(f))));
     }
-    template <class F>
+    template <class Self, class F>
       requires(!std::same_as<std::remove_cvref_t<F>, error>)
-    [[nodiscard]] constexpr auto on_error(F&& f)
+    [[nodiscard]] constexpr auto on_error(this Self& self, F&& f)
     {
-      return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
+      id& q{self};
+      return detail::make_action_ref<R>(q, q.Value.on_error(detail::on_quantity(self, std::forward<F>(f))));
     }
 
     // A store under Rep's policy plus F, as inside's with<F>(): its =, += and -= take quantities, *= and /= numbers.
@@ -723,21 +856,21 @@ namespace ins
     }
 
     // Rep's try_make of a number and its unit:
-    // quantity<si::metre, M>::try_make(12.5, si::metre), an expected quantity.
+    // id<quantity_key<si::metre, M>>::try_make(12.5, si::metre), an expected quantity.
     template <policy_flag F = ins::detail::none, class V, class Tag>
-      requires detail::number_in_tag<quantity, V, Tag>
-            && requires(const V& v) { Rep::template try_make<F>(detail::number_from_tag<quantity, Tag>(v)); }
+      requires detail::number_in_tag<id, V, Tag>
+            && requires(const V& v) { Rep::template try_make<F>(detail::number_from_tag<id, Tag>(v)); }
     [[nodiscard]] static constexpr auto try_make(const V& v, Tag)
     {
-      return detail::make_quantity<R>(Rep::template try_make<F>(detail::number_from_tag<quantity, Tag>(v)));
+      return detail::make_quantity<R>(Rep::template try_make<F>(detail::number_from_tag<id, Tag>(v)));
     }
     template <policy_flag F = ins::detail::none, class V, class Tag>
-      requires detail::raw_in_twin<quantity, V, Tag>
-            && requires(const V& v) { detail::twin_t<quantity, Tag>::template try_make<F>(v); }
+      requires detail::raw_in_twin<id, V, Tag>
+            && requires(const V& v) { detail::twin_t<id, Tag>::template try_make<F>(v); }
     [[nodiscard]] static constexpr auto try_make(const V& v, Tag)
     {
       return detail::make_quantity<R>(
-        detail::from_twin<quantity, Tag>(detail::twin_t<quantity, Tag>::template try_make<F>(v)));
+        detail::from_twin<id, Tag>(detail::twin_t<id, Tag>::template try_make<F>(v)));
     }
     template <policy_flag F = ins::detail::none, class V>
     static void try_make(const V&) = delete ("units: a number alone has no unit - write Q::try_make(v, si::metre)");
@@ -746,24 +879,42 @@ namespace ins
     friend struct detail::quantity_access;
     struct from_number {};
     template <class V>
-    constexpr quantity(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
+    constexpr id(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
   };
+
+  // A value with its quantity type: "42 [1..100) [km/h]"_ins is 42 km/h of type id<"[1..99] [km/h]">, the number
+  // in the type's unit, stored while compiling as Q{just<v>, unit} stores it; "42 [km/h]"_ins is the point 42 km/h.
+  // (Without a unit, the literal is an inside's: inside/detail/core.hpp.)
+  template <key K>
+    requires detail::unit_key<K>
+  struct id<K>;
+  inline namespace literals
+  {
+    template <detail::value_text T>
+      requires detail::unit_key<T.Key>
+    consteval auto operator""_ins()
+    {
+      return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
+    }
+  } // namespace literals
 
   // A quantity chains through inside's expected-lift operators:
   // a division by a grid holding 0 and the rest of the expression stay one std::expected.
 } // namespace ins
 namespace ins::detail
 {
-  template <ins::reference R, class Rep>
-  inline constexpr bool lift_operand_v<ins::quantity<R, Rep>> = true;
+  template <class Q>
+    requires is_quantity_v<Q>
+  inline constexpr bool lift_operand_v<Q> = true;
 
   // cursor<Q, Step>, values<Q> and end(t) step over Q's number in Q's unit.
-  template <ins::reference R, class Rep>
-  struct stepping<ins::quantity<R, Rep>>
+  template <class Q>
+    requires is_quantity_v<Q>
+  struct stepping<Q>
   {
-    using number = Rep;
+    using number = typename Q::rep;
     template <class N>
-    using rebind = ins::quantity<R, N>;
+    using rebind = ins::id<ins::quantity_key<Q::reference, N>>;
     template <class N>
     static constexpr rebind<N> make(const N& n)
     {
@@ -796,37 +947,36 @@ namespace ins
   // (π is never rounded; value_cast to a plain unit rounds it once, units/math.hpp). q / pi likewise.
   namespace detail
   {
-    consteval reference scaled_reference(reference r, const magnitude& m)
+    consteval reference scaled_reference(const reference& r, const magnitude& m)
     {
-      r.U = unit_scaled(r.U, m);
-      return r;
+      return r.with_unit(unit_scaled(r.unit(), m));
     }
   } // namespace detail
-  template <magnitude M, reference R, class V>
-  [[nodiscard]] constexpr auto operator*(mag_t<M>, const quantity<R, V>& q)
+  template <magnitude M, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator*(mag_t<M>, const QR& q)
   {
-    return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(ins::detail::value_of(q));
+    return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, M), V>>>(ins::detail::value_of(q));
   }
-  template <reference R, class V, magnitude M>
-  [[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, mag_t<M>)
+  template <quantity_like QR, magnitude M, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator*(const QR& q, mag_t<M>)
   {
-    return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(ins::detail::value_of(q));
+    return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, M), V>>>(ins::detail::value_of(q));
   }
   // A magnitude times a number: the number in the scaled unit one ([π]), so pi * just<2> * si::second is 2 in [π s].
   template <magnitude M, insidable V>
   [[nodiscard]] constexpr auto operator*(mag_t<M>, const V& v)
   {
-    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
+    return detail::quantity_access::make<id<quantity_key<reference_of(detail::unit_scaled(unit_value{}, M)), V>>>(v);
   }
   template <insidable V, magnitude M>
   [[nodiscard]] constexpr auto operator*(const V& v, mag_t<M>)
   {
-    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
+    return detail::quantity_access::make<id<quantity_key<reference_of(detail::unit_scaled(unit_value{}, M)), V>>>(v);
   }
-  template <reference R, class V, magnitude M>
-  [[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, mag_t<M>)
+  template <quantity_like QR, magnitude M, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator/(const QR& q, mag_t<M>)
   {
-    return detail::quantity_access::make<quantity<detail::scaled_reference(R, magnitude{} / M), V>>(
+    return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, magnitude{} / M), V>>>(
       ins::detail::value_of(q));
   }
 
@@ -836,13 +986,11 @@ namespace ins
     template <reference A, reference B>
     consteval reference sum_reference()
     {
-      static_assert(dimension_of(A.U) == dimension_of(B.U),
+      static_assert(dimension_of(A.unit()) == dimension_of(B.unit()),
                     "units: adding or comparing quantities of different dimensions");
       constexpr kind_result s{common_kind(A, B)};
       static_assert(s.Ok, "units: adding or comparing quantities of different kinds");
-      reference r{s.R};
-      r.U = common_unit(A.U, B.U);
-      return r;
+      return s.R.with_unit(common_unit(A.unit(), B.unit()));
     }
 
     // Why a sum or comparison of A and B is a unit error, if it is: other dimensions or kinds, or no common unit.
@@ -853,11 +1001,12 @@ namespace ins
     template <reference A, reference B>
     consteval sum_error sum_error_of()
     {
-      if (dimension_of(A.U) != dimension_of(B.U))
-        return same_outside_blade(dimension_of(A.U), dimension_of(B.U)) ? sum_error::blades : sum_error::dimensions;
+      if (dimension_of(A.unit()) != dimension_of(B.unit()))
+        return same_outside_blade(dimension_of(A.unit()), dimension_of(B.unit())) ? sum_error::blades
+                                                                                   : sum_error::dimensions;
       if (!common_kind(A, B).Ok)
         return sum_error::kinds;
-      const magnitude ma{magnitude_of(A.U)}, mb{magnitude_of(B.U)};
+      const magnitude ma{magnitude_of(A.unit())}, mb{magnitude_of(B.unit())};
       if (ma.Pi != mb.Pi)
         return sum_error::pi;
       return sum_error::none;
@@ -873,12 +1022,12 @@ namespace ins
     concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
     // A number and a quantity of a blade without a unit (3 + 4 i).
     template <reference A>
-    concept number_blade_sum = has_basis(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
+    concept number_blade_sum = has_basis(dimension_of(A.unit())) && same_outside_blade(dimension_of(A.unit()), dim_one);
 
     // Whether the two quantities have a common unit (no sum diagnostic) and both numbers rescale to it.
     template <reference A, class VA, reference B, class VB>
-    concept common_rescalable = (!sum_diagnosed<A, B>()) && rescalable<A.U, sum_reference<A, B>().U, VA>
-                             && rescalable<B.U, sum_reference<A, B>().U, VB>;
+    concept common_rescalable = (!sum_diagnosed<A, B>()) && rescalable<A.unit(), sum_reference<A, B>().unit(), VA>
+                             && rescalable<B.unit(), sum_reference<A, B>().unit(), VB>;
     // The number of a quantity of A on V, in A and B's common unit.
     template <reference A, class V, reference B>
     using common_number_t = rescaled_t<A, sum_reference<A, B>(), V>;
@@ -890,48 +1039,53 @@ namespace ins
     template <reference A, reference B, int Sign>
     consteval reference product_reference()
     {
-      const unit_value u{unit_mul(A.U, B.U, Sign)};
+      const unit_value u{unit_mul(A.unit(), B.unit(), Sign)};
       return kind_product(A, B, Sign, u);
     }
 
     // q's number in the common unit of A and B: the unit of their sum.
-    template <reference A, reference B, reference R, class V>
-    constexpr auto in_common_unit(const quantity<R, V>& q)
+    template <reference A, reference B, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    constexpr auto in_common_unit(const QR& q)
     {
-      return number_in_unit<sum_reference<A, B>().U>(q);
+      return number_in_unit<sum_reference<A, B>().unit()>(q);
     }
   } // namespace detail
 
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '+'>
-  [[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator+(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) + detail::in_common_unit<A, B>(b));
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '-'>
-  [[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator-(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) - detail::in_common_unit<A, B>(b));
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '%'>
-  [[nodiscard]] constexpr auto operator%(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator%(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) % detail::in_common_unit<A, B>(b));
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '='>
-  [[nodiscard]] constexpr bool operator==(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr bool operator==(const QA& a, const QB& b)
   {
     return detail::in_common_unit<A, B>(a) == detail::in_common_unit<A, B>(b);
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '<'>
-  [[nodiscard]] constexpr auto operator<=>(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator<=>(const QA& a, const QB& b)
   {
     return detail::in_common_unit<A, B>(a) <=> detail::in_common_unit<A, B>(b);
   }
@@ -1034,23 +1188,26 @@ namespace ins
 
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
   // the number is inside's min, max or midpoint (exact).
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '<'>
-  [[nodiscard]] constexpr auto min(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto min(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(ins::min(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '<'>
-  [[nodiscard]] constexpr auto max(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto max(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(ins::max(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '+'>
-  [[nodiscard]] constexpr auto midpoint(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto midpoint(const QA& a, const QB& b)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(ins::midpoint(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
@@ -1059,20 +1216,28 @@ namespace ins
   // A sum, difference, remainder or comparison of two units that cannot meet:
   // a deleted overload per reason, so a requires-test is false and a call says why.
 #define INSIDE_UNITS_SUM_DELETED(ret, op, blades)                                        \
-  template <reference A, class VA, reference B, class VB>                                \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)              \
-  ret op(const quantity<A, VA>&, const quantity<B, VB>&)                                 \
+  ret op(const QA&, const QB&)                                 \
     = delete ("units: adding or comparing quantities of different dimensions");          \
-  template <reference A, class VA, reference B, class VB>                                \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires detail::blade_sum<A, B>                                                     \
-  ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (blades);              \
-  template <reference A, class VA, reference B, class VB>                                \
+  ret op(const QA&, const QB&) = delete (blades);              \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                   \
-  ret op(const quantity<A, VA>&, const quantity<B, VB>&)                                 \
+  ret op(const QA&, const QB&)                                 \
     = delete ("units: adding or comparing quantities of different kinds");               \
-  template <reference A, class VA, reference B, class VB>                                \
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference,             \
+            class VA = typename QA::rep, reference B = QB::reference,                    \
+            class VB = typename QB::rep>                                                 \
     requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                      \
-  ret op(const quantity<A, VA>&, const quantity<B, VB>&)                                 \
+  ret op(const QA&, const QB&)                                 \
     = delete ("units: no common unit of a pi multiple and a rational one - convert one " \
               "side with value_cast first");
 #define INSIDE_UNITS_WHY_GEOALG \
@@ -1089,93 +1254,99 @@ namespace ins
 #undef INSIDE_UNITS_SUM_DELETED
 
   // A number plus a quantity of a blade: a multivector too.
-  template <insidable V, reference A, class VA>
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A>
-  void operator+(const V&, const quantity<A, VA>&) = delete (INSIDE_UNITS_WHY_GEOALG);
-  template <reference A, class VA, insidable V>
+  void operator+(const V&, const QA&) = delete (INSIDE_UNITS_WHY_GEOALG);
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A>
-  void operator+(const quantity<A, VA>&, const V&) = delete (INSIDE_UNITS_WHY_GEOALG);
-  template <insidable V, reference A, class VA>
+  void operator+(const QA&, const V&) = delete (INSIDE_UNITS_WHY_GEOALG);
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A>
-  void operator-(const V&, const quantity<A, VA>&) = delete (INSIDE_UNITS_WHY_GEOALG);
-  template <reference A, class VA, insidable V>
+  void operator-(const V&, const QA&) = delete (INSIDE_UNITS_WHY_GEOALG);
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A>
-  void operator-(const quantity<A, VA>&, const V&) = delete (INSIDE_UNITS_WHY_GEOALG);
+  void operator-(const QA&, const V&) = delete (INSIDE_UNITS_WHY_GEOALG);
 #undef INSIDE_UNITS_WHY_ORDER
 
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::number_op<VA, VB, '*'>
-  [[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator*(const QA& a, const QB& b)
   {
     return detail::make_quantity<detail::product_reference<A, B, 1>()>(ins::detail::value_of(a)
                                                                        * ins::detail::value_of(b));
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::number_op<VA, VB, '/'>
-  [[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator/(const QA& a, const QB& b)
   {
     return detail::make_quantity<detail::product_reference<A, B, -1>()>(ins::detail::value_of(a)
                                                                         / ins::detail::value_of(b));
   }
 
   // A quantity scaled by a dimensionless number (an inside).
-  template <reference A, class VA, insidable V>
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_op<VA, V, '*'>
-  [[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator*(const QA& a, const V& v)
   {
     return detail::make_quantity<A>(ins::detail::value_of(a) * v);
   }
-  template <insidable V, reference A, class VA>
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_op<V, VA, '*'>
-  [[nodiscard]] constexpr auto operator*(const V& v, const quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator*(const V& v, const QA& a)
   {
     return detail::make_quantity<A>(v * ins::detail::value_of(a));
   }
-  template <reference A, class VA, insidable V>
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_op<VA, V, '/'>
-  [[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator/(const QA& a, const V& v)
   {
     return detail::make_quantity<A>(ins::detail::value_of(a) / v);
   }
-  template <insidable V, reference A, class VA>
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_op<V, VA, '/'>
-  [[nodiscard]] constexpr auto operator/(const V& v, const quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator/(const V& v, const QA& a)
   {
-    constexpr reference R{detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&kind_def::none, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(v / ins::detail::value_of(a));
   }
   // A quantity times a unit: (5 * m) / s.
-  template <reference A, class VA, class Tag>
+  template <quantity_like QA, class Tag, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::is_reference_tag_v<Tag>
-  [[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, Tag t)
+  [[nodiscard]] constexpr auto operator*(const QA& a, Tag t)
   {
     return detail::make_quantity<detail::product_reference<A, reference_of(t), 1>()>(ins::detail::value_of(a));
   }
-  template <reference A, class VA, class Tag>
+  template <quantity_like QA, class Tag, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::is_reference_tag_v<Tag>
-  [[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, Tag t)
+  [[nodiscard]] constexpr auto operator/(const QA& a, Tag t)
   {
     return detail::make_quantity<detail::product_reference<A, reference_of(t), -1>()>(ins::detail::value_of(a));
   }
   // No raw scalars: q * 2 needs a grid for the 2.
-  template <reference A, class VA, class N>
+  template <quantity_like QA, class N, reference A = QA::reference, class VA = typename QA::rep>
     requires std::is_arithmetic_v<N>
-  void operator*(const quantity<A, VA>&, N) = delete ("units: a raw number has no grid - scale by just<2>, not 2");
-  template <reference A, class VA, class N>
+  void operator*(const QA&, N) = delete ("units: a raw number has no grid - scale by just<2>, "
+                                                           "not 2");
+  template <quantity_like QA, class N, reference A = QA::reference, class VA = typename QA::rep>
     requires std::is_arithmetic_v<N>
-  void operator*(N, const quantity<A, VA>&) = delete ("units: a raw number has no grid - scale by just<2>, not 2");
-  template <reference A, class VA, class N>
+  void operator*(N, const QA&) = delete ("units: a raw number has no grid - scale by just<2>, "
+                                                           "not 2");
+  template <quantity_like QA, class N, reference A = QA::reference, class VA = typename QA::rep>
     requires std::is_arithmetic_v<N>
-  void operator/(const quantity<A, VA>&, N) = delete ("units: a raw number has no grid - divide by just<2>, not 2");
-  template <reference A, class VA, class N>
+  void operator/(const QA&, N) = delete ("units: a raw number has no grid - divide by just<2>, "
+                                                           "not 2");
+  template <quantity_like QA, class N, reference A = QA::reference, class VA = typename QA::rep>
     requires std::is_arithmetic_v<N>
-  void operator/(N, const quantity<A, VA>&) = delete ("units: a raw number has no grid - divide by just<2>, not 2");
+  void operator/(N, const QA&) = delete ("units: a raw number has no grid - divide by just<2>, "
+                                                           "not 2");
 
   // pow<N>(q): q·q·…·q (N ≥ 1), exact, the grid of each product.
-  template <int N, reference R, class V>
-    requires(N == 1 || (N % 2 == 1 && requires(const quantity<R, V>& q) { q * pow<N - 1>(q); })
-             || (N >= 2 && N % 2 == 0 && requires(const quantity<R, V>& q) { pow<N / 2>(q) * pow<N / 2>(q); }))
-  [[nodiscard]] constexpr auto pow(const quantity<R, V>& q)
+  template <int N, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    requires(N == 1 || (N % 2 == 1 && requires(const QR& q) { q * pow<N - 1>(q); })
+             || (N >= 2 && N % 2 == 0 && requires(const QR& q) { pow<N / 2>(q) * pow<N / 2>(q); }))
+  [[nodiscard]] constexpr auto pow(const QR& q)
   {
     if constexpr (N == 1)
       return q;
@@ -1199,37 +1370,37 @@ namespace ins
     template <reference R, const kind_def* To>
     consteval cast_error cast_error_of()
     {
-      if (!(To->Dim == dimension_of(R.U)))
+      if (!(To->Dim == dimension_of(R.unit())))
         return cast_error::dimension;
       return kind_casts(R, To) ? cast_error::none : cast_error::distinct;
     }
   } // namespace detail
 
-  template <class KindTag, reference R, class V>
+  template <class KindTag, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::none)
-  [[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q)
+  [[nodiscard]] constexpr auto kind_cast(const QR& q)
   {
-    return detail::quantity_access::make<quantity<reference{KindTag::value, false, {}, R.U}, V>>(
+    return detail::quantity_access::make<id<quantity_key<reference{KindTag::value, false, {}, R.unit()}, V>>>(
       ins::detail::value_of(q));
   }
-  template <auto Kind, reference R, class V>
+  template <auto Kind, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires(detail::cast_error_of<R, decltype(Kind)::value>() == detail::cast_error::none)
-  [[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q)
+  [[nodiscard]] constexpr auto kind_cast(const QR& q)
   {
     return kind_cast<decltype(Kind)>(q);
   }
-  template <class KindTag, reference R, class V>
+  template <class KindTag, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::dimension)
-  void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - another dimension");
-  template <auto Kind, reference R, class V>
+  void kind_cast(const QR&) = delete ("units: kind_cast - another dimension");
+  template <auto Kind, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires(detail::cast_error_of<R, decltype(Kind)::value>() == detail::cast_error::dimension)
-  void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - another dimension");
-  template <class KindTag, reference R, class V>
+  void kind_cast(const QR&) = delete ("units: kind_cast - another dimension");
+  template <class KindTag, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::distinct)
-  void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - across a distinct kind's boundary");
-  template <auto Kind, reference R, class V>
+  void kind_cast(const QR&) = delete ("units: kind_cast - across a distinct kind's boundary");
+  template <auto Kind, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires(detail::cast_error_of<R, decltype(Kind)::value>() == detail::cast_error::distinct)
-  void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - across a distinct kind's boundary");
+  void kind_cast(const QR&) = delete ("units: kind_cast - across a distinct kind's boundary");
 
   namespace detail
   {
@@ -1247,42 +1418,43 @@ namespace ins
 
   // value_cast<Rep2>(q): another representation, the same unit: q's number stored into Rep2 by Rep2's policy.
   // The quantity where the grids prove the store, else std::expected.
-  template <insidable Rep2, reference R, class V>
+  template <insidable Rep2, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires requires(const V& v) { Rep2::try_make(v); }
-  [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
+  [[nodiscard]] constexpr auto value_cast(const QR& q)
   {
-    return detail::cast_number<quantity<R, Rep2>, Rep2>(ins::detail::value_of(q));
+    return detail::cast_number<id<quantity_key<R, Rep2>>, Rep2>(ins::detail::value_of(q));
   }
   // value_cast<U, Rep2>(q): in unit U with representation Rep2, the exact value in U, stored by Rep2's constructor.
   // (A pi factor, degree ↔ radian, rounds once: units/math.hpp.)
-  template <auto U, insidable Rep2, reference R, class V>
-    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value>
-          && requires(const quantity<R, V>& q) { Rep2::try_make(ins::detail::value_of(q.in(U))); }
-  [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
+  template <auto U, insidable Rep2, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.unit(), decltype(U)::value>
+          && requires(const QR& q) { Rep2::try_make(ins::detail::value_of(q.in(U))); }
+  [[nodiscard]] constexpr auto value_cast(const QR& q)
   {
     constexpr ins::unit_value u{decltype(U)::value};
-    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
-    constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
-    return detail::cast_number<quantity<to, Rep2>, Rep2>(ins::detail::value_of(q.in(U)));
+    static_assert(dimension_of(u) == dimension_of(R.unit()), "units: value_cast - the unit has another dimension");
+    constexpr reference to{R.kind(), R.kind_of(), R.derived(), u};
+    return detail::cast_number<id<quantity_key<to, Rep2>>, Rep2>(ins::detail::value_of(q.in(U)));
   }
 
-  // value_cast<Q>(q): into the quantity type Q = quantity<R2, Rep2>, q in R2's unit, stored by Rep2's constructor.
+  // value_cast<Q>(q): into the quantity type Q = id<quantity_key<R2, Rep2>>, q in R2's unit, stored by Rep2's
+  // constructor.
   // Q's kind must take q's, as for an implicit conversion; only the representation may round.
   namespace detail
   {
     template <class Q, reference R>
-    concept value_castable_to = quantity_like<Q> && dimension_of(Q::reference.U) == dimension_of(R.U)
-                             && kind_converts(R, Q::reference) && exact_rescale_v<R.U, Q::reference.U>;
+    concept value_castable_to = quantity_like<Q> && dimension_of(Q::reference.unit()) == dimension_of(R.unit())
+                             && kind_converts(R, Q::reference) && exact_rescale_v<R.unit(), Q::reference.unit()>;
   } // namespace detail
-  template <class Q, reference R, class V>
+  template <class Q, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires detail::value_castable_to<Q, R>
-          && requires(const quantity<R, V>& q)
+          && requires(const QR& q)
              {
-               Q::rep::try_make(ins::detail::value_of(q.template in<Q::reference.U>()));
+               Q::rep::try_make(ins::detail::value_of(q.template in<Q::reference.unit()>()));
              }
-  [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
+  [[nodiscard]] constexpr auto value_cast(const QR& q)
   {
-    return detail::cast_number<Q, typename Q::rep>(ins::detail::value_of(q.template in<Q::reference.U>()));
+    return detail::cast_number<Q, typename Q::rep>(ins::detail::value_of(q.template in<Q::reference.unit()>()));
   }
   // inside's algorithms on quantities:
   // the number goes through the inside function in the target's unit, so each still rounds once and checks once.
@@ -1295,7 +1467,7 @@ namespace ins
       if constexpr (quantity_like<T>)
         return x;
       else
-        return quantity_access::make<quantity<reference_of(one), T>>(x);
+        return quantity_access::make<id<quantity_key<reference_of(one), T>>>(x);
     }
     template <class T>
     using as_quantity_t = decltype(as_quantity(std::declval<const T&>()));
@@ -1341,15 +1513,15 @@ namespace ins
            requires implicit_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>(),
                                out_reference<Out>()>;
          }
-      && rescalable<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>().U,
-                    out_reference<Out>().U,
+      && rescalable<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>().unit(),
+                    out_reference<Out>().unit(),
                     typename as_quantity_t<A>::rep>;
     template <class Out, int E, class A>
     constexpr auto into_scaled(const A& a, const auto& b)
     {
       constexpr reference P{
         product_reference<as_quantity_t<A>::reference, std::remove_cvref_t<decltype(as_quantity(b))>::reference, E>()};
-      return rescale<conversion_factor<P.U, out_reference<Out>().U>>(ins::detail::value_of(as_quantity(a)));
+      return rescale<conversion_factor<P.unit(), out_reference<Out>().unit()>>(ins::detail::value_of(as_quantity(a)));
     }
     // The output of mul<C> / div<C> (E = ±1) of a and b:
     // C, a quantity type or a plain number for a dimensionless result;
@@ -1364,8 +1536,8 @@ namespace ins
            && (!number_like_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>)
     struct named_product<C, E, A, B>
     {
-      using type = quantity<
-        unsigned_reference<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>(), C>;
+      using type = id<quantity_key<
+        unsigned_reference<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>(), C>>;
     };
     template <class C, int E, class A, class B>
     using named_product_t = typename named_product<C, E, A, B>::type;
@@ -1423,13 +1595,14 @@ namespace ins
   template <class Q, std::ranges::input_range Rng>
     requires quantity_like<Q> && quantity_like<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
           && detail::implicit_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference, Q::reference>
-          && detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.U,
-                                     Q::reference.U>
+          && detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.unit(),
+                                     Q::reference.unit()>
   [[nodiscard]] constexpr auto sum(Rng&& r)
   {
     return detail::lift_to<Q>(ins::sum<typename Q::rep>(
       std::forward<Rng>(r)
-      | std::views::transform([](const auto& q) { return ins::detail::value_of(q.template in<Q::reference.U>()); })));
+      | std::views::transform([](const auto& q)
+                              { return ins::detail::value_of(q.template in<Q::reference.unit()>()); })));
   }
 
   // conversion_overflows<Q>(v, u) / conversion_rounds / conversion_loses: v, a number in unit u, against Q's grid
@@ -1487,10 +1660,11 @@ namespace ins
 
   // lerp in a and b's common unit, as + takes it: inside's lerp on the numbers,
   // so with t in [0, 1] the result's range is that of a and b together.
-  template <reference A, class VA, reference B, class VB, insidable T>
+  template <quantity_like QA, quantity_like QB, insidable T, reference A = QA::reference,
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
     requires detail::summable<A, VA, B, VB, '+'>
-          && requires(const quantity<A, VA>& a, const quantity<B, VB>& b, T t) { a + (b - a) * t; }
-  [[nodiscard]] constexpr auto lerp(const quantity<A, VA>& a, const quantity<B, VB>& b, const T& t)
+          && requires(const QA& a, const QB& b, T t) { a + (b - a) * t; }
+  [[nodiscard]] constexpr auto lerp(const QA& a, const QB& b, const T& t)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::make_quantity<C>(ins::lerp(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), t));
@@ -1506,7 +1680,7 @@ namespace ins
     {
       const auto with_unit = [](const auto& v)
       {
-        using M = quantity<C, decltype(v.Remainder)>;
+        using M = id<quantity_key<C, decltype(v.Remainder)>>;
         return divmod_result<decltype(v.Quotient), M>{v.Quotient, quantity_access::make<M>(v.Remainder)};
       };
       if constexpr (is_expected_v<std::remove_cvref_t<D>>)
@@ -1515,12 +1689,13 @@ namespace ins
         return with_unit(d);
     }
   } // namespace detail
-  template <reference A, class VA, reference B, class VB, class... Args>
-    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.U)))
+  template <quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference,
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>
+    requires detail::common_rescalable<A, VA, B, VB> && (!detail::has_polynomial(dimension_of(A.unit())))
           && requires(const detail::common_number_t<A, VA, B>& x,
                       const detail::common_number_t<B, VB, A>& y,
                       Args&&... args) { ins::divmod(x, y, std::forward<Args>(args)...); }
-  [[nodiscard]] constexpr auto divmod(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args)
+  [[nodiscard]] constexpr auto divmod(const QA& a, const QB& b, Args&&... args)
   {
     constexpr reference C{detail::sum_reference<A, B>()};
     return detail::quantity_divmod<C>(
@@ -1539,12 +1714,14 @@ namespace ins
   // and mul / div of two quantities (units multiply) or of a quantity and a number (the number scales):
   // inside's free arithmetic on the numbers, with its per-call policy, flag or error&.
 #define INSIDE_UNITS_SUM_FN(name)                                                                                \
-  template <reference A, class VA, reference B, class VB, class... Args>                                         \
+  template <quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference,                      \
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>               \
     requires detail::common_rescalable<A, VA, B, VB>                                                             \
           && requires(const detail::common_number_t<A, VA, B>& x,                                                \
                       const detail::common_number_t<B, VB, A>& y,                                                \
                       Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); }                          \
-  [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args)          \
+  [[nodiscard]] constexpr auto name(const QA& a, const QB& b,           \
+                                    Args&&... args)                                                              \
   {                                                                                                              \
     constexpr reference C = detail::sum_reference<A, B>();                                                       \
     return detail::make_quantity<C>(                                                                             \
@@ -1556,16 +1733,19 @@ namespace ins
 #undef INSIDE_UNITS_SUM_FN
 
 #define INSIDE_UNITS_PRODUCT_FN(name, sign)                                                                       \
-  template <int&... Barrier, reference A, class VA, reference B, class VB, class... Args>                         \
+  template <int&... Barrier, quantity_like QA, quantity_like QB, class... Args, reference A = QA::reference,      \
+            class VA = typename QA::rep, reference B = QB::reference, class VB = typename QB::rep>                \
     requires requires(const VA& x, const VB& y, Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); } \
-  [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args)           \
+  [[nodiscard]] constexpr auto name(const QA& a, const QB& b,            \
+                                    Args&&... args)                                                               \
   {                                                                                                               \
     return detail::make_quantity<detail::product_reference<A, B, sign>()>(                                        \
       ins::name(ins::detail::value_of(a), ins::detail::value_of(b), std::forward<Args>(args)...));                \
   }                                                                                                               \
-  template <int&... Barrier, reference A, class VA, insidable V, class... Args>                                   \
+  template <int&... Barrier, quantity_like QA, insidable V, class... Args, reference A = QA::reference,           \
+            class VA = typename QA::rep>                                                                          \
     requires requires(const VA& x, const V& y, Args&&... args) { ins::name(x, y, std::forward<Args>(args)...); }  \
-  [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const V& v, Args&&... args)                         \
+  [[nodiscard]] constexpr auto name(const QA& a, const V& v, Args&&... args)                   \
   {                                                                                                               \
     return detail::make_quantity<A>(ins::name(ins::detail::value_of(a), v, std::forward<Args>(args)...));         \
   }
@@ -1575,17 +1755,19 @@ namespace ins
 
   // A number times or over a quantity, as the operators.
   // (The leading int&... takes no argument: mul<C>(a, b) is the named form above.)
-  template <int&... Barrier, insidable V, reference A, class VA, class... Args>
+  template <int&... Barrier, insidable V, quantity_like QA, class... Args, reference A = QA::reference,
+            class VA = typename QA::rep>
     requires requires(const V& x, const VA& y, Args&&... args) { ins::mul(x, y, std::forward<Args>(args)...); }
-  [[nodiscard]] constexpr auto mul(const V& v, const quantity<A, VA>& a, Args&&... args)
+  [[nodiscard]] constexpr auto mul(const V& v, const QA& a, Args&&... args)
   {
     return detail::make_quantity<A>(ins::mul(v, ins::detail::value_of(a), std::forward<Args>(args)...));
   }
-  template <int&... Barrier, insidable V, reference A, class VA, class... Args>
+  template <int&... Barrier, insidable V, quantity_like QA, class... Args, reference A = QA::reference,
+            class VA = typename QA::rep>
     requires requires(const V& x, const VA& y, Args&&... args) { ins::div(x, y, std::forward<Args>(args)...); }
-  [[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args)
+  [[nodiscard]] constexpr auto div(const V& v, const QA& a, Args&&... args)
   {
-    constexpr reference R{detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>()};
+    constexpr reference R{detail::product_reference<reference{&kind_def::none, true, {}, unit_value{}}, A, -1>()};
     return detail::make_quantity<R>(ins::div(v, ins::detail::value_of(a), std::forward<Args>(args)...));
   }
 
@@ -1612,21 +1794,22 @@ namespace ins
 } // namespace ins
 
 // std::hash and std::numeric_limits of a quantity: its number's, the limits as quantities in its unit.
-template <ins::reference R, class Rep>
-struct std::hash<ins::quantity<R, Rep>>
+template <class Q>
+  requires ins::detail::is_quantity_v<Q>
+struct std::hash<Q>
 {
-  constexpr std::size_t operator()(const ins::quantity<R, Rep>& q) const noexcept
+  constexpr std::size_t operator()(const Q& q) const noexcept
   {
-    return std::hash<Rep>{}(ins::detail::value_of(q));
+    return std::hash<typename Q::rep>{}(ins::detail::value_of(q));
   }
 };
 
-template <ins::reference R, class Rep>
-struct std::numeric_limits<ins::quantity<R, Rep>> : std::numeric_limits<Rep>
+template <class Q>
+  requires ins::detail::is_quantity_v<Q>
+struct std::numeric_limits<Q> : std::numeric_limits<typename Q::rep>
 {
 private:
-  using Q = ins::quantity<R, Rep>;
-  using N = std::numeric_limits<Rep>;
+  using N = std::numeric_limits<typename Q::rep>;
 
 public:
   static constexpr Q min() noexcept { return ins::detail::quantity_access::make<Q>(N::min()); }

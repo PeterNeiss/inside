@@ -3,7 +3,7 @@
 // The core type (inside/detail/core.hpp) and its comparisons (inside/compare.hpp),
 // plus the free-function layers that depend on the complete type:
 // casts, arithmetic operators, inside_range and cursor, and the std::numeric_limits and std::hash specializations.
-// Those follow inside/detail/core.hpp because they need `inside<G, P>` fully defined.
+// Those follow inside/detail/core.hpp because they need `id<key{G, P}>` fully defined.
 #ifndef INSIDE_INSIDE_HPP
 #define INSIDE_INSIDE_HPP
 

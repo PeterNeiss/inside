@@ -21,8 +21,8 @@ inline constexpr auto y = basis_vector<"y", polynomial>;
 inline constexpr auto e1 = basis_vector<"e₁", geometric<+1>, {.ascii = "e1"}>;
 inline constexpr auto e2 = basis_vector<"e₂", geometric<+1>, {.ascii = "e2"}>;
 
-using digit = inside<{0, 10}>;
-using small = inside<{0, 3}>;
+using digit = id<"[0..10]">;
+using small = id<"[0..3]">;
 
 // 3 + 2 x + x²
 inline constexpr auto p = just<3> + just<2> * x + x * x;
@@ -103,7 +103,7 @@ TEST(PolynomialTest, divmod_divides_with_a_remainder) {
 
 TEST(PolynomialTest, divmod_checks_a_leading_coefficient_that_can_be_0) {
     // d's leading coefficient is in [-5, 5]: an expected.
-    using coefficient = inside<{-5, 5}>;
+    using coefficient = id<"[-5..5]">;
     const auto d      = coefficient{3} * x + just<1>;
     const auto e      = divmod(p, d);
     static_assert(std::same_as<std::remove_const_t<decltype(e)>,

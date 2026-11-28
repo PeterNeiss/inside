@@ -12,7 +12,7 @@
 
 namespace ins
 {
-  // policy_flag: the policy bits of inside<G, P> (the rounding modes, clamp, wrap, checked, unsafe),
+  // policy_flag: the policy bits of id<key{G, P}> (the rounding modes, clamp, wrap, checked, unsafe),
   // has_flag / is_checked, the rounding precedence (rounding_of),
   // the hook factories on_clamp / on_wrap / on_error with their is_*_action traits,
   // and the flags each hook implies.
@@ -21,9 +21,9 @@ namespace ins
   namespace detail
   {
     // A named flag is an object of its own type that converts to its bits:
-    // it is a template argument (inside<G, round_floor>), combines with | (clamp | round_floor stays a flag),
+    // it is a template argument (id<key{G, round_floor}>), combines with | (clamp | round_floor stays a flag),
     // and selects a call's policy (div(a, b, round_floor)).
-    // A policy_flag value, its bits, is what every template takes, so inside<G, round_floor> is inside<G, 48>.
+    // A policy_flag value, its bits, is what every template takes, so id<key{G, round_floor}> is id<key{G, 48}>.
     template <policy_flag V>
     struct flag
     {
@@ -68,7 +68,7 @@ namespace ins
   inline constexpr detail::flag<(1ull << 8) | detail::snap> round_half_even{};
 
   // Runtime checking, the default policy's name, no bits:
-  // every policy without `unsafe` checks (see is_checked), so inside<G> and inside<G, checked> are one type.
+  // every policy without `unsafe` checks (see is_checked), so id<key{G}> and id<key{G, checked}> are one type.
   inline constexpr detail::flag<0ull> checked{};
 
   // unary, mutually exclusive
@@ -143,7 +143,7 @@ namespace ins
 
     // Runtime checks run unless the flag set carries `unsafe`, which wins over `checked`
     // (the default policy's own bit, so `x.with<unsafe>()` opts a default inside out).
-    // `inside<G, round_half_away>` and `inside<G, clamp>` are checked, exactly like the default `inside<G>`.
+    // `id<key{G, round_half_away}>` and `id<key{G, clamp}>` are checked, exactly like the default `id<key{G}>`.
     [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, unsafe_marker); }
 
     // Whether an out-of-range value does anything under a flag set:

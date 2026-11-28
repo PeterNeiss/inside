@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// A quantity read from text with its unit: the units visible at a call (found by reflection), the grammar of a
-// unit's text, and the exact factor (for a point also the shift) from that unit into a quantity's.
+// A quantity read from text with its unit: the units its text names (units/detail/unit_grammar.hpp), and the exact
+// factor (for a point also the shift) from that unit into a quantity's.
 // Internal: include <inside/units/io.hpp>.
 #ifndef INSIDE_UNITS_DETAIL_UNIT_TEXT_HPP
 #define INSIDE_UNITS_DETAIL_UNIT_TEXT_HPP
@@ -8,6 +8,7 @@
 #include <inside/inside/detail/config.hpp>
 
 #include <inside/units.hpp>
+#include <inside/units/detail/unit_grammar.hpp>
 
 #include <algorithm>
 #include <array>
@@ -20,203 +21,6 @@
 
 namespace ins::detail
 {
-  // ---- The units a text may name: every unit visible at the call ----
-
-  // A set of named units, interned: a template argument, so each set is a specialization of its own.
-  struct unit_set
-  {
-    const unit_def* const* Data{};
-    std::size_t            Size{0};
-  };
-
-  // The namespaces searched: all but std, detail, reserved names and si2019 (its constants c, h, e and k are no
-  // units of measurement, and would shadow the prefixes and the hour). Unnamed namespaces are searched.
-  consteval bool searched_namespace(std::meta::info ns)
-  {
-    if (std::meta::is_namespace_alias(ns))
-      return false;
-    if (!std::meta::has_identifier(ns))
-      return true;
-    const std::string_view name{std::meta::identifier_of(ns)};
-    return name != "std" && name != "detail" && name != "si2019" && !name.starts_with('_');
-  }
-
-  // A named unit a text can name (no basis vector or polynomial variable), once: units equal by content are one.
-  consteval void add_text_unit(std::vector<const unit_def*>& out, const unit_def* u)
-  {
-    if (has_basis(u->Dim))
-      return;
-    for (const unit_def* v : out)
-      if (same(v, u))
-        return;
-    out.push_back(u);
-  }
-
-  consteval void collect_text_units(std::meta::info ns, std::vector<const unit_def*>& out)
-  {
-    for (const std::meta::info m : std::meta::members_of(ns, std::meta::access_context::unchecked()))
-      if (std::meta::is_namespace(m))
-      {
-        if (searched_namespace(m))
-          collect_text_units(m, out);
-      }
-      else if (std::meta::is_variable(m))
-      {
-        const std::meta::info t{std::meta::remove_cvref(std::meta::type_of(m))};
-        if (t == ^^unit_def)
-          add_text_unit(out, &std::meta::extract<const unit_def&>(m));
-        else if (std::meta::has_template_arguments(t) && std::meta::template_of(t) == ^^unit_t)
-        {
-          const unit_value u{std::meta::extract<unit_value>(std::meta::template_arguments_of(t)[0])};
-          for (std::int8_t i = 0; i < u.Size; ++i)
-            add_text_unit(out, u.Atoms[i].U);
-        }
-      }
-  }
-
-  // The named units of every unit variable visible where it runs: the catalog (unit_def objects and their
-  // defined_by tags), your own one-liners and aliases, in any namespace.
-  // Q only makes the call depend on the template, so it runs where parse<Q> is used.
-  template <class Q>
-  consteval unit_set visible_units()
-  {
-    std::vector<const unit_def*> units;
-    collect_text_units(^^::, units);
-    const auto s{std::define_static_array(units)};
-    return {s.data(), s.size()};
-  }
-
-  // ---- The grammar of a unit's text ----
-
-  inline constexpr int max_text_exponent  = 9;  // |exponent| of one symbol
-  inline constexpr int max_text_exponents = 12; // the sum of |exponent| over a unit's symbols
-  inline constexpr int text_prefix_bits   = 100; // 10^30, the largest prefix
-  inline constexpr std::size_t text_scale_limbs = 4; // a scaled unit's [N/D …]
-
-  struct text_prefix
-  {
-    std::string_view Sym;
-    std::int8_t      Pow;
-  };
-  // The longest first: da before d.
-  inline constexpr text_prefix text_prefixes[] = {
-    {"da", 1},  {"q", -30}, {"r", -27}, {"y", -24}, {"z", -21}, {"a", -18}, {"f", -15}, {"p", -12}, {"n", -9},
-    {"µ", -6},  {"μ", -6},  {"u", -6},  {"m", -3},  {"c", -2},  {"d", -1},  {"h", 2},   {"k", 3},   {"M", 6},
-    {"G", 9},   {"T", 12},  {"P", 15},  {"E", 18},  {"Z", 21},  {"Y", 24},  {"R", 27},  {"Q", 30}};
-
-  // A separator between a unit's factors at i: a space, '*' or the middle dot; its length in bytes, 0 for none.
-  constexpr std::size_t text_separator(std::string_view t, std::size_t i)
-  {
-    if (t[i] == ' ' || t[i] == '*')
-      return 1;
-    return t.substr(i, 2) == "·" ? 2 : 0;
-  }
-
-  // A superscript at i: its digit, 10 for ⁻, -1 for none; len its bytes.
-  constexpr int superscript_at(std::string_view t, std::size_t i, std::size_t& len)
-  {
-    constexpr std::string_view sup[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "⁻"};
-    for (int d = 0; d < 11; ++d)
-      if (t.substr(i, sup[d].size()) == sup[d])
-      {
-        len = sup[d].size();
-        return d;
-      }
-    return -1;
-  }
-
-  // Where a symbol starting at i ends: at a separator, '/', a parenthesis or bracket, '^' or a superscript.
-  constexpr std::size_t symbol_end(std::string_view t, std::size_t i)
-  {
-    std::size_t len{0};
-    while (i < t.size() && text_separator(t, i) == 0 && t[i] != '/' && t[i] != '(' && t[i] != ')' && t[i] != '['
-           && t[i] != ']' && t[i] != '^' && superscript_at(t, i, len) < 0)
-      ++i;
-    return i;
-  }
-
-  // The exponent after a symbol: ^n, ^-n, or superscript digits after an optional ⁻; 1 when none, 0 when invalid.
-  constexpr int read_text_exponent(std::string_view t, std::size_t& i)
-  {
-    int         sign{1}, e{0}, digits{0};
-    std::size_t len{0};
-    if (i < t.size() && t[i] == '^')
-    {
-      ++i;
-      if (i < t.size() && (t[i] == '-' || t[i] == '+'))
-        sign = t[i++] == '-' ? -1 : 1;
-      for (; i < t.size() && t[i] >= '0' && t[i] <= '9' && digits < 3; ++i, ++digits)
-        e = e * 10 + (t[i] - '0');
-      return digits == 0 || digits == 3 ? 0 : sign * e;
-    }
-    int d{superscript_at(t, i, len)};
-    if (d < 0)
-      return 1;
-    if (d == 10)
-    {
-      sign = -1;
-      i += len;
-      d    = superscript_at(t, i, len);
-    }
-    for (; d >= 0 && d < 10 && digits < 3; ++digits)
-    {
-      e = e * 10 + d;
-      i += len;
-      d = superscript_at(t, i, len);
-    }
-    return digits == 0 || digits == 3 ? 0 : sign * e;
-  }
-
-  // Where a number's text ends, in the grammar parse reads: a sign, then a decimal (digits, '.', ' separators, an
-  // e exponent), a 0x hexadecimal (with a p exponent) or a 0b binary number, then /denominator.
-  constexpr std::size_t number_text_end(std::string_view t)
-  {
-    const auto digit = [&](std::size_t i, int base)
-    {
-      if (i >= t.size())
-        return false;
-      const char c{t[i]};
-      return (c >= '0' && c <= '9' && c - '0' < base)
-             || (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')));
-    };
-    const auto exponent = [&](std::size_t& i, char lower)
-    {
-      if (i < t.size() && (t[i] == lower || t[i] == lower - 32))
-      {
-        std::size_t j{i + 1};
-        if (j < t.size() && (t[j] == '+' || t[j] == '-'))
-          ++j;
-        if (digit(j, 10))
-        {
-          for (i = j; digit(i, 10); ++i)
-          {
-          }
-        }
-      }
-    };
-    const auto number = [&](std::size_t i)
-    {
-      if (i < t.size() && (t[i] == '+' || t[i] == '-'))
-        ++i;
-      const int base{t.substr(i, 2) == "0x" || t.substr(i, 2) == "0X"   ? 16
-                     : t.substr(i, 2) == "0b" || t.substr(i, 2) == "0B" ? 2
-                                                                          : 10};
-      if (base != 10)
-        i += 2;
-      while (digit(i, base) || (i < t.size() && (t[i] == '.' || t[i] == '\'')))
-        ++i;
-      if (base == 10)
-        exponent(i, 'e');
-      else if (base == 16)
-        exponent(i, 'p');
-      return i;
-    };
-    std::size_t i{number(0)};
-    if (i + 1 < t.size() && t[i] == '/' && digit(i + 1, 10))
-      i = number(i + 1);
-    return i;
-  }
-
   // A quantity's text split: the number up to the first space and the unit after it, or without a space the number
   // as far as its grammar reads and the unit against it (90°, 90deg). Spaces around the unit are dropped.
   struct quantity_text
@@ -255,7 +59,7 @@ namespace ins::detail
     bool                            Scaled{false};
   };
 
-  // ---- What each unit says, for a quantity (unit R.U) or a point (and its origin O) ----
+  // ---- What each unit says, for a quantity (unit R.unit()) or a point (and its origin O) ----
 
   struct text_atom
   {
@@ -281,7 +85,7 @@ namespace ins::detail
           if (std::ranges::none_of(b, [&](const base_dimension_def* x) { return x->Name == d.Base[i]->Name; }))
             b.push_back(d.Base[i]);
       };
-      add(dimension_of(R.U));
+      add(dimension_of(R.unit()));
       for (std::size_t a = 0; a < S.Size; ++a)
         add(S.Data[a]->Dim);
       return b;
@@ -298,8 +102,8 @@ namespace ins::detail
             e[j] = d.Exp[i];
       return e;
     }
-    static constexpr std::array<std::int8_t, B> target_dim = exponents_of(dimension_of(R.U));
-    static constexpr magnitude                  target_mag = magnitude_of(R.U);
+    static constexpr std::array<std::int8_t, B> target_dim = exponents_of(dimension_of(R.unit()));
+    static constexpr magnitude                  target_mag = magnitude_of(R.unit());
 
     static consteval std::array<std::int8_t, S.Size * B> atom_dims_of()
     {
@@ -314,7 +118,7 @@ namespace ins::detail
     static constexpr std::array<std::int8_t, S.Size * B> atom_dims = atom_dims_of();
 
     // A text in no single unit counts from the dimension's zero.
-    static constexpr bool        implicit_origin_ok = !Point || (!absolute_of(O) && target_mag.Pi == 0);
+    static constexpr bool        implicit_origin_ok = !Point || (!has(absolute_of(O)) && target_mag.Pi == 0);
     static constexpr grid_number implicit_shift     = implicit_origin_ok && Point
                                                         ? (grid_number{0} - offset_of(O)) / target_mag.Ratio
                                                         : grid_number{0};
@@ -322,7 +126,7 @@ namespace ins::detail
     static consteval text_atom atom_of(const unit_def* u)
     {
       text_atom t{u->Utf8, u->ascii(), u->Mag.Ratio, u->Mag.Pi, false, false, grid_number{0}};
-      if (u->Dim == dimension_of(R.U))
+      if (u->Dim == dimension_of(R.unit()))
         t.KindOk = common_kind(reference_of(unit_value{*u}), R).Ok;
       if constexpr (Point)
         if (target_mag.Pi == 0 && same(absolute_of(u->Origin), absolute_of(O)))
@@ -612,7 +416,7 @@ namespace ins::detail
     if (unit.empty())
     {
       // Only a quantity of unit one prints no unit.
-      if constexpr (T::reference.U == unit_value{})
+      if constexpr (T::reference.unit() == unit_value{})
         return store_quantity_text<Q, F, Exact, 1>(number, wide_rational<1>{1, 1}, wide_rational<1>{0, 1});
       else
         return std::unexpected{number.empty() ? error::invalid_format : error::missing_unit};
@@ -632,10 +436,11 @@ namespace ins::detail
   consteval bool text_unit_converts()
   {
     using T = typename text_target<Q>::type;
-    if (!(dimension_of(U) == dimension_of(T::reference.U)) || magnitude_of(U).Pi != magnitude_of(T::reference.U).Pi)
+    if (!(dimension_of(U) == dimension_of(T::reference.unit()))
+        || magnitude_of(U).Pi != magnitude_of(T::reference.unit()).Pi)
       return false;
     if constexpr (text_target<Q>::point)
-      return magnitude_of(T::reference.U).Pi == 0 && same(absolute_of(origin_of_unit(U)), absolute_of(Q::origin));
+      return magnitude_of(T::reference.unit()).Pi == 0 && same(absolute_of(origin_of_unit(U)), absolute_of(Q::origin));
     else
       return true;
   }
@@ -645,7 +450,7 @@ namespace ins::detail
   constexpr std::expected<Q, error> parse_quantity_in(std::string_view number)
   {
     using T = typename text_target<Q>::type;
-    constexpr magnitude   from{magnitude_of(U)}, to{magnitude_of(T::reference.U)};
+    constexpr magnitude   from{magnitude_of(U)}, to{magnitude_of(T::reference.unit())};
     constexpr grid_number factor{from.Ratio / to.Ratio};
     constexpr grid_number shift{text_target<Q>::point
                                   ? (offset_of(origin_of_unit(U)) - offset_of(text_target<Q>::origin)) / to.Ratio

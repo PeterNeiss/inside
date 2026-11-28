@@ -8,6 +8,6 @@ using namespace ins;
 
 int main() {
     error            ec{};
-    inside<{0, 100}> x(150, ec);
+    id<"[0..100]"> x(150, ec);
     (void)x;
 }

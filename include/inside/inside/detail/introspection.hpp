@@ -6,6 +6,7 @@
 
 #include <inside/inside/detail/error.hpp>
 #include <inside/inside/grid.hpp>
+#include <inside/inside/key.hpp>
 #include <inside/inside/policy_flag.hpp>
 
 #include <bit>
@@ -18,15 +19,13 @@
 // The storage shapes build on it in inside/detail/storage.hpp.
 namespace ins
 {
-  template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
-  struct inside;
-
   namespace detail
   {
     template <class>
     inline constexpr bool is_inside_v = false;
-    template <grid G, policy_flag P>
-    inline constexpr bool is_inside_v<inside<G, P>> = true;
+    template <key K>
+      requires(inside_key<K>)
+    inline constexpr bool is_inside_v<id<K>> = true;
   } // namespace detail
 
   template <typename B>
@@ -39,10 +38,11 @@ namespace ins
   {
     template <typename B>
     struct inside_params;
-    template <grid G, policy_flag P>
-    struct inside_params<inside<G, P>>
+    template <key K>
+      requires(inside_key<K>)
+    struct inside_params<id<K>>
     {
-      static constexpr grid grid_v = G;
+      static constexpr grid grid_v = key_grid<K>;
     };
   } // namespace detail
 
@@ -53,8 +53,9 @@ namespace ins
   {
     template <typename T>
     inline constexpr policy_flag policy_of_impl = none;
-    template <grid G, policy_flag P>
-    inline constexpr policy_flag policy_of_impl<inside<G, P>> = P;
+    template <key K>
+      requires(inside_key<K>)
+    inline constexpr policy_flag policy_of_impl<id<K>> = key_policy<K>;
     template <policy_flag V>
     inline constexpr policy_flag policy_of_impl<flag<V>> = V;
   } // namespace detail
@@ -74,7 +75,7 @@ namespace ins
     {
       constexpr auto neutral = []<class B>(std::type_identity<B>)
       {
-        return grid_of<B>.Interval.Lower == grid_of<B>.Interval.Upper && policy_of<B> == 0;
+        return grid_of<B>.Lower == grid_of<B>.Upper && policy_of<B> == 0;
       };
       constexpr policy_flag f{neutral(std::type_identity<L>{}) ? policy_of<R>
                             : neutral(std::type_identity<R>{}) ? policy_of<L>
@@ -88,15 +89,15 @@ namespace ins
   inline constexpr interval interval_of = {0, 0};
 
   template <insidable B>
-  inline constexpr interval interval_of<B> = grid_of<B>.Interval;
+  inline constexpr interval interval_of<B> = grid_of<B>.interval();
 
   template <std::integral I>
   inline constexpr interval interval_of<I> = {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
   template <insidable B>
-  inline constexpr grid_number lower_of = grid_of<B>.Interval.Lower;
+  inline constexpr grid_number lower_of = grid_of<B>.Lower;
   template <insidable B>
-  inline constexpr grid_number upper_of = grid_of<B>.Interval.Upper;
+  inline constexpr grid_number upper_of = grid_of<B>.Upper;
   template <insidable B>
   inline constexpr grid_number notch_of = grid_of<B>.Notch;
 

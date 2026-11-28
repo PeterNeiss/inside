@@ -31,11 +31,11 @@
 using namespace ins;
 
 namespace {
-using num     = inside<{0, 100}>;
-using metres  = quantity<si::metre, num>;
-using km      = quantity<si::kilo(si::metre), inside<{0, 10}>>;
-using seconds = quantity<si::second, inside<{1, 10}>>;
-using ratio   = quantity<percent, inside<{0, 100}>>;
+using num     = id<"[0..100]">;
+using metres  = id<"[0..100] [m]">;
+using km      = id<"[0..10] [km]">;
+using seconds = id<"[1..10] [s]">;
+using ratio   = id<"[0..100] [%]">;
 
 // Functions with a quantity form, each checked by a requires-expression.
 constexpr std::array with_quantity_form{
@@ -189,7 +189,7 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { conversion_loses<metres>(5, si::metre); });
     static_assert(requires { add_all(m, k, m); });
     static_assert(requires { mul_all(m, m); });
-    static_assert(requires(std::vector<metres> v) { sum<quantity<si::metre, inside<{0, 1000}>>>(v); });
+    static_assert(requires(std::vector<metres> v) { sum<id<"[0..1000] [m]">>(v); });
     static_assert(requires { mul<metres>(m, just<2>); });
     static_assert(requires { div<metres>(m, just<2>); });
     static_assert(requires { divmod(m, k); });
@@ -213,8 +213,8 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     // mdspan: the algorithms take quantity elements (units/mdspan.hpp).
     using vec   = std::mdspan<metres, std::extents<std::size_t, 2>>;
     using mat   = std::mdspan<metres, std::extents<std::size_t, 2, 2>>;
-    using area  = std::mdspan<quantity<si::metre * si::metre, inside<{0, 100000}>>, std::extents<std::size_t, 2>>;
-    using areas = std::mdspan<quantity<si::metre * si::metre, inside<{0, 100000}>>, std::extents<std::size_t, 2, 2>>;
+    using area  = std::mdspan<id<"[0..100000] [m^2]">, std::extents<std::size_t, 2>>;
+    using areas = std::mdspan<id<"[0..100000] [m^2]">, std::extents<std::size_t, 2, 2>>;
     static_assert(requires(vec v) { sum(v); });
     static_assert(requires(vec v) { dot(v, v); });
     static_assert(requires(mat a, vec v, area y) { matrix_vector_product(a, v, y); });
@@ -272,7 +272,7 @@ concept add_with = requires(const A& a, const B& b, H h) { add(a, b, h); };
 TEST(UnitsParityTest, per_call_arithmetic) {
     const metres m{40, si::metre};
     const km     k{1, si::kilo(si::metre)};
-    using per_s = quantity<si::second, inside<{1, 10}>>;
+    using per_s = id<"[1..10] [s]">;
     const per_s s{3, si::second};
 
     EXPECT_TRUE(add(m, k) == just<1040> * si::metre);
@@ -282,11 +282,11 @@ TEST(UnitsParityTest, per_call_arithmetic) {
     EXPECT_TRUE(mul(just<2>, m) == just<80> * si::metre);
     EXPECT_TRUE(div(m, s, round_floor) == just<13> * si::metre / si::second);
     EXPECT_TRUE(div(m, s, round_ceil) == just<14> * si::metre / si::second);
-    EXPECT_TRUE(div(m, inside<{1, 10}>{3}, round_floor) == just<13> * si::metre);
+    EXPECT_TRUE(div(m, id<"[1..10]">{3}, round_floor) == just<13> * si::metre);
     EXPECT_TRUE(div(just<30>, s, round_floor) == just<10> / si::second);
 
     error      ec{};
-    const auto z = div(m, quantity<si::second, inside<{0, 10}>>{0, si::second}, ec);
+    const auto z = div(m, id<"[0..10] [s]">{0, si::second}, ec);
     EXPECT_EQ(ec, error::division_by_zero);
     (void)z;
 
@@ -296,7 +296,7 @@ TEST(UnitsParityTest, per_call_arithmetic) {
 // cursor<Q, Step>, values<Q> and end(t) on a quantity: the number's grid,
 // yielding quantities; Step is a number in Q's unit.
 TEST(UnitsParityTest, cursors_and_values_over_quantities) {
-    using s_t = quantity<si::second, inside<{{0, 2}, per<4>}, round_half_away>>;
+    using s_t = id<"[0..2] 1/4 [s] round_half_away">;
     std::vector<s_t> seen;
     for (cursor<s_t, rational{1, 2}> t; t != end(t); ++t)
         seen.push_back(*t);
@@ -313,7 +313,7 @@ TEST(UnitsParityTest, cursors_and_values_over_quantities) {
     EXPECT_EQ(std::ranges::find(values<s_t>, s_t{rational{3, 4}, si::second}) - values<s_t>.begin(), 3);
 
     // A quantity's ++ steps one notch of its number, as an inside's does.
-    quantity<si::second, inside<{{0, 2}, per<4>}, round_half_away | clamp>> q{
+    id<"[0..2] 1/4 [s] round_half_away|clamp"> q{
         0, si::second}; // (++ names its range handling)
     ++q;
     EXPECT_TRUE((q == just<1, 4> * si::second));
@@ -348,7 +348,7 @@ TEST(UnitsParityTest, clamp_overshoot_is_a_quantity) {
     EXPECT_TRUE(exact);
     EXPECT_TRUE(m == just<100> * si::metre);
 
-    using turn = quantity<si::second, inside<{0, 59}, wrap>>;
+    using turn = id<"[0..59] [s] wrap">;
     turn t{0, si::second};
     t.on_wrap([&](auto&, auto carry) {
         static_assert(!quantity_like<decltype(carry)>);

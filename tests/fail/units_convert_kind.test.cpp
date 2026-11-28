@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    quantity<si::hertz, inside<{0, 10}>> q = just<1> * si::becquerel;
+    id<"[0..10] [Hz]"> q = just<1> * si::becquerel;
     (void)q;
 }

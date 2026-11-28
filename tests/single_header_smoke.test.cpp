@@ -10,8 +10,8 @@
 int main() {
     using namespace ins;
 
-    inside<{0, 100}> a{42};
-    inside<{0, 100}> b{8};
+    id<"[0..100]"> a{42};
+    id<"[0..100]"> b{8};
     auto             sum = a + b; // result grid {0, 200}, unit integer
 
     return (sum.to<int>() == 50) ? 0 : 1;

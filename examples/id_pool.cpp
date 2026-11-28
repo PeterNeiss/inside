@@ -12,7 +12,7 @@
 
 using namespace ins;
 
-using pool_id = inside<{0, 999}>;
+using pool_id = id<"[0..999]">;
 
 struct id_pool
 {

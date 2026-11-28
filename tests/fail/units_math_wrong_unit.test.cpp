@@ -6,8 +6,8 @@
 
 int main() {
     using namespace ins;
-    using area_t = quantity<square(si::metre), inside<{0, 100}>>;
-    using km_t   = quantity<si::kilo(si::metre), inside<{{0, 1}, per<1000>}, round_half_away>>;
+    using area_t = id<"[0..100] [m^2]">;
+    using km_t   = id<"[0..1] 1/1000 [km] round_half_away">;
     auto l       = math::sqrt<km_t>(area_t{4, square(si::metre)});
     (void)l;
 }

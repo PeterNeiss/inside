@@ -6,9 +6,9 @@ using namespace ins;
 
 int main() {
     // [listing]
-    using degrees = inside<{0, 359}, wrap>;   // modular
-    using level   = inside<{0, 10}, clamp>;   // saturating
-    using count   = inside<{0, 10}>;          // checked (the default)
+    using degrees = id<"[0..359] wrap">;      // modular
+    using level   = id<"[0..10] clamp">;      // saturating
+    using count   = id<"[0..10]">;            // checked (the default)
 
     degrees heading = 350;
     heading += 20_ins;                        // 370 wraps to 10

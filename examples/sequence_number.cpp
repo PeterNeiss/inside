@@ -23,12 +23,12 @@ namespace
 
 int main()
 {
-  using sequence_number = quantity<pkt, inside<{0, 65535}, wrap>>; // the uint16 sequence space
-  using epoch_counter   = quantity<epoch, clamp_counter<1000>>;      // how often it wrapped, saturating
+  using sequence_number = id<"[0..65535] [pkt] wrap">; // the uint16 sequence space
+  using epoch_counter   = id<quantity_key<epoch, clamp_counter<1000>>>;      // how often it wrapped, saturating
   sequence_number seq   {65500, pkt};
   epoch_counter   epochs{0, epoch};
 
-  // 100_ins is the single-value inside<{100, 100}>, and times pkt a single-value quantity:
+  // 100_ins is the single-value id<"[100..100]">, and times pkt a single-value quantity:
   // added to another quantity it widens the grid, a constant that never turns into a run-time int.
   constexpr auto window {100_ins * pkt};
   auto           preview{window + seq};

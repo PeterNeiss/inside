@@ -7,6 +7,6 @@
 using namespace ins;
 
 int main() {
-    constexpr inside<{{0, 1}, per<10>}> x{just<1, 10>};
+    constexpr id<"[0..1] 1/10"> x{just<1, 10>};
     return x == 0.1 ? 0 : 1;
 }

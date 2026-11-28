@@ -14,11 +14,11 @@
 using namespace ins;
 using namespace ins::formats;
 
-using error_kelvins    = quantity<si::kelvin, inside<{{-10 , 10 }, per<16>}, round_half_away | clamp>>; // 1/16 K
-using integral_kelvins = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, round_half_away | clamp>>; // anti-wind-up
+using error_kelvins    = id<"[-10..10] 1/16 [K] round_half_away|clamp">;                                // 1/16 K
+using integral_kelvins = id<"[-200..200] 1/16 [K] round_half_away|clamp">;                              // anti-wind-up
 
-using percent_per_kelvin = quantity<percent / si::kelvin, inside<{{0, 4}, per<(1 << 8)>}, round_half_away>>;
-using command_percent    = quantity<percent, inside<{-100, 100}, clamp | round_half_away>>; // saturates and rounds
+using percent_per_kelvin = id<"[0..4] 1/256 [%/K] round_half_away">;
+using command_percent    = id<"[-100..100] [%] clamp|round_half_away">; // saturates and rounds
 
 namespace
 {
@@ -33,7 +33,7 @@ struct pid
 
   integral_kelvins                           integral     {0, si::kelvin};
   error_kelvins                              previous     {0, si::kelvin};
-  quantity<windup, clamp_counter<1'000'000>> windup_events{0, windup};
+  id<quantity_key<windup, clamp_counter<1'000'000>>> windup_events{0, windup};
 
   command_percent step(error_kelvins err)
   {

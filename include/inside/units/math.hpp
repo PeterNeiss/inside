@@ -293,7 +293,7 @@ namespace ins
     consteval unit_value unit_root(const unit_value& u, int n)
     {
       unit_value r{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
       {
         if (u.Atoms[i].Exp % n != 0)
           ins::detail::constexpr_error<"units: the root of a unit needs exponents it divides (m², not m)">();
@@ -308,36 +308,36 @@ namespace ins
     consteval reference root_reference(const reference& a, int n, const unit_value& u)
     {
       if (is_generic(a))
-        return reference{nullptr, false, {}, u};
-      const recipe f{a.Kind ? recipe_of(a.KindOf ? kind_root(a.Kind.P) : a.Kind.P) : a.Derived};
+        return reference{&kind_def::none, false, {}, u};
+      const recipe f{detail::has(a.kind()) ? recipe_of(a.kind_of() ? kind_root(a.kind()) : a.kind()) : a.derived()};
       recipe       r{};
       for (std::int8_t i = 0; i < f.Size; ++i)
       {
         if (f.F[i].Exp % n != 0)
-          return reference{nullptr, false, {}, u};
+          return reference{&kind_def::none, false, {}, u};
         recipe_add(r, f.F[i].Kind, f.F[i].Exp / n);
       }
       if (r.Size == 1 && r.F[0].Exp == 1)
-        return reference{r.F[0].Kind, a.KindOf, {}, u};
-      return reference{nullptr, a.KindOf, r, u};
+        return reference{r.F[0].Kind, a.kind_of(), {}, u};
+      return reference{&kind_def::none, a.kind_of(), r, u};
     }
 
     template <reference R, int N>
     consteval reference root_reference()
     {
-      const unit_value u{unit_root(R.U, N)};
+      const unit_value u{unit_root(R.unit(), N)};
       return root_reference(R, N, u);
     }
 
     // An angle in radians: a dimensionless quantity of magnitude one.
     template <reference R>
-    inline constexpr bool radians_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).is_one();
+    inline constexpr bool radians_v = dimension_of(R.unit()) == dim_one && magnitude_of(R.unit()).is_one();
 
     inline constexpr reference radian_reference = reference{si::radian};
 
     // An angle in a unit with a factor of π (°, a turn): sin and cos reduce it exactly.
     template <reference R>
-    inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1;
+    inline constexpr bool pi_angle_v = dimension_of(R.unit()) == dim_one && magnitude_of(R.unit()).Pi == 1;
 
     // The double tier for a π-scaled angle x·(n/d)·π (math/detail/tiers.hpp's decision):
     // x = j·u with u = unit_of<V>, so x·n/d = j·A/B half turns with A = num(u)·n, B = den(u)·d, all integers.
@@ -392,14 +392,14 @@ namespace ins
     };
 #ifndef INSIDE_MATH_NO_FP
     template <insidable Out, bool Cos, reference R, class V>
-    inline constexpr bool pi_trig_fp = pi_scaled<magnitude_of(R.U).Ratio, V>::ints
+    inline constexpr bool pi_trig_fp = pi_scaled<magnitude_of(R.unit()).Ratio, V>::ints
                                     && ins::math::detail::engine::fp_tier<Out, ins::math::detail::engine::fp_sin, V>;
     template <insidable Out, bool Cos, reference R, class V>
     inline bool pi_trig_double(const V& x, Out& out) noexcept
     {
       namespace engine = ins::math::detail::engine;
       namespace fpk    = ins::math::detail::fp;
-      using S = pi_scaled<magnitude_of(R.U).Ratio, V>;
+      using S = pi_scaled<magnitude_of(R.unit()).Ratio, V>;
       using K = fpk::trig_k<engine::fp_target<Out, engine::fp_sin>>;
       constexpr double   c2{3.141592653589793238462643383279502884 / (2.0 * static_cast<double>(S::b))};
       const std::int64_t two{2 * S::units(x) * S::a};
@@ -424,12 +424,12 @@ namespace ins
 
     // sin or cos of a π-scaled angle: one rounding onto Out.
     // The factor n/d in one limb when it is a 64-bit rational, else in as many as it needs.
-    template <insidable Out, bool Cos, reference R, class V>
-    constexpr Out pi_trig_exact(const quantity<R, V>& q)
+    template <insidable Out, bool Cos, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    constexpr Out pi_trig_exact(const QR& q)
     {
       namespace engine = ins::math::detail::engine;
       using ins::detail::grid_int;
-      constexpr auto        f {magnitude_of(R.U).Ratio};
+      constexpr auto        f {magnitude_of(R.unit()).Ratio};
       constexpr grid_int    n {ins::detail::grid_numerator(f)};
       constexpr grid_int    d {ins::detail::grid_denominator(f)};
       constexpr bool        ng{n.negative()};
@@ -440,8 +440,8 @@ namespace ins
       return engine::evaluate<Out, engine::start_bits<Out>>(core{
         engine::exact_input(ins::detail::value_of(q)), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng});
     }
-    template <insidable Out, bool Cos, reference R, class V>
-    constexpr Out pi_trig(const quantity<R, V>& q)
+    template <insidable Out, bool Cos, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    constexpr Out pi_trig(const QR& q)
     {
       ins::math::detail::entry::require_rounding<Out>();
 #ifndef INSIDE_MATH_NO_FP
@@ -461,8 +461,12 @@ namespace ins
     template <class C>
     inline constexpr bool pi_angle_output_v = false;
     template <reference R, class V>
-    inline constexpr bool pi_angle_output_v<quantity<R, V>> =
-      pi_angle_v<R> && grid_number{0} < magnitude_of(R.U).Ratio && ins::detail::fits_rational(magnitude_of(R.U).Ratio);
+    inline constexpr bool pi_angle_output_v<quantity_parts<R, V>> =
+      pi_angle_v<R> && grid_number{0} < magnitude_of(R.unit()).Ratio
+      && ins::detail::fits_rational(magnitude_of(R.unit()).Ratio);
+    template <key K>
+      requires unit_key<K>
+    inline constexpr bool pi_angle_output_v<id<K>> = pi_angle_output_v<basic_of_t<id<K>>>;
 
 #ifndef INSIDE_MATH_NO_FP
     // The double tier of pi_arc: the radian kernel's value v within its bound, times c = fl(d/(n·π)) (within 3·2^-53
@@ -493,7 +497,7 @@ namespace ins
     template <class F, class C>
     struct pi_arc_facts
     {
-      static constexpr grid_number   ratio{magnitude_of(C::reference.U).Ratio}; // the unit is ratio·π
+      static constexpr grid_number   ratio{magnitude_of(C::reference.unit()).Ratio}; // the unit is ratio·π
       static constexpr std::uint64_t n{static_cast<std::uint64_t>(ins::detail::grid_numerator(ratio))};
       static constexpr std::uint64_t d{static_cast<std::uint64_t>(ins::detail::grid_denominator(ratio))};
       static constexpr int           amp{std::max(std::bit_width(d) - std::bit_width(n) + 1, 0)};
@@ -633,12 +637,12 @@ namespace ins
 
     // tan of an angle with a factor of π (°, a turn), rounded once onto Out: Out where its range holds every value tan
     // takes over the angle's grid, else std::expected<Out, error>.
-    template <insidable Out, reference R, class V>
-    constexpr auto pi_tan(const quantity<R, V>& q)
+    template <insidable Out, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    constexpr auto pi_tan(const QR& q)
     {
       namespace engine = ins::math::detail::engine;
       ins::math::detail::entry::require_rounding<Out>();
-      constexpr grid_number f{magnitude_of(R.U).Ratio};
+      constexpr grid_number f{magnitude_of(R.unit()).Ratio};
       static_assert(ins::detail::fits_rational(f), "units: tan of an angle with a factor of pi - a 64-bit factor");
       using T = pi_tan_facts<f, V>;
       static_assert(!T::pole, "units: tan of an angle whose grid holds a pole (an odd multiple of 90°)");
@@ -659,8 +663,8 @@ namespace ins
   namespace detail
   {
     // x·(n/d)·π^±1 rounded once onto Out, exactly (the engine).
-    template <magnitude F, insidable Out, reference R, class V>
-    constexpr Out pi_cast_exact(const quantity<R, V>& q)
+    template <magnitude F, insidable Out, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+    constexpr Out pi_cast_exact(const QR& q)
     {
       namespace engine = ins::math::detail::engine;
       // The factor n/d in one limb when it is a 64-bit rational, else in as many as it needs (ħ = h/2π in J·s).
@@ -680,17 +684,17 @@ namespace ins
 
   // value_cast<U, Out>(q) across a pi factor (degree ↔ radian): the exact x·r·π^±1, rounded once onto Out's grid
   // under its rounding mode.
-  template <auto U, insidable Out, reference R, class V>
+  template <auto U, insidable Out, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
     requires detail::is_unit_tag_v<decltype(U)>
-          && (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
-  [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q)
+          && (!detail::exact_factor_v<detail::conversion_factor<R.unit(), decltype(U)::value>>)
+  [[nodiscard]] constexpr auto value_cast(const QR& q)
   {
     constexpr ins::unit_value u{decltype(U)::value};
-    constexpr magnitude       f{detail::conversion_factor<R.U, u>};
-    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
+    constexpr magnitude       f{detail::conversion_factor<R.unit(), u>};
+    static_assert(dimension_of(u) == dimension_of(R.unit()), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     ins::math::detail::entry::require_rounding<Out>();
-    constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
+    constexpr reference to{R.kind(), R.kind_of(), R.derived(), u};
 #ifndef INSIDE_MATH_NO_FP
     // The double tier: x·(n/d)·π^±1 = (j·A)·c with c = fl(π/B) or fl(1/(π·B)) (pi_scaled):
     // j·A is a double exactly, c within 3·2^-53 of its value and the product within 2^-53 more,
@@ -705,12 +709,12 @@ namespace ins
         const double     y {static_cast<double>(S::units(ins::detail::value_of(q)) * S::a) * c};
         Out              out;
         if (engine::fp_decide<Out>(y, 0x1p-50 * __builtin_fabs(y), out)) [[likely]]
-          return detail::quantity_access::make<quantity<to, Out>>(out);
-        return detail::quantity_access::make<quantity<to, Out>>(
+          return detail::quantity_access::make<id<quantity_key<to, Out>>>(out);
+        return detail::quantity_access::make<id<quantity_key<to, Out>>>(
           engine::cold_call([q] { return detail::pi_cast_exact<f, Out>(q); }));
       }
 #endif
-    return detail::quantity_access::make<quantity<to, Out>>(detail::pi_cast_exact<f, Out>(q));
+    return detail::quantity_access::make<id<quantity_key<to, Out>>>(detail::pi_cast_exact<f, Out>(q));
   }
 
   namespace detail
@@ -725,11 +729,22 @@ namespace ins
       {
         static_assert(quantity_like<X> && number_like_v<X::reference>,
                       "units: the argument must be a number - an inside or a dimensionless quantity");
-        return rescale<conversion_factor<X::reference.U, unit_value{}>>(ins::detail::value_of(x));
+        return rescale<conversion_factor<X::reference.unit(), unit_value{}>>(ins::detail::value_of(x));
       }
     }
+    // (A rule's argument is a quantity's parts, quantity_parts<R, V>: its number is the quantity's.)
     template <class X>
-    using number_of_t = decltype(number_of(std::declval<const X&>()));
+    struct real_of
+    {
+      using type = X;
+    };
+    template <reference R, class V>
+    struct real_of<quantity_parts<R, V>>
+    {
+      using type = id<quantity_key<R, V>>;
+    };
+    template <class X>
+    using number_of_t = decltype(number_of(std::declval<const typename real_of<X>::type&>()));
 
     // The math functions on quantities (math/detail/functions.hpp): each takes its arguments' numbers to the inside
     // function, by one of these rules, and puts the result in its unit.
@@ -813,7 +828,7 @@ namespace ins
     struct output_in
     {
       template <class N>
-      using with = std::conditional_t<Number, N, quantity<To, N>>;
+      using with = std::conditional_t<Number, N, id<quantity_key<To, N>>>;
       template <class S>
       struct out
       {
@@ -830,7 +845,7 @@ namespace ins
           {
             static_assert(!Number, "ins::math: f<C>(q) - the result is a number: C is an inside");
             static_assert(quantity_like<C>, "ins::math: f<C>(q) - C is a quantity or its number");
-            static_assert((C::reference.U == To.U && implicit_v<To, C::reference>)
+            static_assert((C::reference.unit() == To.unit() && implicit_v<To, C::reference>)
                             || (PiAngles && pi_angle_output_v<C>),
                           "ins::math: f<C>(q) - C's unit must be exactly the result's (or name only "
                           "the number); asin, acos, atan and atan2 also give an angle in a unit with a factor of pi");
@@ -869,7 +884,7 @@ namespace ins
 
     template <math_rule Rule, class F, reference R, class V>
       requires(Rule == math_rule::same || Rule == math_rule::root2 || Rule == math_rule::root3)
-    struct quantity_rule<Rule, F, quantity<R, V>> : rule_base
+    struct quantity_rule<Rule, F, quantity_parts<R, V>> : rule_base
     {
       using NK = m::kind<F, 1, V>;
       static constexpr bool      takes  = NK::takes;
@@ -883,7 +898,7 @@ namespace ins
     // with a factor of π (sin and cos): reduced exactly by quarter turns, the result on the named notch.
     template <math_rule Rule, class F, reference R, class V>
       requires(Rule == math_rule::trig || Rule == math_rule::tan)
-    struct quantity_rule<Rule, F, quantity<R, V>>
+    struct quantity_rule<Rule, F, quantity_parts<R, V>>
     {
       static_assert(radians_v<R> || pi_angle_v<R>,
                     "units: sin, cos and tan take an angle in radians, or in a unit with a factor of pi (°, a turn) - "
@@ -938,7 +953,7 @@ namespace ins
     };
     template <math_rule Rule, class F, reference A, class VA, reference B, class VB>
       requires(Rule == math_rule::arc2 || Rule == math_rule::common)
-    struct quantity_rule<Rule, F, quantity<A, VA>, quantity<B, VB>> : rule_base
+    struct quantity_rule<Rule, F, quantity_parts<A, VA>, quantity_parts<B, VB>> : rule_base
     {
       using C  = common_rule<F, A, VA, B, VB>;
       using NK = typename C::NK;
@@ -965,13 +980,13 @@ namespace ins::math::detail
   // units/detail/geoalg_exp.hpp).
   template <class T>
     requires ins::quantity_like<T>
-  inline constexpr int kind_rank<T> = ins::detail::has_blade(dimension_of(T::reference.U)) ? 3 : 2;
+  inline constexpr int kind_rank<T> = ins::detail::has_blade(dimension_of(T::reference.unit())) ? 3 : 2;
 
   // Quantities: the rule of F.
   template <class F, class... Args>
   struct kind<F, 2, Args...>
   {
-    using rule = ins::detail::quantity_rule<ins::detail::rule_of<F>, F, Args...>;
+    using rule = ins::detail::quantity_rule<ins::detail::rule_of<F>, F, ins::detail::basic_of_t<Args>...>;
     static constexpr bool takes = rule::takes;
     using io = ins::detail::output_in<typename rule::NK, rule::number, rule::to,
                                       ins::detail::rule_of<F> == ins::detail::math_rule::arc
@@ -1049,21 +1064,25 @@ namespace ins::math::detail
 namespace ins::math
 {
   // atan2, hypot, gcd and lcm of two quantities that do not add (another dimension or kind, no common unit).
-  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void atan2(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void atan2(const QA&, const QB&) = delete (
     "units: atan2 takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void hypot(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void hypot(const QA&, const QB&) = delete (
     "units: hypot takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void gcd(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void gcd(const QA&, const QB&) = delete (
     "units: gcd takes two quantities that add - one dimension and kind, a common unit");
-  template <auto... Spec, ins::reference A, class VA, ins::reference B, class VB>
+  template <auto... Spec, ins::quantity_like QA, ins::quantity_like QB, ins::reference A = QA::reference,
+            class VA = typename QA::rep, ins::reference B = QB::reference, class VB = typename QB::rep>
     requires(ins::detail::sum_diagnosed<A, B>())
-  void lcm(const ins::quantity<A, VA>&, const ins::quantity<B, VB>&) = delete (
+  void lcm(const QA&, const QB&) = delete (
     "units: lcm takes two quantities that add - one dimension and kind, a common unit");
 } // namespace ins::math
 

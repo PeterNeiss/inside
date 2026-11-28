@@ -42,12 +42,12 @@ using std::uint64_t;
 
 namespace {
 // {0, 1} in eighths, rounded to nearest / floor / ceil.
-using eighths       = inside<{{0, 1}, rational{1, 8}}, round_half_away>;
-using eighths_floor = inside<{{0, 1}, rational{1, 8}}, round_floor>;
-using eighths_ceil  = inside<{{0, 1}, rational{1, 8}}, round_ceil>;
-using eighths_clamp = inside<{{0, 1}, rational{1, 8}}, round_half_away | clamp>;
+using eighths       = id<"[0..1] 1/8 round_half_away">;
+using eighths_floor = id<"[0..1] 1/8 round_floor">;
+using eighths_ceil  = id<"[0..1] 1/8 round_ceil">;
+using eighths_clamp = id<"[0..1] 1/8 round_half_away|clamp">;
 // A notch that is not a power of two, and an offset Lower.
-using sevenths = inside<{{rational{-6, 7}, rational{15, 7}}, rational{3, 7}}, round_half_away>;
+using sevenths = id<"[-6/7..15/7] 3/7 round_half_away">;
 
 template <std::size_t K>
 constexpr wide_sint<K> hex2(std::uint64_t hi, std::uint64_t lo) {
@@ -213,17 +213,17 @@ int check_rounding(Fn fn, Ref ref, int stride = 1) {
     return bad;
 }
 
-using sym4       = inside<{{-4, 4}, rational{1, 512}}, round_half_away>;
-using pos64      = inside<{{rational{1, 64}, 64}, rational{1, 64}}, round_half_away>;
-using unit_value = inside<{{-1, 1}, rational{1, 1024}}, round_half_away>;
-using open1      = inside<{{rational{-1023, 1024}, rational{1023, 1024}}, rational{1, 1024}}, round_half_away>;
-using ge1        = inside<{{1, 64}, rational{1, 64}}, round_half_away>;
-using tan_in     = inside<{{rational{-3, 2}, rational{3, 2}}, rational{1, 512}}, round_half_away>;
-using out20      = inside<{{-64, 64}, rational{1, 1 << 20}}, round_half_away>;
-using out20f     = inside<{{-64, 64}, rational{1, 1 << 20}}, round_floor>;
-using outdec     = inside<{{-64, 64}, rational{1, 1000}}, round_half_away>;
-using out40      = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 40}}, round_half_away>;
-using wide20     = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_half_away>;
+using sym4       = id<"[-4..4] 1/512 round_half_away">;
+using pos64      = id<"[1/64..64] 1/64 round_half_away">;
+using unit_value = id<"[-1..1] 1/1024 round_half_away">;
+using open1      = id<"[-1023/1024..1023/1024] 1/1024 round_half_away">;
+using ge1        = id<"[1..64] 1/64 round_half_away">;
+using tan_in     = id<"[-3/2..3/2] 1/512 round_half_away">;
+using out20      = id<key{grid{{-64, 64}, rational{1, 1 << 20}}, round_half_away}>;
+using out20f     = id<key{grid{{-64, 64}, rational{1, 1 << 20}}, round_floor}>;
+using outdec     = id<"[-64..64] 1/1000 round_half_away">;
+using out40      = id<key{grid{{-64, 64}, rational{1, std::uint64_t{1} << 40}}, round_half_away}>;
+using wide20     = id<key{grid{{-1024, 1024}, rational{1, 1 << 20}}, round_half_away}>;
 } // namespace
 
 TEST(MathAdaptiveTest, exp_family_rounds_correctly) {
@@ -291,8 +291,8 @@ TEST(MathAdaptiveTest, roots_round_correctly) {
         0);
     // (sqrt of a grid that reaches below 0 is a compile error: fail/sqrt_domain.)
     // Exact roots of rationals, including ties: √(1/4) = 1/2 exactly.
-    using quarters = inside<{{0, 4}, rational{1, 4}}, round_half_away>;
-    using halves   = inside<{{0, 4}, rational{1, 2}}, round_floor>;
+    using quarters = id<"[0..4] 1/4 round_half_away">;
+    using halves   = id<"[0..4] 1/2 round_floor">;
     EXPECT_EQ(am::sqrt<halves>(quarters{0.25}), halves{0.5});
     EXPECT_EQ(am::sqrt<halves>(quarters{2.25}), halves{1.5});
 }
@@ -336,8 +336,8 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
                 ++bad;
         }
     EXPECT_EQ(bad, 0);
-    using base = inside<{{rational{1, 16}, 8}, rational{1, 16}}, round_half_away>;
-    using expo = inside<{{-3, 3}, rational{1, 8}}, round_half_away>;
+    using base = id<"[1/16..8] 1/16 round_half_away">;
+    using expo = id<"[-3..3] 1/8 round_half_away">;
     for (int i = 1; i <= 128; i += 3)
         for (int j = -24; j <= 24; ++j) {
             const ld   want = std::pow(static_cast<ld>(i) / 16, static_cast<ld>(j) / 8);
@@ -356,7 +356,7 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
         }
     EXPECT_EQ(bad, 0);
     // Exact powers, including ties on the output grid.
-    using halves = inside<{{0, 64}, rational{1, 2}}, round_half_away>;
+    using halves = id<"[0..64] 1/2 round_half_away">;
     EXPECT_EQ(am::pow<halves>(base{1.5}, expo{2}), halves{2.5}); // 2.25 → 2.5 (half away)
     EXPECT_EQ((am::pow_base<10, out20>(expo{1})), out20{10});
     EXPECT_EQ((am::pow_base<2, out20>(expo{-3})), out20{0.125});
@@ -379,12 +379,12 @@ consteval big_int from_limbs(std::initializer_list<std::uint64_t> hi_to_lo) {
     return v;
 }
 
-using fine_in  = inside<{{0, 1}, grid_number{big_int{1}, pow2(80)}}, round_half_away>;
-using fine_out = inside<{{-1, 1}, grid_number{big_int{1}, pow2(100)}}, round_half_away>;
-using fine_pos = inside<{{0, 4}, grid_number{big_int{1}, pow2(100)}}, round_half_away>;
-using huge_in  = inside<{1, grid_number{pow2(300)}}, round_half_away>;
-using log_out  = inside<{{0, 256}, grid_number{big_int{1}, pow2(64)}}, round_half_away>;
-using root_out = inside<{0, grid_number{pow2(150)}}, round_floor>;
+using fine_in  = id<key{grid{{0, 1}, grid_number{big_int{1}, pow2(80)}}, round_half_away}>;
+using fine_out = id<key{grid{{-1, 1}, grid_number{big_int{1}, pow2(100)}}, round_half_away}>;
+using fine_pos = id<key{grid{{0, 4}, grid_number{big_int{1}, pow2(100)}}, round_half_away}>;
+using huge_in  = id<key{grid{1, grid_number{pow2(300)}}, round_half_away}>;
+using log_out  = id<key{grid{{0, 256}, grid_number{big_int{1}, pow2(64)}}, round_half_away}>;
+using root_out = id<key{grid{0, grid_number{pow2(150)}}, round_floor}>;
 
 // x = ⌊2^80/3⌋·2^-80.
 constexpr fine_in third = fine_in::from_raw(static_cast<fine_in::raw_type>(pow2(80) / big_int{3}), unsafe);
@@ -408,7 +408,7 @@ TEST(MathAdaptiveTest, huge_inputs_past_64_bits) {
     EXPECT_EQ(am::sqrt<root_out>(y).raw(), root_raw);
     // log2 of a power of two is exact: 2^299 → 299.
     constexpr huge_in p = huge_in::from_raw(static_cast<huge_in::raw_type>(pow2(299) - big_int{1}), unsafe);
-    using log2_out      = inside<{{0, 512}, grid_number{big_int{1}, pow2(64)}}, round_half_away>;
+    using log2_out      = id<key{grid{{0, 512}, grid_number{big_int{1}, pow2(64)}}, round_half_away}>;
     EXPECT_EQ(am::log2<log2_out>(p), log2_out{299});
 }
 
@@ -427,14 +427,14 @@ TEST(MathAdaptiveTest, deduced_outputs_past_64_bits) {
 
 TEST(MathAdaptiveTest, constant_evaluation) {
     // The engine is integer-only, so the same results are available at compile time.
-    using quarters = inside<{{0, 4}, rational{1, 4}}, round_half_away>;
-    using halves   = inside<{{0, 4}, rational{1, 2}}, round_floor>;
+    using quarters = id<"[0..4] 1/4 round_half_away">;
+    using halves   = id<"[0..4] 1/2 round_floor">;
     static_assert(am::sqrt<halves>(quarters{2.25}) == halves{1.5});
     static_assert(am::exp<out20>(sym4{1}).raw() == out20{rational{2850325, 1 << 20}}.raw()); // e·2^20 = 2850325.0…
     static_assert(am::sin<out20>(sym4{0}) == out20{0});
     // An output up to 2^62 makes sinh's and cosh's error shifts reach 64 bits
     // (KMax + 4); they must stay defined, which constant evaluation checks.
-    using big62 = inside<{-(1LL << 62), 1LL << 62}, round_half_away>;
+    using big62 = id<key{grid{-(1LL << 62), 1LL << 62}, round_half_away}>;
     static_assert(am::sinh<big62>(sym4{rational{1, 2}}) == big62{1});
     static_assert(am::cosh<big62>(sym4{rational{1, 2}}) == big62{1});
     SUCCEED();
@@ -465,8 +465,8 @@ TEST(MathAdaptiveTest, deduced_outputs) {
     using Tn = decltype(am::tan(tan_in{1}));
     static_assert(!ins::detail::expected_like<Tn>);
     static_assert(lower_of<Tn> == -upper_of<Tn> && upper_of<Tn> > 14 && upper_of<Tn> < 15);
-    using base = inside<{{rational{1, 2}, 4}, rational{1, 16}}, round_half_away>;
-    using expo = inside<{{-2, 2}, rational{1, 4}}, round_half_away>;
+    using base = id<"[1/2..4] 1/16 round_half_away">;
+    using expo = id<"[-2..2] 1/4 round_half_away">;
     using P    = decltype(am::pow(base{1}, expo{1}));
     static_assert(lower_of<P> == rational{1, 16} && upper_of<P> == 16); // 4^-2 and 4^2 (1/2)^±2 inside
     EXPECT_EQ(am::pow(base{2}, expo{2}), P{4});
@@ -564,10 +564,10 @@ std::pair<int, int> decide_fast_failures() {
 }
 template <policy_flag P>
 void check_decide_fast() {
-    using A = inside<{{-30, 30}, rational{3, 7}}, P>;
-    using B = inside<{{-100, 100}, rational{5, 2}}, P>;
-    using C = inside<{{-2000, 2000}, rational{1000, 3}}, P>;
-    using D = inside<{{-64, 64}, rational{1, 1 << 20}}, P>;
+    using A = id<key{grid{{-30, 30}, rational{3, 7}}, P}>;
+    using B = id<key{grid{{-100, 100}, rational{5, 2}}, P}>;
+    using C = id<key{grid{{-2000, 2000}, rational{1000, 3}}, P}>;
+    using D = id<key{grid{{-64, 64}, rational{1, 1 << 20}}, P}>;
     for (auto [bad, decided] : {decide_fast_failures<A, 1>(),
                                 decide_fast_failures<A, 2>(),
                                 decide_fast_failures<B, 1>(),
@@ -614,12 +614,12 @@ int tier_mismatches(Fn fn) {
     return bad;
 }
 
-using out8    = inside<{{-64, 64}, rational{1, 8}}, round_half_away>;
-using out8f   = inside<{{-64, 64}, rational{1, 8}}, round_floor>;
-using out16c  = inside<{{-64, 64}, rational{1, 1 << 16}}, round_ceil>;
-using out8t   = inside<{{-64, 64}, rational{1, 8}}, round_toward_zero>;
-using out16e  = inside<{{-64, 64}, rational{1, 1 << 16}}, round_half_even>;
-using outdect = inside<{{-64, 64}, rational{1, 1000}}, round_toward_zero>;
+using out8    = id<"[-64..64] 1/8 round_half_away">;
+using out8f   = id<"[-64..64] 1/8 round_floor">;
+using out16c  = id<key{grid{{-64, 64}, rational{1, 1 << 16}}, round_ceil}>;
+using out8t   = id<"[-64..64] 1/8 round_toward_zero">;
+using out16e  = id<key{grid{{-64, 64}, rational{1, 1 << 16}}, round_half_even}>;
+using outdect = id<"[-64..64] 1/1000 round_toward_zero">;
 } // namespace
 
 #define TIER_CHECK(fn, Out, In, ...) \
@@ -680,9 +680,9 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
                open1,
                engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
     // Floating-point outputs: the slot decided in double arithmetic.
-    using b14out  = inside<{{-64, 64}, per<16384>}, round_half_away>;
-    using b14outf = inside<{{-64, 64}, per<16384>}, round_floor>;
-    using b14outt = inside<{{-64, 64}, per<16384>}, round_toward_zero>;
+    using b14out  = id<"[-64..64] 1/16384 round_half_away">;
+    using b14outf = id<"[-64..64] 1/16384 round_floor">;
+    using b14outt = id<"[-64..64] 1/16384 round_toward_zero">;
     TIER_CHECK(
         sin, b14out, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
     TIER_CHECK(exp,
@@ -695,9 +695,9 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
     TIER_CHECK(log, b14outf, pos64, engine::log_core<engine::input_limbs<pos64>>);
 
     // Decimal inputs: the tier reads them as index·p/q, within 2^-51.
-    using symm  = inside<{{-4, 4}, rational{1, 1000}}, round_half_away>;
-    using posm  = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_half_away>;
-    using unitm = inside<{{-1, 1}, rational{1, 1000}}, round_half_away>;
+    using symm  = id<"[-4..4] 1/1000 round_half_away">;
+    using posm  = id<"[1/1000..8] 1/1000 round_half_away">;
+    using unitm = id<"[-1..1] 1/1000 round_half_away">;
     TIER_CHECK(
         sin, out20, symm, engine::trig_core<engine::input_limbs<symm>, engine::in_mag<symm>, engine::trig::sin, 1>);
     TIER_CHECK(exp,
@@ -718,8 +718,8 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
 
 TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
     // 256 slots: within the default table size.
-    using s8 = inside<{{rational{-128, 64}, rational{127, 64}}, rational{1, 64}}, round_half_away>;
-    using p8 = inside<{{rational{1, 64}, 4}, rational{1, 64}}, round_half_away>;
+    using s8 = id<"[-128/64..127/64] 1/64 round_half_away">;
+    using p8 = id<"[1/64..4] 1/64 round_half_away">;
     static_assert(engine::table_input<s8> && engine::table_output<out20>);
     EXPECT_EQ((tier_mismatches<out20,
                                s8,
@@ -735,8 +735,8 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
                   [](p8 x) { return am::log<outdec>(x); })),
               0);
     // Floating-point outputs: the table holds the grid point as a double or float.
-    using b14t = inside<{{-64, 64}, per<16384>}, round_half_away>;
-    using b8t  = inside<{{-64, 64}, per<256>}, round_floor>;
+    using b14t = id<"[-64..64] 1/16384 round_half_away">;
+    using b8t  = id<"[-64..64] 1/256 round_floor">;
     static_assert(engine::table_output<b14t> && engine::table_output<b8t>);
     static_assert(engine::result_table<b14t, s8, engine::start_bits<b14t>, [](s8 v) {
                       return engine::trig_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::trig::sin, 1>{
@@ -756,7 +756,7 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
         (tier_mismatches<b14t, p8, engine::log_core<engine::input_limbs<p8>>>([](p8 x) { return am::log<b14t>(x); })),
         0);
     // Results past Out's range keep the computed path, and its policy.
-    using small_clamp = inside<{{0, 4}, rational{1, 64}}, round_half_away | clamp>;
+    using small_clamp = id<"[0..4] 1/64 round_half_away|clamp">;
     using table       = engine::result_table<small_clamp, s8, engine::start_bits<small_clamp>, [](s8 v) {
         return engine::exp_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::out_kmax<small_clamp>>{
             engine::exact_input(v)};
@@ -769,11 +769,11 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
 TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
     // Inputs that are not doubles exactly (steps of 1/1000): the tier adds the
     // conversion's rounding to its bound.
-    using symd   = inside<{{-4, 4}, rational{1, 1000}}, round_half_away>;
-    using posd   = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_half_away>;
-    using unid   = inside<{{-1, 1}, rational{1, 1000}}, round_half_away>;
-    using ge1d   = inside<{{1, 8}, rational{1, 1000}}, round_half_away>;
-    using tanout = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_half_away>;
+    using symd   = id<"[-4..4] 1/1000 round_half_away">;
+    using posd   = id<"[1/1000..8] 1/1000 round_half_away">;
+    using unid   = id<"[-1..1] 1/1000 round_half_away">;
+    using ge1d   = id<"[1..8] 1/1000 round_half_away">;
+    using tanout = id<key{grid{{-1024, 1024}, rational{1, 1 << 20}}, round_half_away}>;
     static_assert(!engine::fp_exact_input<symd>);
 #ifndef INSIDE_MATH_NO_FP
     static_assert(engine::fp_tier<out20, engine::fp_sin, symd>);
@@ -820,8 +820,8 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         0);
 
     // Two inputs: atan2, hypot and pow against their cores on a grid of pairs.
-    using base = inside<{{rational{1, 16}, 8}, rational{1, 16}}, round_half_away>;
-    using expo = inside<{{-3, 3}, rational{1, 100}}, round_half_away>;
+    using base = id<"[1/16..8] 1/16 round_half_away">;
+    using expo = id<"[-3..3] 1/100 round_half_away">;
     int bad    = 0;
     for (int i = -40; i <= 40; i += 3)
         for (int j = -40; j <= 40; j += 3) {
@@ -868,15 +868,15 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
 // Every result must equal the integer path's, in every rounding mode, for
 // decimal outputs (q up to 10^15) and dyadic outputs too.
 namespace {
-using out52    = inside<{{-1024, 1024}, rational{1, std::uint64_t{1} << 52}}, round_half_away>; // indices ±2^62
-using out44f   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 44}}, round_floor>;
-using out48c   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 48}}, round_ceil>;
-using out50t   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 50}}, round_toward_zero>;
-using out46e   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 46}}, round_half_even>;
-using outdec15 = inside<{{-64, 64}, rational{1, 1'000'000'000'000'000}}, round_half_away>;
-using b44out   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 44}}, round_half_away>;
-using symm4    = inside<{{-4, 4}, rational{1, 1000}}, round_half_away>;
-using posm8    = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_half_away>;
+using out52    = id<key{grid{{-1024, 1024}, rational{1, std::uint64_t{1} << 52}}, round_half_away}>; // indices ±2^62
+using out44f   = id<key{grid{{-64, 64}, rational{1, std::uint64_t{1} << 44}}, round_floor}>;
+using out48c   = id<key{grid{{-64, 64}, rational{1, std::uint64_t{1} << 48}}, round_ceil}>;
+using out50t   = id<key{grid{{-64, 64}, rational{1, std::uint64_t{1} << 50}}, round_toward_zero}>;
+using out46e   = id<key{grid{{-64, 64}, rational{1, std::uint64_t{1} << 46}}, round_half_even}>;
+using outdec15 = id<"[-64..64] 1/1'000'000'000'000'000 round_half_away">;
+using b44out   = id<key{grid{{-64, 64}, rational{1, std::uint64_t{1} << 44}}, round_half_away}>;
+using symm4    = id<"[-4..4] 1/1000 round_half_away">;
+using posm8    = id<"[1/1000..8] 1/1000 round_half_away">;
 } // namespace
 
 #define DD_CHECK(fn, Out, In, ...) \
@@ -986,7 +986,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
              b44out,
              symm4,
              engine::exp_core<engine::input_limbs<symm4>, engine::in_mag<symm4>, engine::out_kmax<b44out>>);
-    using tanout = inside<{{-1024, 1024}, rational{1, std::uint64_t{1} << 52}}, round_half_away>;
+    using tanout = id<key{grid{{-1024, 1024}, rational{1, std::uint64_t{1} << 52}}, round_half_away}>;
     EXPECT_EQ(
         (tier_mismatches<tanout,
                          tan_in,
@@ -997,8 +997,8 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
         0);
 
     // Two inputs.
-    using base = inside<{{rational{1, 16}, 8}, rational{1, 16}}, round_half_away>;
-    using expo = inside<{{-3, 3}, rational{1, 100}}, round_half_away>;
+    using base = id<"[1/16..8] 1/16 round_half_away">;
+    using expo = id<"[-3..3] 1/100 round_half_away">;
     int bad    = 0;
     for (int i = -40; i <= 40; i += 3)
         for (int j = -40; j <= 40; j += 3) {
@@ -1029,9 +1029,9 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
                 ++bad;
         }
     // pow_base<10> onto a 44-bit output, as the deduced pow10 of a dyadic grid.
-    using p10out = inside<{{0, 1'000'000'000}, rational{1, 16384}}, round_half_away>;
+    using p10out = id<"[0..1'000'000'000] 1/16384 round_half_away">;
     for (int j = -900; j <= 900; ++j) {
-        const auto e = test::store<inside<{{-9, 9}, rational{1, 100}}, round_half_away>>(rational{j, 100});
+        const auto e = test::store<id<"[-9..9] 1/100 round_half_away">>(rational{j, 100});
         using core   = engine::
             pow_core<2, engine::input_limbs<decltype(e)>, engine::in_mag<decltype(e)>, engine::out_kmax<p10out>>;
         const auto r2 = engine::evaluate<p10out, engine::start_bits<p10out>>(
@@ -1072,8 +1072,8 @@ double dd_worst_ratio(F kernel) {
 
 TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound) {
     INSIDE_RELEASE_ONLY();
-    using big   = inside<{{-600, 600}, rational{1, 8}}, round_half_away>;
-    using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_half_away>;
+    using big   = id<"[-600..600] 1/8 round_half_away">;
+    using turns = id<"[-1'000'000..1'000'000] 64 round_half_away">;
     DD_ACCURACY(exp, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
     DD_ACCURACY(exp, big, engine::exp_core<engine::input_limbs<big>, engine::in_mag<big>, 1000>);
     DD_ACCURACY(exp2, sym4, engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
@@ -1127,10 +1127,10 @@ double lean_worst_ratio(F kernel) {
 
 TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     INSIDE_RELEASE_ONLY();
-    using big    = inside<{{-600, 600}, rational{1, 8}}, round_half_away>;
-    using turns  = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_half_away>;
-    using thirds = inside<{{-4, 4}, rational{1, 3 * 128}}, round_half_away>;
-    using fine   = inside<{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_half_away>;
+    using big    = id<"[-600..600] 1/8 round_half_away">;
+    using turns  = id<"[-1'000'000..1'000'000] 64 round_half_away">;
+    using thirds = id<key{grid{{-4, 4}, rational{1, 3 * 128}}, round_half_away}>;
+    using fine   = id<key{grid{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_half_away}>;
     LEAN_BOUND(
         sin_lean, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
     LEAN_BOUND(
@@ -1155,8 +1155,8 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     LEAN_BOUND(exp_lean, fine, engine::exp_core<engine::input_limbs<fine>, engine::in_mag<fine>, 1>);
     LEAN_BOUND(exp2_lean, sym4, engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
     LEAN_BOUND(exp2_lean, big, engine::exp2_core<engine::input_limbs<big>, engine::in_mag<big>, 1000>);
-    using near1 = inside<{{rational{63, 64}, rational{65, 64}}, rational{1, 1 << 20}}, round_half_away>;
-    using huge  = inside<{{rational{1, 1 << 10}, 1LL << 36}, rational{1, 1 << 10}}, round_half_away>;
+    using near1 = id<key{grid{{rational{63, 64}, rational{65, 64}}, rational{1, 1 << 20}}, round_half_away}>;
+    using huge  = id<key{grid{{rational{1, 1 << 10}, 1LL << 36}, rational{1, 1 << 10}}, round_half_away}>;
     static_assert(engine::dd_input<huge>); // indices below 2^53: read exactly
     LEAN_BOUND(log_lean, pos64, engine::log_core<engine::input_limbs<pos64>>);
     LEAN_BOUND(log_lean, near1, engine::log_core<engine::input_limbs<near1>>);
@@ -1180,7 +1180,7 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     LEAN_BOUND(
         asinh_lean, fine, engine::ahyp_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::ahyp::asinh>);
     LEAN_BOUND(acosh_lean, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
-    using above1 = inside<{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_half_away>;
+    using above1 = id<key{grid{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_half_away}>;
     LEAN_BOUND(acosh_lean,
                above1,
                engine::ahyp_core<engine::input_limbs<above1>, engine::in_mag<above1>, engine::ahyp::acosh>);
@@ -1209,8 +1209,8 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
 // The lean kernels decide nearly every result of a 2^-52 grid by
 // themselves: their bounds are below 2^-70.
 TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
-    using amp52 = inside<{{-1, 1}, rational{1, 1LL << 52}}, round_half_away>;
-    using exp40 = inside<{{0, 4096}, rational{1, 1LL << 40}}, round_half_away>;
+    using amp52 = id<key{grid{{-1, 1}, rational{1, 1LL << 52}}, round_half_away}>;
+    using exp40 = id<key{grid{{0, 4096}, rational{1, 1LL << 40}}, round_half_away}>;
     static_assert(engine::dd_tier<amp52, sym4> && !engine::fp_tier<amp52, engine::fp_sin, sym4>);
     static_assert(engine::dd_tier<exp40, sym4> && !engine::fp_tier<exp40, engine::fp_exp, sym4>);
     const long long count     = static_cast<long long>(grid_of<sym4>.step_count());
@@ -1228,7 +1228,7 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
         const ddk::dd exp_lean_v = ddk::exp_lean(x, b);
         undecided += !engine::dd_decide(exp_lean_v, b, e);
     }
-    using log48 = inside<{{-8, 8}, rational{1, 1LL << 48}}, round_half_away>;
+    using log48 = id<key{grid{{-8, 8}, rational{1, 1LL << 48}}, round_half_away}>;
     static_assert(engine::dd_tier<log48, pos64> && !engine::fp_tier<log48, engine::fp_log, pos64>);
     const long long n = static_cast<long long>(grid_of<pos64>.step_count());
     for (long long i = 0; i <= n; ++i) {
@@ -1282,8 +1282,8 @@ double fp_worst_ratio(F kernel) {
 
 TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     INSIDE_RELEASE_ONLY();
-    using big   = inside<{{-600, 600}, rational{1, 8}}, round_half_away>;
-    using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_half_away>;
+    using big   = id<"[-600..600] 1/8 round_half_away">;
+    using turns = id<"[-1'000'000..1'000'000] 64 round_half_away">;
     FP_BOUND(
         trig_k, sin, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
     FP_BOUND(
@@ -1315,10 +1315,10 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
              open1,
              engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
     // sinh, asinh and acosh near 0 (or 1) at a fine notch and over wide ranges.
-    using fine  = inside<{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_half_away>;
-    using fine1 = inside<{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_half_away>;
-    using wide  = inside<{{-1'048'576, 1'048'576}, rational{64, 1}}, round_half_away>;
-    using wide1 = inside<{{64, 1'048'576}, rational{64, 1}}, round_half_away>;
+    using fine  = id<key{grid{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_half_away}>;
+    using fine1 = id<key{grid{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_half_away}>;
+    using wide  = id<"[-1'048'576..1'048'576] 64 round_half_away">;
+    using wide1 = id<"[64..1'048'576] 64 round_half_away">;
     FP_BOUND(
         exp_k, sinh, fine, engine::hyp_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::hyp::sinh, 1>);
     FP_BOUND(
@@ -1338,8 +1338,8 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     FP_BOUND(pow_k, cbrt, sym4, engine::cbrt_core<engine::input_limbs<sym4>>);
 
     // pow over |y| = |e·ln b| up to 16 (past 42 bits from the log's Hi + Lo).
-    using base     = inside<{{rational{1, 64}, 64}, rational{1, 64}}, round_half_away>;
-    using expo     = inside<{{-4, 4}, rational{1, 8}}, round_half_away>;
+    using base     = id<"[1/64..64] 1/64 round_half_away">;
+    using expo     = id<"[-4..4] 1/8 round_half_away">;
     auto pow_worst = []<int T>() {
         using core   = engine::pow_core<engine::input_limbs<base>,
                                         engine::input_limbs<expo>,
@@ -1367,7 +1367,7 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
 
     // atan2 over every pair of a symmetric grid, all four quadrants, the
     // axes and the swapped (|y| > |x|) and π/6-step cases.
-    using sq         = inside<{{-2, 2}, rational{1, 16}}, round_half_away>;
+    using sq         = id<"[-2..2] 1/16 round_half_away">;
     auto atan2_worst = []<int T>() {
         double              worst = 0;
         const std::uint64_t n     = static_cast<std::uint64_t>(grid_of<sq>.step_count());
@@ -1408,9 +1408,9 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
 // (a long double reference is only a double on some targets).
 #if defined(__SIZEOF_INT128__) // the reference squares in 128 bits
 TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
-    using xd   = inside<{{-4, 4}, rational{1, 512}}, round_half_away>;
-    using ym   = inside<{{-4, 4}, rational{1, 1000}}, round_half_away>;
-    using o48  = inside<{{-1024, 1024}, rational{1, std::uint64_t{1} << 48}}, round_half_away>;
+    using xd   = id<"[-4..4] 1/512 round_half_away">;
+    using ym   = id<"[-4..4] 1/1000 round_half_away">;
+    using o48  = id<key{grid{{-1024, 1024}, rational{1, std::uint64_t{1} << 48}}, round_half_away}>;
     using u128 = unsigned __int128;
     int bad    = 0;
     for (int i = 0; i <= 4096; i += 97)
@@ -1538,8 +1538,8 @@ using namespace ins::detail;
 
 // determinism: asin / acos across grids and domain corners
 TEST(DeterminismTest, determinism_asin_acos_across_grids_and_domain_corners) {
-    using A1 = inside<{{-1, 1}, per<65536>}, round_half_away>;
-    using A2 = inside<{{-1, 1}, per<4096>}, round_half_away>;
+    using A1 = id<"[-1..1] 1/65536 round_half_away">;
+    using A2 = id<"[-1..1] 1/4096 round_half_away">;
 
     EXACT(math::asin(A1{-1}), 3217, -2048);   // -pi/2
     EXACT(math::acos(A1{-1}), 205887, 65536); //  pi
@@ -1569,8 +1569,8 @@ TEST(DeterminismTest, determinism_asin_acos_across_grids_and_domain_corners) {
 
 // determinism: sinh / cosh / tanh across grids and corners
 TEST(DeterminismTest, determinism_sinh_cosh_tanh_across_grids_and_corners) {
-    using H1 = inside<{{-10, 10}, per<65536>}, round_half_away>;
-    using H2 = inside<{{-4, 4}, per<4096>}, round_half_away>;
+    using H1 = id<"[-10..10] 1/65536 round_half_away">;
+    using H2 = id<"[-4..4] 1/4096 round_half_away">;
 
     EXACT(math::sinh(H1{0}), 0, 1);
     EXACT(math::cosh(H1{0}), 1, 1);
@@ -1605,8 +1605,8 @@ TEST(DeterminismTest, determinism_sinh_cosh_tanh_across_grids_and_corners) {
 
 // determinism: log10 across grids and corners
 TEST(DeterminismTest, determinism_log10_across_grids_and_corners) {
-    using L1 = inside<{{1, 1024}, per<65536>}, round_half_away>;
-    using L2 = inside<{{1, 256}, per<4096>}, round_half_away>;
+    using L1 = id<"[1..1024] 1/65536 round_half_away">;
+    using L2 = id<"[1..256] 1/4096 round_half_away">;
 
     EXACT(math::log10(L1{1}), 0, 1); // log10(1)   = 0
     EXACT(math::log10(L2{1}), 0, 1);
@@ -1621,8 +1621,8 @@ TEST(DeterminismTest, determinism_log10_across_grids_and_corners) {
 
 // determinism: hypot across grids and corners
 TEST(DeterminismTest, determinism_hypot_across_grids_and_corners) {
-    using P1 = inside<{{-16, 16}, per<65536>}, round_half_away>;
-    using P2 = inside<{{-4, 4}, per<4096>}, round_half_away>;
+    using P1 = id<"[-16..16] 1/65536 round_half_away">;
+    using P2 = id<"[-4..4] 1/4096 round_half_away">;
 
     EXACT(math::hypot(P1{0}, P1{0}), 0, 1);              // origin
     EXACT(math::hypot(P1{3}, P1{4}), 5, 1);              // 3-4-5
@@ -1636,10 +1636,10 @@ TEST(DeterminismTest, determinism_hypot_across_grids_and_corners) {
 
 // determinism: pow across grids and corners
 TEST(DeterminismTest, determinism_pow_across_grids_and_corners) {
-    using PB1 = inside<{{1, 16}, per<65536>}, round_half_away>;
-    using PE1 = inside<{{-4, 8}, per<65536>}, round_half_away>;
-    using PB2 = inside<{{1, 4}, per<4096>}, round_half_away>;
-    using PE2 = inside<{{0, 4}, per<4096>}, round_half_away>;
+    using PB1 = id<"[1..16] 1/65536 round_half_away">;
+    using PE1 = id<"[-4..8] 1/65536 round_half_away">;
+    using PB2 = id<"[1..4] 1/4096 round_half_away">;
+    using PE2 = id<"[0..4] 1/4096 round_half_away">;
 
     EXACT(math::pow(PB1{2}, PE1{0}), 1, 1);  // b^0 = 1
     EXACT(math::pow(PB1{2}, PE1{1}), 2, 1);  // b^1 = b
@@ -1652,8 +1652,8 @@ TEST(DeterminismTest, determinism_pow_across_grids_and_corners) {
 
 // determinism: sqrt across grids and corners
 TEST(DeterminismTest, determinism_sqrt_across_grids_and_corners) {
-    using S1 = inside<{{0, 4}, per<65536>}, round_half_away>;
-    using S2 = inside<{{0, 256}, per<256>}, round_half_away>;
+    using S1 = id<"[0..4] 1/65536 round_half_away">;
+    using S2 = id<"[0..256] 1/256 round_half_away">;
 
     EXACT(math::sqrt(S1{0}), 0, 1);
     EXACT(math::sqrt(S1{1}), 1, 1);
@@ -1664,8 +1664,8 @@ TEST(DeterminismTest, determinism_sqrt_across_grids_and_corners) {
 
 // determinism: cbrt across grids and corners
 TEST(DeterminismTest, determinism_cbrt_across_grids_and_corners) {
-    using C1 = inside<{{-16, 16}, per<65536>}, round_half_away>;
-    using C2 = inside<{{-8, 8}, per<1024>}, round_half_away>;
+    using C1 = id<"[-16..16] 1/65536 round_half_away">;
+    using C2 = id<"[-8..8] 1/1024 round_half_away">;
 
     EXACT(math::cbrt(C1{0}), 0, 1);
     EXACT(math::cbrt(C2{0}), 0, 1);
@@ -1681,8 +1681,8 @@ TEST(DeterminismTest, determinism_cbrt_across_grids_and_corners) {
 
 // determinism: atan / atan2 corners across quadrants and axes
 TEST(DeterminismTest, determinism_atan_atan2_corners_across_quadrants_and_axes) {
-    using AT1 = inside<{{-16, 16}, per<16384>}, round_half_away>;
-    using AT2 = inside<{{-1, 1}, per<65536>}, round_half_away>;
+    using AT1 = id<"[-16..16] 1/16384 round_half_away">;
+    using AT2 = id<"[-1..1] 1/65536 round_half_away">;
 
     EXACT(math::atan(AT1{0}), 0, 1);
     EXACT(math::atan(AT1{1}), 3217, 4096);    //  pi/4
@@ -1701,13 +1701,13 @@ TEST(DeterminismTest, determinism_atan_atan2_corners_across_quadrants_and_axes) 
 
 // determinism: sin / cos / tan radian corners
 TEST(DeterminismTest, determinism_sin_cos_tan_radian_corners) {
-    using RAD = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using RAD = id<"[-8..8] 1/16384 round_half_away">;
 
     EXACT(math::sin(RAD{0}), 0, 1);
     EXACT(math::cos(RAD{0}), 1, 1);
     EXACT(math::sin(RAD{1}), 13787, 16384);                                                  // ~0.8415
     EXACT(math::cos(RAD{1}), 2213, 4096);                                                    // ~0.5403
-    using BRANCH = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_half_away>; // tan's
+    using BRANCH = id<"[-3/2..3/2] 1/16384 round_half_away">;                                // tan's
     EXACT(math::tan(BRANCH{0}), 0, 1);
     EXACT(math::tan(BRANCH{1}), 25517, 16384); // ~1.5574
 }
@@ -1722,24 +1722,24 @@ using namespace ins::detail;
 // Directed rounding of a result that nears a grid point beyond the precision
 // cap: the deep step decides it (tanh(50) floor gave 1).
 TEST(MathEngineTest, deep_step_at_the_cap) {
-    using F  = inside<{{-1, 1}, per<65536>}, round_floor>;
-    using C  = inside<{{-1, 1}, per<65536>}, round_ceil>;
-    using In = inside<{-100, 100}>;
+    using F  = id<"[-1..1] 1/65536 round_floor">;
+    using C  = id<"[-1..1] 1/65536 round_ceil">;
+    using In = id<"[-100..100]">;
     EXPECT_EQ(math::tanh<F>(In{50}), rational(65535, 65536));
     EXPECT_EQ(math::tanh<C>(In{-50}), rational(-65535, 65536));
-    using EC = inside<{{0, 1}, per<1024>}, round_ceil>;
-    EXPECT_EQ((math::exp<EC>(inside<{-100, 0}>{-60})), rational(1, 1024));
-    using X  = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
-    using SF = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor>;
+    using EC = id<"[0..1] 1/1024 round_ceil">;
+    EXPECT_EQ((math::exp<EC>(id<"[-100..0]">{-60})), rational(1, 1024));
+    using X  = id<key{grid{{0, 1}, per<(std::uint64_t{1} << 40)>}}>;
+    using SF = id<key{grid{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor}>;
     EXPECT_EQ(test::unwrap(math::sin<SF>(X{rational{3u, std::uint64_t{1} << 40}})).raw(), 2u);
 }
 
 // The table tier's slot offset subtracted signed 64-bit value indices: an
 // input straddling 2^63 overflowed (not a constant expression; UB at run time).
 TEST(MathEngineTest, table_lookup_on_an_input_straddling_two_to_the_63) {
-    using X  = inside<{9223372036854775806u, 9223372036854775908u}>; // 103 slots: a table
-    using Xl = inside<{9223372036854775806u, 9223372036854776908u}>; // too many: computed
-    using O  = inside<{{0, 2}, per<1024>}, round_half_away>;
+    using X  = id<"[9223372036854775806..9223372036854775908]">;     // 103 slots: a table
+    using Xl = id<"[9223372036854775806..9223372036854776908]">;     // too many: computed
+    using O  = id<"[0..2] 1/1024 round_half_away">;
     static_assert(math::detail::engine::table_input<X> && !math::detail::engine::table_input<Xl>);
     static_assert(math::atan<O>(X{9223372036854775900u}) == math::atan<O>(Xl{9223372036854775900u}));
     EXPECT_EQ(math::atan<O>(test::store<X>(test::at_run_time(std::uint64_t{9223372036854775900u}))),
@@ -1755,9 +1755,9 @@ TEST(MathEngineTest, table_lookup_on_an_input_straddling_two_to_the_63) {
 TEST(MathEngineTest, tan_near_its_pole_with_a_bound_past_64_bits) {
     constexpr std::uint64_t j0 = 7244019458077122842u; // ⌊π/2 · 2^62⌋
     constexpr std::uint64_t p  = std::uint64_t{1} << 62;
-    using Lo                   = inside<{{1, rational{j0, p}}, per<p>}>;
-    using Hi                   = inside<{{rational{j0 + 1, p}, 2}, per<p>}>;
-    using O                    = inside<{{-1099511627776, 1099511627776}, 1}, round_half_away | clamp>; // ±2^40
+    using Lo                   = id<key{grid{{1, rational{j0, p}}, per<p>}}>;
+    using Hi                   = id<key{grid{{rational{j0 + 1, p}, 2}, per<p>}}>;
+    using O                    = id<"[-1099511627776..1099511627776] 1 round_half_away|clamp">; // ±2^40
     struct row {
         std::uint64_t M; // x = (j0 − M)/2^62 below π/2, (j0 + 1 + M)/2^62 above
         std::int64_t  Below, Above;

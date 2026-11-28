@@ -9,20 +9,26 @@
 #include <limits>
 #include <functional>
 
-// numeric_limits and hash: std:: specializations for inside<G, P>.
+// numeric_limits and hash: std:: specializations for id<key{G, P}>.
 // Part of the umbrella: a TU without them would silently get the primary numeric_limits
 // (is_specialized false, max() a zero raw), and an ODR violation beside one that has them.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's limits.
 // std::hash hashes the Raw member (rational raw: Num+Den, boost-style combine).
 // (std::common_type lives in arithmetic.hpp, always on.)
 
-template <ins::grid G, ins::policy_flag P>
-struct std::numeric_limits<ins::inside<G, P>>
+template <ins::key K>
+  requires(ins::detail::inside_key<K>)
+struct std::numeric_limits<ins::id<K>>
 {
-  using B = ins::inside<G, P>;
+private:
+  static constexpr ins::grid        G{ins::detail::key_grid<K>};
+  static constexpr ins::policy_flag P{ins::detail::key_policy<K>};
+
+public:
+  using B = ins::id<K>;
 
   static constexpr bool is_specialized = true;
-  static constexpr bool is_signed      = (G.Interval.Lower < ins::detail::rational{0});
+  static constexpr bool is_signed      = (G.Lower < ins::detail::rational{0});
   // Every value is an integer: a non-zero integer notch over an integer Lower.
   static constexpr bool is_integer        = ins::detail::integer_lattice<B>;
   static constexpr bool is_exact          = true; // rational + integer raw are both exact
@@ -62,7 +68,7 @@ struct std::numeric_limits<ins::inside<G, P>>
     if constexpr (G.Notch == 0)
       return 0;
     else
-      return d::bit_width_of(G.step_count() + d::grid_int{1}) - 1 - (G.Interval.Lower < ::ins::grid_number{0} ? 1 : 0);
+      return d::bit_width_of(G.step_count() + d::grid_int{1}) - 1 - (G.Lower < ::ins::grid_number{0} ? 1 : 0);
   }();
   static constexpr int digits10 = digits * 30103 / 100000; // ⌊digits·log10 2⌋
 
@@ -85,9 +91,9 @@ private:
   }
 
 public:
-  static constexpr B min() noexcept { return at(G.Interval.Lower); }
-  static constexpr B max() noexcept { return at(G.Interval.Upper); }
-  static constexpr B lowest() noexcept { return at(G.Interval.Lower); }
+  static constexpr B min() noexcept { return at(G.Lower); }
+  static constexpr B max() noexcept { return at(G.Upper); }
+  static constexpr B lowest() noexcept { return at(G.Lower); }
   // An exact type has no rounding error: epsilon and round_error are 0, as for the integer types.
   // They exist where 0 is a value of the grid; on any other grid generic code gets a compile error, not a stand-in.
   static constexpr B epsilon() noexcept
@@ -102,10 +108,11 @@ public:
   }
 };
 
-template <ins::grid G, ins::policy_flag P>
-struct std::hash<ins::inside<G, P>>
+template <ins::key K>
+  requires(ins::detail::inside_key<K>)
+struct std::hash<ins::id<K>>
 {
-  using B = ins::inside<G, P>;
+  using B = ins::id<K>;
 
   // Boost-style combine of h with v, and with the limbs of a wide integer.
   template <class V>

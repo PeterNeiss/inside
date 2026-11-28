@@ -5,7 +5,7 @@
 #include <inside/inside.hpp>
 
 int main() {
-    ins::inside<{0, 100}> percent{50};
+    ins::id<"[0..100]"> percent{50};
     auto                  sum = percent + 1; // ill-formed: scalar has no grid
     (void)sum;
 }

@@ -19,8 +19,8 @@ namespace
 
 // A pixel whose channels saturate.
 // A run-time delta has a range too: name it, so `R += d` is quantity += quantity.
-using channel       = quantity<DN, inside<{0   , 255}, clamp>>;
-using channel_delta = quantity<DN, inside<{-512, 512}>>;
+using channel       = id<"[0..255] [DN] clamp">;
+using channel_delta = id<"[-512..512] [DN]">;
 
 struct rgb
 {
@@ -41,12 +41,12 @@ struct rgb
 int main()
 {
   // 1. clamp: a brightness, an RGB pixel.
-  using brightness_percent = quantity<percent, inside<{0, 100}, clamp>>;
+  using brightness_percent = id<"[0..100] [%] clamp">;
   brightness_percent brightness{120, percent}; // 100 %
   brightness -= just<200> * percent;           // 0 %: a constant steps a clamp type
   std::cout << "brightness " << brightness << "\n";
 
-  inside<{0, 100}> strict{50}; // checked by default …
+  id<"[0..100]"> strict{50};   // checked by default …
   strict.with<clamp>() = 200;  // … clamped for this one store
   std::cout << "with<clamp> " << strict << "\n";
   if (brightness != just<0> * percent || strict != 100)
@@ -61,7 +61,7 @@ int main()
     return 1;
 
   // 2. wrap: a compass heading in [0°, 360°), whole degrees.
-  using heading_degrees = quantity<si::degree, inside<{0, 360, bounds::half_open}, wrap>>;
+  using heading_degrees = id<"[0..360) [deg] wrap">;
   heading_degrees heading{350, si::degree};
   heading += 30_ins  * si::degree; // 20°
   heading += -90_ins * si::degree; // 290°
@@ -72,7 +72,7 @@ int main()
 
   // 3. Bounded loops: the index is an inside, so arr[i] is in range.
   const std::array arr{10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
-  using arr_index = inside<{0, 9}>; // arr takes it as it is
+  using arr_index = id<"[0..9]">; // arr takes it as it is
   std::cout << "from 5, wrapping:";
   for (arr_index i : inside_range<grid_of<arr_index>>{5})
     std::cout << ' ' << arr[i];

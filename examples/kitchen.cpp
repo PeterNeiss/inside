@@ -36,8 +36,8 @@ int main()
   // 3. 350 ℉ is the point (350 − 32)·5/9 = 530/3 ℃ exactly, and a whole-degree dial rounds it once;
   // 25 ℉ more is a difference.
   // The dial's [0, 300] ℃ may not hold the oven, so value_cast is an expected.
-  using oven_dial = inside<{0, 300}, round_half_away>;
-  const auto oven   {point<international::degree_Fahrenheit>(inside<{0, 600}>{350})};
+  using oven_dial = id<"[0..300] round_half_away">;
+  const auto oven   {point<international::degree_Fahrenheit>(id<"[0..600]">{350})};
   const auto oven_c {oven.point_in(si::degree_Celsius)};
   const auto dial   {value_cast<oven_dial>(oven_c)};
   const auto hotter {oven + delta<international::degree_Fahrenheit>(just<25>)};
@@ -53,9 +53,9 @@ int main()
   // 4. 250 mL of flour at 0.53 g/mL: density·volume is a mass.
   // A mass and a volume never add:
   //   auto bad = flour + milk; // does not compile: another dimension
-  using grams_per_ml = quantity<isq::mass_density[si::gram / ml], inside<{{0, 2}, per<100>}>>;
-  using millilitres  = quantity<isq::volume[ml]                 , inside<{0, 1000}>>;
-  using grams        = quantity<isq::mass[si::gram]             , inside<{{0, 2000}, per<100>}>>;
+  using grams_per_ml = id<"[0..2] 1/100 [g/mL]{mass_density}">;
+  using millilitres  = id<"[0..1000] [mL]{volume}">;
+  using grams        = id<"[0..2000] 1/100 [g]{mass}">;
 
   const grams_per_ml density{just<53, 100> * isq::mass_density[si::gram / ml]};
   const millilitres  cup    {250, isq::volume[ml]};
@@ -66,7 +66,7 @@ int main()
 
   // 5. A flour jar that holds 2 kg, to the gram, starting at 1.5 kg:
   // a pound fits (rounded to the gram), and its clamp policy stops the second pound at 2 kg.
-  using jar_kilograms = quantity<si::kilogram, inside<{{0, 2}, per<1000>}, clamp | round_half_away>>;
+  using jar_kilograms = id<"[0..2] 1/1000 [kg] clamp|round_half_away">;
   jar_kilograms jar{just<3, 2> * si::kilogram};
   jar += international::pound;
   const auto after_one{to_string(jar)};

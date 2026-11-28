@@ -5,6 +5,6 @@
 
 using namespace ins;
 
-constexpr inside<{0, 10}> level{11};
+constexpr id<"[0..10]"> level{11};
 
 int main() {}

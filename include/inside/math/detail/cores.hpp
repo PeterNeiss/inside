@@ -854,7 +854,7 @@ namespace ins::math::detail::engine
 
   // A deduced output on notch N.
   template <insidable In, grid_number N, grid_number Lo, grid_number Hi>
-  using result_grid_t = inside<{{Lo, Hi}, N}, result_policy<In>>;
+  using result_grid_t = id<key{grid{{Lo, Hi}, N}, result_policy<In>}>;
 
   // The bound of Core's result at In's lower or upper end, on notch N.
   template <insidable In, grid_number N, typename Core, bool AtUpper, bool Up>

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// quantity_point<R, O, Rep>: points counted from an origin, their exact shifts and comparisons.
+// Points, id<"[-40..125] [`C] @ice_point">: quantities counted from an origin, their exact shifts and comparisons.
 // Internal: include <inside/units.hpp> or <inside/units/core.hpp>.
 #ifndef INSIDE_UNITS_DETAIL_POINT_HPP
 #define INSIDE_UNITS_DETAIL_POINT_HPP
@@ -11,22 +11,32 @@
 namespace ins
 {
 
-  // quantity_point<R, O, Rep>: a point, a quantity of R counted from origin O
-  // (null: the implicit zero of the dimension).
+  // A point: id<K> for a key with an origin, a quantity of the key's reference counted from it
+  // (@ice_point; @0, origin_def::none, the implicit zero of the dimension).
   // A change of origin shifts the grid by the exact offset, a change of unit rescales it.
-  //   auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});   // 20 ℃
+  //   auto t = point<si::degree_Celsius>(id<"[-40..60]">{20});   // 20 ℃, id<"[-40..60] [`C] @ice_point">
   //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
   //   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
-  template <reference R, origin_ref O, insidable Rep>
-  class quantity_point;
+  template <key K>
+    requires detail::origin_key<K>
+  struct id<K>;
 
   namespace detail
   {
     template <class T>
     inline constexpr bool is_quantity_point_v = false;
-    template <reference R, origin_ref O, class Rep>
-    inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
+    template <key K>
+      requires origin_key<K>
+    inline constexpr bool is_quantity_point_v<id<K>> = true;
   } // namespace detail
+
+  template <class T>
+  concept point_like = detail::is_quantity_point_v<std::remove_cvref_t<T>>;
+
+  // The key of a point of a quantity on R from origin O, its number Rep, for a type computed from them:
+  // id<point_key<si::degree_Celsius, si::ice_point, id<"[-40..125]">>> is id<"[-40..125] [`C] @ice_point">.
+  template <reference R, origin_ref O, insidable Rep>
+  inline constexpr key point_key = detail::quantity_key_of<R, Rep, O, true>();
 
   namespace detail
   {
@@ -57,7 +67,7 @@ namespace ins
     // The default origin of a unit's points: its named unit's (K, ℃, ℉).
     consteval origin_ref origin_of_unit(const unit_value& u)
     {
-      return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{};
+      return is_single_named(u) ? u.Atoms[0].U->Origin : &origin_def::none;
     }
 
     // Whether Rep stores the plain number V (under the one-shot flags Pol) only while compiling:
@@ -74,7 +84,7 @@ namespace ins
     template <class Rep, class V, class Pol>
       requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
     inline constexpr bool point_store_immediate<Rep, V, Pol> =
-      !ins::detail::store_proven<inside<grid_of<Rep>, point_flags_with<Rep, Pol>>, std::remove_cvref_t<V>,
+      !ins::detail::store_proven<id<key{grid_of<Rep>, point_flags_with<Rep, Pol>}>, std::remove_cvref_t<V>,
                                  point_flags_with<Rep, Pol>>
       && !ins::detail::reports_into_errc<Pol>;
 
@@ -82,103 +92,112 @@ namespace ins
     constexpr auto make_point(Q&& q)
     {
       using T = ins::detail::unwrap_t<Q>;
-      return lift_to<quantity_point<T::reference, O, typename T::rep>>(std::forward<Q>(q));
+      return lift_to<id<point_key<T::reference, O, typename T::rep>>>(std::forward<Q>(q));
     }
   } // namespace detail
 
-  template <reference R, origin_ref O, insidable Rep>
-  class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>>
+  template <key K>
+    requires detail::origin_key<K>
+  struct id<K>
+    : public detail::member_holder<detail::key_rep<K>, id<quantity_key<detail::key_reference<K>, detail::key_rep<K>>>,
+                                   id<K>>
   {
-    using holder = detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>>;
+  private:
+    static constexpr ins::reference R{detail::key_reference<K>};
+    static constexpr origin_ref     O{detail::key_origin<K>};
+    using Rep    = detail::key_rep<K>;
+    using Q      = id<quantity_key<R, Rep>>;
+    using holder = detail::member_holder<Rep, Q, id>;
     using holder::Value; // the quantity from the origin
 
+    static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
+                  "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
+                  "negate the number");
+
   public:
-    using quantity_type = quantity<R, Rep>;
+    using quantity_type = Q;
     using rep           = Rep;
     static constexpr ins::reference reference = R;
     static constexpr origin_ref     origin    = O;
 
-    constexpr quantity_point() = default;
-    constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
+    constexpr id() = default;
+    constexpr explicit id(const Q& q) : holder(q) {}
 
-    // From a number in the point's own unit, counted from its origin, stored as quantity<R, Rep>{v, u} stores it:
+    // From a number in the point's own unit, counted from its origin, stored as its quantity Q{v, u} stores it:
     // celsius{21.5, si::degree_Celsius}, celsius{v, si::degree_Celsius, clamp}.
     // A plain number the grids cannot prove is stored only while compiling, as by inside's consteval constructor;
     // this constructor is consteval then itself, so no escalation is left to infer.
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
            && (!detail::point_store_immediate<Rep, V, Pol...>)
-    constexpr quantity_point(V&& v, Tag u, Pol&&... pol)
-      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    constexpr id(V&& v, Tag u, Pol&&... pol)
+      : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && detail::own_unit_v<quantity<R, Rep>, Tag> && std::constructible_from<quantity<R, Rep>, V, Tag, Pol...>
+           && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
            && detail::point_store_immediate<Rep, V, Pol...>
-    consteval quantity_point(V&& v, Tag u, Pol&&... pol)
-      : holder(quantity<R, Rep>(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    consteval id(V&& v, Tag u, Pol&&... pol)
+      : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
     // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && (!detail::own_unit_v<quantity<R, Rep>, Tag>)
-    quantity_point(V&&, Tag, Pol&&...) = delete ("units: a point from a number takes the point's own unit - write "
-                                                 "point<u>(v) and convert it with point_in or point_for");
+           && (!detail::own_unit_v<Q, Tag>)
+    id(V&&, Tag, Pol&&...) = delete ("units: a point from a number takes the point's own unit - write point<u>(v) "
+                                     "and convert it with point_in or point_for");
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
-    template <ins::reference R2, origin_ref O2, class V2>
+    template <ins::point_like P2, ins::reference R2 = P2::reference, origin_ref O2 = P2::origin>
       requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O))) && detail::implicit_v<R2, R>
-            && std::constructible_from<
-                 quantity<R, Rep>,
-                 decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{}))>
-    constexpr explicit(
-      !std::convertible_to<decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{})),
-                           quantity<R, Rep>>) quantity_point(const quantity_point<R2, O2, V2>& p)
-      : holder(quantity<R, Rep>(p.quantity_from(origin_t<O>{}))) {}
+            && std::constructible_from<Q, decltype(std::declval<const P2&>().quantity_from(origin_t<O>{}))>
+    constexpr explicit(!std::convertible_to<decltype(std::declval<const P2&>().quantity_from(origin_t<O>{})), Q>)
+      id(const P2& p)
+      : holder(Q(p.quantity_from(origin_t<O>{}))) {}
 
     // The quantity from this point's origin, or from another one.
-    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Value; }
+    [[nodiscard]] constexpr const Q& quantity_from_origin() const noexcept { return Value; }
     template <origin_ref O2>
-      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0
-               && detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
+      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.unit()).Pi == 0
+               && detail::shift_forms<detail::origin_shift<O, O2, R.unit()>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const
     {
-      constexpr grid_number c{detail::origin_shift<O, O2, R.U>()};
+      constexpr grid_number c{detail::origin_shift<O, O2, R.unit()>()};
       return detail::quantity_access::make<
-        quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(ins::detail::value_of(Value)))>>>(
+        id<quantity_key<R, std::remove_cvref_t<decltype(detail::shift<c>(ins::detail::value_of(Value)))>>>>(
         detail::shift<c>(ins::detail::value_of(Value)));
     }
     template <origin_ref O2>
       requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
     void quantity_from(origin_t<O2>) const = delete ("units: points of different absolute origins");
     template <origin_ref O2>
-      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi != 0)
+      requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.unit()).Pi != 0)
     void quantity_from(origin_t<O2>) const
       = delete ("units: an origin shift in a unit with a pi magnitude has no exact grid");
     // The quantity from the absolute origin of the dimension (absolute zero, or the implicit zero):
     // 20 ℃ → 293.15 K counted in ℃.
     [[nodiscard]] constexpr auto quantity_from_zero() const
-      requires requires(const quantity_point& p) { p.quantity_from(origin_t<detail::absolute_of(O)>{}); }
+      requires requires(const id& p) { p.quantity_from(origin_t<detail::absolute_of(O)>{}); }
     {
       return quantity_from(origin_t<detail::absolute_of(O)>{});
     }
     // The same point counted from another origin.
     template <origin_ref O2>
-      requires requires(const quantity_point& p, origin_t<O2> o) { p.quantity_from(o); }
+      requires requires(const id& p, origin_t<O2> o) { p.quantity_from(o); }
     [[nodiscard]] constexpr auto point_for(origin_t<O2> o) const
     {
       return detail::make_point<O2>(quantity_from(o));
     }
     // The same point in another unit.
     template <ins::unit_value U>
-      requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
+      requires requires(const Q& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const
     {
       return detail::make_point<O>(Value.in(u));
     }
     // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
     template <ins::unit_value U>
-      requires requires(const quantity_point& p, unit_t<U> u)
+      requires requires(const id& p, unit_t<U> u)
                {
                  p.point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
                }
@@ -187,21 +206,33 @@ namespace ins
       return point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
     }
 
-    template <ins::reference R2, class V2>
-      requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a += b; }
-    constexpr quantity_point& operator+=(const quantity<R2, V2>& q)
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
+      requires requires(Q& a, const QR2& b) { a += b; }
+    constexpr id& operator+=(const QR2& q)
     {
       Value += q;
       return *this;
     }
-    template <ins::reference R2, class V2>
-      requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a -= b; }
-    constexpr quantity_point& operator-=(const quantity<R2, V2>& q)
+    template <ins::quantity_like QR2, ins::reference R2 = QR2::reference, class V2 = typename QR2::rep>
+      requires requires(Q& a, const QR2& b) { a -= b; }
+    constexpr id& operator-=(const QR2& q)
     {
       Value -= q;
       return *this;
     }
   };
+
+  // A point with its type: "21.5 [-40..125] 1/10 [`C] @ice_point"_ins is 21.5 ℃, the number in the type's unit
+  // counted from its origin, stored while compiling as P{just<v>, unit} stores it.
+  inline namespace literals
+  {
+    template <detail::value_text T>
+      requires detail::origin_key<T.Key>
+    consteval auto operator""_ins()
+    {
+      return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
+    }
+  } // namespace literals
 
   // value_cast on a point: its quantity from the origin cast, the origin kept.
   // (The point of a cast quantity, or an expected one: the cast's error passed on.)
@@ -213,18 +244,18 @@ namespace ins
       if constexpr (ins::detail::is_expected_v<Q>)
         return q.transform([](const auto& x) { return point_at<O>(x); });
       else
-        return quantity_point<Q::reference, O, typename Q::rep>{q};
+        return id<point_key<Q::reference, O, typename Q::rep>>{q};
     }
   } // namespace detail
-  template <insidable Rep2, reference R, origin_ref O, class V>
-    requires requires(const quantity<R, V>& q) { value_cast<Rep2>(q); }
-  [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p)
+  template <insidable Rep2, point_like P, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& q) { value_cast<Rep2>(q); }
+  [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     return detail::point_at<O>(value_cast<Rep2>(p.quantity_from_origin()));
   }
-  template <auto U, insidable Rep2, reference R, origin_ref O, class V>
-    requires requires(const quantity<R, V>& q) { value_cast<U, Rep2>(q); }
-  [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p)
+  template <auto U, insidable Rep2, point_like P, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& q) { value_cast<U, Rep2>(q); }
+  [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     return detail::point_at<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
   }
@@ -233,8 +264,8 @@ namespace ins
   template <auto U, insidable V>
   [[nodiscard]] constexpr auto point(const V& v)
   {
-    return quantity_point<reference_of(U), detail::origin_of_unit(decltype(U)::value), V>{
-      detail::quantity_access::make<quantity<reference_of(U), V>>(v)};
+    return id<point_key<reference_of(U), detail::origin_of_unit(decltype(U)::value), V>>{
+      detail::quantity_access::make<id<quantity_key<reference_of(U), V>>>(v)};
   }
   // delta<si::degree_Celsius>(v): a difference, a plain quantity.
   template <auto U, insidable V>
@@ -244,15 +275,15 @@ namespace ins
   }
 
   // origin + quantity: si::absolute_zero + just<300> * si::kelvin.
-  template <origin_ref O, reference R, class V>
-  [[nodiscard]] constexpr auto operator+(origin_t<O>, const quantity<R, V>& q)
+  template <origin_ref O, quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator+(origin_t<O>, const QR& q)
   {
-    return quantity_point<R, O, V>{q};
+    return id<point_key<R, O, V>>{q};
   }
-  template <reference R, class V, origin_ref O>
-  [[nodiscard]] constexpr auto operator+(const quantity<R, V>& q, origin_t<O>)
+  template <quantity_like QR, origin_ref O, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator+(const QR& q, origin_t<O>)
   {
-    return quantity_point<R, O, V>{q};
+    return id<point_key<R, O, V>>{q};
   }
 
   // point ± quantity: a point at the same origin,
@@ -260,8 +291,8 @@ namespace ins
   // else in the common unit; point − point: a quantity (the second counted from the first's origin).
   namespace detail
   {
-    template <unit_value U, reference R2, class V2>
-    constexpr auto in_point_unit(const quantity<R2, V2>& q)
+    template <unit_value U, quantity_like QR2>
+    constexpr auto in_point_unit(const QR2& q)
     {
       if constexpr (requires { q.template in<U>(); })
         return q.template in<U>();
@@ -269,48 +300,45 @@ namespace ins
         return q;
     }
   } // namespace detail
-  template <reference R, origin_ref O, class V, reference R2, class V2>
-    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a + detail::in_point_unit<R.U>(b); }
-  [[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q)
+  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& a, const QR2& b) {
+      a + detail::in_point_unit<R.unit()>(b);
+    }
+  [[nodiscard]] constexpr auto operator+(const P& p, const QR2& q)
   {
-    return detail::make_point<O>(p.quantity_from_origin() + detail::in_point_unit<R.U>(q));
+    return detail::make_point<O>(p.quantity_from_origin() + detail::in_point_unit<R.unit()>(q));
   }
-  template <reference R2, class V2, reference R, origin_ref O, class V>
-    requires requires(const quantity<R2, V2>& a, const quantity<R, V>& b) { detail::in_point_unit<R.U>(a) + b; }
-  [[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p)
+  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin>
+    requires requires(const QR2& a, const typename P::quantity_type& b) {
+      detail::in_point_unit<R.unit()>(a) + b;
+    }
+  [[nodiscard]] constexpr auto operator+(const QR2& q, const P& p)
   {
-    return detail::make_point<O>(detail::in_point_unit<R.U>(q) + p.quantity_from_origin());
+    return detail::make_point<O>(detail::in_point_unit<R.unit()>(q) + p.quantity_from_origin());
   }
-  template <reference R, origin_ref O, class V, reference R2, class V2>
-    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a - detail::in_point_unit<R.U>(b); }
-  [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q)
+  template <quantity_like QR2, point_like P, reference R = P::reference, origin_ref O = P::origin>
+    requires requires(const typename P::quantity_type& a, const QR2& b) {
+      a - detail::in_point_unit<R.unit()>(b);
+    }
+  [[nodiscard]] constexpr auto operator-(const P& p, const QR2& q)
   {
-    return detail::make_point<O>(p.quantity_from_origin() - detail::in_point_unit<R.U>(q));
+    return detail::make_point<O>(p.quantity_from_origin() - detail::in_point_unit<R.unit()>(q));
   }
-  template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
-    requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b)
-             {
-               a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
-             }
-  [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b)
+  template <point_like P, point_like P2, origin_ref O = P::origin>
+    requires requires(const P& a, const P2& b) { a.quantity_from_origin() - b.quantity_from(origin_t<O>{}); }
+  [[nodiscard]] constexpr auto operator-(const P& a, const P2& b)
   {
     return a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
   }
-  template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
-    requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b)
-             {
-               a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
-             }
-  [[nodiscard]] constexpr bool operator==(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b)
+  template <point_like P, point_like P2, origin_ref O = P::origin>
+    requires requires(const P& a, const P2& b) { a.quantity_from_origin() == b.quantity_from(origin_t<O>{}); }
+  [[nodiscard]] constexpr bool operator==(const P& a, const P2& b)
   {
     return a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
   }
-  template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
-    requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b)
-             {
-               a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
-             }
-  [[nodiscard]] constexpr auto operator<=>(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b)
+  template <point_like P, point_like P2, origin_ref O = P::origin>
+    requires requires(const P& a, const P2& b) { a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{}); }
+  [[nodiscard]] constexpr auto operator<=>(const P& a, const P2& b)
   {
     return a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
   }

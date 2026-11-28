@@ -6,6 +6,6 @@
 using namespace ins;
 
 int main() {
-    quantity<si::metre, inside<{0, 100}>> d{50, si::metre};
+    id<"[0..100] [m]"> d{50, si::metre};
     d += just<1> * si::metre;
 }

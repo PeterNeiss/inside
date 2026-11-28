@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    quantity<si::kilo(si::metre), inside<{0, 10}>> q = just<1500> * si::metre;
+    id<"[0..10] [km]"> q = just<1500> * si::metre;
     (void)q;
 }

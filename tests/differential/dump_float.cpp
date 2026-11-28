@@ -44,10 +44,10 @@ void floats(rng_t& g, int n) {
 } // namespace
 
 void dump_float(rng_t& g, int n) {
-    floats<inside<{{0, 2}, per<(1ll << 62)>}>>(g, n);
-    floats<inside<{{-1, 1}, per<(1ll << 62)>}>>(g, n);
-    floats<inside<{{-1'000'000, 1'000'000}, per<1'000'003>}>>(g, n);
-    floats<inside<{0, 1ll << 62}>>(g, n);
-    floats<inside<{{0, rational{1, 1 << 20}}, per<(1ll << 62)>}>>(g, n);
+    floats<id<key{grid{{0, 2}, per<(1ll << 62)>}}>>(g, n);
+    floats<id<key{grid{{-1, 1}, per<(1ll << 62)>}}>>(g, n);
+    floats<id<"[-1'000'000..1'000'000] 1/1'000'003">>(g, n);
+    floats<id<key{grid{0, 1ll << 62}}>>(g, n);
+    floats<id<key{grid{{0, rational{1, 1 << 20}}, per<(1ll << 62)>}}>>(g, n);
 }
 } // namespace diff

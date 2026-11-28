@@ -7,16 +7,16 @@ using namespace ins;
 
 int main() {
     // [listing]
-    using x_t  = inside<{{1, 16}, per<(1 << 6)>}, round_half_away>;
-    using down = inside<{{0, 16}, per<(1 << 10)>}, round_floor>;
-    using up   = inside<{{0, 16}, per<(1 << 10)>}, round_ceil>;
+    using x_t  = id<"[1..16] 1/64 round_half_away">;
+    using down = id<"[0..16] 1/1024 round_floor">;
+    using up   = id<"[0..16] 1/1024 round_ceil">;
 
     auto lo = math::sqrt<down>(x_t{2});         // 1.4140625    = 1448/1024 ≤ √2
     auto hi = math::sqrt<up>(x_t{2});           // 1.4150390625 = 1449/1024 ≥ √2
     static_assert(math::sqrt<down>(x_t{2.25}) == math::sqrt<up>(x_t{2.25})); // 1.5 exactly
     static_assert(math::log2<down>(x_t{8}) == 3 && math::log2<up>(x_t{8}) == 3);
 
-    using plain = inside<{{1, 16}, per<(1 << 6)>}>;     // no rounding in the type
+    using plain = id<"[1..16] 1/64">;                   // no rounding in the type
     auto e = math::exp<round_floor>(plain{1.5});        // the mode named on the call
     constexpr auto at_compile_time = math::exp(x_t{1.5});
     auto           at_run_time     = math::exp(x_t{1.5});

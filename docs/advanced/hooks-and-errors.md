@@ -36,7 +36,7 @@ whole range divided by the period (an inside past 64 bits). No carry
 saturates.
 
 ```cpp
-using ring = inside<{{0, 64}, per<16>}, wrap | round_half_away>;
+using ring = id<"[0..64] 1/16 wrap|round_half_away">;
 ring p{0};
 int  wraps = 0;
 p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
@@ -57,8 +57,8 @@ range the library stores exactly; ±∞ reports the end of the overshoot's grid.
 On a compound assignment the hook acts on the store back:
 
 ```cpp
-inside<{0, 100}> acc{50};
-inside<{0, 1000}> big{900};
+id<"[0..100]"> acc{50};
+id<"[0..1000]"> big{900};
 acc.on_clamp([&](auto&, auto over) { /* over == 850 */ }) += big;   // acc == 100
 ```
 
@@ -76,8 +76,8 @@ quantity in any unit of the same kind and convert it exactly first; `*=` and
 periods), the overshoot (a quantity in the same unit) or the error:
 
 ```cpp
-quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50, si::second};
-quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>> m{0, si::minute};
+id<"[0..60) [s] wrap"> s{50, si::second};
+id<"[0..60) [min] wrap"> m{0, si::minute};
 s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::minute;
 // s == 50 s (170 s fold to 50 s), m == 2 min
 ```
@@ -93,16 +93,16 @@ A flag is also the policy of one call. The free arithmetic functions take one
 as a last argument, and so does a constructor's second argument:
 
 ```cpp
-inside<{0, 100}> a{7}, b{2};
+id<"[0..100]"> a{7}, b{2};
 auto q = div(a, b, round_floor);                     // std::expected: 3
 auto r = mod(a, b, round_half_away);                   // std::expected
-inside<{0, 10}> h{3.5, round_floor};                 // 3
+id<"[0..10]"> h{3.5, round_floor};                 // 3
 error ec{};
 auto e = div(a, b, make_policy<round_floor>(ec));    // a flag and an error&
 ```
 
 Each flag is a constant of its own type that converts to `policy_flag`, so the
-same name is a template argument (`inside<G, round_floor>`), part of a
+same name is a template argument (`id<key{G, round_floor}>`), part of a
 combination (`clamp | round_floor`) and a call's policy.
 
 ## Error codes
@@ -128,11 +128,11 @@ A store or a free function reports through an `error&`:
 
 ```cpp
 error ec{};
-inside<{0, 100}> y{50};
+id<"[0..100]"> y{50};
 y.on_error(ec) = 200;             // ec == error::overflow; y keeps 50
 
-inside<{{0, 10}, 2}> coarse{0};
-inside<{{0, 10}, 1}> fine{3};
+id<"[0..10] 2"> coarse{0};
+id<"[0..10] 1"> fine{3};
 coarse.on_error<round_toward_zero>(ec) = fine; // rounds; ec only sees a range error
 ```
 
@@ -147,9 +147,9 @@ leaves the previous value.
 without unwrapping:
 
 ```cpp
-using result = inside<{{-1, 1}, per<1'000'000>}, round_half_away>;
-inside<{-1000, 1000}> x{500}, y{100};
-inside<{0, 1000}>     d{400};
+using result = id<"[-1..1] 1/1'000'000 round_half_away">;
+id<"[-1000..1000]"> x{500}, y{100};
+id<"[0..1000]">     d{400};
 auto r = result::try_make((x - y) / d);   // the division's error, or the store's: 1
 ```
 
@@ -157,8 +157,8 @@ For a quantity, `Q::try_make<F>(v, u)` takes a number and its unit, and
 `value_cast<Q, F>(q)` takes another quantity:
 
 ```cpp
-using metres = quantity<si::metre, inside<{0, 1000}>>;
-const quantity<si::kilo(si::metre), inside<{0, 5}>> leg{2, si::kilo(si::metre)};
+using metres = id<"[0..1000] [m]">;
+const id<"[0..5] [km]"> leg{2, si::kilo(si::metre)};
 auto a = metres::try_make(1200, si::metre);   // !a: overflow
 auto b = value_cast<metres>(leg);         // !b: 2000 m does not fit
 ```

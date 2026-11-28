@@ -48,10 +48,10 @@ namespace ins
   }
   template <class Q, policy_flag F = detail::none, class Tag>
     requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
-         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, Tag)
   {
-    return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).U>(number);
+    return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).unit()>(number);
   }
   template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
     requires quantity_like<Q> || detail::is_quantity_point_v<Q>
@@ -68,10 +68,10 @@ namespace ins
   }
   template <class Q, class Tag>
     requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
-         && (detail::text_unit_converts<Q, reference_of(Tag{}).U>())
+         && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, Tag)
   {
-    return detail::parse_quantity_in<Q, detail::none, true, reference_of(Tag{}).U>(number);
+    return detail::parse_quantity_in<Q, detail::none, true, reference_of(Tag{}).unit()>(number);
   }
 
   // is >> e for e a std::expected of a quantity or a point: a number token, then a unit token unless the number's
@@ -95,7 +95,7 @@ namespace ins
       return stream;
     }
     std::string unit;
-    if constexpr (!(detail::text_target<Q>::type::reference.U == unit_value{}))
+    if constexpr (!(detail::text_target<Q>::type::reference.unit() == unit_value{}))
       if (!(stream >> unit))
       {
         e = std::unexpected{error::missing_unit};
@@ -152,7 +152,7 @@ namespace ins
     {
       bool first{true};
       for (const bool blades : {false, true})
-        for (std::int8_t i = 0; i < u.Size; ++i)
+        for (std::int8_t i = 0; i < u.size(); ++i)
         {
           const unit_atom& a{u.Atoms[i]};
           if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_basis_atom(a) != blades)
@@ -173,8 +173,8 @@ namespace ins
   {
     std::string s;
     const int   num{
-      static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.Size, [](const auto& a) { return a.Exp > 0; }))};
-    const int   den{u.Size - num};
+      static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.size(), [](const auto& a) { return a.Exp > 0; }))};
+    const int   den{u.size() - num};
     if (num == 0) // only a denominator: s⁻¹, m⁻¹ s⁻¹
       detail::append_atoms(s, u, 0, enc);
     else
@@ -208,18 +208,18 @@ namespace ins
   }
 
   // "5 km", "90°", "3" (unit one).
-  template <reference R, class V>
-  std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8)
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  std::string to_string(const QR& q, text_encoding enc = text_encoding::utf8)
   {
     std::string       s  {ins::to_string(ins::detail::value_of(q))};
-    const std::string sym{unit_symbol(R.U, enc)};
+    const std::string sym{unit_symbol(R.unit(), enc)};
     if (sym.empty())
       return s;
-    return s + (detail::space_before(R.U) ? " " : "") + sym;
+    return s + (detail::space_before(R.unit()) ? " " : "") + sym;
   }
 
-  template <reference R, class V>
-  std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q)
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  std::ostream& operator<<(std::ostream& os, const QR& q)
   {
     return os << ins::to_string(q);
   }
@@ -259,13 +259,13 @@ namespace ins
   }
 
   // A point as its quantity from its origin: "20 ℃".
-  template <reference R, origin_ref O, class V>
-  std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8)
+  template <point_like P>
+  std::string to_string(const P& p, text_encoding enc = text_encoding::utf8)
   {
     return ins::to_string(p.quantity_from_origin(), enc);
   }
-  template <reference R, origin_ref O, class V>
-  std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p)
+  template <point_like P>
+  std::ostream& operator<<(std::ostream& os, const P& p)
   {
     return os << ins::to_string(p);
   }
@@ -273,18 +273,20 @@ namespace ins
 
 // std::format: the spec formats the number as for its inside ({:.2f}, {:>8}), then the unit symbol follows
 // ("5 km", "90°").
-template <ins::reference R, class V>
-struct std::formatter<ins::quantity<R, V>> : std::formatter<V>
+template <class Q>
+  requires ins::detail::is_quantity_v<Q>
+struct std::formatter<Q> : std::formatter<typename Q::rep>
 {
   template <typename Ctx>
-  auto format(const ins::quantity<R, V>& q, Ctx& ctx) const
+  auto format(const Q& q, Ctx& ctx) const
   {
     namespace u = ins;
-    auto              out{std::formatter<V>::format(ins::detail::value_of(q), ctx)};
-    const std::string sym{u::unit_symbol(R.U)};
+    constexpr ins::reference R{Q::reference};
+    auto              out{std::formatter<typename Q::rep>::format(ins::detail::value_of(q), ctx)};
+    const std::string sym{u::unit_symbol(R.unit())};
     if (sym.empty())
       return out;
-    if constexpr (u::detail::space_before(R.U))
+    if constexpr (u::detail::space_before(R.unit()))
       *out++ = ' ';
     return std::ranges::copy(sym, out).out;
   }
@@ -301,13 +303,13 @@ struct std::formatter<ins::multivector<P...>> : std::formatter<std::string_view>
   }
 };
 
-template <ins::reference R, ins::origin_ref O, class V>
-struct std::formatter<ins::quantity_point<R, O, V>> : std::formatter<ins::quantity<R, V>>
+template <ins::point_like P>
+struct std::formatter<P> : std::formatter<typename P::quantity_type>
 {
   template <typename Ctx>
-  auto format(const ins::quantity_point<R, O, V>& p, Ctx& ctx) const
+  auto format(const P& p, Ctx& ctx) const
   {
-    return std::formatter<ins::quantity<R, V>>::format(p.quantity_from_origin(), ctx);
+    return std::formatter<typename P::quantity_type>::format(p.quantity_from_origin(), ctx);
   }
 };
 

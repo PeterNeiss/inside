@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Textbook RSA-1024 on exact integer grids: a residue mod n is inside<{0, n - 1}>,
+// Textbook RSA-1024 on exact integer grids: a residue mod n is id<key{grid{0, n - 1}}>,
 // the product of two residues is a 2048-bit grid without anyone writing it,
 // and "% n" lands back in [0, n - 1] as a plain value, since the point divisor n cannot be 0.
 // Not cryptography: a fixed test key, no padding, not constant-time.
@@ -26,9 +26,9 @@ constexpr auto E   = 65537;
 constexpr auto Two1024 = 0x1p1024_g;
 static_assert(Two1024 / 2 <= N && N < Two1024); // a 1024-bit modulus
 
-using residue  = inside<{0, N - 1  }>; // Z/nZ
-using modulus  = inside<{N, N      }>; // the point n: "% modulus{}" never divides by 0
-using exponent = inside<{0, Phi - 1}>; // exponents mod phi(n)
+using residue  = id<key{grid{0, N - 1  }}>; // Z/nZ
+using modulus  = id<key{grid{N, N      }}>; // the point n: "% modulus{}" never divides by 0
+using exponent = id<key{grid{0, Phi - 1}}>; // exponents mod phi(n)
 
 // b^e mod M by right-to-left square-and-multiply, for the residues mod n and the 512-bit ones mod p and q.
 template <typename Residue, typename Modulus, typename Exponent>
@@ -51,8 +51,8 @@ constexpr Residue powmod(Residue b, Exponent e)
 // An e without an inverse is a domain_error.
 std::expected<exponent, error> inverse_mod_phi()
 {
-  using remainder          = inside<{0   , Phi}>;
-  using bezout_coefficient = inside<{-Phi, Phi}>;
+  using remainder          = id<key{grid{0   , Phi}}>;
+  using bezout_coefficient = id<key{grid{-Phi, Phi}}>;
   remainder          r0 = Phi, r1 = E; // the grid number phi, read at run time
   bezout_coefficient t0 = 0  , t1 = 1;
   while (r1 != 0)
@@ -77,7 +77,7 @@ constexpr std::expected<residue, error> pack(std::string_view text)
   residue m = 0;
   for (const unsigned char c : text)
   {
-    const auto next{exact_cast<residue>(m * just<256> + inside<{0, 255}>{c})};
+    const auto next{exact_cast<residue>(m * just<256> + id<"[0..255]">{c})};
     if (!next)
       return next;
     m = *next;
@@ -131,12 +131,12 @@ int main()
     return 1;
 
   // 3. Decrypt again by the Chinese remainder theorem: two 512-bit exponentiations instead of one 1024-bit one.
-  using residue_p  = inside<{0, P - 1}>;
-  using residue_q  = inside<{0, Q - 1}>;
-  using modulus_p  = inside<{P, P    }>;
-  using modulus_q  = inside<{Q, Q    }>;
-  using exponent_p = inside<{0, P - 2}>;
-  using exponent_q = inside<{0, Q - 2}>;
+  using residue_p  = id<key{grid{0, P - 1}}>;
+  using residue_q  = id<key{grid{0, Q - 1}}>;
+  using modulus_p  = id<key{grid{P, P    }}>;
+  using modulus_q  = id<key{grid{Q, Q    }}>;
+  using exponent_p = id<key{grid{0, P - 2}}>;
+  using exponent_q = id<key{grid{0, Q - 2}}>;
   const exponent_p dp = d % just<P - 1>;
   const exponent_q dq = d % just<Q - 1>;
   // q^-1 mod p by Fermat: q^(p - 2), with P - 2 formed during compilation.

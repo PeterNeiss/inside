@@ -51,14 +51,18 @@ namespace ins
   // A value that fits the 64-bit rational is held inline, as detail::rational holds it
   // (the numerator's magnitude, and the denominator with the sign),
   // so a grid's type reads short: grid_number{1, 100, 0} is 1/100.
-  // A larger value is an interned big_rational, which exists only at compile time, marked by Den == 0
+  // Zero is all zero bits, grid_number{0, 0, 0}, which a mangled name leaves out
+  // (and with it the MaxDenominator of every grid but a continuous one).
+  // A larger value is an interned big_rational, which exists only at compile time, marked by Den == 0 and Num == 1
   // (tested instead of the pointer: under -fsanitize=null GCC cannot compare an interned pointer with nullptr
   // in a constant expression).
+  // Zero takes the 64-bit paths without a big value: it is decided inside the Den == 0 branch,
+  // so the paths of the other inline values are as before.
   // One form per value, reduced and inline whenever it fits, so equal values are the same template argument.
   struct grid_number
   {
     std::uint64_t               Num{0};
-    std::int64_t                Den{1};
+    std::int64_t                Den{0};
     const detail::big_rational* Big{nullptr};
 
     constexpr grid_number() = default;
@@ -67,7 +71,7 @@ namespace ins
     constexpr grid_number(T v) noexcept
       : Num{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
                                          : static_cast<std::uint64_t>(v)},
-        Den{std::is_signed_v<T> && v < 0 ? -1 : 1} {}
+        Den{v == 0 ? 0 : std::is_signed_v<T> && v < 0 ? -1 : 1} {}
     template <std::integral T>
       requires(std::numeric_limits<T>::digits > 64)
     constexpr grid_number(T v) : grid_number(detail::big_rational{v}) {}
@@ -88,6 +92,8 @@ namespace ins
     {
       if (b.fits_rational())
       {
+        if (b.Num.Small == 0)
+          return; // zero: all zero bits
         Num = b.Num.Small;
         const std::int64_t d{static_cast<std::int64_t>(b.Den.Small)};
         // A denominator is positive: the optimizer then knows Den != 0 here, so big() never reads Big (null).
@@ -97,7 +103,7 @@ namespace ins
       }
       if consteval
       {
-        Num = 0;
+        Num = 1;
         Den = 0;
         Big = std::define_static_object(b);
       }
@@ -111,7 +117,7 @@ namespace ins
     [[nodiscard]] constexpr detail::big_rational big() const
     {
       if (Den == 0)
-        return *Big;
+        return Num == 0 ? detail::big_rational{} : *Big;
       detail::big_rational r;
       r.Num = detail::big_int::of_limb(Num, Den < 0);
       r.Den = detail::big_int{detail::abs_den(Den)};
@@ -121,12 +127,21 @@ namespace ins
     [[nodiscard]] constexpr detail::big_int numerator() const { return big().Num; }
     [[nodiscard]] constexpr detail::big_int denominator() const { return big().Den; }
 
-    [[nodiscard]] constexpr bool fits_rational() const noexcept { return Den != 0; }
-    [[nodiscard]] constexpr bool negative() const noexcept { return Den != 0 ? Den < 0 : Big->Num.negative(); }
-    [[nodiscard]] constexpr bool is_zero() const noexcept { return Den != 0 && Num == 0; }
+    [[nodiscard]] constexpr bool fits_rational() const noexcept { return Den != 0 || Num == 0; }
+    [[nodiscard]] constexpr bool negative() const noexcept
+    {
+      return Den != 0 ? Den < 0 : Num != 0 && Big->Num.negative();
+    }
+    [[nodiscard]] constexpr bool is_zero() const noexcept { return Den == 0 && Num == 0; }
     [[nodiscard]] constexpr bool is_integer() const noexcept
     {
-      return Den != 0 ? (Den == 1 || Den == -1) : Big->is_integer();
+      return Den != 0 ? (Den == 1 || Den == -1) : Num == 0 || Big->is_integer();
+    }
+
+    // The 64-bit rational of a value that fits (fits_rational()).
+    [[nodiscard]] constexpr detail::rational small() const noexcept
+    {
+      return Den != 0 ? detail::rational_from_parts(Num, Den) : detail::rational{};
     }
 
     // Implicit, so every 64-bit path keeps working on a small grid.
@@ -134,23 +149,27 @@ namespace ins
     constexpr operator detail::rational() const
     {
       if (Den == 0)
+      {
+        if (Num == 0)
+          return detail::rational{};
         detail::fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(error::overflow);
+      }
       return detail::rational_from_parts(Num, Den);
     }
     constexpr explicit operator double() const { return static_cast<double>(big()); }
     constexpr explicit operator float() const { return static_cast<float>(big()); }
 
-    // By content, never by address (see Den): both inline, or both interned.
+    // By content, never by address (see Den): both inline (zero too), or both interned.
     friend constexpr bool operator==(const grid_number& a, const grid_number& b)
     {
-      if (a.Den != b.Den)
+      if (a.Den != b.Den || a.Num != b.Num)
         return false;
-      return a.Den != 0 ? a.Num == b.Num : *a.Big == *b.Big;
+      return a.Den != 0 || a.Num == 0 || *a.Big == *b.Big;
     }
     friend constexpr std::strong_ordering operator<=>(const grid_number& a, const grid_number& b)
     {
-      if (a.Den != 0 && b.Den != 0)
-        return detail::rational_from_parts(a.Num, a.Den) <=> detail::rational_from_parts(b.Num, b.Den);
+      if (a.fits_rational() && b.fits_rational())
+        return a.small() <=> b.small();
       return a.big() <=> b.big();
     }
 
@@ -158,10 +177,9 @@ namespace ins
     static constexpr grid_number neg(const grid_number& a)
     {
       if (a.Den == 0)
-        return detail::big_rational::neg(*a.Big);
+        return a.Num == 0 ? a : grid_number{detail::big_rational::neg(*a.Big)};
       grid_number r{a};
-      if (r.Num != 0)
-        r.Den = -r.Den;
+      r.Den = -r.Den;
       return r;
     }
     static constexpr grid_number add(const grid_number& a, const grid_number& b)
@@ -186,7 +204,7 @@ namespace ins
     friend constexpr grid_number abs(grid_number a)
     {
       if (a.Den == 0)
-        return detail::abs(*a.Big);
+        return a.Num == 0 ? a : grid_number{detail::abs(*a.Big)};
       if (a.Den < 0)
         a.Den = -a.Den;
       return a;
@@ -212,8 +230,8 @@ namespace ins
     {
       if constexpr (std::same_as<T, detail::rational>)
       {
-        if (a.Den != 0)
-          return detail::rational_from_parts(a.Num, a.Den) <=> b;
+        if (a.fits_rational())
+          return a.small() <=> b;
         return *a.Big <=> detail::big_rational{b};
       }
       else
@@ -328,22 +346,19 @@ namespace ins::detail
     return grid_number{q};
   }
 
-  // parse_grid_literal: the exact literal, the whole literal grammar
-  // (scan_number: 0x and 0b prefixes, ' separators, a point, an e±n or p±n exponent) taken exactly, of any size.
-  // The _g literal, and _ins (its point); _r parses the same grammar into the 64-bit rational.
-  template <char... Chars>
-  consteval grid_number parse_grid_literal()
+  // An unsigned number in [first, last) in the whole literal grammar
+  // (scan_number: 0x and 0b prefixes, ' separators, a point, an e±n or p±n exponent), taken exactly, of any size:
+  // the scan's failure (e_exponent_numerator_overflow: an exponent past max_exp), else none and the value in out.
+  // The _g and _ins literals (parse_grid_literal) and an id's text (detail/id_text.hpp) read numbers here.
+  consteval parse_fail scan_exact(const char* first, const char* last, grid_number& out, int max_exp = 10000)
   {
-    if constexpr (octal_literal<Chars...>())
-      constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
-    constexpr char text[] = {Chars...};
     // The value is m·B^e (B the radix), times 2^±n or 10^±n.
     // Zero digits are held back (zeros) and multiplied in only before a later nonzero digit,
     // so trailing zeros (1.000…) never grow m.
     grid_int m{0};
     int      e{0}, zeros{0};
     const scanned_number sc{scan_number(
-      text, text + sizeof(text),
+      first, last,
       [&](int d, bool in_frac, int b)
       {
         if (d == 0)
@@ -357,14 +372,15 @@ namespace ins::detail
         e -= in_frac;
         return true;
       })};
-    if (sc.Fail == parse_fail::empty)
-      constexpr_error<"_g/_ins literal: expected digits">();
     if (sc.Fail != parse_fail::none)
-      constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
-    if (sc.Exp > 10000)
-      constexpr_error<"_g/_ins literal: exponent too large">();
+      return sc.Fail;
+    if (sc.Exp > max_exp)
+      return parse_fail::e_exponent_numerator_overflow;
     if (m == grid_int{0})
-      return grid_number{0};
+    {
+      out = grid_number{0};
+      return parse_fail::none;
+    }
     grid_int num{m}, den{1};
     const auto scale = [&](int x, int k) // ·x^k
     {
@@ -374,7 +390,27 @@ namespace ins::detail
     scale(sc.Base, e + zeros);
     if (sc.HasP || sc.HasE)
       scale(sc.HasP ? 2 : 10, sc.ExpNeg ? -sc.Exp : sc.Exp);
-    return grid_number{num, den};
+    out = grid_number{num, den};
+    return parse_fail::none;
+  }
+
+  // parse_grid_literal: the exact literal (scan_exact), of any size.
+  // The _g literal, and _ins (its point); _r parses the same grammar into the 64-bit rational.
+  template <char... Chars>
+  consteval grid_number parse_grid_literal()
+  {
+    if constexpr (octal_literal<Chars...>())
+      constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
+    constexpr char text[] = {Chars...};
+    grid_number    out;
+    const parse_fail f{scan_exact(text, text + sizeof(text), out)};
+    if (f == parse_fail::empty)
+      constexpr_error<"_g/_ins literal: expected digits">();
+    if (f == parse_fail::e_exponent_numerator_overflow)
+      constexpr_error<"_g/_ins literal: exponent too large">();
+    if (f != parse_fail::none)
+      constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
+    return out;
   }
 } // namespace ins::detail
 
@@ -419,7 +455,7 @@ namespace ins
   template <auto D>
   inline constexpr auto per = detail::make_per<D>();
 
-  // A grid number of any size: inside<{0, 1267650600228229401496703205376_g}>,
+  // A grid number of any size: id<"[0..1267650600228229401496703205376]">,
   // an exact decimal notch {{0, 1}, 1e-30_g}, or a binary one 0x1p-100_g.
   inline namespace literals
   {

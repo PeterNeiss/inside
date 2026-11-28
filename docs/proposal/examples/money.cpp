@@ -8,7 +8,7 @@ using namespace ins;
 
 int main() {
     // [listing]
-    using cents = inside<{{0, 1'000'000}, per<100>}, round_half_away>;
+    using cents = id<"[0..1'000'000] 1/100 round_half_away">;
 
     cents price = 0.1_ins, tax = 0.2_ins;   // exactly 1/10 and 2/10
     auto  total = price + tax;              // exactly 3/10 — no 0.30000000000000004

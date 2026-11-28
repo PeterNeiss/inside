@@ -19,7 +19,7 @@ namespace
 
 int main()
 {
-  using phase_slots = quantity<slot, inside<{0, 65535}, wrap>>; // wrap is the periodicity
+  using phase_slots = id<"[0..65535] [slot] wrap">; // wrap is the periodicity
 
   // A fixed frequency, 1/8 turn per sample: on_wrap counts the completed cycles.
   std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
@@ -49,7 +49,7 @@ int main()
   {
     // increment / 4 truncates; clamp keeps the growth within 65535
     // (×1.25 twelve times from 256 reaches 3725, which the grid cannot show).
-    using increment_slots = quantity<slot, inside<{1, 65535}, round_toward_zero | clamp>>;
+    using increment_slots = id<"[1..65535] [slot] round_toward_zero|clamp">;
     phase_slots     phase    {0  , slot};
     increment_slots increment{256, slot}; // 1/256 turn
     for (int i = 0; i < 12; ++i)

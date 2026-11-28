@@ -6,8 +6,8 @@ using namespace ins;
 
 int main() {
     // [listing]
-    using whole = inside<{0, 100}>;
-    using step  = inside<{1, 10}>;                           // never zero
+    using whole = id<"[0..100]">;
+    using step  = id<"[1..10]">;                           // never zero
 
     auto down       = div(whole{7}, step{2}, round_floor); // 3: this call rounds down
     auto up         = div(whole{7}, step{2}, round_ceil);  // 4
@@ -16,8 +16,8 @@ int main() {
     whole x = 50;
     x.with<clamp>() = 150;                                      // 100: this store saturates
 
-    using seconds = inside<{0, 59}, wrap>;
-    using minutes = inside<{0, 59}, clamp>; // m += carry names what happens past 59
+    using seconds = id<"[0..59] wrap">;
+    using minutes = id<"[0..59] clamp">; // m += carry names what happens past 59
     seconds s = 50;
     minutes m = 0;
     s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2

@@ -18,7 +18,7 @@ using namespace ins;
 
 int main()
 {
-  using radians = quantity<si::radian, inside<{0, (std::int64_t{1} << 62) - 1}>>; // whole rad up to 2^62 − 1
+  using radians = id<"[0..4611686018427387903] [rad]">; // whole rad up to 2^62 − 1
   struct row
   {
     radians      x;

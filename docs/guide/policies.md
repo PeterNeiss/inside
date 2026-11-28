@@ -1,15 +1,15 @@
 # Policies
 
-The second template argument of `inside<G, P>` is its **policy**: what
+The second template argument of `id<key{G, P}>` is its **policy**: what
 happens when a value does not fit the grid, because it is out of range or
 between two notches.
 
 ```cpp
-inside<{0, 100}, clamp>              b{150};   // 100: saturates
-inside<{0, 359}, wrap>               c{370};   // 10: wraps around
-inside<{{0, 10}, 2}, round_half_away>  d{3.2};   // 4: rounds to the nearest notch
-inside<{0, 100}>                     a{50};    // 50: a constant, checked while compiling
-// inside<{0, 100}>                  e{150};   // ❌ does not compile: 150 is outside
+id<"[0..100] clamp">              b{150};      // 100: saturates
+id<"[0..359] wrap">               c{370};      // 10: wraps around
+id<"[0..10] 2 round_half_away">  d{3.2};   // 4: rounds to the nearest notch
+id<"[0..100]">                     a{50};    // 50: a constant, checked while compiling
+// id<"[0..100]">                  e{150};   // ❌ does not compile: 150 is outside
 ```
 
 A value can only fail to fit when it is **stored**: on construction, `=`,
@@ -35,23 +35,23 @@ stored value fits, the store names what happens, before it runs.
 | `unsafe` | no checks at all: out of range is undefined behaviour, and a value between notches truncates |
 
 Combine a range flag and a rounding flag with `|`:
-`inside<{0, 100}, clamp | round_half_away>` saturates and rounds in one store.
+`id<"[0..100] clamp|round_half_away">` saturates and rounds in one store.
 That is the usual type for an API boundary, such as an actuator command.
 
 - Every policy without `unsafe` still checks what it does not handle:
-  `inside<{0, 100}, clamp>` rounds nothing, so a store of 3.5 needs a
+  `id<"[0..100] clamp">` rounds nothing, so a store of 3.5 needs a
   channel (and the constant 3.5 does not compile).
 - `clamp` and `wrap` exclude each other, and a policy has at most one
   rounding mode.
 - Rounding comes before the range check: 9.5 into
-  `inside<{0, 9}, round_floor>` stores 9.
+  `id<"[0..9] round_floor">` stores 9.
 
 ## One store under other flags
 
 A type's policy applies to every store. For one store, name the flags there:
 
 ```cpp
-using bounded = inside<{0, 100}>;
+using bounded = id<"[0..100]">;
 bounded p{150, clamp};             // 100: a new value under clamp
 bounded q{3.7, round_half_away};   // 4
 
@@ -95,8 +95,8 @@ A hook runs your code when a store clamps, wraps or fails. `x.on_wrap(f)`
 returns a handle; assign through it. On a clock's seconds and minutes:
 
 ```cpp
-quantity<si::second, inside<{0, 59}, wrap>>  seconds{0, si::second};
-quantity<si::minute, inside<{0, 59}, clamp>> minutes{0, si::minute};   // (+= carry names its range handling)
+id<"[0..59] [s] wrap">  seconds{0, si::second};
+id<"[0..59] [min] clamp"> minutes{0, si::minute};   // (+= carry names its range handling)
 seconds.on_wrap([&](auto&, auto carry) { minutes += carry * si::minute; }) = just<125> * si::second;
 // seconds == 5 s, minutes == 2 min
 ```
@@ -117,18 +117,18 @@ this way.
 
 A result keeps the policy its operands share, and a constant such as `2_ins`
 counts as neutral. The policy acts when the result is stored: arithmetic
-itself is exact. With `inside<{0, 10}, round_floor> a{7}`, `a / 2_ins` is
+itself is exact. With `id<"[0..10] round_floor"> a{7}`, `a / 2_ins` is
 3.5, and storing it into `a`'s type gives 3.
 
 ## A store the grids cannot prove
 
 A store is **proven** when every value of the source fits the target: an
-`inside<{0, 50}>` into an `inside<{0, 100}>`, an `int8_t` into
-`inside<{-128, 127}>`, anything under `clamp` or `wrap` (a `double` aside:
+`id<"[0..50]">` into an `id<"[0..100]">`, an `int8_t` into
+`id<"[-128..127]">`, anything under `clamp` or `wrap` (a `double` aside:
 NaN fits no range). Every other store names what happens, before it runs:
 
 ```cpp
-using bounded   = inside<{0, 100}>;
+using bounded   = id<"[0..100]">;
 int        n    = 150;                          // read at run time
 const auto step = 1_ins;
 bounded x{50};                                  // a constant: checked while compiling

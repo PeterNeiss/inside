@@ -25,7 +25,7 @@ namespace ins
       using result = std::expected<B, error>;
       // The exact store succeeds exactly when exact_cast does:
       // try it first and name the failure afterwards, off the common path.
-      using strict = inside<grid_of<B>>;
+      using strict = id<key{grid_of<B>}>;
       if constexpr (requires { strict::try_make(value); })
       {
         if (const auto r = strict::try_make(value)) [[likely]]

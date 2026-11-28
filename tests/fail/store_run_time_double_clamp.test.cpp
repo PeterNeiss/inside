@@ -8,6 +8,6 @@ using namespace ins;
 
 int main(int argc, char**) {
     const double     d = argc * 0.5;
-    inside<{0, 100}> x{d, clamp};
+    id<"[0..100]"> x{d, clamp};
     (void)x;
 }

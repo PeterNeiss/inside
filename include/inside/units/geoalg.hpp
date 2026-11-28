@@ -80,7 +80,7 @@ namespace ins
     consteval dimension part_dim()
     {
       if constexpr (quantity_like<P>)
-        return dimension_of(P::reference.U);
+        return dimension_of(P::reference.unit());
       else
         return dim_one;
     }
@@ -490,9 +490,14 @@ namespace ins
       using type = T;
     };
     template <reference R, class V>
-    struct part_number<quantity<R, V>>
+    struct part_number<quantity_parts<R, V>>
     {
       using type = V;
+    };
+    template <key K>
+      requires unit_key<K>
+    struct part_number<id<K>> : part_number<basic_of_t<id<K>>>
+    {
     };
     // Whether part T is made from its source in PX (or from 0), with policies.
     template <class T, class PX, class... Pol>
@@ -518,7 +523,7 @@ namespace ins
     consteval unit_value blade_atoms(const unit_value& u)
     {
       unit_value b{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         if (is_basis_atom(u.Atoms[i]))
           unit_add(b, u.Atoms[i]);
       return b;
@@ -528,9 +533,9 @@ namespace ins
     constexpr auto part_in(const P& p)
     {
       if constexpr (quantity_like<P>)
-        return p.template in<unit_mul(U, blade_atoms(P::reference.U), 1)>();
+        return p.template in<unit_mul(U, blade_atoms(P::reference.unit()), 1)>();
       else
-        return quantity_access::make<quantity<reference_of(unit_value{}), P>>(p).template in<U>();
+        return quantity_access::make<id<quantity_key<reference_of(unit_value{}), P>>>(p).template in<U>();
     }
     template <unit_value U, class P>
     concept part_in_unit = requires(const P& p) { part_in<U>(p); };
@@ -541,7 +546,7 @@ namespace ins
     {
       unit_value r{};
       r.Scale = u.Scale;
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         if (!is_basis_atom(u.Atoms[i]))
           unit_add(r, u.Atoms[i]);
       return r;
@@ -554,7 +559,7 @@ namespace ins
     consteval unit_value unit_of_part()
     {
       if constexpr (quantity_like<P>)
-        return P::reference.U;
+        return P::reference.unit();
       else
         return unit_value{};
     }
@@ -656,7 +661,8 @@ namespace ins
 
     constexpr multivector() = default;
 
-    // From its parts, in order: multivector<inside<…>, quantity<i, …>>{3, just<4> * i}. A blade's part is a quantity.
+    // From its parts, in order: multivector<id<"[0..9]">, id<"[0..9] [i]">>{3, just<4> * i}. A blade's part is a
+    // quantity.
     template <class... A>
       requires(sizeof...(A) == sizeof...(Parts) && (std::constructible_from<Parts, A> && ...))
     constexpr explicit(!(std::convertible_to<A, Parts> && ...)) multivector(A&&... a)
@@ -736,45 +742,48 @@ namespace ins
                                                "their blades), or parts of one blade that do not add");
 
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator+(const QA& a, const QB& b)
   {
     return detail::mv_add(a, b);
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr auto operator-(const QA& a, const QB& b)
   {
     return detail::mv_add(a, -b);
   }
-  template <reference A, class VA, reference B, class VB>
+  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
+            reference B = QB::reference, class VB = typename QB::rep>
     requires detail::blade_sum<A, B> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr bool operator==(const quantity<A, VA>& a, const quantity<B, VB>& b)
+  [[nodiscard]] constexpr bool operator==(const QA& a, const QB& b)
   {
     return detail::mv_equal(a, b);
   }
-  template <insidable V, reference A, class VA>
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const V& v, const quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator+(const V& v, const QA& a)
   {
     return detail::mv_add(v, a);
   }
-  template <reference A, class VA, insidable V>
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator+(const QA& a, const V& v)
   {
     return detail::mv_add(a, v);
   }
-  template <insidable V, reference A, class VA>
+  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const V& v, const quantity<A, VA>& a)
+  [[nodiscard]] constexpr auto operator-(const V& v, const QA& a)
   {
     return detail::mv_add(v, -a);
   }
-  template <reference A, class VA, insidable V>
+  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
     requires detail::number_blade_sum<A> && detail::geoalg_included<A>
-  [[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const V& v)
+  [[nodiscard]] constexpr auto operator-(const QA& a, const V& v)
   {
     return detail::mv_add(a, detail::as_part(-v));
   }

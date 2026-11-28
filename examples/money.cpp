@@ -23,7 +23,7 @@ namespace
 int main()
 {
   // 0 … 1,000,000 USD in exact steps of 1/100 (0.01 is no binary fraction): 100M+1 steps fit a uint32.
-  using dollars = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_half_away>>;
+  using dollars = id<"[0..1'000'000] 1/100 [USD] round_half_away">;
   static_assert(sizeof(dollars) == 4);
 
   // The line items add exactly;

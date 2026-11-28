@@ -813,6 +813,13 @@ double cr_cbrt(double); double cr_pow(double, double); double cr_hypot(double, d
 #include <utility>
 #include <vector>
 using namespace ins;
+// The kernels keep the old spellings: names of the ids they mean.
+template <ins::grid G, ins::policy_flag P = ins::checked>
+using inside = ins::id<ins::key{G, P}>;
+template <ins::reference R, class Rep>
+using quantity = ins::id<ins::quantity_key<R, Rep>>;
+template <ins::reference R, ins::origin_ref O, class Rep>
+using quantity_point = ins::id<ins::point_key<R, O, Rep>>;
 namespace bd = ins::detail;
 namespace iu = ins;
 namespace math = ins::math;

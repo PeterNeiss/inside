@@ -73,14 +73,14 @@ exact.**
 <!-- listing: rescale -->
 ```cpp
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{{0, 500}, per<1000>}>> trip{12.5, km};    // 12.5 km, to the metre
+id<"[0..500] 1/1000 [km]"> trip{12.5, km};                     // 12.5 km, to the metre
 auto m = trip.in(si::metre);                                   // 12500 m: the same raw, grid × 1000
 static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
 
 auto total = trip + just<800> * si::metre;                     // 13300 m: the sum runs in metres
-auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
+auto speed = total / id<"[1..600] [min]">{20, si::minute};
 auto kmh   = speed.in(km / si::hour);                          // 39.9 km/h, exactly
-inside<{0, 1000}, round_half_away | clamp> laps = trip / (just<400> * si::metre); // 31: km / m is a number
+id<"[0..1000] round_half_away|clamp"> laps = trip / (just<400> * si::metre); // 31: km / m is a number
 static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
 ```
 
@@ -88,13 +88,13 @@ static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // anot
 
 <!-- listing: kinds -->
 ```cpp
-quantity<si::hertz, inside<{0, 1000}>>     f{50, si::hertz};
-quantity<si::becquerel, inside<{0, 1000}>> a{50, si::becquerel};
+id<"[0..1000] [Hz]">     f{50, si::hertz};
+id<"[0..1000] [Bq]"> a{50, si::becquerel};
 static_assert(!addable<decltype(f), decltype(a)>);        // both 1/s, but not one kind
 
-quantity<isq::width[si::metre], inside<{1, 10}>>  w{3, isq::width[si::metre]};
-quantity<isq::height[si::metre], inside<{1, 10}>> h{4, isq::height[si::metre]};
-quantity<isq::area[square(si::metre)], inside<{1, 100}>> area = w * h; // width · height
+id<"[1..10] [m]{width}">  w{3, isq::width[si::metre]};
+id<"[1..10] [m]{height}"> h{4, isq::height[si::metre]};
+id<"[1..100] [m^2]{area}"> area = w * h; // width · height
 auto around = w + h;                                      // 7 m, a length: the common kind
 auto tall   = kind_cast<isq::height>(w);              // a width read as a height, explicitly
 ```
@@ -103,7 +103,7 @@ auto tall   = kind_cast<isq::height>(w);              // a width read as a heigh
 
 <!-- listing: points -->
 ```cpp
-auto room = point<si::degree_Celsius>(inside<{{-50, 50}, per<10>}>{20});
+auto room = point<si::degree_Celsius>(id<"[-50..50] 1/10">{20});
 auto k    = room.point_for(si::absolute_zero).in(si::kelvin);      // 293.15 K, exactly
 auto f    = room.point_in(international::degree_Fahrenheit);       // 68 ℉, exactly
 auto warm = room + just<5> * si::kelvin;                           // 25 ℃: a point plus a difference
@@ -118,8 +118,8 @@ static_assert(!addable<decltype(room), decltype(room)>);           // points do 
 inline constexpr auto euro = base_unit<"EUR", "currency">;
 inline constexpr auto           cent = unit<"ct", 0.01_ins * euro>;
 
-using price = quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>>;
-using mass  = quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>;
+using price = id<"[0..100] 1/100 [EUR/kg]">;
+using mass  = id<"[0..10] 1/1000 [kg]">;
 
 constexpr auto cost  = price{3.49_ins, euro / si::kilogram} * mass{1.25_ins, si::kilogram}; // 4.3625 EUR, exactly
 constexpr auto cents = cost.in(cent);                                                       // 436.25 ct: the same raw

@@ -109,21 +109,21 @@ void row(std::FILE* out, const char* function, const char* grid, const char* dom
 // Input grids, in three kinds: dyadic 2^-14 lattices (deduced outputs),
 // the same ranges in steps of 1/1000 (inputs
 // that are not doubles exactly), and explicit outputs with a 2^-40 notch.
-using angle_grid = inside<{{-8, 8}, per<16384>}, round_half_away>;
-using tan_grid   = inside<{{-1.5, 1.5}, per<16384>}, round_half_away>;
-using unit_grid  = inside<{{-1, 1}, per<16384>}, round_half_away>;
-using sqrt_grid  = inside<{{0, 16}, per<16384>}, round_half_away>;
-using log_grid   = inside<{{1, 1000}, per<16384>}, round_half_away>;
-using atanh_grid = inside<{{-0.99951171875, 0.99951171875}, per<16384>}, round_half_away>;
+using angle_grid = id<"[-8..8] 1/16384 round_half_away">;
+using tan_grid   = id<"[-1.5..1.5] 1/16384 round_half_away">;
+using unit_grid  = id<"[-1..1] 1/16384 round_half_away">;
+using sqrt_grid  = id<"[0..16] 1/16384 round_half_away">;
+using log_grid   = id<"[1..1000] 1/16384 round_half_away">;
+using atanh_grid = id<"[-0.99951171875..0.99951171875] 1/16384 round_half_away">;
 
-using angle_dec = inside<{{-8, 8}, per<1000>}, round_half_away>;
-using tan_dec   = inside<{{-1.5, 1.5}, per<1000>}, round_half_away>;
-using unit_dec  = inside<{{-1, 1}, per<1000>}, round_half_away>;
-using sqrt_dec  = inside<{{0, 16}, per<1000>}, round_half_away>;
-using log_dec   = inside<{{1, 1000}, per<1000>}, round_half_away>;
-using atanh_dec = inside<{{rational{-999, 1000}, rational{999, 1000}}, per<1000>}, round_half_away>;
+using angle_dec = id<"[-8..8] 1/1000 round_half_away">;
+using tan_dec   = id<"[-1.5..1.5] 1/1000 round_half_away">;
+using unit_dec  = id<"[-1..1] 1/1000 round_half_away">;
+using sqrt_dec  = id<"[0..16] 1/1000 round_half_away">;
+using log_dec   = id<"[1..1000] 1/1000 round_half_away">;
+using atanh_dec = id<"[-999/1000..999/1000] 1/1000 round_half_away">;
 
-using fine_out = inside<{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_half_away>;
+using fine_out = id<key{grid{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_half_away}>;
 } // namespace
 
 int main(int argc, char** argv) {

@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    inside<{{0, 4}, per<1024>}> x = math::pi;
+    id<"[0..4] 1/1024"> x = math::pi;
     (void)x;
 }

@@ -24,11 +24,11 @@
 // iterator_category is input_iterator_tag because operator* returns by value; iterator_concept carries the capability.
 namespace ins
 {
-  template <grid G, policy_flag P = checked, class V = inside<G, P>>
+  template <grid G, policy_flag P = checked, class V = id<key{G, P}>>
     requires(G.Notch != 0)
   struct inside_range : std::ranges::view_interface<inside_range<G, P, V>>
   {
-    using number_type = inside<G, P>;
+    using number_type = id<key{G, P}>;
     using value_type  = V; // number_type, or a quantity on it
     // Random access while end() − begin(), a std::ptrdiff_t, can be the count.
     static constexpr bool random_access =

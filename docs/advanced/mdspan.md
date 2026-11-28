@@ -22,9 +22,9 @@ turns index types into extents, so the two agree by construction:
 
 ```cpp
 inline constexpr auto DN = base_unit<"DN", "pixel_value">;   // a raw pixel value
-using pixel = quantity<DN, inside<{0, 255}>>;                // an element may be a quantity…
-using row   = inside<{0, 479}>;                              // … an index is a plain inside
-using col   = inside<{0, 639}>;
+using pixel = id<"[0..255] [DN]">;                           // an element may be a quantity…
+using row   = id<"[0..479]">;                                // … an index is a plain inside
+using col   = id<"[0..639]">;
 std::vector<pixel> data(480 * 640);
 std::mdspan<pixel, extents_of<row, col>> img{data.data()};   // extents 480 × 640
 
@@ -49,9 +49,9 @@ index type and visible where it applies:
 | `wrap` | folded onto the extent: a periodic, torus-like boundary |
 
 ```cpp
-using crow = inside<{0, 479}, clamp>;
-using ccol = inside<{0, 639}, clamp>;
-inside<{-1, 1}> dr = -1, dc = 1;
+using crow = id<"[0..479] clamp">;
+using ccol = id<"[0..639] clamp">;
+id<"[-1..1]"> dr = -1, dc = 1;
 img[crow{r + dr}, ccol{c + dc}];    // a neighbour past an edge reads the edge
 ```
 
@@ -59,7 +59,7 @@ An index need not start at 0. An interior index and its neighbours are
 within the image by the grids alone, with no policy and no check:
 
 ```cpp
-using inner = inside<{1, 478}>;      // rows that have both neighbours
+using inner = id<"[1..478]">;      // rows that have both neighbours
 inner i = 200;
 img[row{i + dr}, c];                            // 0 … 479: the store into row is proven
 ```
@@ -82,7 +82,7 @@ which no type knows. libstdc++ checks both when built with
 `_GLIBCXX_ASSERTIONS`.
 
 `indices(m)` walks every index tuple, the last index fastest. A static extent
-yields its index type `extent_index_t<E, r>` (`inside<{0, N − 1}>`),
+yields its index type `extent_index_t<E, r>` (`id<key{grid{0, N − 1}}>`),
 which is within bounds by its type; a dynamic extent yields integers:
 
 ```cpp
@@ -108,7 +108,7 @@ object: assign to it, read it with `.get()` or by converting to E.
 
 ```cpp
 inline constexpr auto cts = base_unit<"cts", "count">;          // an ADC count
-using adc = quantity<cts, inside<{0, 4095}>>;                   // 12 bits in a uint16_t
+using adc = id<"[0..4095] [cts]">;                              // 12 bits in a uint16_t
 std::array<std::uint16_t, 64> dma{};                            // filled by the hardware
 std::mdspan<adc, std::extents<std::size_t, 64>, std::layout_right,
             raw_accessor<adc, const std::uint16_t>> samples{dma.data()};
@@ -132,7 +132,7 @@ checked type reports a value past its range. Nothing overflows on the way,
 however large the intermediate products are:
 
 ```cpp
-std::array<inside<{-100, 100}>, 4> a{3, -7, 100, 25}, b{12, 9, -4, 30};
+std::array<id<"[-100..100]">, 4> a{3, -7, 100, 25}, b{12, 9, -4, 30};
 auto d = dot(std::mdspan{a.data(), std::extents<std::size_t, 4>{}},
              std::mdspan{b.data(), std::extents<std::size_t, 4>{}});   // 323 on [−40000, 40000]
 ```
@@ -155,7 +155,7 @@ and a target in another unit gets the total converted once.
 converts back exactly:
 
 ```cpp
-using km = quantity<si::kilo(si::metre), inside<{0, 10}>>;
+using km = id<"[0..10] [km]">;
 std::array<km, 2> legs{km{1, si::kilo(si::metre)}, km{3, si::kilo(si::metre)}};
 auto mm = ins::view_in(std::mdspan{legs.data(), std::extents<std::size_t, 2>{}}, si::milli(si::metre));
 // mm[0].get() is 1000000 mm; the storage is still one byte per leg

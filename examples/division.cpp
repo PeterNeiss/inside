@@ -12,7 +12,7 @@ using namespace ins;
 
 int main()
 {
-  using number = inside<{0, 100}>;
+  using number = id<"[0..100]">;
   const number a{7}, b{3};
 
   // a / b is the exact rational quotient; b's grid holds 0, so it is an expected.
@@ -32,9 +32,9 @@ int main()
 
   // divmod: the remainder follows the rounded quotient, so q * b + r == a under every mode.
   // A type that rounds divides the same way when stored into: /= is a store.
-  using signed_number = inside<{-100, 100}>;
-  using floored       = inside<{-100, 100}, round_floor>;
-  using positive      = inside<{1   , 10 }>;
+  using signed_number = id<"[-100..100]">;
+  using floored       = id<"[-100..100] round_floor">;
+  using positive      = id<"[1..10]">;
   const auto [fq, fr] = *divmod(signed_number{-8}, signed_number{3}, round_floor);
   std::cout << "-8 / 3, -8 % 3 (floor) = " << fq << ", " << fr << "\n";
   floored x{-8};

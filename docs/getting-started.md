@@ -14,8 +14,8 @@ The library needs GCC 16 in C++26 mode with static reflection. With the
 using namespace ins;
 
 int main() {
-    inside<{0, 100}> a{70}, b{58};
-    auto sum = a + b;           // a new type, inside<{0, 200}>
+    id<"[0..100]"> a{70}, b{58};
+    auto sum = a + b;           // a new type, id<"[0..200]">
     std::cout << sum << '\n';   // 128
 }
 ```
@@ -35,14 +35,14 @@ limit and a step, the *notch*. All three are exact and known at compile time,
 and the value can never leave the grid.
 
 ```cpp
-using integers = inside<{0, 100}>;                    // the integers 0 … 100
-using halves   = inside<{0.5, 10}>;                   // 0.5 … 10 in steps of 1/2
-using q14      = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
+using integers = id<"[0..100]">;                      // the integers 0 … 100
+using halves   = id<"[0.5..10]">;                     // 0.5 … 10 in steps of 1/2
+using q14      = id<"[-1..1] 1/16384">;               // −1 … 1 in steps of 1/16384
 ```
 
 Both limits belong to the grid. With two limits the notch is the coarsest one
 that keeps every integer and both limits on the grid; `per<D>` names a step of
-1/D. An `inside<{0, 100}>` is stored in one byte, because 101 values fit in a
+1/D. An `id<"[0..100]">` is stored in one byte, because 101 values fit in a
 `uint8_t`.
 
 ## Arithmetic widens
@@ -52,9 +52,9 @@ operation can produce, so the result cannot overflow:
 
 ```cpp
 integers a{70}, b{58};
-auto s = a + b;        // inside<{0, 200}>: 128
-auto d = a - b;        // inside<{-100, 100}>: 12
-auto p = a * b;        // inside<{0, 10000}>: 4060
+auto s = a + b;        // id<"[0..200]">: 128
+auto d = a - b;        // id<"[-100..100]">: 12
+auto p = a * b;        // id<"[0..10000]">: 4060
 auto t = a + 1_ins;    // a plain 1 has no grid: write 1_ins
 ```
 
@@ -65,7 +65,7 @@ Division is exact. When the divisor's grid cannot hold 0, the result is a plain
 value; when it can, the result is a `std::expected` that you check:
 
 ```cpp
-auto q = a / inside<{1, 10}>{4};   // 17.5, exactly
+auto q = a / id<"[1..10]">{4};     // 17.5, exactly
 auto r = a / b;                    // std::expected: b's grid holds 0
 if (r) { /* *r is 35/29, exactly */ }
 ```
@@ -77,11 +77,11 @@ grid: on construction, `=`, `+=` and the like. The type's **policy**, its
 second template argument, decides what happens then:
 
 ```cpp
-inside<{0, 100}, clamp> y{150};   // 100: saturates
-inside<{0, 359}, wrap>  z{370};   // 10: wraps around
-inside<{0, 100}>        x{50};    // a constant: checked while compiling (150 would not compile)
+id<"[0..100] clamp"> y{150};      // 100: saturates
+id<"[0..359] wrap">  z{370};      // 10: wraps around
+id<"[0..100]">        x{50};      // a constant: checked while compiling (150 would not compile)
 int  n = 150;                     // read at run time
-auto m = inside<{0, 100}>::try_make(n);   // a std::expected: error::overflow
+auto m = id<"[0..100]">::try_make(n);   // a std::expected: error::overflow
 ```
 
 Nothing throws. A store that the grids cannot prove to fit names what happens
@@ -91,14 +91,14 @@ compile.
 A value between two notches needs permission to round:
 
 ```cpp
-using hundredths = inside<{{0, 1000}, per<100>}, round_half_away>;
+using hundredths = id<"[0..1000] 1/100 round_half_away">;
 hundredths x{19.999};             // 20.00
 ```
 
 The policies are `clamp`, `wrap`, the rounding modes (`round_half_away`,
 `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`) and
 `unsafe`, which drops the checks. Combine them with `|`:
-`inside<{0, 100}, clamp | round_half_away>`.
+`id<"[0..100] clamp|round_half_away">`.
 [Policies](guide/policies.md) has the details, including every way a store
 reports.
 
@@ -125,11 +125,11 @@ with a unit:
 using namespace ins;
 
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5, km};   // 12.5 km, to the metre
+id<"[0..500] 1/1000 [km]"> leg{12.5, km};                    // 12.5 km, to the metre
 auto total = leg + just<800> * si::metre;                    // 13300 m, exact
 total.in(km);                                                // 13.300 km
 // leg + si::second;                                         // does not compile
-// quantity<km, inside<{0, 500}>> bad{12};                   // does not compile: name the unit
+// id<"[0..500] [km]"> bad{12};                   // does not compile: name the unit
 ```
 
 A unit conversion only rescales the grid, so it is exact and costs nothing at
@@ -138,7 +138,7 @@ run time. A quantity compares only with a quantity of its kind
 on a scale:
 
 ```cpp
-auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
+auto oven = point<international::degree_Fahrenheit>(id<"[0..600]">{350});
 oven.point_in(si::degree_Celsius);                       // 530/3 ℃, exactly
 ```
 
@@ -153,10 +153,10 @@ its output grid, and it is the same on every platform, at compile time and
 without an FPU. A result is rounded, so the input or the output must allow it:
 
 ```cpp
-using arg = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
+using arg = id<"[-4..4] 1/1024 round_half_away">;
 math::sin(arg{1});                                  // 0.841796875: the output grid follows the input
-using out = inside<{{0, 2}, per<100>}, round_half_away>;
-math::sqrt<out>(inside<{0, 4}>{2});            // 1.41: you name the output grid
+using out = id<"[0..2] 1/100 round_half_away">;
+math::sqrt<out>(id<"[0..4]">{2});            // 1.41: you name the output grid
 ```
 
 With `<inside/units/math.hpp>`, angles can be in degrees, and the
@@ -172,8 +172,8 @@ An audio sample, in full scale (FS), through a gain (a ratio) and a bias (a samp
 
 ```cpp
 inline constexpr auto FS = base_unit<"FS", "amplitude">;
-using sample = quantity<FS, inside<{{-1, 1}, per<(1 << 14)>}>>;
-using mix    = quantity<FS, inside<{{-4, 4}, per<(1 << 14)>}, round_half_away | clamp>>;
+using sample = id<"[-1..1] 1/16384 [FS]">;
+using mix    = id<"[-4..4] 1/16384 [FS] round_half_away|clamp">;
 sample s = read_input();                         // 1. enter the bounded world once
 auto   m = s * gain + bias;                      // 2. compute: the types widen, nothing overflows
 mix    out{m};                                   // 3. store at the end: the policy rounds and clamps

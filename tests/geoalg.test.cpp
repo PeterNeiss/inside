@@ -45,8 +45,9 @@ inline constexpr auto b1 = basis_vector<"b₁", inner, {.ascii = "b1"}>;
 inline constexpr auto b2 = basis_vector<"b₂", inner, {.ascii = "b2"}>;
 inline constexpr auto b3 = basis_vector<"b₃", inner, {.ascii = "b3"}>;
 
-// Polynomials in t and q: t·t = t², and they commute with everything.
-inline constexpr auto t = basis_vector<"t", polynomial>;
+// Polynomials in u and q (named t and q here): u·u = u², and they commute with everything.
+// (Not "t": a quantity's text spells its units by symbol, and t is the tonne.)
+inline constexpr auto t = basis_vector<"u", polynomial>;
 inline constexpr auto q = basis_vector<"q", polynomial>;
 
 constexpr auto km = si::kilo(si::metre);
@@ -260,7 +261,7 @@ TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
     EXPECT_TRUE((just<3> + just<4> * xy) / (just<1> - just<2> * xy) == just<-1> + just<2> * xy);
 
     // A grid that holds 0: the inverse is an expected.
-    using gaussian = multivector<inside<{-2, 2}>, quantity<xy, inside<{-2, 2}>>>;
+    using gaussian = multivector<id<"[-2..2]">, id<"[-2..2] [xy]">>;
     const gaussian zero{};
     const gaussian two{just<2> + just<0> * xy};
     const auto     bad  = inverse(zero);
@@ -272,7 +273,7 @@ TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
 }
 
 TEST(GeoalgTest, declared_multivectors_convert) {
-    using complex = multivector<inside<{-10, 10}>, quantity<xy, inside<{-10, 10}>>>;
+    using complex = multivector<id<"[-10..10]">, id<"[-10..10] [xy]">>;
     const complex a{just<3> + just<4> * xy};
     const complex b = just<2>; // the missing part is 0
     const complex c{just<1> * x * y};
@@ -281,7 +282,7 @@ TEST(GeoalgTest, declared_multivectors_convert) {
     EXPECT_EQ(to_string(c), "0 + 1 xy");
     static_assert(!std::is_constructible_v<complex, decltype(just<1> * z)>);
     // Narrowing a part's grid is checked, as for an inside, or takes a policy.
-    using small = multivector<inside<{-1, 1}>, quantity<xy, inside<{-1, 1}>>>;
+    using small = multivector<id<"[-1..1]">, id<"[-1..1] [xy]">>;
     const small s{a, clamp};
     EXPECT_EQ(to_string(s), "1 + 1 xy");
     EXPECT_EQ(to_string((just<2> * km * x + just<3> * km * y).in(si::metre)), "2000 m·x + 3000 m·y");
@@ -322,8 +323,8 @@ TEST(GeoalgTest, sandwich_and_rotate_keep_the_grades) {
     EXPECT_TRUE(rotate(t, v) == just<6> * si::metre * x + just<4> * si::metre * y + just<5> * si::metre * z);
     EXPECT_TRUE(rotate(t, v) == sandwich(t, v));
     // A rotor whose norm's grid holds 0: sandwich is an expected, rotate scales by |q|² (here ½).
-    using unit_part = inside<{{-1, 1}, per<1024>}>;
-    const multivector<unit_part, quantity<xy, unit_part>> q{unit_part{0.5}, quantity<xy, unit_part>{0.5, xy}};
+    using unit_part = id<"[-1..1] 1/1024">;
+    const multivector<unit_part, id<"[-1..1] 1/1024 [xy]">> q{unit_part{0.5}, id<"[-1..1] 1/1024 [xy]">{0.5, xy}};
     const auto s = sandwich(q, v);
     static_assert(detail::is_expected_v<decltype(s)>);
     ASSERT_TRUE(s.has_value());
@@ -372,18 +373,18 @@ TEST(GeoalgTest, polynomial_variables_add_powers_and_commute) {
     // Sums across powers are polynomials, in order of degree.
     const auto p = t * t + just<2> * t + just<3>;
     static_assert(std::same_as<std::remove_const_t<decltype(p)>, decltype(just<3> + just<2> * t + just<1> * t * t)>);
-    EXPECT_EQ(to_string(p), "3 + 2 t + 1 t²");
+    EXPECT_EQ(to_string(p), "3 + 2 u + 1 u²");
     EXPECT_TRUE(part(p, t * t) == 1);
     // Products multiply out; a cancelled term stays in the type.
     const auto a = just<1> + t;
     EXPECT_TRUE(a * a == just<1> + just<2> * t + t * t);
-    EXPECT_EQ(to_string(a * (just<1> - t)), "1 + 0 t - 1 t²");
+    EXPECT_EQ(to_string(a * (just<1> - t)), "1 + 0 u - 1 u²");
     // Two variables, by total degree, then the higher power of the first variable first.
     const auto b = t + q;
     EXPECT_TRUE(b * b == q * q + just<2> * q * t + t * t);
     // Coefficients with units: one dimension but for the variables.
     const auto s = just<2> * si::metre + just<3> * si::metre * t;
-    EXPECT_EQ(to_string(s), "2 m + 3 m·t");
+    EXPECT_EQ(to_string(s), "2 m + 3 m·u");
     static_assert(!can_add<decltype(s), decltype(just<1> * si::second * t)>);
     EXPECT_TRUE(s.in(si::centi(si::metre)) == just<200> * si::centi(si::metre) + just<300> * si::centi(si::metre) * t);
     // Vector coefficients: a polynomial curve in G(3,0), (x + 2 t x)² = 1 + 4 t + 4 t².
@@ -391,7 +392,7 @@ TEST(GeoalgTest, polynomial_variables_add_powers_and_commute) {
     EXPECT_TRUE(c * c == just<1> + just<4> * t + just<4> * t * t);
     EXPECT_TRUE(reverse(c) == c);
     // A negative power: 1 / t.
-    EXPECT_EQ(to_string(just<1> / t), "1 t⁻¹");
+    EXPECT_EQ(to_string(just<1> / t), "1 u⁻¹");
 }
 
 TEST(GeoalgTest, text) {

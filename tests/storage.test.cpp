@@ -35,27 +35,27 @@ using namespace ins::formats;
 // The default ctor stores a value of the grid (0, else Lower; see
 // default_value.test.cpp) on every storage.
 TEST(StorageTest, default_ctor_stores_a_grid_value) {
-    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}>>);    // index
-    static_assert(!std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
-    static_assert(!std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_half_away>>);
-    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}, unsafe>>);
-    static_assert(inside<{-100, -5}>{} == -100 && inside<grid{5}>{} == 5);
+    static_assert(!std::is_trivially_default_constructible_v<id<"[0..10]">>);      // index
+    static_assert(!std::is_trivially_default_constructible_v<id<"[-100..-5]">>);   // signed value
+    static_assert(!std::is_trivially_default_constructible_v<id<"[0..10] 1/4 round_half_away">>);
+    static_assert(!std::is_trivially_default_constructible_v<id<"[0..10] unsafe">>);
+    static_assert(id<"[-100..-5]">{} == -100 && id<"[5]">{} == 5);
 }
 
 // behaviour policies on a notched grid
 TEST(StorageTest, behaviour_policies_on_a_notched_grid) {
     // clamp: out-of-range snaps to the endpoint.
-    using EC = inside<{{0, 10}, per<4>}, clamp | round_half_away>;
+    using EC = id<"[0..10] 1/4 clamp|round_half_away">;
     ASSERT_EQ(rational{EC{rational{15}}}, 10);
     ASSERT_EQ(rational{EC{rational{-3}}}, 0);
 
     // wrap: modular reduction onto the grid
     // (range = Upper − Lower + Notch = 10.25, so 11.25 wraps to 1).
-    using EW = inside<{{0, 10}, per<4>}, wrap | round_half_away>;
+    using EW = id<"[0..10] 1/4 wrap|round_half_away">;
     ASSERT_EQ((rational{EW{rational{45, 4}}}), 1);
 
     // try_make: out-of-range yields error::overflow.
-    using DS  = inside<{5, 100}, checked>;
+    using DS  = id<"[5..100]">;
     auto ok   = DS::try_make(42);
     auto fail = DS::try_make(200);
     ASSERT_TRUE(ok.has_value());
@@ -67,18 +67,18 @@ TEST(StorageTest, behaviour_policies_on_a_notched_grid) {
 // a dyadic grid runs the full out-of-range policy cascade
 TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
     // clamp: saturate to the (grid-point) endpoint.
-    using RC = inside<{{0, 4}, per<256>}, clamp>;
+    using RC = id<"[0..4] 1/256 clamp">;
     ASSERT_TRUE(static_cast<double>(rational{RC{9.5}}) == 4.0);
     ASSERT_TRUE(static_cast<double>(rational{RC{-1.5}}) == 0.0);
 
     // wrap: fold into [Lower, Lower + span + notch) — same convention as the
     // fractional path. Span 0..359 with notch 1 wraps 370 → 10, -10 → 350.
-    using RW = inside<{{0, 359}, 1}, wrap>;
+    using RW = id<"[0..359] 1 wrap">;
     ASSERT_TRUE(static_cast<double>(rational{RW{370.0}}) == 10.0);
     ASSERT_TRUE(static_cast<double>(rational{RW{-10.0}}) == 350.0);
 
     // checked: out-of-range reports instead of silently storing.
-    using RK = inside<{{0, 4}, per<256>}, checked>;
+    using RK = id<"[0..4] 1/256">;
     ASSERT_EQ(test::store_error<RK>(test::at_run_time(9.5)), error::overflow);
     ASSERT_TRUE(static_cast<double>(rational{RK{2.5}}) == 2.5);
 
@@ -87,7 +87,7 @@ TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
     ASSERT_TRUE(!RK::try_make(9.5).has_value());
 
     // no flags: checked like every policy without `unsafe`; in range, stores the value.
-    using RU = inside<{{0, 4}, per<256>}>;
+    using RU = id<"[0..4] 1/256">;
     ASSERT_TRUE(static_cast<double>(rational{RU{2.5}}) == 2.5);
 }
 
@@ -95,7 +95,7 @@ TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
 TEST(StorageTest, non_finite_doubles_are_rejected_both_engines) {
     // Non-finite input is reported as error::not_finite (distinct from the
     // overflow used for finite-but-out-of-interval values), both engines.
-    using R          = inside<{{0, 4}, per<256>}, round_half_away>;
+    using R          = id<"[0..4] 1/256 round_half_away">;
     const double nan = test::at_run_time(std::numeric_limits<double>::quiet_NaN());
     const double inf = test::at_run_time(std::numeric_limits<double>::infinity());
     ASSERT_EQ(test::store_error<R>(nan), error::not_finite);
@@ -108,7 +108,7 @@ TEST(StorageTest, non_finite_doubles_are_rejected_both_engines) {
 // normalization. Engine-neutral (both engines accept the same programs).
 // atan / atan2 accept magnitudes beyond 1
 TEST(StorageTest, atan_atan2_accept_magnitudes_beyond_1) {
-    using wide_t = inside<{{-16, 16}, per<16384>}, round_half_away>;
+    using wide_t = id<"[-16..16] 1/16384 round_half_away">;
 
     auto val = [](auto b) { return static_cast<double>(rational{b}); };
 
@@ -128,7 +128,7 @@ TEST(StorageTest, atan_atan2_accept_magnitudes_beyond_1) {
 // Per-operation policy overrides (`with_*`, `on_*`, `on_error(ec)`) route
 // through the assignment engine and store the endpoint, not a notch count.
 TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
-    using R = inside<{{1, 4}, per<256>}, round_half_away>; // Lower != 0
+    using R = id<"[1..4] 1/256 round_half_away">; // Lower != 0
 
     R a{2.0};
     a.with<clamp>() = 9.5;
@@ -155,13 +155,13 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     ASSERT_TRUE(static_cast<double>(rational{d}) == 2.0);
 
     // inside rhs through the per-operation clamp.
-    using S = inside<{0, 100}>;
+    using S = id<"[0..100]">;
     R e{2.0};
     e.with<clamp>() = S{50};
     ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
 
     // wrap override.
-    using W = inside<{{0, 359}, 1}, round_half_away>;
+    using W = id<"[0..359] 1 round_half_away">;
     W w{0.0};
     w.with<wrap>() = 370.0;
     ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
@@ -171,7 +171,7 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
 // holds every result. Continuous (Notch == 0) grids store arbitrary
 // rationals, so nothing is provable and they keep the wrapper.
 TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
-    using E = inside<{{0, 10}, per<4>}, checked | round_half_away>;
+    using E = id<"[0..10] 1/4 round_half_away">;
     E a{rational{3, 4}}, b{rational{5, 4}};
 
     auto s = a + b;
@@ -188,7 +188,7 @@ TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
 
     // Continuous grids bound their denominators: add and mul are plain too,
     // in a fraction sized from the bounds.
-    using C = inside<{{0, 10}, max_denominator{std::int64_t{1} << 20}}, checked>;
+    using C = id<key{grid{{0, 10}, max_denominator{std::int64_t{1} << 20}}, checked}>;
     static_assert(!detail::is_expected_v<decltype(C{} + C{})>);
     static_assert(!detail::is_expected_v<decltype(C{} * C{})>);
     const C x = C::from_raw(rational{1, std::int64_t{1} << 20}, unsafe);
@@ -198,7 +198,7 @@ TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
 // Smaller-threads batch: wide trig envelope, pown, clamp saturation.
 // sin/cos/tan accept radians up to 2^20
 TEST(StorageTest, sin_cos_tan_accept_radians_up_to_2_20) {
-    using wide_t     = inside<{{-(std::int64_t{1} << 20), std::int64_t{1} << 20}, per<1024>}, round_half_away>;
+    using wide_t     = id<key{grid{{-(std::int64_t{1} << 20), std::int64_t{1} << 20}, per<1024>}, round_half_away}>;
     auto         val = [](auto b) { return static_cast<double>(rational{b}); };
     const double tol = 2.0 / 1024; // grid tolerance (notch ≈ 9.8e-4)
 
@@ -211,7 +211,7 @@ TEST(StorageTest, sin_cos_tan_accept_radians_up_to_2_20) {
 
 // pown<E> - exact compile-time integer powers on any inside
 TEST(StorageTest, pown_e_exact_compile_time_integer_powers_on_any_inside) {
-    using s8 = inside<{-10, 10}>;
+    using s8 = id<"[-10..10]">;
     ASSERT_TRUE(math::pown<3>(s8{-2}) == -8);
     ASSERT_TRUE(math::pown<0>(s8{7}) == 1);
     ASSERT_TRUE(math::pown<1>(s8{5}) == 5);
@@ -223,7 +223,7 @@ TEST(StorageTest, pown_e_exact_compile_time_integer_powers_on_any_inside) {
     static_assert(upper_of<cube_t> >= 1000);
 
     // Exact on fractional grids.
-    using q = inside<{{0, 2}, per<4>}, round_half_away>;
+    using q = id<"[0..2] 1/4 round_half_away">;
     ASSERT_EQ((rational{math::pown<2>(q{rational{3, 4}})}), (rational{9, 16}));
 }
 
@@ -231,9 +231,9 @@ TEST(StorageTest, pown_e_exact_compile_time_integer_powers_on_any_inside) {
 TEST(StorageTest, tan_saturates_instead_of_erroring_when_out_carries_clamp) {
     // Explicit-Out spelling is the impl form (`tan<T>(x)` would bind T as the
     // INPUT of the auto form).
-    using in_t  = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_half_away>; // one branch
-    using sat_t = inside<{{-1, 1}, per<16384>}, round_half_away | clamp>;
-    using err_t = inside<{{-1, 1}, per<16384>}, round_half_away>;
+    using in_t  = id<"[-3/2..3/2] 1/16384 round_half_away">; // one branch
+    using sat_t = id<"[-1..1] 1/16384 round_half_away|clamp">;
+    using err_t = id<"[-1..1] 1/16384 round_half_away">;
 
     // tan(1.2) ≈ 2.57 — beyond [-1, 1].
     const auto sat = math::tan<sat_t>(in_t{1.2});
@@ -271,36 +271,36 @@ constexpr bool defaults_to(const rational& v) {
 } // namespace
 
 TEST(DefaultValueTest, zero_when_the_grid_holds_it_else_lower) {
-    static_assert(defaults_to<inside<{0, 100}>>(0));                                   // index from 0
-    static_assert(defaults_to<inside<{-100, 100}>>(0));                                // signed value
-    static_assert(defaults_to<inside<{5, 100}>>(5));                                   // value raw, no 0
-    static_assert(defaults_to<inside<{200, 300}>>(200));                               // index, no 0
-    static_assert(defaults_to<inside<{-10, -5}>>(-10));                                // below 0
-    static_assert(defaults_to<inside<{{-1, 1}, per<16384>}, round_half_away>>(0));     // Q1.14: not Lower
-    static_assert(defaults_to<inside<{{0.5, 10.5}, 1}>>(rational{1u, 2}));             // unanchored
-    static_assert(defaults_to<inside<{{-1, 1}, max_denominator{8}}>>(0));              // continuous
-    static_assert(defaults_to<inside<{{1, 2}, max_denominator{100}}>>(1));             // continuous, no 0
-    static_assert(defaults_to<inside<grid{7}>>(7));                                    // point
-    static_assert(defaults_to<inside<{0, 100}, clamp | round_half_away | unsafe>>(0)); // any policy
-    static_assert(value_init<inside<{{1, 2}, max_denominator{100}}>>().Den != 0);
+    static_assert(defaults_to<id<"[0..100]">>(0));                                     // index from 0
+    static_assert(defaults_to<id<"[-100..100]">>(0));                                  // signed value
+    static_assert(defaults_to<id<"[5..100]">>(5));                                     // value raw, no 0
+    static_assert(defaults_to<id<"[200..300]">>(200));                                 // index, no 0
+    static_assert(defaults_to<id<"[-10..-5]">>(-10));                                  // below 0
+    static_assert(defaults_to<id<"[-1..1] 1/16384 round_half_away">>(0));              // Q1.14: not Lower
+    static_assert(defaults_to<id<"[0.5..10.5] 1">>(rational{1u, 2}));                  // unanchored
+    static_assert(defaults_to<id<"[-1..1] <8>">>(0));                                  // continuous
+    static_assert(defaults_to<id<"[1..2] <100>">>(1));                                 // continuous, no 0
+    static_assert(defaults_to<id<"[7]">>(7));                                          // point
+    static_assert(defaults_to<id<"[0..100] clamp|round_half_away|unsafe">>(0));        // any policy
+    static_assert(value_init<id<"[1..2] <100>">>().Den != 0);
 }
 
 TEST(DefaultValueTest, wide_storage) {
     // a wide index (more than 2^64 slots)
-    static_assert(inside<{0, 0x1p100}>{} == 0);
-    static_assert(inside<{0x1p100, 0x1p101}>{} == just<0x1p100>);
-    static_assert(inside<{-0x1p101, -0x1p100}>{} == -just<0x1p101>);
+    static_assert(id<"[0..0x1p100]">{} == 0);
+    static_assert(id<"[0x1p100..0x1p101]">{} == just<0x1p100>);
+    static_assert(id<"[-0x1p101..-0x1p100]">{} == -just<0x1p101>);
     // a fraction raw (a continuous grid past the 64-bit rational)
-    using F0 = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}>;
-    using F1 = inside<{{1, 0x1p70}, max_denominator{3}}>;
+    using F0 = id<"[-0x1p70..0x1p70] <3>">;
+    using F1 = id<"[1..0x1p70] <3>">;
     static_assert(detail::fraction_storage<F0> && detail::fraction_storage<F1>);
     static_assert(F0{} == 0 && F1{} == 1);
 }
 
 TEST(DefaultValueTest, runtime_matches_compile_time) {
-    inside<{5, 100}>                               a;
-    inside<{-10, -5}>                              b{};
-    inside<{{-1, 1}, per<16384>}, round_half_away> c;
+    id<"[5..100]">                               a;
+    id<"[-10..-5]">                              b{};
+    id<"[-1..1] 1/16384 round_half_away"> c;
     EXPECT_EQ(rational{a}, 5);
     EXPECT_EQ(rational{b}, -10);
     EXPECT_EQ(rational{c}, 0);
@@ -309,22 +309,22 @@ TEST(DefaultValueTest, runtime_matches_compile_time) {
 TEST(DefaultValueTest, failed_error_code_construction_keeps_the_default) {
     constexpr auto store = [] {
         error            ec{};
-        inside<{5, 100}> x(200, make_policy(ec));
+        id<"[5..100]"> x(200, make_policy(ec));
         return std::pair{ec, rational{x}};
     };
     static_assert(store().first == error::overflow && store().second == 5);
     error            ec{};
-    inside<{5, 100}> x(200, make_policy(ec));
+    id<"[5..100]"> x(200, make_policy(ec));
     EXPECT_EQ(ec, error::overflow);
     EXPECT_EQ(rational{x}, 5);
 }
 
 TEST(DefaultValueTest, no_inside_is_trivially_default_constructible) {
-    static_assert(!std::is_trivially_default_constructible_v<inside<{5, 100}>>);
-    static_assert(!std::is_trivially_default_constructible_v<inside<{5, 100}, unsafe>>);
-    static_assert(!std::is_trivially_default_constructible_v<inside<{{1, 2}, max_denominator{100}}>>);
+    static_assert(!std::is_trivially_default_constructible_v<id<"[5..100]">>);
+    static_assert(!std::is_trivially_default_constructible_v<id<"[5..100] unsafe">>);
+    static_assert(!std::is_trivially_default_constructible_v<id<"[1..2] <100>">>);
     // a cursor starts at Lower whatever T's flags
-    static_assert(rational{cursor<inside<{5, 100}, unsafe>>{}} == 5);
+    static_assert(rational{cursor<id<"[5..100] unsafe">>{}} == 5);
 }
 
 // rational is 0 when default-constructed, and == compares values: a
@@ -348,8 +348,8 @@ TEST(DefaultValueTest, rational_is_zero_and_compares_values) {
 
 TEST(DefaultValueTest, quantity) {
     using namespace ins;
-    static_assert(quantity<si::metre, inside<{5, 100}>>{}.numerical_value_in(si::metre) == 5);
-    static_assert(quantity<si::metre, inside<{-5, 100}>>{}.numerical_value_in(si::metre) == 0);
+    static_assert(id<"[5..100] [m]">{}.numerical_value_in(si::metre) == 5);
+    static_assert(id<"[-5..100] [m]">{}.numerical_value_in(si::metre) == 0);
 }
 } // namespace default_value_tests
 
@@ -364,8 +364,8 @@ using namespace ins::detail;
 //---------------------------------------------------------------------------
 // counter saturates; wrap_counter wraps
 TEST(FormatsTest, counter_saturates_ring_counter_wraps) {
-    static_assert(std::is_same_v<clamp_counter<5>, inside<{0, 5}, clamp>>);
-    static_assert(std::is_same_v<wrap_counter<5>, inside<{0, 5}, wrap>>);
+    static_assert(std::is_same_v<clamp_counter<5>, id<"[0..5] clamp">>);
+    static_assert(std::is_same_v<wrap_counter<5>, id<"[0..5] wrap">>);
 
     clamp_counter<5> c{4};
     ++c;
@@ -495,35 +495,36 @@ namespace {
 // A cursor's own policy: policy_of drops the cursor marker.
 template <class>
 struct policy_param;
-template <grid G, policy_flag P>
-struct policy_param<inside<G, P>> {
-    static constexpr policy_flag value = P;
+template <key K>
+struct policy_param<id<K>> {
+    static constexpr policy_flag value = detail::key_policy<K>;
 };
-using cur = cursor<inside<{0, 60}, round_floor>, 5>;
-using pt  = decltype(point<si::degree_Celsius>(inside<{-50, 50}>{0}));
+using cur = cursor<id<"[0..60] round_floor">, 5>;
+using pt  = decltype(point<si::degree_Celsius>(id<"[-50..50]">{0}));
 template <class T>
 concept steps = requires(T x) { ++x; };
 } // namespace
 
 // Insides: an integer grid, a Q format with a rounding and clamp, a bounded
 // continuous grid, a grid past 64 bits, a point, a cursor.
-template class ins::inside<grid{0, 100}>;
-template class ins::inside<grid{{0, 1}, per<4>}, round_half_away | clamp>;
-template class ins::inside<grid{{-1, 1}, max_denominator{8}}, wrap>;
-template class ins::inside<grid{{0, 0x1p70}, per<4>}>;
-template class ins::inside<grid{7}>;
-template class ins::inside<grid_of<cur>, policy_param<cur>::value>;
+template struct ins::id<"[0..100]">;
+template struct ins::id<"[0..1] 1/4 clamp|round_half_away">;
+template struct ins::id<"[-1..1] <8> wrap">;
+template struct ins::id<"[0..0x1p70] 1/4">;
+template struct ins::id<"[7]">;
+template struct ins::id<key{grid_of<cur>, policy_param<cur>::value}>;
 
 // Quantities and a point.
-template class ins::quantity<si::metre, inside<{0, 100}>>;
-template class ins::quantity<percent, inside<{{0, 100}, per<4>}, round_half_away>>;
-template class ins::quantity<si::second, cur>;
-template class ins::quantity_point<pt::reference, pt::origin, pt::rep>;
+template struct ins::id<"[0..100] [m]">;
+template struct ins::id<"[0..100] 1/4 [%] round_half_away">;
+template struct ins::id<ins::quantity_key<si::second, cur>>;
+template struct ins::id<"[-50..50] [`C] @ice_point">;
+static_assert(std::is_same_v<pt, ins::id<"[-50..50] [`C] @ice_point">>);
 
 TEST(ExplicitInstantiationTest, every_member_compiles_or_is_constrained) {
     // The instantiations above are the test; a continuous grid has no ++.
-    static_assert(!steps<inside<{{-1, 1}, max_denominator{8}}>>);
-    static_assert(!steps<inside<{0, 100}>> && steps<inside<{0, 100}, wrap>>); // ++ may step out: a channel
+    static_assert(!steps<id<"[-1..1] <8>">>);
+    static_assert(!steps<id<"[0..100]">> && steps<id<"[0..100] wrap">>); // ++ may step out: a channel
     SUCCEED();
 }
 
@@ -542,7 +543,7 @@ concept has_round_error = requires { std::numeric_limits<T>::round_error(); };
 // codec does not apply (it overflowed in decode; the type did not compile).
 TEST(StorageTest, q_format_grid_far_from_zero) {
     static constexpr std::int64_t base = std::int64_t{1} << 48;
-    using Q                            = inside<{{base, base + 1}, per<65536>}>;
+    using Q                            = id<key{grid{{base, base + 1}, per<65536>}}>;
     static_assert([] {
         Q x{base};
         Q y{rational{base * 2 + 1, 2}};
@@ -559,7 +560,7 @@ TEST(StorageTest, index_grid_reaching_2_pow_63) {
     constexpr std::int64_t i64_min = INT64_MIN;
     static_assert([] {
         constexpr rational lo{i64_min}, hi{std::uint64_t{1} << 63};
-        using G = inside<{{lo, hi}, 2}>;
+        using G = id<key{grid{{lo, hi}, 2}}>;
         G x{hi};
         G y{lo};
         return rational(x) == hi && rational(y) == lo && x == hi && x.to<double>() == 0x1p63;
@@ -569,8 +570,8 @@ TEST(StorageTest, index_grid_reaching_2_pow_63) {
 // A slot count past 2^63 over a negative base: the value index overflowed
 // int64 on the way (UB; constant evaluation rejects it), though the index fits.
 TEST(StorageTest, value_index_past_an_int64_raw) {
-    using small  = inside<{-7, 5}>;
-    using wide_q = inside<{{-(1ll << 40), 1ll << 40}, per<(1ll << 20)>}, clamp>;
+    using small  = id<"[-7..5]">;
+    using wide_q = id<key{grid{{-(1ll << 40), 1ll << 40}, per<(1ll << 20)>}, clamp}>;
     static_assert([] {
         wide_q c{rational{1ll << 39}};
         c *= small{5}; // 5·2^39: the product's raw passes 2^63
@@ -582,7 +583,7 @@ TEST(StorageTest, value_index_past_an_int64_raw) {
 // 2^-62 notch) wrapped through int64: atan2's grid came out as [0.86, −0.86]
 // and did not compile.
 TEST(StorageTest, deduced_limit_past_int64_index) {
-    using fine = inside<{{0, 1}, per<(1ll << 62)>}, round_half_away>;
+    using fine = id<key{grid{{0, 1}, per<(1ll << 62)>}, round_half_away}>;
     using A    = decltype(math::atan2(fine{}, fine{}));
     static_assert(lower_of<A> < -3 && upper_of<A> > 3);
     using H = decltype(math::hypot(fine{}, fine{}));
@@ -593,8 +594,8 @@ TEST(StorageTest, deduced_limit_past_int64_index) {
 
 // epsilon of a lattice that spans 0 but misses it: none, 0 is no value.
 TEST(StorageTest, numeric_limits_epsilon_off_zero) {
-    static_assert(!has_epsilon<inside<{{-0.5, 0.5}, 1}>>);
-    static_assert(!has_round_error<inside<{{rational{-7, 3}, rational{5, 3}}, rational{2, 3}}>>);
+    static_assert(!has_epsilon<id<"[-0.5..0.5] 1">>);
+    static_assert(!has_round_error<id<"[-7/3..5/3] 2/3">>);
 }
 
 // raw·notch passed int64 in to_value although the value fits.
@@ -602,7 +603,7 @@ TEST(StorageTest, to_value_on_a_coarse_int64_grid) {
     using I64             = std::int64_t;
     constexpr I64 I64_MAX = std::numeric_limits<I64>::max();
     constexpr I64 I64_MIN = std::numeric_limits<I64>::min();
-    using A               = inside<grid{{I64_MIN, I64_MAX - 1}, 2}>;
+    using A               = id<key{grid{{I64_MIN, I64_MAX - 1}, 2}}>;
     static_assert([] {
         constexpr A x = I64_MAX - 1;
         return x.to<I64>() == I64_MAX - 1 && x.to<I64>() == I64_MAX - 1;
@@ -616,22 +617,22 @@ TEST(StorageTest, to_value_on_a_coarse_int64_grid) {
 // A point grid stores nothing: its value is the type.
 //---------------------------------------------------------------------------
 TEST(StorageTest, point_grid_stores_nothing) {
-    using P5 = inside<grid{5}>;
+    using P5 = id<"[5]">;
     static_assert(point_storage<P5> && sizeof(P5) == 1);
     static_assert(P5{5} == 5);
-    using M7 = inside<grid{-7}>;
+    using M7 = id<"[-7]">;
     static_assert(M7{-7} == -7);
-    static_assert(P5{5} + inside<{0, 10}>{3} == 8);
+    static_assert(P5{5} + id<"[0..10]">{3} == 8);
 
-    inside<{0, 10}, clamp> t{3}; // (3..10 + 5 may pass 10: clamp names it)
+    id<"[0..10] clamp"> t{3}; // (3..10 + 5 may pass 10: clamp names it)
     t += P5{5};
     EXPECT_EQ(t, 8);
 }
 
 TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
     constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
-    using U64                       = inside<{{0, rational{u64_max}}, 1}>;
-    using Small                     = inside<{0, 10}>;
+    using U64                       = id<key{grid{{0, rational{u64_max}}, 1}}>;
+    using Small                     = id<"[0..10]">;
     static_assert(U64{5} == 5 && U64{5} < 6 && U64{5} > 4); // signed source
     static_assert(U64{u64_max} > 5 && U64{u64_max} == u64_max && U64{u64_max} > Small{3});
     static_assert(U64{1ull << 63} < U64{u64_max});
@@ -656,9 +657,9 @@ TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
 
 TEST(StorageTest, grid_past_int64_increments_and_negates) {
     constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
-    using U64                       = inside<{{0, rational{u64_max}}, 1}>;
-    using U64W                      = inside<{{0, rational{u64_max}}, 1}, wrap>;
-    using Small                     = inside<{0, 10}>;
+    using U64                       = id<key{grid{{0, rational{u64_max}}, 1}}>;
+    using U64W                      = id<key{grid{{0, rational{u64_max}}, 1}, wrap}>;
+    using Small                     = id<"[0..10]">;
     constexpr auto inc              = [] {
         U64   w{u64_max - 1};
         error ec{}; // (++ may step past the top: a channel)
@@ -683,7 +684,7 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     }();
     constexpr auto wrap_neg = [] {
         U64W w{5};
-        w = inside<{-20, 20}>{-1};
+        w = id<"[-20..20]">{-1};
         return w == u64_max;
     }();
     static_assert(wrap_up && wrap_down && wrap_sub && wrap_neg);
@@ -703,27 +704,27 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     EXPECT_EQ(x, u64_max);
 }
 
-// inside<{x,x}> singleton round-trips its value
+// id<key{grid{x,x}}> singleton round-trips its value
 TEST(StorageTest, a_point_round_trips_its_value) {
-    using point_pos = inside<{5, 5}>;
+    using point_pos = id<"[5..5]">;
     point_pos a{5};
     ASSERT_EQ(a, 5);
     ASSERT_EQ(a.to<std::int64_t>(), 5);
 
-    using point_neg = inside<{-3, -3}>;
+    using point_neg = id<"[-3..-3]">;
     point_neg b{-3};
     ASSERT_EQ(b, -3);
     ASSERT_EQ(b.to<std::int64_t>(), -3);
 
     // Float assignment to single-value rational-storage grid (notch=0)
-    using point_fp = inside<{2.5_r}>;
+    using point_fp = id<"[2.5]">;
     point_fp c     = 2.5;
     ASSERT_EQ(c, 2.5_r);
 }
 
-// default-constructed inside is well-formed
+// A default-constructed id is well-formed.
 TEST(StorageTest, default_constructed_inside_is_well_formed) {
-    inside<> b;
+    id<"[0]"> b;
     (void)b;
     SUCCEED() << "default ctor compiles";
 }
@@ -731,32 +732,32 @@ TEST(StorageTest, default_constructed_inside_is_well_formed) {
 // numeric_limits epsilon / round_error report 0 for exact types
 TEST(StorageTest, numeric_limits_epsilon_and_round_error_of_exact_types) {
     // 0 is in the interval and on the grid → epsilon == 0.
-    using u8 = inside<{0, 255}>;
+    using u8 = id<"[0..255]">;
     static_assert(std::numeric_limits<u8>::epsilon() == 0);
     static_assert(std::numeric_limits<u8>::round_error() == 0);
 
-    using i8 = inside<{-100, 100}>;
+    using i8 = id<"[-100..100]">;
     static_assert(std::numeric_limits<i8>::epsilon() == 0);
     static_assert(std::numeric_limits<i8>::round_error() == 0);
 
-    using half = inside<{{-40, 60}, 0.5_r}>;
+    using half = id<"[-40..60] 0.5">;
     static_assert(std::numeric_limits<half>::epsilon() == 0);
     static_assert(std::numeric_limits<half>::round_error() == 0);
 
     // Rational raw (Notch = 0) — still exact, epsilon = 0.
-    using r01 = inside<{{0_r, 1_r}, max_denominator{1000}}>;
+    using r01 = id<"[0..1] <1000>">;
     static_assert(std::numeric_limits<r01>::epsilon() == 0);
 
     // 0 is *outside* the interval: no epsilon, as 0 is no value.
-    using above_zero = inside<{10, 100}>;
+    using above_zero = id<"[10..100]">;
     static_assert(!has_epsilon<above_zero>);
     static_assert(!has_round_error<above_zero>);
 
     // digits from the grid: the narrowest integer numbering every value, less
     // a sign bit for a grid with negatives — as for uint8_t / int8_t.
     static_assert(std::numeric_limits<u8>::digits == 8 && std::numeric_limits<u8>::digits10 == 2);
-    static_assert(std::numeric_limits<inside<{-128, 127}>>::digits == 7);
-    static_assert(std::numeric_limits<inside<{0, 100}>>::digits == 6);
+    static_assert(std::numeric_limits<id<"[-128..127]">>::digits == 7);
+    static_assert(std::numeric_limits<id<"[0..100]">>::digits == 6);
     static_assert(std::numeric_limits<i8>::digits == 6);   // 201 values, signed
     static_assert(std::numeric_limits<half>::digits == 6); // 201 values, signed
 }
@@ -771,14 +772,14 @@ using namespace ins::formats;
 
 // A point's index is 0; its numerator and denominator are its own.
 TEST(StorageArmTest, index_and_parts_of_a_point) {
-    const inside<{5, 5}> p;
+    const id<"[5..5]"> p;
     EXPECT_TRUE(p.step() == 0 && p.numerator() == 5 && p.denominator() == 1);
 }
 
 // x++ returns the old value.
 TEST(StorageArmTest, postfix_increment) {
     volatile int           three = 3;
-    inside<{0, 10}, clamp> x{static_cast<int>(three)}; // (x++ names its range handling)
+    id<"[0..10] clamp"> x{static_cast<int>(three)}; // (x++ names its range handling)
     const auto             y = x++;
     EXPECT_TRUE(x == 4 && y == 3);
 }
@@ -790,7 +791,7 @@ using namespace ins::formats;
 
 // A continuous grid has no binary digits to count.
 TEST(StorageArmTest, digits_of_a_continuous_grid) {
-    static_assert(std::numeric_limits<inside<{{0, 1}, max_denominator{10}}>>::digits == 0);
+    static_assert(std::numeric_limits<id<"[0..1] <10>">>::digits == 0);
 }
 } // namespace reached_arms_tests
 
@@ -799,5 +800,5 @@ using namespace ins;
 using namespace ins::formats;
 
 // A notch-0 point's numerator is its value.
-TEST(StorageArmTest, numerator_of_a_notch_zero_point) { EXPECT_TRUE((inside<grid{5}>{}.numerator() == 5)); }
+TEST(StorageArmTest, numerator_of_a_notch_zero_point) { EXPECT_TRUE((id<"[5]">{}.numerator() == 5)); }
 } // namespace reached_arms_tests

@@ -21,7 +21,7 @@ namespace ins
     template <insidable T>
     consteval grid cursor_grid(const auto& step)
     {
-      const grid_number s{grid{step}.Interval.Lower};
+      const grid_number s{grid{step}.Lower};
       if (!(s > 0))
         constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
       if (notch_of<T> == 0)
@@ -35,9 +35,8 @@ namespace ins
   } // namespace detail
 
   template <detail::steppable T, auto Step = notch_of<detail::step_number_t<T>>>
-  using cursor = detail::step_rebind_t<T,
-                                       inside<detail::cursor_grid<detail::step_number_t<T>>(Step),
-                                              policy_of<detail::step_number_t<T>> | detail::cursor_marker>>;
+  using cursor = detail::step_rebind_t<T, id<key{detail::cursor_grid<detail::step_number_t<T>>(Step),
+                                                 policy_of<detail::step_number_t<T>> | detail::cursor_marker}>>;
 
   // end(t): a cursor's past-the-end value, one step past T's Upper.
   // Only a cursor has one: on any other inside its Upper is a value, not an end.

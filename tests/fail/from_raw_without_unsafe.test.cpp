@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    auto x = inside<{0, 10}>::from_raw(200);
+    auto x = id<"[0..10]">::from_raw(200);
     (void)x;
 }

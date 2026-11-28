@@ -9,9 +9,9 @@ using namespace ins;
 
 int main() {
     // [listing]
-    using num  = inside<{0, 100}>;
-    using any  = inside<{0, 10}>;              // may be zero
-    using some = inside<{1, 10}>;              // never zero
+    using num  = id<"[0..100]">;
+    using any  = id<"[0..10]">;                // may be zero
+    using some = id<"[1..10]">;                // never zero
 
     auto q = num{7} / some{3};                 // exactly 7/3, a plain value
     auto r = num{7} / any{3};                  // std::expected<..., error>

@@ -145,11 +145,11 @@ TEST(ConstexprTest, constexpr_grid_arithmetic_produces_expected_result_grids) {
     constexpr grid g_b{{0, 5}, 1};
 
     constexpr auto sum = g_a + g_b;
-    static_assert(sum.Interval == interval{0, 15});
+    static_assert(sum.interval() == interval{0, 15});
     static_assert(sum.Notch == 1);
 
     constexpr auto prod = g_a * g_b;
-    static_assert(prod.Interval == interval{0, 50});
+    static_assert(prod.interval() == interval{0, 50});
 
     // div by a zero-only divisor grid is division_by_zero
     constexpr grid g_zero{{0, 0}, 0};
@@ -173,39 +173,39 @@ TEST(ConstexprTest, constexpr_grid_notch_alignment_via_gcd) {
 TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw) {
     // smallest_uint_for uses the type's full range: a grid hitting UINT8_MAX
     // exactly still fits uint8_t; one past it promotes to uint16_t.
-    static_assert(std::is_same_v<raw_t<inside<{0, 100}>>, std::uint8_t>);
-    static_assert(std::is_same_v<raw_t<inside<{0, 255}>>, std::uint8_t>);
-    static_assert(std::is_same_v<raw_t<inside<{0, 256}>>, std::uint16_t>);
-    static_assert(std::is_same_v<raw_t<inside<{0, 65535}>>, std::uint16_t>);
-    static_assert(std::is_same_v<raw_t<inside<{0, 65536}>>, std::uint32_t>);
+    static_assert(std::is_same_v<raw_t<id<"[0..100]">>, std::uint8_t>);
+    static_assert(std::is_same_v<raw_t<id<"[0..255]">>, std::uint8_t>);
+    static_assert(std::is_same_v<raw_t<id<"[0..256]">>, std::uint16_t>);
+    static_assert(std::is_same_v<raw_t<id<"[0..65535]">>, std::uint16_t>);
+    static_assert(std::is_same_v<raw_t<id<"[0..65536]">>, std::uint32_t>);
 
     // signed value-storage: lower < 0 + notch 1 → signed int that fits the range,
     // including the type's minimum.
-    static_assert(std::is_same_v<raw_t<inside<{-40, 85}>>, std::int8_t>);
-    static_assert(std::is_same_v<raw_t<inside<{-128, 127}>>, std::int8_t>);
-    static_assert(std::is_same_v<raw_t<inside<{-129, 127}>>, std::int16_t>);
+    static_assert(std::is_same_v<raw_t<id<"[-40..85]">>, std::int8_t>);
+    static_assert(std::is_same_v<raw_t<id<"[-128..127]">>, std::int8_t>);
+    static_assert(std::is_same_v<raw_t<id<"[-129..127]">>, std::int16_t>);
 
     // notch 0 → rational raw
-    static_assert(std::is_same_v<raw_t<inside<{{-10, 10}, max_denominator{1000}}>>, rational>);
+    static_assert(std::is_same_v<raw_t<id<"[-10..10] <1000>">>, rational>);
 
     // fractional notch with unsigned offset (signed lower forced into offset
     // encoding because notch != 1).
-    static_assert(std::is_same_v<raw_t<inside<{{-5, 5}, rational{1u, 2}}>>, std::uint8_t>);
+    static_assert(std::is_same_v<raw_t<id<key{grid{{-5, 5}, rational{1u, 2}}}>>, std::uint8_t>);
 }
 
 // constexpr: storage-kind classification
 TEST(ConstexprTest, constexpr_storage_kind_classification) {
     // The disjoint storage encodings, deduced from the grid.
     // integer_value_storage: Raw == value as a plain int (notch 1 + lower 0, or signed raw).
-    static_assert(integer_value_storage<inside<{0, 100}>>);
-    static_assert(integer_value_storage<inside<{-40, 85}>>);
+    static_assert(integer_value_storage<id<"[0..100]">>);
+    static_assert(integer_value_storage<id<"[-40..85]">>);
     // rational_storage: notch 0 — Raw is the value as a rational.
-    static_assert(rational_storage<inside<{{-10, 10}, max_denominator{1000}}>>);
+    static_assert(rational_storage<id<"[-10..10] <1000>">>);
     // notch 1 above 0: the value while it is no wider than the index ({5, 100}),
     // else a 0-based notch index ({200, 300}), as for a fractional notch.
-    static_assert(integer_value_storage<inside<{5, 100}>>);
-    static_assert(index_storage<inside<{200, 300}>>);
-    static_assert(index_storage<inside<{{0, 5}, rational{1u, 2}}>>);
+    static_assert(integer_value_storage<id<"[5..100]">>);
+    static_assert(index_storage<id<"[200..300]">>);
+    static_assert(index_storage<id<key{grid{{0, 5}, rational{1u, 2}}}>>);
 }
 
 //---------------------------------------------------------------------------
@@ -213,7 +213,7 @@ TEST(ConstexprTest, constexpr_storage_kind_classification) {
 //---------------------------------------------------------------------------
 // constexpr: inside +/-/* on signed value-storage grids
 TEST(ConstexprTest, constexpr_inside_plus_on_signed_direct_grids) {
-    using s = inside<{-100, 100}>;
+    using s = id<"[-100..100]">;
     constexpr s a{30}, b{20};
     static_assert(a + b == 50);
     static_assert(a - b == 10);
@@ -224,7 +224,7 @@ TEST(ConstexprTest, constexpr_inside_plus_on_signed_direct_grids) {
 
 // constexpr: inside +/-/* on offset-encoded grids
 TEST(ConstexprTest, constexpr_inside_plus_on_offset_encoded_grids) {
-    using o = inside<{200, 300}>; // offset encoding (uint8 raw)
+    using o = id<"[200..300]">; // offset encoding (uint8 raw)
     static_assert(index_storage<o>);
 
     constexpr o a{215}, b{240};
@@ -234,7 +234,7 @@ TEST(ConstexprTest, constexpr_inside_plus_on_offset_encoded_grids) {
 
 // constexpr: inside +/-/* on fractional-notch grids
 TEST(ConstexprTest, constexpr_inside_plus_on_fractional_notch_grids) {
-    using f = inside<{{0, 10}, rational{1u, 2}}>; // notch 1/2
+    using f = id<key{grid{{0, 10}, rational{1u, 2}}}>; // notch 1/2
     constexpr f a{rational{3u, 2}}, b{rational{5u, 2}};
     static_assert(a + b == 4);
     static_assert(b - a == 1);
@@ -243,7 +243,7 @@ TEST(ConstexprTest, constexpr_inside_plus_on_fractional_notch_grids) {
 
 // constexpr: exact division by a zero-free divisor is a plain value
 TEST(ConstexprTest, constexpr_division_returns_exact_value) {
-    using v = inside<{1, 255}>;
+    using v = id<"[1..255]">;
     constexpr v    a{102};
     constexpr v    b{16};
     constexpr auto q = a / b;
@@ -251,7 +251,7 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
     static_assert(q == (51_r / 8));
 
     // round_toward_zero at the call selects native integer division — result has integer raw
-    using vi = inside<{0, 100}, round_toward_zero>;
+    using vi = id<"[0..100] round_toward_zero">;
     constexpr vi   p{51}, r{8};
     constexpr auto qi = div(p, r, round_toward_zero);
     static_assert(!(std::is_same_v<typename decltype(qi)::value_type::raw_type, rational>));
@@ -260,7 +260,7 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
 
 // constexpr: modulo rounding toward zero
 TEST(ConstexprTest, constexpr_modulo_rounding_toward_zero) {
-    using v = inside<{0, 100}, round_toward_zero>;
+    using v = id<"[0..100] round_toward_zero">;
     constexpr v    a{17}, b{5};
     constexpr auto m = a % b;
     static_assert(m.has_value());
@@ -269,7 +269,7 @@ TEST(ConstexprTest, constexpr_modulo_rounding_toward_zero) {
 
 // constexpr: add_all / mul_all folds
 TEST(ConstexprTest, constexpr_add_all_mul_all_folds) {
-    using v = inside<{0, 100}>;
+    using v = id<"[0..100]">;
     constexpr v a{10}, b{20}, c{30}, d{40};
     static_assert(add_all(a, b, c, d) == 100);
 
@@ -282,7 +282,7 @@ TEST(ConstexprTest, constexpr_add_all_mul_all_folds) {
 //---------------------------------------------------------------------------
 // constexpr: the unsafe constructor preserves in-range values
 TEST(ConstexprTest, constexpr_unexact_cast_preserves_in_range_values) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     static_assert(pct{42, unsafe} == 42);
     static_assert(pct{0, unsafe} == 0);
     static_assert(pct{100, unsafe} == 100);
@@ -290,7 +290,7 @@ TEST(ConstexprTest, constexpr_unexact_cast_preserves_in_range_values) {
 
 // constexpr: exact_cast with in-range values
 TEST(ConstexprTest, constexpr_exact_cast_with_in_range_values) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     static_assert(exact_cast<pct>(42) == 42);
     static_assert(exact_cast<pct>(100) == 100);
     static_assert(exact_cast<pct>(0) == 0);
@@ -298,7 +298,7 @@ TEST(ConstexprTest, constexpr_exact_cast_with_in_range_values) {
 
 // constexpr: the clamp constructor clamps out-of-range
 TEST(ConstexprTest, constexpr_clamp_cast_clamps_out_of_range) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     static_assert(pct{150, clamp} == 100);
     static_assert(pct{-5, clamp} == 0);
     static_assert(pct{42, clamp} == 42);
@@ -306,7 +306,7 @@ TEST(ConstexprTest, constexpr_clamp_cast_clamps_out_of_range) {
 
 // constexpr: the wrap constructor wraps modulo the grid
 TEST(ConstexprTest, constexpr_wrap_cast_wraps_modulo_the_grid) {
-    using angle = inside<{0, 359}>;
+    using angle = id<"[0..359]">;
     static_assert(angle{370, wrap} == 10);
     static_assert(angle{-10, wrap} == 350);
     static_assert(angle{180, wrap} == 180);
@@ -314,23 +314,23 @@ TEST(ConstexprTest, constexpr_wrap_cast_wraps_modulo_the_grid) {
 
 // constexpr: a fold clipped into a target grid with the clamp constructor
 TEST(ConstexprTest, constexpr_fold_clipped_to_target_grid) {
-    using bus = inside<{-100, 100}, clamp>;
-    using ch  = inside<{-50, 50}>;
+    using bus = id<"[-100..100] clamp">;
+    using ch  = id<"[-50..50]">;
     constexpr ch a{30}, b{40}, c{45};
 
     // The widened sum is 115; the clamp constructor clips it to bus's interval.
     static_assert(bus{add_all(a, b, c), clamp} == 100);
     static_assert(bus{add_all(ch{10}, ch{-5}, ch{3}), clamp} == 8);
 
-    using small = inside<{0, 50}, clamp>;
-    using v     = inside<{0, 10}>;
+    using small = id<"[0..50] clamp">;
+    using v     = id<"[0..10]">;
     static_assert(small{mul_all(v{4}, v{5}), clamp} == 20);
     static_assert(small{mul_all(v{6}, v{10}), clamp} == 50); // 60 clamped
 }
 
 // constexpr: the clamp constructor with a rounding mode
 TEST(ConstexprTest, constexpr_clamp_cast_with_rounding) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     static_assert(coarse{3.0, clamp | round_floor} == 2);
     static_assert(coarse{3.0, clamp | round_ceil} == 4);
     static_assert(coarse{3.0, clamp | round_half_away} == 4);
@@ -342,13 +342,13 @@ TEST(ConstexprTest, constexpr_clamp_cast_with_rounding) {
 
 // constexpr: conversion predicates
 TEST(ConstexprTest, constexpr_conversion_predicates) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     static_assert(!(conversion_overflows<pct>(50)));
     static_assert(conversion_overflows<pct>(150));
     static_assert(conversion_overflows<pct>(-1));
     static_assert(!(conversion_overflows<pct>(0)));
 
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     static_assert(!(conversion_rounds<coarse>(4)));
     static_assert(conversion_rounds<coarse>(3));
     static_assert(!(conversion_rounds<coarse>(11)));
@@ -363,7 +363,7 @@ TEST(ConstexprTest, constexpr_conversion_predicates) {
 //---------------------------------------------------------------------------
 // constexpr: numeric_limits<inside>
 TEST(ConstexprTest, constexpr_numeric_limits_inside) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     using nl  = std::numeric_limits<pct>;
     static_assert(nl::is_specialized);
     static_assert(nl::is_bounded);
@@ -376,11 +376,11 @@ TEST(ConstexprTest, constexpr_numeric_limits_inside) {
     static_assert(nl::lowest() == pct{0});
 
     // signed grid → is_signed
-    using temp = inside<{-40, 60}>;
+    using temp = id<"[-40..60]">;
     static_assert(std::numeric_limits<temp>::is_signed);
 
     // wrap policy → is_modulo
-    using ang = inside<{0, 359}, wrap>;
+    using ang = id<"[0..359] wrap">;
     static_assert(std::numeric_limits<ang>::is_modulo);
 }
 
@@ -401,7 +401,7 @@ TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     // wrap-start: visits every element exactly once, starting mid-range
     constexpr std::int64_t sum_from_5 = [] {
         std::int64_t s = 0;
-        for (auto i : inside_range<{0, 9}>{inside<{0, 9}>{5}})
+        for (auto i : inside_range<{0, 9}>{id<"[0..9]">{5}})
             s += i.to<std::int64_t>();
         return s;
     }();
@@ -473,7 +473,7 @@ TEST(ConstexprTest, constexpr_just_n_and_ins_literal) {
     static_assert(five == 5);
 
     // Composes with inside — grid widens via add
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     static_assert(10_ins + pct{40} == 50);
 }
 
@@ -502,11 +502,11 @@ TEST(ConstexprTest, constexpr_lift_over_multiple_expected_args) {
 //---------------------------------------------------------------------------
 // constexpr: fallible results are expected, inside storage stays native
 TEST(ConstexprTest, constexpr_fallible_results_are_expected_inside_stays_native) {
-    using v = inside<{0, 100}>;
+    using v = id<"[0..100]">;
     using q = decltype(v{} / v{});
     static_assert(is_expected_v<q>);
-    static_assert(sizeof(inside<{0, 100}>) == 1);
-    static_assert(sizeof(inside<{0, 255}>) == 1);
-    static_assert(sizeof(inside<{-40, 85}>) == 1);
-    static_assert(sizeof(inside<{-128, 127}>) == 1);
+    static_assert(sizeof(id<"[0..100]">) == 1);
+    static_assert(sizeof(id<"[0..255]">) == 1);
+    static_assert(sizeof(id<"[-40..85]">) == 1);
+    static_assert(sizeof(id<"[-128..127]">) == 1);
 }

@@ -6,7 +6,7 @@
 
 int main() {
     using namespace ins;
-    using ratio = quantity<one, inside<{{-2, 2}, per<64>}>>;
-    using deg   = quantity<si::degree, inside<{{-90, 90}, per<1000>}, round_half_away>>;
+    using ratio = id<"[-2..2] 1/64 [1]">;
+    using deg   = id<"[-90..90] 1/1000 [deg] round_half_away">;
     (void)math::asin<deg>(ratio{1, one});
 }

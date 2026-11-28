@@ -38,7 +38,7 @@ void show(std::string_view label, const std::vector<T>& v)
 
 int main()
 {
-  using channel = quantity<DN, inside<{0, 255}, clamp>>;
+  using channel = id<"[0..255] [DN] clamp">;
   std::cout << "--- fill / generate ---\n";
   {
     std::vector<channel> v(8);
@@ -50,7 +50,7 @@ int main()
   }
 
   // Readings are points on the ℃ scale: they sort and search, and two of them subtract to a difference.
-  using celsius = quantity_point<deg_C, si::ice_point, inside<{{-40, 60}, 0.5}, round_half_away>>;
+  using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;
   std::cout << "\n--- sort ---\n";
   std::vector<celsius> temps = {{21.5, deg_C}, {-5.0, deg_C}, {37.0, deg_C}, {0.0, deg_C},
                                 {15.5, deg_C}, {-20.0, deg_C}, {42.0, deg_C}, {8.5, deg_C}};
@@ -90,7 +90,7 @@ int main()
     std::cout << "lower_bound 0 ℃: " << *lb << "\n";
   }
 
-  using percentage = quantity<percent, inside<{0, 100}, clamp>>;
+  using percentage = id<"[0..100] [%] clamp">;
   std::cout << "\n--- predicates ---\n";
   {
     std::vector<percentage> shares = {{25, percent}, {50, percent}, {75, percent}, {100, percent}};
@@ -118,13 +118,13 @@ int main()
     show("darkened", dst);
   }
 
-  using score  = quantity<pts, inside<{0, 1000}>>;
-  using weight = inside<{0, 10}>; // a factor: a plain number
+  using score  = id<"[0..1000] [pts]">;
+  using weight = id<"[0..10]">; // a factor: a plain number
   std::cout << "\n--- reduce ---\n";
   {
     // sum<Target>: an exact total with one range check,
     // an expected (the count is a run-time number).
-    using score_total = quantity<pts, inside<{0, 100'000}>>;
+    using score_total = id<"[0..100'000] [pts]">;
     std::vector<score> scores = {{100, pts}, {250, pts}, {500, pts}, {750, pts}, {1000, pts}};
     auto total{sum<score_total>(scores)};
     if (!total)
@@ -134,7 +134,7 @@ int main()
     // A weighted sum: the products, then sum<Target> with its one check.
     // (std::transform_reduce would store every prefix back into a quantity,
     // which the grids cannot prove.)
-    using weighted_total = quantity<pts, inside<{0, 1'000'000}>>;
+    using weighted_total = id<"[0..1'000'000] [pts]">;
     std::vector<weight> weights = {2, 3, 5};
     auto products{std::views::zip_transform([](score s, weight w) { return s * w; }, scores, weights)};
     auto dot     {sum<weighted_total>(products)};
@@ -143,7 +143,7 @@ int main()
     std::cout << "weighted sum(first 3): " << *dot << "\n";
   }
 
-  using altitude = quantity<si::metre, inside<{-500, 9000}>>;
+  using altitude = id<"[-500..9000] [m]">;
   std::cout << "\n--- filter ---\n";
   {
     std::vector<altitude> data = {{-200, m}, {500, m}, {-50, m}, {3000, m}, {0, m}, {8000, m}};
@@ -168,7 +168,7 @@ int main()
     show("unique", v);
   }
 
-  using digit = inside<{0, 9}>;
+  using digit = id<"[0..9]">;
   std::cout << "\n--- classic STL ---\n";
   {
     std::vector<score> v = {{500, pts}, {100, pts}, {800, pts}, {300, pts}, {700, pts}};
@@ -190,12 +190,12 @@ int main()
     // std::accumulate stores each prefix back into its accumulator, which the grids cannot prove:
     // the accumulator names what happens past its range
     // (clamp; sum<Target> checks the total once instead).
-    using brightness_total = quantity<DN, inside<{0, 100'000}, clamp>>;
+    using brightness_total = id<"[0..100'000] [DN] clamp">;
     std::vector<channel> rgb = {{200, DN}, {150, DN}, {100, DN}};
     auto brightness{std::accumulate(rgb.begin(), rgb.end(), brightness_total{0, DN}, std::plus<>{})};
     std::cout << "accumulate brightness: " << brightness << "\n";
 
-    using dot_total = quantity<pts, inside<{0, 1'000'000}, clamp>>; // as accumulate's
+    using dot_total = id<"[0..1'000'000] [pts] clamp">; // as accumulate's
     std::vector<score>  a = {{10, pts}, {20, pts}, {30, pts}};
     std::vector<weight> b = {3, 2, 1};
     auto dot{std::inner_product(a.begin(), a.end(), b.begin(), dot_total{0, pts}, std::plus<>{},

@@ -11,19 +11,19 @@ and you can add your own. The design follows
 using namespace ins;
 
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5, km};   // 12.5 km, to the metre
+id<"[0..500] 1/1000 [km]"> leg{12.5, km};                    // 12.5 km, to the metre
 auto total = leg + just<800> * si::metre;                    // 13300 m, exact
-auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
+auto speed = total / id<"[1..600] [min]">{20, si::minute};
 std::cout << speed.in(km / si::hour);                        // 39.9 km/h
 ```
 
 ## Making a quantity
 
-A quantity is `quantity<Unit, Number>`, and the number is always an inside.
+A quantity is `id<quantity_key<Unit, Number>>`, and the number is always an inside.
 A number goes in with its unit named, where the value is written:
 
 ```cpp
-quantity<si::metre, inside<{0, 100}>> d{42, si::metre};   // a number and its unit
+id<"[0..100] [m]"> d{42, si::metre};                      // a number and its unit
 auto c = just<800> * si::metre;                           // a constant: a one-point inside times a unit
 ```
 
@@ -42,7 +42,7 @@ the SI units, the ISQ quantity kinds, and the international units: `si::`,
 
 `q.in(u)` gives the same quantity in another unit. The grid is rescaled and
 the stored integer stays, so the conversion is **exact and free**: km → mm on
-`inside<{0, 10}>` is the same byte, read on a grid 10⁶ times larger.
+`id<"[0..10]">` is the same byte, read on a grid 10⁶ times larger.
 
 | Write | Gives |
 |---|---|
@@ -90,10 +90,10 @@ A temperature is a **point** on a scale, counted from an origin, not an
 amount. 20 ℃ + 5 ℃ is a point plus a difference:
 
 ```cpp
-auto room   = point<si::degree_Celsius>(inside<{{-50, 50}, per<10>}>{20});
+auto room   = point<si::degree_Celsius>(id<"[-50..50] 1/10">{20});
 room.point_in(international::degree_Fahrenheit);                 // 68.00 ℉
 room.point_in(si::kelvin);                                       // 293.15 K
-auto warmer = room + delta<si::degree_Celsius>(inside<{0, 10}>{5});   // 25 ℃
+auto warmer = room + delta<si::degree_Celsius>(id<"[0..10]">{5});   // 25 ℃
 auto rise   = warmer - room;                                     // 5 ℃, a difference
 ```
 
@@ -102,7 +102,7 @@ to a difference, a point and a difference add to a point, and two points do
 not add. A point type takes a number in its own unit, as a quantity does:
 
 ```cpp
-using celsius = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-40, 60}, 0.5}>>;
+using celsius = id<"[-40..60] 0.5 [`C] @ice_point">;
 std::vector<celsius> temps = {{21.5, si::degree_Celsius}, {-5, si::degree_Celsius}};
 ```
 
@@ -134,7 +134,7 @@ auto price = just<5> * EUR + just<20> * ct;                // 520 ct
 ```
 
 A kind of your own is `kind<"depth", isq::length>`, an origin
-`origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>`.
+`origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>`.
 
 Compilers print a one-line unit by its whole definition. For short type
 names, name the definition and take its unit with `defined_by`, as the catalog
@@ -182,8 +182,8 @@ number's, and the stores, hooks, `mul<C>`, `sum`, `parse` and the math take
 quantities in any unit of the right kind, converted exactly first:
 
 ```cpp
-quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50, si::second};
-quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>> m{0, si::minute};
+id<"[0..60) [s] wrap"> s{50, si::second};
+id<"[0..60) [min] wrap"> m{0, si::minute};
 s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::minute;
 // s == 50 s (170 s folds to 50 s), m == 2 min
 ```

@@ -148,8 +148,8 @@ for example for a call that only runs at compile time (it leaves no symbol):
 #include "certify.hpp" // tests/certify; before any inside header
 
 using namespace ins;
-using in_t  = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>;
-using out_t = inside<{{-1, 1}, per<(1 << 10)>}, round_floor>;
+using in_t  = id<"[-4..4] 1/16384 round_half_away">;
+using out_t = id<"[-1..1] 1/1024 round_floor">;
 
 void pairs(certify::runner& r) {
     r.unary<out_t, in_t>("sin", [](in_t x) { return math::sin<out_t>(x); });

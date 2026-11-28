@@ -7,5 +7,5 @@
 
 int main() {
     using namespace ins;
-    (void)math::gcd(inside<{{0, 1}, max_denominator{10}}>{}, inside<{0, 5}>{});
+    (void)math::gcd(id<"[0..1] <10>">{}, id<"[0..5]">{});
 }

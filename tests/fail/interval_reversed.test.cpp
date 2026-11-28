@@ -6,6 +6,6 @@
 int main() {
     using namespace ins;
     using ins::detail::operator""_r; // the library's own literal
-    inside<grid{interval{10, 0}, 1_r}> x{5};
+    id<key{grid{interval{10, 0}, 1_r}}> x{5};
     (void)x;
 }

@@ -5,5 +5,5 @@
 
 int main() {
     using namespace ins;
-    (void)conversion_overflows<quantity<si::metre, inside<{0, 100}>>>(150);
+    (void)conversion_overflows<id<"[0..100] [m]">>(150);
 }

@@ -5,7 +5,7 @@
 #include <inside/inside.hpp>
 
 int main() {
-    ins::inside<{0, 10}>  small{5};
-    ins::inside<{20, 30}> big{25};
+    ins::id<"[0..10]">  small{5};
+    ins::id<"[20..30]"> big{25};
     small = big; // ill-formed: [20,30] never fits in [0,10]
 }

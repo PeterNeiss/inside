@@ -121,7 +121,7 @@ namespace ins::detail
     return overshoot_source_grid<R>() - limits;
   }
   template <insidable L, typename R>
-  using clamp_overshoot_t = ins::inside<clamp_overshoot_grid<L, R>()>;
+  using clamp_overshoot_t = ins::id<ins::key{clamp_overshoot_grid<L, R>()}>;
 
   // An exact value of Result's grid as Result, for any storage.
   template <insidable Result, std::size_t K>
@@ -161,15 +161,15 @@ namespace ins::detail
   constexpr grid wrap_carry_grid()
   {
     constexpr grid        G{grid_of<L>};
-    constexpr grid_number period{G.Interval.Upper - G.Interval.Lower + G.Notch};
+    constexpr grid_number period{G.Upper - G.Lower + G.Notch};
     if constexpr (period == grid_number{0})
       return grid{grid_number{0}};
     else
     {
-      constexpr interval source{overshoot_source_grid<R>().Interval};
+      constexpr interval source{overshoot_source_grid<R>().interval()};
       const auto carry_of = [&](const grid_number& v)
       {
-        return grid_round<round_mode::floor>((v - G.Interval.Lower) / period);
+        return grid_round<round_mode::floor>((v - G.Lower) / period);
       };
       return grid{carry_of(source.Lower), carry_of(source.Upper)};
     }
@@ -180,7 +180,7 @@ namespace ins::detail
   template <insidable L, typename R, typename Q>
   constexpr auto make_wrap_carry(const Q& q)
   {
-    using C = ins::inside<wrap_carry_grid<L, R>()>;
+    using C = ins::id<ins::key{wrap_carry_grid<L, R>()}>;
     if constexpr (std::integral<Q> && notched<C> && !wide_valued<C>)
     {
       C carry;

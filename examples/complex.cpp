@@ -48,11 +48,11 @@ int main()
 
   // 3. Gaussian integers with parts in [-10, 10]:
   // a product's real part ac - bd is in [-200, 200], by its type.
-  using gaussian = multivector<inside<{-10, 10}>, quantity<i, inside<{-10, 10}>>>;
+  using gaussian = multivector<id<"[-10..10]">, id<"[-10..10] [i]">>;
   const gaussian a{just<2> + i};
   const gaussian b{just<2> - i};
   const auto     p{a * b};
-  static_assert(std::same_as<decltype(part(p, one)), inside<{-200, 200}>>);
+  static_assert(std::same_as<decltype(part(p, one)), id<"[-200..200]">>);
   std::cout << "(" << a << ")(" << b << ") = " << p << '\n';
   if (!(p == just<5> * one))
     return 1;
@@ -67,7 +67,7 @@ int main()
 
   // 5. Euler's identity: exp rounds each part once onto 2^-20,
   // and with π on that grid e^(iπ) is -1 exactly.
-  using fine_angle = inside<{{-4, 4}, per<(1 << 20)>}, round_half_away>;
+  using fine_angle = id<"[-4..4] 1/1048576 round_half_away">;
   const fine_angle pi = math::pi; // π rounded onto 2^-20
   const auto       euler{math::exp(pi * i)};
   std::cout << "e^(iπ) = " << euler << '\n';

@@ -5,7 +5,7 @@
 
 int main() {
     using namespace ins;
-    using bad = cursor<inside<{{0, 1}, per<4>}>, detail::rational{1, 8}>;
+    using bad = cursor<id<"[0..1] 1/4">, detail::rational{1, 8}>;
     bad b;
     (void)b;
 }

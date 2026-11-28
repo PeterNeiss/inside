@@ -1,67 +1,95 @@
 # Reading compiler errors
 
-An inside is `inside<grid G, policy_flag P>`, and a quantity is
-`quantity<reference R, Rep>`. Compilers print template arguments
-structurally, so an error shows the *whole* type. That looks noisy until you
-know what each part is. This page decodes the types, lists the named messages
-the library gives instead of bare "could not convert" errors, and shows how to
-probe an operation without an error at all.
+An inside is `id<key K>`, its grid and policy as text (`id<key{G, P}>` names
+the same type), and so is a quantity, its unit and kind in the text too. Compilers
+print template arguments structurally, so an error shows the *whole* type.
+This page decodes the types, lists the named messages the library gives
+instead of bare "could not convert" errors, and shows how to probe an
+operation without an error at all.
 
 ## Decoding an inside
 
-GCC spells every name out. The point `3_ins`:
+An inside prints as the text that spells it ([spelling a type as
+text](../guide/id.md)). The point `3_ins`, the sum of two digits, and a
+heading:
 
 ```text
-inside<grid{interval{grid_number{3, 1, 0}, grid_number{3, 1, 0}},
-            grid_number{0, 1, 0}, grid_number{0, 1, 0}}, 0>
+ins::id<ins::key{"[3]"}>
+ins::id<ins::key{"[2..18]"}>
+ins::id<ins::key{"[0..359] wrap"}>
 ```
 
-GCC also prefixes `ins::`, shortened here. The `grid_number` pair
-is the interval, the next one the notch, the last the bound:
+The text is canonical: one per grid and policy, however the type was written,
+so `id<"[0..360) wrap">`, `id<key{grid{0, 360, bounds::half_open}, wrap}>`
+and the text above are one type.
 
-| Part | Means |
+| Text | Means |
 |---|---|
-| `grid_number{num, den, big}` | a grid number, an exact fraction in lowest terms: `num` the numerator's magnitude, `den` the denominator with the sign, so −3 is `grid_number{3, -1, 0}` and 1/100 is `grid_number{1, 100, 0}`. A value past 64 bits has `den` 0 and `big` pointing at the interned value |
-| interval | the range, both limits included |
-| notch | the step. 0 is a *continuous* grid or a point, not a missing value |
-| bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([exact arithmetic](exact-arithmetic.md#bounded-continuous-grids)); 0 otherwise |
-| the policy `P` | a bitset, printed as an integer: decode it with the table below |
-
-| Bit | Decimal | Flag |
-|---|---:|---|
-| `1<<4` | 16 | `round_toward_zero`: the rounding bit, which every rounding mode carries |
-| `1<<5` | 32 | `round_half_away` (with the rounding bit: 48) |
-| `1<<6` | 64 | `round_floor` (with the rounding bit: 80) |
-| `1<<7` | 128 | `round_ceil` (with the rounding bit: 144) |
-| `1<<8` | 256 | `round_half_even` (with the rounding bit: 272) |
-| `1<<32` | 4294967296 | `clamp` |
-| `1<<33` | 8589934592 | `wrap` |
-| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds the rounding bit: 68719476752); the only bit that turns runtime checks off |
-| `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
-
-The other bits are unused, and an inside rejects a policy that holds one or
-names two rounding modes. `checked`, the default, has no bits: `0` is
-`inside<G>`, and `48` is `round_half_away`. Every policy without the `unsafe`
-bit is checked. (The definitions are in `include/inside/inside/policy_flag.hpp`.)
+| `[0..9]` | the limits, both included, and the step the limits derive: 1 here |
+| `[0..10) 1/4` | the limits written with the smallest common denominator (an open limit moves in by one step: the last value is 39/4), then the step |
+| `(0..1) 1/1000` | both limits open: 1/1000 … 999/1000 |
+| `[0..1] <1000>` | a continuous grid: every fraction with a denominator of at most 1000 ([exact arithmetic](exact-arithmetic.md#bounded-continuous-grids)) |
+| `[3]` | a point: one value, held in the type (`[3..3]` is a grid of step 1 with one value) |
+| `0x1p70`, `0x3fffffffffffffffff` | a number past 64 bits, in hexadecimal, as m·2^e where shorter |
+| `clamp`, `wrap`, `round_half_away`, `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`, `unsafe` | the policy, joined by `\|`; no word is `checked`, the default |
+| `cursor` | a `cursor<T, Step>` |
+| `bits_N` | policy bits no flag names: a type the library rejects |
 
 ## Decoding a quantity
 
-GCC prints a quantity's reference as the structure behind it. A quantity in
-km:
+A quantity prints as its text, the unit in brackets after the number's, a
+kind that is not the unit's own after it in braces, and a point's origin
+after `@`
+([quantities](../guide/id.md#quantities)):
 
 ```text
-quantity<reference{kind_ref{(& isq::length_def), true}, true, recipe{kind_factor [6](), 0},
-                   unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 3, 1}}, 1,
-                              magnitude{grid_number{1, 1, 0}, 0}}},
-         inside<…>>
+ins::id<ins::key{"[0..100] [km/h]"}>
+ins::id<ins::key{"[0..100] [m]{height}"}>
+ins::id<ins::key{"[1..81] [m*s]{any duration*length}"}>
+ins::id<ins::key{"[-40..125] [`C] @ice_point"}>
+```
+
+| Text | Means |
+|---|---|
+| `[km/h]` | the unit: symbols with powers, `*` and `/`, in ASCII (`us` for µs, `` `C `` for ℃, `ohm` for Ω); a scaled unit in brackets (`[[1/381*ft]]`); `[1]` the unit one |
+| `{height}` | exactly that kind (`isq::height[si::metre]`); no braces for the unit's own kind, any of it |
+| `{any duration*length}` | the kinds a product or quotient is made of, `any` when any kind of each will do |
+| `{none}`, `{any}` | no kind; any kind of the dimension |
+| `@ice_point`, `@0` | a point: the quantity counted from that origin; `@0` from the implicit zero of the dimension |
+
+Where a reference itself is a template argument (a quantity whose unit has no
+text, which does not compile, or a trait's parts), it prints as the structure
+behind it. A unit and its own kind holds that unit alone, here km:
+
+```text
+reference{ref_form{unit_atom{(& si::metre_def), 3, 1}}, false}
 ```
 
 | Part | Means |
 |---|---|
-| `kind_ref{(& isq::length_def), true}` | the quantity kind, `isq::length`, by its definition object |
-| `unit_atom{(& si::metre_def), 3, 1}` | a named unit (`si::metre`, by its definition object), its decimal prefix as a power of 10 (3: kilo), and its exponent (1) |
+| `unit_atom{(& si::metre_def), 3, 1}` | a named unit (`si::metre`, by its definition object), its decimal prefix as a power of 10 (3: kilo), and its exponent (1). Its kind is the unit's own (any length) |
+| `false` | the reference holds the unit alone |
+
+Any other reference holds its parts: a kind, a unit of several factors or a
+scale, or a product of kinds. A velocity in m/s:
+
+```text
+reference{ref_form{ref_parts{(& isq::velocity_def),
+                             unit_value{unit_atom [6]{unit_atom{(& si::metre_def), 0, 1},
+                                                      unit_atom{(& si::second_def), 0, -1}},
+                                        magnitude{grid_number{1, 1, 0}, 0}},
+                             false, recipe{kind_factor [6](), 0}}},
+          true}
+```
+
+| Part | Means |
+|---|---|
+| `(& isq::velocity_def)` | the quantity kind, `isq::velocity`, by its definition object; `(& kind_def::none)` for none (any quantity of the dimension, as `si::metre / si::second` gives) |
+| `unit_value{unit_atom [6]{…}, …}` | the unit's factors, each a named unit with its prefix and exponent |
 | `magnitude{grid_number{1, 1, 0}, 0}` | the unit's extra factor as a grid number and a power of π: here 1·π⁰ |
-| `inside<…>` | the number, decoded as above |
+| `false` | whether the kind is a unit's own (any kind of it) rather than exactly that kind |
+| `recipe{…}` | the kinds a product is made of (`isq::width * isq::height`), empty otherwise |
+| `true` | the reference holds its parts |
 
 A unit or kind of your own declared in one line is spelled by its content
 instead: `(& definition<unit_def, symbol_text{"ftm", 3}, …>::value)`, with
@@ -91,17 +119,17 @@ error: static assertion failed: inside_assignable: rhs interval lies entirely ou
 ## The common surprise: it is the interval, not the notch
 
 ```cpp
-auto square(inside<> x) { return x * x; }   // inside<> is the grid {[0, 0], 0}
-square(3_ins);                               // 3_ins is the point [3, 3]: rejected
+auto square(id<"[0..9]"> x) { return x * x; }
+square(42_ins);                              // 42_ins is the point [42]: rejected
 ```
 
-`inside<>` defaults to the grid `[0, 0]`, which holds only 0, so 3 does not
-fit. The fix is in *your* signature: give it a wide enough grid, or make it
+`id<"[0..9]">` holds 0 … 9, so 42 does not fit, though both are integers.
+The fix is in *your* signature: give it a wide enough grid, or make it
 generic:
 
 ```cpp
-template <grid G, policy_flag P>
-auto square(inside<G, P> x) { return x * x; }
+template <key K>
+auto square(id<K> x) { return x * x; }
 ```
 
 ## Named reasons for a store
@@ -143,7 +171,7 @@ A plain number (an `int`, a `double`) goes through a
 run-time value is the compiler's own message, with the variable named:
 
 ```text
-error: call to consteval function 'inside<…>(n)' is not a constant expression
+error: call to consteval function 'x.ins::id<ins::key{"[0..9]"}>::id<int>(n)' is not a constant expression
 error: 'n' is not a constant expression
 ```
 
@@ -170,12 +198,12 @@ instead (`= delete("…")`):
 |---|---|
 | `just<1> * si::metre + just<1> * si::second` | `units: adding or comparing quantities of different dimensions` |
 | `42 * si::metre` | `units: a raw number has no grid - write just<42> * unit, or Q{42, unit} into a quantity type Q` |
-| `quantity<si::metre, inside<{0, 100}>>{42}` | `units: a number alone has no unit - write Q{42, si::metre}, or just<42> * si::metre` |
+| `id<"[0..100] [m]">{42}` | `units: a number alone has no unit - write Q{42, si::metre}, or just<42> * si::metre` |
 | `q.numerical_value()` | `units: a number alone has no unit - read q.numerical_value_in(si::metre)` |
 | `q * 2` | `units: a raw number has no grid - scale by just<2>, not 2` |
 | `length.in(si::second)` | `units: in() - the unit has another dimension` |
 | `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <inside/units/math.hpp>, Rep declared with a rounding mode` |
-| `inside<{0, 7}> x = angle;` | `units: an angle (a distinct kind) or a pi-scaled ratio is no plain number - read numerical_value_in(si::radian), or value_cast it first` |
+| `id<"[0..7]"> x = angle;` | `units: an angle (a distinct kind) or a pi-scaled ratio is no plain number - read numerical_value_in(si::radian), or value_cast it first` |
 | `math::sin(degrees)` (the deduced form) | `units: sin and cos of an angle with a factor of pi (°, a turn) - name the result's notch: sin<per<K>>(q)` |
 
 Kinds that never mix (Hz and Bq, Gy and Sv), and the kind boundaries of
@@ -193,7 +221,7 @@ raw scalar (`x + 1`) and a free function given a hook are deleted too. A require
 ```cpp
 template <class A, class B>
 constexpr bool can_divide = requires(A a, B b) { a / b; };
-static_assert(!can_divide<inside<{0, 9}>, inside<{0}>>);            // the point 0
+static_assert(!can_divide<id<"[0..9]">, id<"[0]">>);            // the point 0
 
 template <class A, class B>
 constexpr bool can_add = requires(A a, B b) { a + b; };

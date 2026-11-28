@@ -7,8 +7,8 @@
 using namespace ins;
 
 int main() {
-    inside<{0, 10}>  a{4};
-    inside<{0, 2}>   b{1};
-    inside<{0, 100}> c = a / b;
+    id<"[0..10]">  a{4};
+    id<"[0..2]">   b{1};
+    id<"[0..100]"> c = a / b;
     (void)c;
 }

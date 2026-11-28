@@ -1033,9 +1033,9 @@ namespace ins::detail
       // which is what rhs minus that limit as an inside computes in integers.
       if constexpr (clamp_action<plain_t<A>>)
       {
-        using limits = inside<lower_of<L> == upper_of<L>
+        using limits = id<key{lower_of<L> == upper_of<L>
                                 ? grid{lower_of<L>}
-                                : grid{interval{lower_of<L>, upper_of<L>}, upper_of<L> - lower_of<L>}>;
+                                : grid{interval{lower_of<L>, upper_of<L>}, upper_of<L> - lower_of<L>}}>;
         if constexpr (!wide_valued<R> && !wide_valued<L>
                       && requires(const R& r, const limits& l)
                          {

@@ -75,11 +75,11 @@ namespace ins
       && !std::same_as<T, char8_t> && !std::same_as<T, char16_t> && !std::same_as<T, char32_t>;
 
     // A builtin integer on the right of x += n, x -= n, x *= n:
-    // an inside on the whole range of its type (an int is an inside<{INT_MIN, INT_MAX}>),
+    // an inside on the whole range of its type (an int is an id<key{grid{INT_MIN, INT_MAX}}>),
     // so the result is stored back into x by the rules for any inside.
     // (The binary x + n has no such reading: its type would be that range.)
     template <index_integer A>
-    using lifted_t = inside<grid{interval_of<A>, grid_number{1}}>;
+    using lifted_t = id<key{grid{interval_of<A>, grid_number{1}}}>;
     template <class A>
     concept step_integer = index_integer<A> && integer_value_storage<lifted_t<A>>;
     template <step_integer A>
@@ -105,13 +105,13 @@ namespace ins
       rational    Exact{};       // an integer or a rational
 
       template <std::floating_point X>
-        requires inside_assignable<inside<grid_of<B>, F>, X, F>
+        requires inside_assignable<id<key{grid_of<B>, F}>, X, F>
       consteval constant_value(X x) : Floating{true}, Float{x}
       {
         trial(x);
       }
       template <class X>
-        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<inside<grid_of<B>, F>, X, F>
+        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<id<key{grid_of<B>, F}>, X, F>
       consteval constant_value(const X& x) : Exact{x}
       {
         trial(x);
@@ -127,8 +127,8 @@ namespace ins
       template <class X>
       static consteval void trial(const X& x)
       {
-        inside<grid_of<B>, F> twin;
-        assignment<inside<grid_of<B>, F>, X>::assign(twin, x, make_policy<F>());
+        id<key{grid_of<B>, F}> twin;
+        assignment<id<key{grid_of<B>, F}>, X>::assign(twin, x, make_policy<F>());
       }
     };
 

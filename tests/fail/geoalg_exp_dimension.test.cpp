@@ -5,12 +5,13 @@
 #include <inside/units/geoalg.hpp>
 #include <inside/units/math.hpp>
 
+inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<1>>;
+inline constexpr auto e2 = ins::basis_vector<"e2", ins::geometric<1>>;
+
 int main() {
     using namespace ins;
-    constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<1>>;
-    constexpr auto e2 = ins::basis_vector<"e2", ins::geometric<1>>;
-    using I           = inside<{{-1, 1}, per<64>}, round_half_away>;
-    using dom         = quantity<si::metre * e1 * e2, I>;
-    using cod         = multivector<I, quantity<e1 * e2, I>>;
+    using I   = id<"[-1..1] 1/64 round_half_away">;
+    using dom = id<"[-1..1] 1/64 [m*e1*e2] round_half_away">;
+    using cod = multivector<I, id<"[-1..1] 1/64 [e1*e2] round_half_away">>;
     (void)math::exp<cod>(dom{I{1}, si::metre * e1 * e2});
 }

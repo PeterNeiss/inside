@@ -207,7 +207,7 @@ using namespace ins;
 
 inline constexpr auto       slot = unit<"slot", just<1, 32768> * pi * si::radian>;           // 2π/65536 rad
 
-quantity<slot, inside<{0, 65535}, wrap>> phase{0, slot};       // wraps at exactly one turn
+id<"[0..65535] [slot] wrap"> phase{0, slot};                   // wraps at exactly one turn
 phase += just<16384> * slot;                                   // a quarter turn
 math::sin<per<(1 << 14)>>(phase);                              // exactly 1
 math::cos<per<(1 << 14)>, round_floor>(just<120> * si::degree); // exactly −1/2, even under round_floor
@@ -224,7 +224,7 @@ however many turns. [`huge_angles.cpp`](../../examples/huge_angles.cpp) takes
 the sine of 10¹⁸ rad, correctly rounded.
 
 **Don't `wrap` a radians angle.** `wrap` folds modulo the grid's period,
-span + notch, which is never exactly 2π: `inside<{{0, 6.28125}, per<(1 << 6)>}, wrap>`
+span + notch, which is never exactly 2π: `id<"[0..6.28125] 1/64 wrap">`
 folds every 6.296875 rad, so each revolution shifts the angle by about
 0.014 rad.
 

@@ -49,8 +49,8 @@ namespace ins::math::detail::entry
       if constexpr (anchored<In>)
         return x;
       else
-        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
-                      policy_of<In> & ~::ins::detail::cursor_marker>{x};
+        return id<key{grid{grid_of<In>.interval(), grid_of<In>.value_unit()},
+                      policy_of<In> & ~::ins::detail::cursor_marker}>{x};
     }
 
     template <insidable Out>
@@ -58,7 +58,7 @@ namespace ins::math::detail::entry
 
     template <insidable Out, policy_flag R, grid_number Unit = half_unit<Out>>
     using bracket_t =
-      inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (policy_of<Out> & clamp)>;
+      id<key{grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (policy_of<Out> & clamp)}>;
 
     // The integer form: a bracket 1024 times finer than half_unit, counted in int64.
     // Rounded down there, the value lies in [y, y + F);
@@ -398,7 +398,7 @@ namespace ins::math::detail::entry
       In, N,
       engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>>;
     template <grid_number N, insidable In>
-    using sin = inside<{{-1, 1}, N}, engine::result_policy<In>>;
+    using sin = id<key{grid{{-1, 1}, N}, engine::result_policy<In>}>;
     template <grid_number N, insidable In>
     using cos = sin<N, In>;
     // tan is increasing on its branch (tan_domain).
@@ -449,7 +449,7 @@ namespace ins::math::detail::entry
     inline constexpr grid_number pi_up =
       engine::lattice_bound<N, true>(engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
     template <grid_number N, insidable InY, insidable InX>
-    using atan2 = inside<{{-pi_up<N>, pi_up<N>}, N}, engine::result_policy<InY>>;
+    using atan2 = id<key{grid{{-pi_up<N>, pi_up<N>}, N}, engine::result_policy<InY>}>;
 
     // hypot: [0, hypot of the largest magnitudes] on N.
     template <insidable InX, insidable InY>
@@ -468,7 +468,7 @@ namespace ins::math::detail::entry
     template <grid_number N, insidable InX, insidable InY>
     inline constexpr grid_number hypot_hi = hypot_upper<N, InX, InY>();
     template <grid_number N, insidable InX, insidable InY>
-    using hypot = inside<{{0, hypot_hi<N, InX, InY>}, N}, engine::result_policy<InX>>;
+    using hypot = id<key{grid{{0, hypot_hi<N, InX, InY>}, N}, engine::result_policy<InX>}>;
 
     // pow: b^e is monotone in each argument for b > 0, so the extremes are at the corners of the input rectangle.
     template <insidable InB, insidable InE>
@@ -497,7 +497,7 @@ namespace ins::math::detail::entry
     }();
     template <grid_number N, insidable InB, insidable InE>
     using pow =
-      inside<{{pow_extreme<N, InB, InE, false>, pow_extreme<N, InB, InE, true>}, N}, engine::result_policy<InB>>;
+      id<key{grid{{pow_extreme<N, InB, InE, false>, pow_extreme<N, InB, InE, true>}, N}, engine::result_policy<InB>}>;
   } // namespace results
 
   // The tags (math/detail/functions.hpp): what every rounding function has in common, by arity;

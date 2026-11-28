@@ -6,6 +6,6 @@
 
 int main() {
     using namespace ins;
-    using deg = quantity<si::degree, inside<{{-80, 80}, per<2>}>>;
+    using deg = id<"[-80..80] 1/2 [deg]">;
     (void)math::tan<per<1000>>(deg{30, si::degree});
 }

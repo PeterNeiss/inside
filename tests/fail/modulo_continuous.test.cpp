@@ -7,8 +7,8 @@
 using namespace ins;
 
 int main() {
-    using ratio = inside<{{0, 8}, max_denominator{100}}>;
-    inside<{1, 4}> divisor{2};
+    using ratio = id<"[0..8] <100>">;
+    id<"[1..4]"> divisor{2};
     auto           rem = ratio{detail::rational{5, 2}} % divisor;
     (void)rem;
 }

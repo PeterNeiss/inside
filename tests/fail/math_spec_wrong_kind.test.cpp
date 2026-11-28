@@ -6,4 +6,4 @@
 
 using namespace ins;
 
-int main() { (void)math::exp<2>(inside<{{1, 16}, per<64>}>{2}); }
+int main() { (void)math::exp<2>(id<"[1..16] 1/64">{2}); }

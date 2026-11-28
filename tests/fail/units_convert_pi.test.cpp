@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    quantity<si::radian, inside<{0, 10}>> q = just<1> * si::degree;
+    id<"[0..10] [rad]"> q = just<1> * si::degree;
     (void)q;
 }

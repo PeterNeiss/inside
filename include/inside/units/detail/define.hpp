@@ -18,10 +18,10 @@
 //   inline constexpr auto fathom  = unit<"ftm", 1.8288_ins * si::metre>;
 //   inline constexpr auto depth   = kind<"depth", isq::length>;
 //   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin,
-//                                        {.ascii = "R", .origin = si::absolute_zero}>;
+//                                        {.ascii = "`R", .origin = si::absolute_zero}>;
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
 //   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
-//   inline constexpr auto ice     = origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>;
+//   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>;
 //   inline constexpr auto e1      = basis_vector<"e₁", geometric<+1>>;
 //
 // The name is a template argument and the definition a static member of a class template,
@@ -87,7 +87,7 @@ namespace ins
     : origin_def{name, dimension_of(std::remove_cvref_t<decltype(p.quantity_from_origin())>::unit)}
   {
     using Q = std::remove_cvref_t<decltype(p.quantity_from_origin())>;
-    static_assert(static_cast<bool>(P::origin), "units: an origin at o + q - the point counts from an origin");
+    static_assert(detail::has(P::origin), "units: an origin at o + q - the point counts from an origin");
     static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
                   "units: an origin lies at a constant point - si::absolute_zero + 273.15_ins * si::kelvin");
     static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
@@ -133,7 +133,7 @@ namespace ins
 
   // origin<"name", where>: where points count from.
   // An absolute origin is named by a kind or a dimension; any other lies at a point of one:
-  // origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>.
+  // origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>.
   template <symbol_text Name, auto Def>
   inline constexpr auto origin = detail::origin_tag<origin_holder<Name, Def>::value>;
 
@@ -165,18 +165,18 @@ namespace ins
   inline constexpr auto pi = detail::mag_pi * one;
   // A quantity times or over pi: the same number, in a unit scaled by π (pi * (2 * si::second) is 2 [π s]);
   // value_cast rounds it once.
-  template <reference R, class V>
-  [[nodiscard]] constexpr auto operator*(decltype(pi), const quantity<R, V>& q)
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator*(decltype(pi), const QR& q)
   {
     return detail::mag_pi * q;
   }
-  template <reference R, class V>
-  [[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, decltype(pi))
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator*(const QR& q, decltype(pi))
   {
     return q * detail::mag_pi;
   }
-  template <reference R, class V>
-  [[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, decltype(pi))
+  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  [[nodiscard]] constexpr auto operator/(const QR& q, decltype(pi))
   {
     return q / detail::mag_pi;
   }

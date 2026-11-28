@@ -43,7 +43,7 @@ int main()
 {
   // 1. Factorials: on [0, 20] the result's grid is [0!, 20!],
   // so a uint64_t is proven enough before anything runs.
-  const auto n{read<inside<{0, 20}>>(20)};
+  const auto n{read<id<"[0..20]">>(20)};
   if (!n)
     return 1;
   const auto f{math::factorial(*n)};
@@ -53,7 +53,7 @@ int main()
   if (to_string(f) != "2432902008176640000")
     return 1;
 
-  const auto n100{read<inside<{0, 100}>>(100)}; // on [0, 100] the same call returns a 525-bit integer
+  const auto n100{read<id<"[0..100]">>(100)}; // on [0, 100] the same call returns a 525-bit integer
   if (!n100)
     return 1;
   const auto f100{math::factorial(*n100)};
@@ -63,7 +63,7 @@ int main()
 
   // 2. Binomials: on [0, 60] the deduced type ends exactly at C(60, 30);
   // Pascal's identity holds everywhere.
-  using small_count = inside<{0, 60}>;
+  using small_count = id<"[0..60]">;
   static_assert(upper_of<decltype(math::binomial(small_count{}, small_count{}))> == 118'264'581'564'861'424);
   for (int a = 1; a <= 60; ++a)
     for (int b = 1; b < a; ++b) // the loop bounds keep a and b in [0, 60]: unsafe states that precondition
@@ -78,7 +78,7 @@ int main()
   const auto tickets{math::binomial(*n49, *k6)};
   std::cout << "C(49, 6)    " << tickets << "\n";
 
-  using large_count = inside<{0, 1000}>;
+  using large_count = id<"[0..1000]">;
   const auto n1000{read<large_count>(1000)}, k500{read<large_count>(500)};
   if (!n1000 || !k500)
     return 1;
@@ -90,7 +90,7 @@ int main()
   // 3. Arrangements: a podium of 3 from 8 runners, P(8, 3);
   // 3 scoops from 5 flavours with repeats, C(7, 3);
   // the letters of MISSISSIPPI, 11! / (1!·4!·4!·2!).
-  using runner_count = inside<{0, 8}>;
+  using runner_count = id<"[0..8]">;
   const auto runners{read<runner_count>(8)}, places{read<runner_count>(3)};
   if (!runners || !places)
     return 1;
@@ -129,8 +129,8 @@ int main()
 
   // 5. gcd and lcm, of quantities in their common unit: buses every 12 and 18 min meet again after their lcm;
   // a 42 cm × 56 cm board cuts into squares of side gcd.
-  using minutes     = quantity<si::minute, inside<{1, 60 }>>;
-  using centimetres = quantity<cm, inside<{1, 100}>>;
+  using minutes     = id<"[1..60] [min]">;
+  using centimetres = id<"[1..100] [cm]">;
   const auto every12{read<minutes>(12, si::minute)}, every18{read<minutes>(18, si::minute)};
   const auto w42    {read<centimetres>(42, cm)},     h56    {read<centimetres>(56, cm)};
   if (!every12 || !every18 || !w42 || !h56)

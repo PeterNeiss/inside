@@ -37,8 +37,8 @@ using namespace ins::detail;
 
 // conversion between bounds with compatible grids
 TEST(InsideAssignTest, conversion_between_bounds_with_compatible_grids) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     f30t40 smaller{34};
     f20t50 bigger;
 
@@ -51,8 +51,8 @@ TEST(InsideAssignTest, conversion_between_bounds_with_compatible_grids) {
 
 // rounding requires opt-in / with<round_toward_zero>() rounds (truncates toward zero on positive)
 TEST(InsideAssignTest, rounding_requires_opt_in__round_toward_zero_truncates_a_positive_value) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
@@ -67,8 +67,8 @@ TEST(InsideAssignTest, rounding_requires_opt_in__round_toward_zero_truncates_a_p
 
 // rounding requires opt-in / with<round_toward_zero>() is the alias
 TEST(InsideAssignTest, rounding_requires_opt_in__a_value_on_the_grid_stores_exactly) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
@@ -84,14 +84,14 @@ TEST(InsideAssignTest, rounding_requires_opt_in__a_value_on_the_grid_stores_exac
 
 // rounding requires opt-in / with<round_half_away>() rounds half up to grid
 TEST(InsideAssignTest, rounding_requires_opt_in__round_half_away_rounds_a_tie_up) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
     {
         SCOPED_TRACE("with<round_half_away>() rounds half up to grid");
-        using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;
+        using celsius = id<"[-40..60] 0.5 round_half_away">;
         celsius room  = 21.4;
         ASSERT_EQ(room, 21.5_r);
 
@@ -101,7 +101,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__round_half_away_rounds_a_tie_up
         celsius truncated = 21.2;
         ASSERT_EQ(truncated, 21);
 
-        using half = inside<{{0, 10}, 0.5}>;
+        using half = id<"[0..10] 0.5">;
         half h;
         h.with<round_half_away>() = 3.3;
         ASSERT_EQ(h, 3.5_r);
@@ -113,15 +113,15 @@ TEST(InsideAssignTest, rounding_requires_opt_in__round_half_away_rounds_a_tie_up
 
 // rounding requires opt-in / type-level round_toward_zero
 TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_toward_zero) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
     {
         SCOPED_TRACE("type-level round_toward_zero");
-        using n2_round = inside<{{0, 10}, 2}, round_toward_zero>;
-        using n1       = inside<{{0, 10}, 1}>;
+        using n2_round = id<"[0..10] 2 round_toward_zero">;
+        using n1       = id<"[0..10] 1">;
         n2_round c;
         c = n1{3};
         ASSERT_EQ(c, 2);
@@ -130,8 +130,8 @@ TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_toward_zero) {
 
 // rounding requires opt-in / type-level round_half_away
 TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_half_away) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
@@ -140,8 +140,8 @@ TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_half_away) {
         // Same cross-grid, off-notch assignment as `type-level round_toward_zero`, but the
         // coarse grid rounds to the nearest slot instead of truncating toward zero
         // (the `num * num` finer→coarser case). Grid points are 0,4,8,12,16,20.
-        using n4_round = inside<{{0, 20}, 4}, round_half_away>;
-        using n1       = inside<{{0, 20}, 1}>;
+        using n4_round = id<"[0..20] 4 round_half_away">;
+        using n1       = id<"[0..20] 1">;
         n4_round c;
 
         c = n1{3};
@@ -164,15 +164,15 @@ TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_half_away) {
 
 // rounding requires opt-in / compatible notches require no opt-in
 TEST(InsideAssignTest, rounding_requires_opt_in__compatible_notches_require_no_opt_in) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
     {
         SCOPED_TRACE("compatible notches require no opt-in");
-        using n1 = inside<{{0, 10}, 1}>;
-        using n2 = inside<{{0, 10}, 2}>;
+        using n1 = id<"[0..10] 1">;
+        using n2 = id<"[0..10] 2">;
         n1 a;
         a = n2{6};
         ASSERT_EQ(a, 6);
@@ -181,15 +181,15 @@ TEST(InsideAssignTest, rounding_requires_opt_in__compatible_notches_require_no_o
 
 // rounding requires opt-in / wide compatible interval needs no opt-in
 TEST(InsideAssignTest, rounding_requires_opt_in__wide_compatible_interval_needs_no_opt_in) {
-    using f30t40 = inside<{{30, 40}, 2}>;
-    using f20t50 = inside<{interval{20, 50}, 1}>;
+    using f30t40 = id<"[30..40] 2">;
+    using f20t50 = id<"[20..50] 1">;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
     {
         SCOPED_TRACE("a wider compatible interval stores through a channel");
-        using n2   = inside<{{0, 10}, 2}>;
-        using wide = inside<{{0, 20}, 2}>;
+        using n2   = id<"[0..10] 2">;
+        using wide = id<"[0..20] 2">;
         static_assert(!test::can_store<n2, wide>);
         n2 b;
         b = test::store<n2>(wide{6});
@@ -199,7 +199,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__wide_compatible_interval_needs_
 
 // with<clamp> / with<wrap> per-operation
 TEST(InsideAssignTest, with_clamp_with_wrap_per_operation) {
-    using u100 = inside<{0, 100}>;
+    using u100 = id<"[0..100]">;
     u100 x{50};
 
     x.with<clamp>() = 150;
@@ -211,8 +211,8 @@ TEST(InsideAssignTest, with_clamp_with_wrap_per_operation) {
 
 // clamp during insidable assignment
 TEST(InsideAssignTest, clamp_during_insidable_assignment) {
-    using wide   = inside<{0, 200}>;
-    using narrow = inside<{0, 100}, clamp>;
+    using wide   = id<"[0..200]">;
+    using narrow = id<"[0..100] clamp">;
     wide   w{150};
     narrow n{0};
     n = w;
@@ -222,15 +222,15 @@ TEST(InsideAssignTest, clamp_during_insidable_assignment) {
 // unsafe relaxes domain and round checks
 TEST(InsideAssignTest, unsafe_relaxes_domain_and_round_checks) {
     // Notch-incompatible assignment compiles under unsafe.
-    using src = inside<{{0, 100}, 2}, unsafe>;
-    using dst = inside<{{0, 100}, 1}, unsafe>;
+    using src = id<"[0..100] 2 unsafe">;
+    using dst = id<"[0..100] 1 unsafe">;
     src s{50};
     dst d{0};
     d = s;
     ASSERT_EQ(d, 50);
 
     // Native int division path engages
-    using u100u = inside<{0, 100}, unsafe>;
+    using u100u = id<"[0..100] unsafe">;
     u100u a{51}, b{8};
     auto  q = div(a, b, unsafe);
     static_assert(!(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>));
@@ -258,15 +258,15 @@ TEST(InsideAssignTest, disjoint_interval_assignment_is_allowed_under_wrap_clamp)
     // An inside whose interval is wholly outside the target is rejected for strict
     // policies but allowed under wrap/clamp (they bring any value into range —
     // matching the integral-RHS path, whose unbounded interval always overlaps).
-    using src = inside<{25, 34}>;
-    static_assert(inside_assignable<inside<{0, 9}, wrap>, src>);
-    static_assert(inside_assignable<inside<{0, 9}, clamp>, src>);
-    static_assert(!(inside_assignable<inside<{0, 9}>, src>)); // checked: rejected
+    using src = id<"[25..34]">;
+    static_assert(inside_assignable<id<"[0..9] wrap">, src>);
+    static_assert(inside_assignable<id<"[0..9] clamp">, src>);
+    static_assert(!(inside_assignable<id<"[0..9]">, src>)); // checked: rejected
 
-    inside<{0, 9}, wrap> w{0};
+    id<"[0..9] wrap"> w{0};
     w = src{27};
     ASSERT_EQ(w, 7); // 27 mod 10
-    inside<{0, 9}, clamp> c{0};
+    id<"[0..9] clamp"> c{0};
     c = src{27};
     ASSERT_EQ(c, 9); // clamped to upper
 }
@@ -275,20 +275,20 @@ TEST(InsideAssignTest, disjoint_interval_assignment_is_allowed_under_wrap_clamp)
 // stores the default value (0, else Lower), so none is trivially
 // default-constructible.
 TEST(InsideAssignTest, trivial_copy_guarantees) {
-    static_assert(std::is_trivially_copyable_v<inside<{0, 0}, unsafe>>);
-    static_assert(std::is_trivially_copyable_v<inside<{0, 100}>>);
-    static_assert(std::is_trivially_copyable_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
-    static_assert(std::is_trivially_copyable_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe>>);
-    static_assert(std::is_trivially_destructible_v<inside<{0, 100}>>);
-    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}>>);
-    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}, unsafe>>);
+    static_assert(std::is_trivially_copyable_v<id<"[0..0] unsafe">>);
+    static_assert(std::is_trivially_copyable_v<id<"[0..100]">>);
+    static_assert(std::is_trivially_copyable_v<id<key{grid{{0, 10}, rational{1u, 2}}, unsafe}>>);
+    static_assert(std::is_trivially_copyable_v<id<"[-10..10] <1000> unsafe">>);
+    static_assert(std::is_trivially_destructible_v<id<"[0..100]">>);
+    static_assert(!std::is_trivially_default_constructible_v<id<"[0..100]">>);
+    static_assert(!std::is_trivially_default_constructible_v<id<"[0..100] unsafe">>);
 }
 
 // type-alias smoke checks
 TEST(InsideAssignTest, type_alias_smoke_checks) {
-    using test0_t = inside<{{1, 3}, 1}>;
-    using test4_t = inside<{{0u, std::numeric_limits<std::uint64_t>::max()}, 1}>;
-    using test5_t = inside<{1_r}>;
+    using test0_t = id<"[1..3] 1">;
+    using test4_t = id<key{grid{{0u, std::numeric_limits<std::uint64_t>::max()}, 1}}>;
+    using test5_t = id<"[1]">;
     static_assert(std::is_same_v<test0_t::raw_type, std::uint8_t>);
     static_assert(std::is_same_v<test4_t::raw_type, std::uint64_t>);
     static_assert(std::is_same_v<test5_t::raw_type, detail::point_slot>); // a point stores nothing
@@ -298,7 +298,7 @@ TEST(InsideAssignTest, type_alias_smoke_checks) {
 TEST(InsideAssignTest, integer_rhs_into_non_integer_interval_inside) {
     // Lower/Upper are non-integer: integer-interval fast path is skipped,
     // exercising the rational-aware out-of-range branch in handle_out_of_range.
-    using halfgrid = inside<{{0.5_r, 5.5_r}, 0.5_r}, clamp>;
+    using halfgrid = id<"[0.5..5.5] 0.5 clamp">;
 
     halfgrid over{100}; // out of range, clamps to 5.5
     ASSERT_EQ(over, 5.5_r);
@@ -312,7 +312,7 @@ TEST(InsideAssignTest, integer_rhs_into_non_integer_interval_inside) {
 
 // checked policy reports a float out of range
 TEST(InsideAssignTest, checked_policy_reports_a_float_out_of_range) {
-    using c10 = inside<{0, 10}, checked>;
+    using c10 = id<"[0..10]">;
     ASSERT_EQ(test::store_error<c10>(test::at_run_time(100.0)), error::overflow);
     ASSERT_EQ(test::store_error<c10>(test::at_run_time(-1.0)), error::overflow);
 
@@ -322,7 +322,7 @@ TEST(InsideAssignTest, checked_policy_reports_a_float_out_of_range) {
 
 // checked policy reports a rounding error
 TEST(InsideAssignTest, checked_policy_reports_a_rounding_error) {
-    using coarse = inside<{{0, 10}, 2}, checked>;
+    using coarse = id<"[0..10] 2">;
     coarse c;
 
     // 3.0 doesn't land on notch 2 — checks_rounding fires
@@ -339,7 +339,7 @@ TEST(InsideAssignTest, checked_policy_reports_a_rounding_error) {
 
 // round_toward_zero truncates an off-notch double at run time
 TEST(InsideAssignTest, round_toward_zero_truncates_an_off_notch_double) {
-    using coarse = inside<{{0, 10}, 2}, round_toward_zero>;
+    using coarse = id<"[0..10] 2 round_toward_zero">;
     coarse c;
     c = 3.0;
     ASSERT_EQ(c, 2); // truncates toward zero
@@ -350,8 +350,8 @@ TEST(InsideAssignTest, round_toward_zero_truncates_an_off_notch_double) {
 
 // checked inside-to-inside out-of-range throws
 TEST(InsideAssignTest, checked_inside_to_inside_out_of_range_throws) {
-    using src = inside<{0, 100}>;
-    using dst = inside<{0, 50}, checked>;
+    using src = id<"[0..100]">;
+    using dst = id<"[0..50]">;
     src s{75};
     static_assert(!std::is_constructible_v<dst, src>); // may not fit: a channel
     ASSERT_EQ(test::store_error<dst>(s), error::overflow);
@@ -362,15 +362,15 @@ TEST(InsideAssignTest, non_integer_mapping_inside_to_inside_clamp_domain_fail) {
     // Source has notch 1 to a destination with notch 1/3 — Factor=3, integer.
     // To force the non-integer-mapping path we use a fractional-notch source
     // with a destination that doesn't cleanly align: notch 1/2 -> notch 1/3.
-    using src = inside<{{0, 5}, rational{1u, 2}}, round_toward_zero>;
-    using dst = inside<{{0, 5}, rational{1u, 3}}, round_toward_zero | clamp>;
+    using src = id<key{grid{{0, 5}, rational{1u, 2}}, round_toward_zero}>;
+    using dst = id<key{grid{{0, 5}, rational{1u, 3}}, round_toward_zero | clamp}>;
 
     src s{4}; // value 4 -> dst aligns
     dst d{s};
     ASSERT_EQ(d, 4);
 
     // src[0,5] dst[0,4] — value 5 in src is out of dst, exercises clamp path
-    using dst2 = inside<{{0, 4}, rational{1u, 3}}, round_toward_zero | clamp>;
+    using dst2 = id<key{grid{{0, 4}, rational{1u, 3}}, round_toward_zero | clamp}>;
     src  s2{5};
     dst2 d2{s2};
     ASSERT_EQ(d2, 4);
@@ -382,8 +382,8 @@ TEST(InsideAssignTest, wrap_on_fractional_notch_grids_insidable_rhs) {
     using namespace ins::formats;
     // {0,1} notch 1/4 — integer interval but fractional notch. Wrap period is
     // (Upper - Lower) + Notch = 1.25; slots {0, .25, .5, .75, 1.0}.
-    using dst = inside<{{0, 1}, per<4>}, wrap | round_half_away>;
-    using src = inside<{{-2, 2}, per<4>}, round_half_away>;
+    using dst = id<"[0..1] 1/4 wrap|round_half_away">;
+    using src = id<"[-2..2] 1/4 round_half_away">;
 
     ASSERT_EQ((rational{dst{src{rational{5, 4}}}}), rational{0});       // 1.25 -> 0
     ASSERT_EQ((rational{dst{src{rational{6, 4}}}}), (rational{1, 4}));  // 1.50 -> 0.25
@@ -392,13 +392,13 @@ TEST(InsideAssignTest, wrap_on_fractional_notch_grids_insidable_rhs) {
     ASSERT_EQ((rational{dst{src{rational{-2, 4}}}}), (rational{3, 4})); // -0.50 -> 0.75
 
     // Non-integer interval, notch 1/2: {1/2, 5/2} period = 2 + 1/2 = 2.5.
-    using dst2 = inside<{{rational{1, 2}, rational{5, 2}}, per<2>}, wrap | round_half_away>;
-    using src2 = inside<{{-4, 4}, per<2>}, round_half_away>;
+    using dst2 = id<"[1/2..5/2] 1/2 wrap|round_half_away">;
+    using src2 = id<"[-4..4] 1/2 round_half_away">;
     ASSERT_EQ(rational{dst2{src2{rational{3}}}}, (rational{1, 2})); // 3.0 -> 0.5
 
     // Unit-integer grid still uses the fast path and wraps as before.
-    using deg  = inside<{0, 359}, wrap>;
-    using wide = inside<{-720, 720}>;
+    using deg  = id<"[0..359] wrap">;
+    using wide = id<"[-720..720]">;
     ASSERT_EQ(deg{wide{370}}, 10);
     ASSERT_EQ(deg{wide{-10}}, 350);
 }
@@ -406,9 +406,9 @@ TEST(InsideAssignTest, wrap_on_fractional_notch_grids_insidable_rhs) {
 // A continuous source (an exact quotient) between the target's notches is a
 // rounding_error under checked, and rounds under a rounding policy.
 TEST(InsideAssignTest, continuous_source_off_the_lattice_is_checked) {
-    using any        = inside<{0, 100}>;
-    using strict     = inside<{{-1, 1}, per<1000>}>;
-    using near       = inside<{{-1, 1}, per<1000>}, round_half_away>;
+    using any        = id<"[0..100]">;
+    using strict     = id<"[-1..1] 1/1000">;
+    using near       = id<"[-1..1] 1/1000 round_half_away">;
     const auto third = (any{1} / any{3}).value();
     EXPECT_EQ(test::store_error<strict>(third), error::rounding_error);
     strict s{0};
@@ -426,10 +426,10 @@ TEST(InsideAssignTest, continuous_source_off_the_lattice_is_checked) {
 TEST(InsideAssignTest, mixed_sign_integers_compare_by_value) {
     constexpr std::uint64_t big        = std::numeric_limits<std::uint64_t>::max();
     constexpr std::uint64_t past_int64 = std::uint64_t{1} << 63;
-    using neg                          = inside<{-10, 10}>;
+    using neg                          = id<"[-10..10]">;
     EXPECT_EQ(test::store_error<neg>(big), error::overflow);
     EXPECT_EQ(test::store_error<neg>(past_int64), error::overflow);
-    inside<{-10, 10}, clamp> c{std::uint64_t{3}};
+    id<"[-10..10] clamp"> c{std::uint64_t{3}};
     c = big;
     EXPECT_EQ(c, 10);
     c = past_int64;
@@ -463,24 +463,24 @@ using namespace ins::detail;
 
 // out of range → overflow
 TEST(TryMakeTest, out_of_range_is_overflow) {
-    auto r = inside<{0, 100}>::try_make(150);
+    auto r = id<"[0..100]">::try_make(150);
     ASSERT_FALSE(r.has_value());
     EXPECT_EQ(r.error(), error::overflow);
 }
 
 // in range → the value
 TEST(TryMakeTest, in_range_yields_the_value) {
-    auto r = inside<{0, 100}>::try_make(42);
+    auto r = id<"[0..100]">::try_make(42);
     ASSERT_TRUE(r.has_value());
     EXPECT_TRUE(static_cast<rational>(*r) == 42);
 }
 
 // clamp / wrap bring the value in: no error
 TEST(TryMakeTest, clamp_and_wrap_are_not_errors) {
-    auto c = inside<{0, 100}, clamp>::try_make(150);
+    auto c = id<"[0..100] clamp">::try_make(150);
     ASSERT_TRUE(c.has_value());
     EXPECT_TRUE(static_cast<rational>(*c) == 100);
-    auto w = inside<{0, 9}, wrap>::try_make(13);
+    auto w = id<"[0..9] wrap">::try_make(13);
     ASSERT_TRUE(w.has_value());
     EXPECT_TRUE(static_cast<rational>(*w) == 3); // 13 mod 10
 }
@@ -488,15 +488,15 @@ TEST(TryMakeTest, clamp_and_wrap_are_not_errors) {
 // try_make reports what on_error(ec) assignment reports on the same input
 TEST(TryMakeTest, matches_per_op_policy_ec_on_the_same_input) {
     error            ec_op{};
-    inside<{0, 100}> via_op{0};
+    id<"[0..100]"> via_op{0};
     via_op.on_error(ec_op) = 200;
-    using pct              = inside<{0, 100}>;
+    using pct              = id<"[0..100]">;
     EXPECT_EQ(pct::try_make(200).error(), ec_op);
 }
 
 // a double source goes through the same store as the constructors
 TEST(TryMakeTest, double_source_reports_like_the_constructor) {
-    using F = inside<{{0, 1}, per<4>}, round_half_away>;
+    using F = id<"[0..1] 1/4 round_half_away">;
     EXPECT_EQ(F::try_make(1.2).error(), error::overflow); // rounds to 1.25: outside
     ASSERT_TRUE(F::try_make(1.1).has_value());            // rounds to 1.0
     EXPECT_EQ(rational{*F::try_make(1.1)}, rational{1});
@@ -504,9 +504,9 @@ TEST(TryMakeTest, double_source_reports_like_the_constructor) {
 
 // error values work in constant evaluation (error-code mode records, no abort)
 TEST(TryMakeTest, errors_are_values_at_compile_time) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     static_assert(pct::try_make(150).error() == error::overflow);
-    static_assert(inside<{{0, 10}, 2}>::try_make(3).error() == error::rounding_error);
+    static_assert(id<"[0..10] 2">::try_make(3).error() == error::rounding_error);
     static_assert(pct::try_make(42).has_value());
 }
 } // namespace try_make_tests
@@ -519,11 +519,11 @@ using namespace ins::detail;
 
 // numeric_limits handles signed and wrapping bounds
 TEST(CastsTest, numeric_limits_handles_signed_and_wrapping_bounds) {
-    using temp = inside<{-40, 60}>;
+    using temp = id<"[-40..60]">;
     static_assert(std::numeric_limits<temp>::is_signed);
     static_assert(std::numeric_limits<temp>::lowest() == temp{-40});
 
-    using ang = inside<{0, 359}, wrap>;
+    using ang = id<"[0..359] wrap">;
     static_assert(std::numeric_limits<ang>::is_modulo);
 }
 
@@ -532,7 +532,7 @@ TEST(CastsTest, numeric_limits_handles_signed_and_wrapping_bounds) {
 //---------------------------------------------------------------------------
 // hash specialization works with unordered_set
 TEST(CastsTest, hash_specialization_works_with_unordered_set) {
-    using idx = inside<{0, 9}>;
+    using idx = id<"[0..9]">;
     std::unordered_set<idx> s;
     s.insert(idx{3});
     s.insert(idx{7});
@@ -548,7 +548,7 @@ TEST(CastsTest, hash_specialization_works_with_unordered_set) {
 //---------------------------------------------------------------------------
 // conversion_overflows
 TEST(CastsTest, conversion_overflows) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
 
     static_assert(!(conversion_overflows<pct>(50)));
     static_assert(conversion_overflows<pct>(150));
@@ -559,7 +559,7 @@ TEST(CastsTest, conversion_overflows) {
 
 // conversion_rounds detects non-notch values
 TEST(CastsTest, conversion_rounds_detects_non_notch_values) {
-    using coarse = inside<{{0, 10}, 2}>; // notch 2
+    using coarse = id<"[0..10] 2">; // notch 2
 
     static_assert(!(conversion_rounds<coarse>(0)));
     static_assert(!(conversion_rounds<coarse>(4)));
@@ -572,7 +572,7 @@ TEST(CastsTest, conversion_rounds_detects_non_notch_values) {
 //---------------------------------------------------------------------------
 // the clamp constructor clamps to boundary
 TEST(CastsTest, clamp_cast_clamps_to_boundary) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
 
     ASSERT_TRUE((pct{150, clamp} == pct{100}));
     ASSERT_TRUE((pct{-5, clamp} == pct{0}));
@@ -581,17 +581,17 @@ TEST(CastsTest, clamp_cast_clamps_to_boundary) {
 
 // exact_cast reports a value out of range (an expected: an int may not fit)
 TEST(CastsTest, exact_cast_reports_out_of_range) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
 
     static_assert(*exact_cast<pct>(42) == pct{42});
     ASSERT_EQ(exact_cast<pct>(test::at_run_time(150)).error(), error::overflow);
     ASSERT_EQ(exact_cast<pct>(test::at_run_time(-1)).error(), error::overflow);
-    static_assert(std::is_same_v<decltype(exact_cast<pct>(inside<{0, 50}>{})), pct>); // proven: plain
+    static_assert(std::is_same_v<decltype(exact_cast<pct>(id<"[0..50]">{})), pct>); // proven: plain
 }
 
 // exact_cast reports a value off the notch
 TEST(CastsTest, exact_cast_reports_truncation) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
 
     static_assert(*exact_cast<coarse>(4) == coarse{4});
     ASSERT_EQ(exact_cast<coarse>(test::at_run_time(3)).error(), error::rounding_error);
@@ -599,7 +599,7 @@ TEST(CastsTest, exact_cast_reports_truncation) {
 
 // the unsafe constructor bypasses runtime checks
 TEST(CastsTest, unexact_cast_bypasses_runtime_checks) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
 
     // In-range value: same result as exact_cast.
     static_assert(pct{42, unsafe} == pct{42});
@@ -614,7 +614,7 @@ TEST(CastsTest, unexact_cast_bypasses_runtime_checks) {
 // rounding-policy-agnostic — see assignment.hpp:store(integral).
 // with<round_floor> rounds toward -inf for double rhs
 TEST(CastsTest, policy_round_floor_rounds_a_double_down) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     coarse c{0};
 
     c.with<round_floor>() = 3.0;
@@ -629,7 +629,7 @@ TEST(CastsTest, policy_round_floor_rounds_a_double_down) {
 
 // with<round_ceil> rounds toward +inf for double rhs
 TEST(CastsTest, policy_round_ceil_rounds_a_double_up) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     coarse c{0};
 
     c.with<round_ceil>() = 3.0;
@@ -644,7 +644,7 @@ TEST(CastsTest, policy_round_ceil_rounds_a_double_up) {
 
 // with<round_half_even> applies banker's rounding
 TEST(CastsTest, policy_round_half_even_rounds_a_tie_to_even) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     coarse c{0};
 
     // 1.0 is the half-way point between notch 0 and notch 2 → even wins (0).
@@ -669,7 +669,7 @@ TEST(CastsTest, policy_round_half_even_rounds_a_tie_to_even) {
 //---------------------------------------------------------------------------
 // the clamp constructor with a rounding mode compose clamp + round
 TEST(CastsTest, clamp_cast_with_rounding_compose_clamp_plus_round) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
 
     // In-range, off-notch: round per mode.
     ASSERT_TRUE((coarse{3.0, clamp | round_floor} == coarse{2}));
@@ -691,7 +691,7 @@ TEST(CastsTest, clamp_cast_with_rounding_compose_clamp_plus_round) {
 //---------------------------------------------------------------------------
 // the clamp constructor with a rounding mode accept an inside source
 TEST(CastsTest, clamp_cast_with_rounding_accept_an_inside_source) {
-    using small = inside<{{0, 10}, per<10>}, clamp>; // 1/10 grid
+    using small = id<"[0..10] 1/10 clamp">;          // 1/10 grid
     small a     = 2.5;                               // exact on the 1/10 grid
     auto  sq    = a * a;                             // exact 6.25 on the 1/100 grid
 
@@ -747,7 +747,7 @@ long long wrap_ref(long long v, long long lo, long long hi) {
 
 // wrap reduces extreme integers with no signed overflow
 TEST(WrapOverflowTest, wrap_reduces_extreme_integers_with_no_signed_overflow) {
-    using W                = inside<{-5000000000LL, 5000000000LL}, wrap>; // span 1e10 > would-be int32
+    using W                = id<"[-5000000000..5000000000] wrap">; // span 1e10 > would-be int32
     constexpr long long lo = -5000000000LL, hi = 5000000000LL;
 
     for (long long v : {hi + 1,
@@ -771,7 +771,7 @@ TEST(WrapOverflowTest, wrap_reduces_extreme_integers_with_no_signed_overflow) {
 // wrap on a grid spanning more than int64
 TEST(WrapOverflowTest, wrap_on_a_grid_spanning_more_than_int64) {
     // Unsigned-storage grid whose span exceeds INT64_MAX.
-    using Big                       = inside<{0, 12000000000000000000ULL}, wrap>; // span ~1.2e19 > int64
+    using Big                       = id<"[0..12000000000000000000] wrap">; // span ~1.2e19 > int64
     constexpr unsigned long long hi = 12000000000000000000ULL;
 
     // A value above the top wraps to near the bottom; one below 0 wraps to the top.
@@ -789,7 +789,7 @@ TEST(WrapOverflowTest, wrap_is_identity_on_a_grid_spanning_the_whole_u64_range) 
     // Identity is a raw round-trip: lower is 0, so the stored raw is exactly the
     // input reinterpreted as u64 (a negative input keeps its two's-complement bits
     // — it is not reducible, since the whole u64 range is in-grid).
-    using All = inside<{0, 18446744073709551615ULL}, wrap>;
+    using All = id<"[0..18446744073709551615] wrap">;
     static_assert(std::is_same_v<All::raw_type, std::uint64_t>);
     for (long long v :
          {0LL, 123456789LL, -1LL, std::numeric_limits<long long>::max(), std::numeric_limits<long long>::min()}) {
@@ -801,7 +801,7 @@ TEST(WrapOverflowTest, wrap_is_identity_on_a_grid_spanning_the_whole_u64_range) 
 
 // wrap still correct on a small symmetric grid
 TEST(WrapOverflowTest, wrap_still_correct_on_a_small_symmetric_grid) {
-    using S = inside<{-3, 3}, wrap>;                     // range 7
+    using S = id<"[-3..3] wrap">;                        // range 7
     ASSERT_TRUE(static_cast<rational>(S{0} = 4) == -3);  // 4  -> -3
     ASSERT_TRUE(static_cast<rational>(S{0} = -4) == 3);  // -4 ->  3
     ASSERT_TRUE(static_cast<rational>(S{0} = 10) == 3);  // 10 ->  3
@@ -828,7 +828,7 @@ using namespace ins::detail;
 
 // round_half_away assignment is half-away-from-zero on negatives
 TEST(RoundNegativeTiesTest, round_half_away_assignment_is_half_away_from_zero_on_negatives) {
-    using N = inside<{-100, 100}, round_half_away>;
+    using N = id<"[-100..100] round_half_away">;
     ASSERT_TRUE((static_cast<rational>(N(rational{5, 2})) == 3));   //  2.5 ->  3
     ASSERT_TRUE((static_cast<rational>(N(rational{-5, 2})) == -3)); // -2.5 -> -3 (was -2)
     ASSERT_TRUE((static_cast<rational>(N(rational{3, 2})) == 2));   //  1.5 ->  2
@@ -839,8 +839,8 @@ TEST(RoundNegativeTiesTest, round_half_away_assignment_is_half_away_from_zero_on
 // assignment rounding agrees with division on the same value
 TEST(RoundNegativeTiesTest, assignment_rounding_agrees_with_division_on_the_same_value) {
     // -5/2 == -2.5 ; assigning -2.5 and dividing to -2.5 must store the same point.
-    using N  = inside<{-100, 100}, round_half_away>;
-    using Nd = inside<{1, 10}, round_half_away>;
+    using N  = id<"[-100..100] round_half_away">;
+    using Nd = id<"[1..10] round_half_away">;
     ASSERT_TRUE((static_cast<rational>(test::rdiv(N{-5}, Nd{2})) == static_cast<rational>(N(rational{-5, 2}))));
     ASSERT_TRUE((static_cast<rational>(test::rdiv(N{-7}, Nd{2})) == static_cast<rational>(N(rational{-7, 2}))));
     ASSERT_TRUE((static_cast<rational>(test::rdiv(N{7}, Nd{2})) == static_cast<rational>(N(rational{7, 2}))));
@@ -848,8 +848,8 @@ TEST(RoundNegativeTiesTest, assignment_rounding_agrees_with_division_on_the_same
 
 // round_half_even assignment ties to even VALUE regardless of Lower parity
 TEST(RoundNegativeTiesTest, round_half_even_assignment_ties_to_even_value_regardless_of_lower_parity) {
-    using He = inside<{-10, 10}, round_half_even>; // Lower even
-    using Ho = inside<{-9, 9}, round_half_even>;   // Lower odd
+    using He = id<"[-10..10] round_half_even">;    // Lower even
+    using Ho = id<"[-9..9] round_half_even">;      // Lower odd
     // -2.5 -> -2 (even) in BOTH; the historical bug gave -3 for the odd-Lower grid.
     ASSERT_TRUE((static_cast<rational>(He(rational{-5, 2})) == -2));
     ASSERT_TRUE((static_cast<rational>(Ho(rational{-5, 2})) == -2));
@@ -862,7 +862,7 @@ TEST(RoundNegativeTiesTest, round_half_even_assignment_ties_to_even_value_regard
 
 // round_toward_zero truncates negative values toward zero
 TEST(RoundNegativeTiesTest, round_toward_zero_truncates_a_negative_value) {
-    using S = inside<{{-100, 100}, per<4>}, round_toward_zero>;
+    using S = id<"[-100..100] 1/4 round_toward_zero">;
     // 1/8-off values truncate toward zero (not toward -inf).
     ASSERT_TRUE((static_cast<rational>(S(rational{7, 8})) == rational{3, 4}));   //  0.875 ->  0.75
     ASSERT_TRUE((static_cast<rational>(S(rational{-7, 8})) == rational{-3, 4})); // -0.875 -> -0.75 (was -1)
@@ -871,8 +871,8 @@ TEST(RoundNegativeTiesTest, round_toward_zero_truncates_a_negative_value) {
 
 // round_floor / round_ceil assignment stay direction-correct
 TEST(RoundNegativeTiesTest, round_floor_round_ceil_assignment_stay_direction_correct) {
-    using F = inside<{-100, 100}, round_floor>;
-    using C = inside<{-100, 100}, round_ceil>;
+    using F = id<"[-100..100] round_floor">;
+    using C = id<"[-100..100] round_ceil">;
     ASSERT_TRUE((static_cast<rational>(F(rational{-3, 2})) == -2)); // floor(-1.5)
     ASSERT_TRUE((static_cast<rational>(F(rational{3, 2})) == 1));   // floor( 1.5)
     ASSERT_TRUE((static_cast<rational>(C(rational{-3, 2})) == -1)); // ceil(-1.5)
@@ -885,11 +885,11 @@ TEST(RoundNegativeTiesTest, round_floor_round_ceil_assignment_stay_direction_cor
 // the shared round_quotient so every mode rounds in value space.
 // cross-grid conversion rounds every mode in value space
 TEST(RoundNegativeTiesTest, cross_grid_conversion_rounds_every_mode_in_value_space) {
-    using Src = inside<{{-10, 10}, per<2>}>; // half-steps, spans negatives
-    using Dn  = inside<{-10, 10}, round_half_away>;
-    using Df  = inside<{-10, 10}, round_floor>;
-    using Dc  = inside<{-10, 10}, round_ceil>;
-    using De  = inside<{-10, 10}, round_half_even>;
+    using Src = id<"[-10..10] 1/2">; // half-steps, spans negatives
+    using Dn  = id<"[-10..10] round_half_away">;
+    using Df  = id<"[-10..10] round_floor">;
+    using Dc  = id<"[-10..10] round_ceil">;
+    using De  = id<"[-10..10] round_half_even">;
 
     Src s{rational{-5, 2}};                          // -2.5, on the source grid
     ASSERT_TRUE(static_cast<rational>(Dn{s}) == -3); // half away (was -2)
@@ -921,24 +921,24 @@ using namespace ins::detail;
 // (consistency.test.cpp, no_arithmetic_with_a_rational).
 // compound assignment: a sum the grids cannot prove to fit names its channel
 TEST(CompoundAssignTest, compound_assignment_names_its_channel) {
-    using u100 = inside<{0, 100}>;
+    using u100 = id<"[0..100]">;
     static_assert(!test::can_add<u100, decltype(1_ins)>);                    // 101 may not fit
     static_assert(requires(u100 b, error& ec) { b.on_error(ec) += 1_ins; }); // reported
-    static_assert(requires(inside<{0, 100}, clamp> b) { b += 1_ins; });      // clamped
-    static_assert(requires(u100 b) { b += inside<{0, 0}>{}; });              // proven
+    static_assert(requires(id<"[0..100] clamp"> b) { b += 1_ins; });         // clamped
+    static_assert(requires(u100 b) { b += id<"[0..0]">{}; });                // proven
 }
 
 // compound assignment: insidable RHS
 TEST(CompoundAssignTest, compound_assignment_insidable_rhs) {
-    using u100 = inside<{0, 100}, clamp>; // (the results stay in range)
+    using u100 = id<"[0..100] clamp">; // (the results stay in range)
     static_assert([] {
         u100 a{50}, d{20};
         a -= d;
         return a.to<std::int64_t>();
     }() == 30);
 
-    using ui     = inside<{0, 100}, clamp | round_toward_zero>;
-    using ui_pos = inside<{1, 100}>; // a divisor without 0
+    using ui     = id<"[0..100] clamp|round_toward_zero">;
+    using ui_pos = id<"[1..100]">; // a divisor without 0
     static_assert([] {
         ui d{50}, two{2};
         d *= two;
@@ -960,7 +960,7 @@ TEST(CompoundAssignTest, compound_assignment_insidable_rhs) {
 
 // compound /= and %= by a grid holding 0 name a channel for the zero
 TEST(CompoundAssignTest, compound_and_by_a_grid_holding_zero_report) {
-    using u100 = inside<{0, 100}, round_toward_zero>;
+    using u100 = id<"[0..100] round_toward_zero">;
     u100 a{50};
     static_assert(!test::can_div<u100, u100>);
     error ec{};
@@ -968,7 +968,7 @@ TEST(CompoundAssignTest, compound_and_by_a_grid_holding_zero_report) {
     ASSERT_EQ(ec, error::division_by_zero);
     ASSERT_EQ(a, 50);
 
-    using ui = inside<{0, 100}, round_toward_zero>;
+    using ui = id<"[0..100] round_toward_zero">;
     ui s{50};
     static_assert(!test::can_mod<ui, ui>);
     ec = error{};
@@ -978,7 +978,7 @@ TEST(CompoundAssignTest, compound_and_by_a_grid_holding_zero_report) {
 
 // compound assignment: constant RHS (a point inside)
 TEST(CompoundAssignTest, compound_assignment_constant_rhs) {
-    using rn = inside<{{0, 100}, per<100>}, clamp | round_half_away>; // (in range throughout)
+    using rn = id<"[0..100] 1/100 clamp|round_half_away">; // (in range throughout)
 
     rn a{0.5_r};
     a += 0.25_ins; // 0.50 + 0.25 = 0.75
@@ -996,7 +996,7 @@ TEST(CompoundAssignTest, compound_assignment_constant_rhs) {
 
 // compound assignment: fractional constant RHS
 TEST(CompoundAssignTest, compound_assignment_fractional_constant_rhs) {
-    using rn = inside<{{-100, 100}, per<16>}, clamp | round_half_away>; // (in range throughout)
+    using rn = id<"[-100..100] 1/16 clamp|round_half_away">; // (in range throughout)
 
     rn a{1.0}; // construction from a double is unchanged
     a += 2.5_ins;
@@ -1014,8 +1014,8 @@ TEST(CompoundAssignTest, compound_assignment_fractional_constant_rhs) {
 
 // increment / decrement
 TEST(CompoundAssignTest, increment_decrement) {
-    using u10 = inside<{0, 10}, clamp>; // (++ on a checked grid may step out: a channel)
-    static_assert(!test::can_step<inside<{0, 10}>>);
+    using u10 = id<"[0..10] clamp">; // (++ on a checked grid may step out: a channel)
+    static_assert(!test::can_step<id<"[0..10]">>);
     // The ++/-- happens inside each lambda body, fully sequenced before the lambda
     // returns; the `== N` compares the lambda's *result*, not a mutated operand.
     static_assert([] {
@@ -1063,7 +1063,7 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction) 
     // (clamp: a -= whose result the grids cannot prove names its range
     // handling; every value here stays in range.)
     // Q8.8 — index storage both sides, bias 0.
-    using q88 = inside<{{0, 255}, per<256>}, clamp | round_toward_zero>;
+    using q88 = id<"[0..255] 1/256 clamp|round_toward_zero">;
     for (int whole : {0, 1, 100, 255})
         for (int sub : {0, 1, 55, 100}) {
             if (whole - sub < 0)
@@ -1079,16 +1079,16 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction) 
     ASSERT_EQ(rational{frac_lhs}, rational{1});
 
     // offset index grid (negative Lower): bias = Lower/Notch = -8.
-    using off = inside<{{-2, 2}, per<4>}, clamp | round_toward_zero>;
+    using off = id<"[-2..2] 1/4 clamp|round_toward_zero">;
     off offset_lhs{rational{3, 4}};
     offset_lhs -= off{rational{-1, 2}}; // 3/4 − (−1/2) = 5/4
     ASSERT_EQ(rational{offset_lhs}, (rational{5, 4}));
 
     // mixed storages on the same unit notch: [1000,2000] stores an unsigned
     // index (Lower-relative raw), [-3000,3000] stores the value directly.
-    using hi   = inside<{1000, 2000}, clamp | round_toward_zero>;
-    using lo   = inside<{0, 500}, clamp | round_toward_zero>;
-    using wide = inside<{-3000, 3000}, clamp | round_toward_zero>;
+    using hi   = id<"[1000..2000] clamp|round_toward_zero">;
+    using lo   = id<"[0..500] clamp|round_toward_zero">;
+    using wide = id<"[-3000..3000] clamp|round_toward_zero">;
     hi index_lhs{1500}; // index-raw lhs, value-raw rhs
     index_lhs -= lo{300};
     ASSERT_EQ(rational{index_lhs}, rational{1200});
@@ -1099,17 +1099,17 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction) 
 
 // compound -=: policy tail at the raw edges
 TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges) {
-    using q_clamp = inside<{{0, 255}, per<256>}, clamp | round_toward_zero>;
+    using q_clamp = id<"[0..255] 1/256 clamp|round_toward_zero">;
     q_clamp c{1};
     c -= q_clamp{100}; // 1 − 100 < 0 -> clamps to Lower
     ASSERT_EQ(rational{c}, rational{0});
 
-    using q_wrap = inside<{{0, 3}, per<4>}, wrap | round_toward_zero>;
+    using q_wrap = id<"[0..3] 1/4 wrap|round_toward_zero">;
     q_wrap w{0};
     w -= q_wrap{rational{1, 4}}; // 0 − 1/4 wraps to Upper − ... = 3
     ASSERT_EQ(rational{w}, rational{3});
 
-    using q_checked = inside<{{0, 255}, per<256>}, checked>;
+    using q_checked = id<"[0..255] 1/256">;
     q_checked reported{1};
     static_assert(!test::can_sub<q_checked, q_checked>); // a checked -= names its channel
     error ec{};
@@ -1126,20 +1126,20 @@ TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges) {
 // compound -=: non-fast storages still route through += (-rhs)
 TEST(CompoundAssignTest, compound_non_fast_storages_still_route_through_plus_rhs) {
     // rational raw falls back and stays exact
-    using ex = inside<{{0, 4}, per<3>}, clamp | round_half_away>;
+    using ex = id<"[0..4] 1/3 clamp|round_half_away">;
     ex exact_lhs{rational{7, 3}};
     exact_lhs -= ex{rational{2, 3}};
     ASSERT_EQ(rational{exact_lhs}, (rational{5, 3}));
 
     // a signed dyadic grid
-    using rl = inside<{{-4, 4}, per<256>}, clamp | round_half_away>;
+    using rl = id<"[-4..4] 1/256 clamp|round_half_away">;
     rl dy_lhs{rational{3, 2}};
     dy_lhs -= rl{rational{1, 4}};
     ASSERT_EQ(rational{dy_lhs}, (rational{5, 4}));
 
     // cross-notch operands take the binary route
-    using tenths   = inside<{{0, 10}, per<10>}, clamp | round_half_away>;
-    using quarters = inside<{{0, 10}, per<4>}, round_half_away>;
+    using tenths   = id<"[0..10] 1/10 clamp|round_half_away">;
+    using quarters = id<"[0..10] 1/4 round_half_away">;
     tenths cross{rational{5, 2}};      // 2.5 on the 1/10 grid
     cross -= quarters{rational{1, 2}}; // 2.0 — exact on both grids
     ASSERT_EQ(rational{cross}, rational{2});
@@ -1157,16 +1157,16 @@ using namespace ins::detail;
 TEST(AssignmentTest, raw_map_into_a_full_int64_grid) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
-    using full                     = inside<{i64_min, i64_max}>;
+    using full                     = id<key{grid{i64_min, i64_max}}>;
     static_assert([] {
-        int64 a = inside<{0, 100}>{5};
-        full  b = inside<{0, 100}>{7};
-        full  c = inside<{i64_min, 0}>{i64_min};
+        int64 a = id<"[0..100]">{5};
+        full  b = id<"[0..100]">{7};
+        full  c = id<key{grid{i64_min, 0}}>{i64_min};
         return a == 5 && b == 7 && c == i64_min;
     }());
     static_assert([] {
-        inside<{-10, 10}, clamp> lo = full{i64_min};
-        inside<{-10, 10}, clamp> hi = full{i64_max};
+        id<"[-10..10] clamp"> lo = full{i64_min};
+        id<"[-10..10] clamp"> hi = full{i64_max};
         return lo == -10 && hi == 10;
     }());
 }
@@ -1176,7 +1176,7 @@ TEST(AssignmentTest, raw_map_into_a_full_int64_grid) {
 TEST(AssignmentTest, scalar_store_into_a_full_int64_grid) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
-    using full                     = inside<{i64_min, i64_max}>;
+    using full                     = id<key{grid{i64_min, i64_max}}>;
     static_assert([] {
         int64 a{2.0};
         int64 b{rational{-7}};
@@ -1192,33 +1192,33 @@ TEST(AssignmentTest, scalar_store_into_a_full_int64_grid) {
 // way to rational: ceil stored 0, a strict grid stored 0 without
 // rounding_error, and comparisons saw the truncated value.
 TEST(AssignmentTest, a_tiny_double_is_taken_exactly) {
-    using cent_ceil = inside<{{0, 1}, per<100>}, round_ceil>;
+    using cent_ceil = id<"[0..1] 1/100 round_ceil">;
     static_assert(cent_ceil{1e-20} == rational{1, 100});
-    static_assert(inside<{{0, 1}, per<100000>}, round_ceil>{1e-5} == rational{2, 100000}); // 1e-5 is above 10^-5
-    static_assert(inside<{{0, 1}, per<100>}, round_floor>{1e-20} == 0);
-    using cent = inside<{{0, 1}, per<100>}>;
+    static_assert(id<"[0..1] 1/100000 round_ceil">{1e-5} == rational{2, 100000}); // 1e-5 is above 10^-5
+    static_assert(id<"[0..1] 1/100 round_floor">{1e-20} == 0);
+    using cent = id<"[0..1] 1/100">;
     EXPECT_FALSE(cent::try_make(1e-20).has_value());
-    EXPECT_FALSE((inside<{{0, 1}, per<100>}, round_floor>::try_make(-1e-20).has_value())); // floors to -0.01
-    EXPECT_EQ((inside<{{0, 1}, per<100>}, round_ceil>{-1e-20}), 0);
-    EXPECT_FALSE((inside<grid{interval{0, 1}, max_denominator{1000}}>::try_make(1e-20).has_value())); // off the grid
-    constexpr inside<grid{interval{0, 1}, max_denominator{1000}}> zero{0};
+    EXPECT_FALSE((id<"[0..1] 1/100 round_floor">::try_make(-1e-20).has_value())); // floors to -0.01
+    EXPECT_EQ((id<"[0..1] 1/100 round_ceil">{-1e-20}), 0);
+    EXPECT_FALSE((id<"[0..1] <1000>">::try_make(1e-20).has_value())); // off the grid
+    constexpr id<"[0..1] <1000>"> zero{0};
     static_assert(zero < just<1e-20_g> && zero != just<1e-20_g>);
 }
 
 // A bounded continuous grid rounds an off-bound value onto its bound under
 // a rounding policy (0.1 as a double is not 1/10); strict still rejects.
 TEST(AssignmentTest, bounded_continuous_rounds_onto_the_bound) {
-    using N = inside<grid{interval{0, 1}, max_denominator{1000}}, round_half_away>;
+    using N = id<"[0..1] <1000> round_half_away">;
     static_assert(N{0.1} == rational{1, 10});
-    using F2 = inside<grid{interval{0, 1}, max_denominator{2}}, round_floor>;
-    using C2 = inside<grid{interval{0, 1}, max_denominator{2}}, round_ceil>;
+    using F2 = id<"[0..1] <2> round_floor">;
+    using C2 = id<"[0..1] <2> round_ceil">;
     static_assert(F2{rational{1, 3}} == 0 && C2{rational{1, 3}} == rational{1, 2});
-    static_assert(inside<grid{interval{0, 1}, max_denominator{7}}, round_half_away>{rational{1000, 2001}} ==
+    static_assert(id<"[0..1] <7> round_half_away">{rational{1000, 2001}} ==
                   rational{1, 2});
-    static_assert(inside<grid{interval{-1, 1}, max_denominator{3}}, round_floor>{rational{-1, 4}} == rational{-1, 3});
-    static_assert(inside<grid{interval{-1, 1}, max_denominator{3}}, round_half_away>{rational{-3, 10}} ==
+    static_assert(id<"[-1..1] <3> round_floor">{rational{-1, 4}} == rational{-1, 3});
+    static_assert(id<"[-1..1] <3> round_half_away">{rational{-3, 10}} ==
                   rational{-1, 3});
-    EXPECT_FALSE((inside<grid{interval{0, 1}, max_denominator{2}}>::try_make(rational{1, 3}).has_value()));
+    EXPECT_FALSE((id<"[0..1] <2>">::try_make(rational{1, 3}).has_value()));
 }
 
 // A full-int64 source into a fine or offset grid: the raw map's Offset
@@ -1226,28 +1226,28 @@ TEST(AssignmentTest, bounded_continuous_rounds_onto_the_bound) {
 TEST(AssignmentTest, full_int64_into_a_fine_grid) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
-    using full                     = inside<{i64_min, i64_max}>;
-    using quarter                  = inside<{{-2, 3}, per<4>}>;
-    using halves                   = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
+    using full                     = id<key{grid{i64_min, i64_max}}>;
+    using quarter                  = id<"[-2..3] 1/4">;
+    using halves                   = id<"[0.5..10.5] 1">; // Lower off the notch's multiples
     static_assert([] {
         auto a = quarter::try_make(full{2});
-        auto b = inside<grid_of<halves>, round_half_away>::try_make(full{3}); // a tie: away from zero
+        auto b = id<key{grid_of<halves>, round_half_away}>::try_make(full{3}); // a tie: away from zero
         auto c = quarter::try_make(full{i64_min});
         return *a == 2 && *b == 3.5_ins && c.error() == error::overflow;
     }());
-    auto w = inside<grid_of<halves>, wrap | round_floor>::try_make(full{i64_max});
+    auto w = id<key{grid_of<halves>, wrap | round_floor}>::try_make(full{i64_max});
     EXPECT_EQ(to_string(*w), "6.5"); // (2^63 − 1.5) mod 11 from 0.5
 }
 
 // A lattice whose values pass the 64-bit rational between limits that fit
 // ({{−1.2e19, 1.2e19}, 1.5}): reading such a value threw.
 TEST(AssignmentTest, lattice_past_the_64_bit_rational) {
-    using neg    = inside<{{-3.5, -0.5}, 1}>; // ditto, below 0
-    using thirds = inside<{{-(3ll << 60), 3ll << 60}, 3}>;
+    using neg    = id<"[-3.5..-0.5] 1">; // ditto, below 0
+    using thirds = id<key{grid{{-(3ll << 60), 3ll << 60}, 3}}>;
     const auto p = neg{rational{-7, 2}} * thirds{(3ll << 60) - 3};
     EXPECT_EQ(to_string(p), "-12105675798371893237.5");
-    using clamped = inside<grid_of<neg>, clamp | round_toward_zero>;
-    using wrapped = inside<grid_of<neg>, wrap | round_floor>;
+    using clamped = id<key{grid_of<neg>, clamp | round_toward_zero}>;
+    using wrapped = id<key{grid_of<neg>, wrap | round_floor}>;
     EXPECT_EQ(*clamped::try_make(p), -3.5_ins);
     EXPECT_EQ(to_string(*wrapped::try_make(p)), "-1.5");
 }
@@ -1258,18 +1258,18 @@ TEST(AssignmentTest, lattice_past_the_64_bit_rational) {
 TEST(AssignmentTest, small_double_into_a_full_int64_grid) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
-    using F                        = inside<{i64_min, i64_max}, round_half_even>;
+    using F                        = id<key{grid{i64_min, i64_max}, round_half_even}>;
     EXPECT_EQ(*F::try_make(0x1p-20), 0_ins);
     EXPECT_EQ(*F::try_make(1e-4), 0_ins);
     EXPECT_EQ(*F::try_make(-2.5), -2_ins);
-    using C = inside<{i64_min, i64_max}, clamp | round_ceil>;
+    using C = id<key{grid{i64_min, i64_max}, clamp | round_ceil}>;
     EXPECT_EQ(*C::try_make(0x1p-70), 1_ins);
 }
 
 // A rational just outside the grid with a denominator near 2^62: rounding
 // it onto the lattice threw bad_expected_access (v·64 passed the rational).
 TEST(AssignmentTest, fine_rational_rounds_onto_the_grid) {
-    using A                = inside<{{0, 1}, per<64>}, round_half_away>;
+    using A                = id<"[0..1] 1/64 round_half_away">;
     const std::int64_t d   = (1ll << 62) + 1;
     const auto         top = rational{static_cast<std::uint64_t>(d + 1), d}; // 1 + 1/d
     EXPECT_EQ(*A::try_make(top), 1_ins);
@@ -1281,10 +1281,10 @@ TEST(AssignmentTest, fine_rational_rounds_onto_the_grid) {
 // += of a large constant on a large Q-format grid: the raw add passed int64
 // (UB). (Found with a rational right-hand side, which += no longer takes.)
 TEST(AssignmentTest, add_a_large_constant_on_a_large_q_format_grid) {
-    inside<{{0, 1ll << 60}, per<4>}, clamp> c{rational{1ll << 60}};
+    id<key{grid{{0, 1ll << 60}, per<4>}, clamp}> c{rational{1ll << 60}};
     c += just<(1ll << 60)>;
     EXPECT_EQ(to_string(c), "1152921504606846976");
-    inside<{{0, 1ll << 60}, per<4>}, wrap> w{rational{1ll << 60}};
+    id<key{grid{{0, 1ll << 60}, per<4>}, wrap}> w{rational{1ll << 60}};
     w += just<(1ll << 60)>;
     EXPECT_EQ(to_string(w), "1152921504606846975.75");
 }
@@ -1292,13 +1292,13 @@ TEST(AssignmentTest, add_a_large_constant_on_a_large_q_format_grid) {
 // An inside stored into a point grid skipped the range check: the raw map
 // sends every raw onto the point's one raw, so 4 and 3.5 both "fit" {3}.
 TEST(AssignmentTest, point_grid_checks_the_value) {
-    using three  = inside<{3}>;              // a point grid
-    using halves = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
-    using small  = inside<{-7, 5}>;
+    using three  = id<"[3]">;                // a point grid
+    using halves = id<"[0.5..10.5] 1">;      // Lower off the notch's multiples
+    using small  = id<"[-7..5]">;
     static_assert(three::try_make(small{4}).error() == error::overflow);
     static_assert(three::try_make(halves{rational{7, 2}}).error() == error::overflow);
     static_assert(*three::try_make(small{3}) == 3);
-    using clamped = inside<{3}, clamp>;
+    using clamped = id<"[3] clamp">;
     static_assert(*clamped::try_make(small{4}) == 3);
     three x{};
     static_assert(!test::can_add<three, small>);
@@ -1312,16 +1312,16 @@ TEST(AssignmentTest, point_grid_checks_the_value) {
 // wrap onto a point (no period) is a compile error (fail/wrap_point); a point
 // type with wrap, as arithmetic makes one, still takes its own point.
 TEST(AssignmentTest, point_grid_on_the_exact_path) {
-    using three = inside<{3}>; // a point grid
-    using fine  = inside<{{0, 1}, per<(1ll << 62)>}>;
+    using three = id<"[3]">; // a point grid
+    using fine  = id<key{grid{{0, 1}, per<(1ll << 62)>}}>;
     three x{};
     error ec{};
     x.on_error(ec) += fine{rational{1, 2}};
     EXPECT_NE(ec, error{});
     EXPECT_EQ(three::try_make(fine{rational{1, 2}} + 2_ins).error(), error::overflow);
-    using wrapped = inside<{3}, wrap>;
+    using wrapped = id<"[3] wrap">;
     EXPECT_EQ(*wrapped::try_make(3_ins), 3_ins);
-    const inside<{1, 9}, wrap | round_half_away> a{3};
+    const id<"[1..9] wrap|round_half_away"> a{3};
     const auto                                   zero = a * 0_ins; // a point type that keeps wrap
     static_assert(has_flag(policy_of<decltype(zero)>, wrap));
     EXPECT_EQ(zero, 0_ins);
@@ -1331,10 +1331,10 @@ TEST(AssignmentTest, point_grid_on_the_exact_path) {
 // range: an off-notch value past a limit reported rounding_error, and clamp
 // did not clamp it — the builtin stores range-check the value first.
 TEST(AssignmentTest, exact_store_checks_range_before_notch) {
-    using digit   = inside<{0, 9}>;
-    using fourths = inside<{{-2, 3}, per<4>}>;
+    using digit   = id<"[0..9]">;
+    using fourths = id<"[-2..3] 1/4">;
     const fourths a{rational{-1, 4}}, b{rational{11, 4}}; // −11/16
-    using clamped = inside<{0, 9}, clamp>;
+    using clamped = id<"[0..9] clamp">;
     EXPECT_EQ(mul<clamped>(a, b), 0_ins);
     EXPECT_EQ(mul<digit>(a, b).error(), error::overflow);
     EXPECT_EQ(mul<digit>(b, b).error(), error::rounding_error); // 121/16: in range, off the notch
@@ -1346,12 +1346,12 @@ TEST(AssignmentTest, exact_store_checks_range_before_notch) {
 TEST(AssignmentTest, bounded_grid_rounds_before_the_range_check) {
     constexpr grid sevenths{interval{0, 1}, max_denominator{7}};
     constexpr grid wholes{interval{0, 9}, max_denominator{1}};
-    static_assert(*inside<wholes, round_floor>::try_make(rational{19, 2}) == 9);
-    static_assert(*inside<sevenths, round_half_away>::try_make(rational{22, 21}) == 1);
-    static_assert(*inside<sevenths, round_ceil>::try_make(rational{-1, 50}) == 0);
-    static_assert(inside<sevenths, round_ceil>::try_make(rational{22, 21}).error() == error::overflow);
-    EXPECT_EQ((*inside<wholes, round_floor>::try_make(9.5)), 9);
-    inside<sevenths, round_half_away> x{rational{5, 7}};
+    static_assert(*id<key{wholes, round_floor}>::try_make(rational{19, 2}) == 9);
+    static_assert(*id<key{sevenths, round_half_away}>::try_make(rational{22, 21}) == 1);
+    static_assert(*id<key{sevenths, round_ceil}>::try_make(rational{-1, 50}) == 0);
+    static_assert(id<key{sevenths, round_ceil}>::try_make(rational{22, 21}).error() == error::overflow);
+    EXPECT_EQ((*id<key{wholes, round_floor}>::try_make(9.5)), 9);
+    id<key{sevenths, round_half_away}> x{rational{5, 7}};
     error                             ec{};
     x.on_error(ec) += just<1, 3>; // 22/21 rounds to 1, in range
     EXPECT_EQ(x, 1);
@@ -1363,17 +1363,17 @@ TEST(AssignmentTest, bounded_grid_rounds_before_the_range_check) {
 // off the grid (rounding_error).
 TEST(AssignmentTest, bounded_grid_rounds_a_fine_double) {
     constexpr grid sevenths{interval{0, 1}, max_denominator{7}};
-    EXPECT_EQ((*inside<sevenths, round_half_away>::try_make(5.1e-12)), 0);
-    EXPECT_EQ((*inside<sevenths, round_ceil>::try_make(5.1e-12)), rational(1, 7));
-    EXPECT_EQ(inside<sevenths>::try_make(5.1e-12).error(), error::rounding_error);
-    EXPECT_EQ(inside<sevenths>::try_make(1e-300).error(), error::rounding_error);
+    EXPECT_EQ((*id<key{sevenths, round_half_away}>::try_make(5.1e-12)), 0);
+    EXPECT_EQ((*id<key{sevenths, round_ceil}>::try_make(5.1e-12)), rational(1, 7));
+    EXPECT_EQ(id<key{sevenths}>::try_make(5.1e-12).error(), error::rounding_error);
+    EXPECT_EQ(id<key{sevenths}>::try_make(1e-300).error(), error::rounding_error);
 }
 
 // A failed store of a double finer than 2^-62 through error& or on_error
 // replaced the destination with a value-initialised raw (0/0 on a
 // continuous grid) instead of leaving it intact.
 TEST(AssignmentTest, failed_fine_double_store_keeps_the_value) {
-    using C = inside<{{0, 1}, max_denominator{1000}}>;
+    using C = id<"[0..1] <1000>">;
     C     z{rational{1, 2}};
     error ec{};
     z.on_error(ec) = 1e-30; // finer than the bound: off the grid
@@ -1390,7 +1390,7 @@ TEST(AssignmentTest, failed_fine_double_store_keeps_the_value) {
 // its uninitialized raw (not a constant expression; indeterminate at run time).
 TEST(AssignmentTest, fine_double_into_an_uninitialized_inside) {
     constexpr grid sevenths{interval{0, 1}, max_denominator{7}};
-    using M          = inside<sevenths, round_half_away>;
+    using M          = id<key{sevenths, round_half_away}>;
     constexpr auto f = [] {
         M x;
         x = 0x1p-70;
@@ -1402,7 +1402,7 @@ TEST(AssignmentTest, fine_double_into_an_uninitialized_inside) {
     EXPECT_EQ(x, 0);
     // A failure still reaches on_error with the destination's value; a clamp
     // policy saturates instead (no failure).
-    using U = inside<{{0, 1}, max_denominator{1000}}>;
+    using U = id<"[0..1] <1000>">;
     U     u{rational{1, 2}};
     error cb{};
     u.on_error([&](auto& v, error c, const char*) {
@@ -1411,7 +1411,7 @@ TEST(AssignmentTest, fine_double_into_an_uninitialized_inside) {
     }) = 1e-30;
     EXPECT_EQ(cb, error::rounding_error);
     EXPECT_EQ(u, rational(1, 2));
-    using C = inside<{{1, 2}, max_denominator{1000}}, clamp>;
+    using C = id<"[1..2] <1000> clamp">;
     C w{rational{3, 2}};
     cb                                                       = {};
     w.on_error([&](auto&, error c, const char*) { cb = c; }) = 1e-30;
@@ -1426,7 +1426,7 @@ TEST(AssignmentTest, double_into_a_grid_reaching_2_pow_64) {
     EXPECT_EQ(uint64::try_make(1e19)->to<std::uint64_t>(), 10000000000000000000u);
     EXPECT_EQ(uint64::try_make(0x1p64).error(), error::overflow);
     EXPECT_EQ(uint64::try_make(-1.0).error(), error::overflow);
-    const inside<{0, UINT64_MAX}, clamp> c{1e30};
+    const id<key{grid{0, UINT64_MAX}, clamp}> c{1e30};
     EXPECT_EQ(c.to<std::uint64_t>(), UINT64_MAX);
 }
 
@@ -1434,21 +1434,21 @@ TEST(AssignmentTest, double_into_a_grid_reaching_2_pow_64) {
 // and the predicates disagreed with the range check.
 TEST(AssignmentTest, long_double_is_taken_exactly) {
     if constexpr (sizeof(long double) > sizeof(double)) {
-        using B             = inside<{0, 10}>;
+        using B             = id<"[0..10]">;
         const long double x = 1.0L + 0x1p-60L;
         EXPECT_EQ(B::try_make(x).error(), error::rounding_error);
         EXPECT_TRUE(conversion_rounds<B>(x));
         EXPECT_TRUE(conversion_overflows<B>(10.0L + 0x1p-60L));
         EXPECT_EQ(B::try_make(10.0L + 0x1p-60L).error(), error::overflow);
-        EXPECT_EQ((test::store<inside<{0, 100}, round_ceil>>(x)), 2);
-        EXPECT_EQ((inside<{0, 100}, round_floor>{1.0L - 0x1p-60L}), 0);
-        EXPECT_EQ((inside<{0, 100}, wrap>{0x1p60L + 3.0L}), static_cast<int>(((1ull << 60) + 3) % 101));
+        EXPECT_EQ((test::store<id<"[0..100] round_ceil">>(x)), 2);
+        EXPECT_EQ((id<"[0..100] round_floor">{1.0L - 0x1p-60L}), 0);
+        EXPECT_EQ((id<"[0..100] wrap">{0x1p60L + 3.0L}), static_cast<int>(((1ull << 60) + 3) % 101));
 #if LDBL_MAX_EXP > DBL_MAX_EXP // past the double range (not where long double is a double)
-        EXPECT_EQ((test::store<inside<{0, 100}, clamp>>(test::at_run_time(1e4000L))), 100);
-        EXPECT_EQ((inside<{0, 100}, wrap>::try_make(1e4000L).error()), error::overflow);
+        EXPECT_EQ((test::store<id<"[0..100] clamp">>(test::at_run_time(1e4000L))), 100);
+        EXPECT_EQ((id<"[0..100] wrap">::try_make(1e4000L).error()), error::overflow);
 #endif
     }
-    EXPECT_EQ((inside<{0, 100}>{2.0L}), 2);
+    EXPECT_EQ((id<"[0..100]">{2.0L}), 2);
 }
 
 // The raw += / -= fast paths added R's raw and the bias before the delta
@@ -1458,15 +1458,15 @@ TEST(AssignmentTest, compound_add_raw_delta) {
     constexpr I64 I64_MAX = std::numeric_limits<I64>::max();
     constexpr I64 I64_MIN = std::numeric_limits<I64>::min();
     static_assert([] {
-        using L = inside<grid{{0, I64_MAX - 1}, 2}, wrap>;
-        using R = inside<grid{{I64_MIN, I64_MAX - 1}, 2}>;
+        using L = id<key{grid{{0, I64_MAX - 1}, 2}, wrap}>;
+        using R = id<key{grid{{I64_MIN, I64_MAX - 1}, 2}}>;
         L x     = I64_MAX - 1;
         x += R{I64_MAX - 1};
         return x == I64_MAX - 3;
     }());
     constexpr std::uint64_t TOP = (std::uint64_t{1} << 63) + (std::uint64_t{1} << 62);
-    using L2                    = inside<grid{{0, (I64{1} << 62) - 2}, 2}, wrap>;
-    using R2                    = inside<grid{{rational{I64_MIN}, rational{TOP}}, 2}>;
+    using L2                    = id<key{grid{{0, (I64{1} << 62) - 2}, 2}, wrap}>;
+    using R2                    = id<key{grid{{rational{I64_MIN}, rational{TOP}}, 2}}>;
     L2 z                        = 0;
     z -= R2{rational{TOP}};
     EXPECT_EQ(z, 0);
@@ -1476,7 +1476,7 @@ TEST(AssignmentTest, compound_add_raw_delta) {
 // multiply-add (a 2^-62 notch, the full uint64 range) did not compile.
 TEST(AssignmentTest, point_into_a_fine_or_full_width_grid) {
     using I64 = std::int64_t;
-    using F   = inside<{{-1, 1}, per<(I64{1} << 62)>}, round_ceil>;
+    using F   = id<key{grid{{-1, 1}, per<(I64{1} << 62)>}, round_ceil}>;
     const F f{just<rational{1, 2}>};
     EXPECT_EQ(f, rational(1, 2));
     const uint64 q{5_ins};
@@ -1492,7 +1492,7 @@ TEST(AssignmentTest, point_into_a_fine_or_full_width_grid) {
 // exact wide index (exact_index) — both land on the correctly rounded slot.
 //---------------------------------------------------------------------------
 TEST(AssignmentTest, double_on_a_wide_rounding_grid_takes_the_exact_path) {
-    using wide = inside<{{-1024, 1024}, per<16384>}, round_half_away>;
+    using wide = id<"[-1024..1024] 1/16384 round_half_away">;
 
     {
         SCOPED_TRACE("negative value: offset fits after the 128-bit add rescue");
@@ -1518,7 +1518,7 @@ TEST(AssignmentTest, double_on_a_wide_rounding_grid_takes_the_exact_path) {
 
     {
         SCOPED_TRACE("strict policy off-notch in the wide regime → rounding_error");
-        using strict = inside<{{-1024, 1024}, per<16384>}>; // checked, no round flag
+        using strict = id<"[-1024..1024] 1/16384">; // checked, no round flag
         strict slot{};
         error  ec{};
         slot.on_error(ec) =
@@ -1528,8 +1528,8 @@ TEST(AssignmentTest, double_on_a_wide_rounding_grid_takes_the_exact_path) {
 }
 
 TEST(AssignmentTest, dyadic_source_into_integer_grid_reads_the_value) {
-    using RealWide = ins::inside<{{-8, 8}, ins::per<4>}>;
-    using Int10    = ins::inside<{0, 10}>;
+    using RealWide = ins::id<"[-8..8] 1/4">;
+    using Int10    = ins::id<"[0..10]">;
     using namespace ins;
     using namespace ins::formats;
     const RealWide half = RealWide{2.5};
@@ -1544,10 +1544,10 @@ TEST(AssignmentTest, dyadic_source_into_integer_grid_reads_the_value) {
 }
 
 TEST(AssignmentTest, try_make_reports_on_checked_dyadic_target) {
-    using RealWide = ins::inside<{{-8, 8}, ins::per<4>}>;
+    using RealWide = ins::id<"[-8..8] 1/4">;
     using namespace ins;
     using namespace ins::formats;
-    using Checked = inside<{{0, 4}, per<4>}, checked>;
+    using Checked = id<"[0..4] 1/4">;
     EXPECT_EQ(Checked::try_make(RealWide{7.5}).error(), error::overflow);
 }
 
@@ -1559,23 +1559,23 @@ TEST(AssignmentTest, uint64_source_above_int64_max) {
 
     constexpr auto checked_ok = [] {
         error                  ec{};
-        inside<{{-10, 10}, 1}> x{3};
+        id<"[-10..10] 1"> x{3};
         x.on_error(ec) = big;
         return std::pair{x.to<int>(), ec};
     }();
     static_assert(checked_ok.first == 3 && checked_ok.second == error::overflow);
 
-    static_assert(inside<{{0, 10}, 1}>{1ull << 63, clamp}.to<int>() == 10);
-    static_assert(inside<{{-10, 10}, 1}>{big, clamp}.to<int>() == 10);
+    static_assert(id<"[0..10] 1">{1ull << 63, clamp}.to<int>() == 10);
+    static_assert(id<"[-10..10] 1">{big, clamp}.to<int>() == 10);
 
     // (2^64 − 1 − Lower) mod 21 + Lower
-    static_assert(inside<{{-10, 10}, 1}>{big, wrap}.to<long>() == static_cast<long>((big % 21 + 10) % 21) - 10);
-    static_assert(inside<{{5, 9}, 1}>{big, wrap}.to<long>() == static_cast<long>((big - 5) % 5) + 5);
-    static_assert(inside<{{5, 9}, 1}>{-7, wrap}.to<int>() == 8);
+    static_assert(id<"[-10..10] 1">{big, wrap}.to<long>() == static_cast<long>((big % 21 + 10) % 21) - 10);
+    static_assert(id<"[5..9] 1">{big, wrap}.to<long>() == static_cast<long>((big - 5) % 5) + 5);
+    static_assert(id<"[5..9] 1">{-7, wrap}.to<int>() == 8);
 
     // The on_clamp overshoot is an inside over the source type's limits minus
     // the target's, so it is exact (it saturated at int64 before).
-    inside<{{-10, 10}, 1}> c{0};
+    id<"[-10..10] 1"> c{0};
     bool                   exact                                = false;
     c.on_clamp([&](auto&, auto o) { exact = (o == big - 10); }) = big;
     EXPECT_EQ(c.to<int>(), 10);
@@ -1592,7 +1592,7 @@ TEST(AssignmentTest, uint64_source_above_int64_max) {
 TEST(AssignmentTest, huge_double_source) {
     constexpr auto rounded = [](double v) {
         error                                  ec{};
-        inside<{{0, 100}, 1}, round_half_away> x{5};
+        id<"[0..100] 1 round_half_away"> x{5};
         x.on_error(ec) = v;
         return std::pair{x.to<int>(), ec};
     };
@@ -1602,7 +1602,7 @@ TEST(AssignmentTest, huge_double_source) {
 
     constexpr auto wrap_of = [](double v) {
         error                     ec{};
-        inside<{{0, 9}, 1}, wrap> x{5};
+        id<"[0..9] 1 wrap"> x{5};
         x.on_error(ec) = v;
         return std::pair{x.to<long>(), ec};
     };
@@ -1611,15 +1611,15 @@ TEST(AssignmentTest, huge_double_source) {
     static_assert(wrap_of(0x1p64).first == 6 && wrap_of(0x1p64).second == error{});
     static_assert(wrap_of(0x1p62).first == static_cast<long>((1ull << 62) % 10));
 
-    using third = inside<{{0, rational{1, 3}}, rational{1, 3}}, clamp>;
+    using third = id<"[0..1/3] 1/3 clamp">;
     static_assert(rational{third{1e300}} == rational{1, 3});
     static_assert(rational{third{-1e300}} == 0);
 
-    constexpr inside<{{0, 10}, per<4>}> x{1};
+    constexpr id<"[0..10] 1/4"> x{1};
     static_assert(x < just<18446744073709551616_g> && x > -just<18446744073709551616_g> && x < just<1e300_g> &&
                   !(x == just<1e300_g>));
-    static_assert(conversion_overflows<inside<{0, 10}>>(0x1p64));
-    static_assert(!conversion_rounds<inside<{0, 10}>>(0x1p64));
+    static_assert(conversion_overflows<id<"[0..10]">>(0x1p64));
+    static_assert(!conversion_rounds<id<"[0..10]">>(0x1p64));
 
     // (A rational past 64 bits at run time is a precondition: the handler.)
     EXPECT_DEATH((void)rational{test::at_run_time(0x1p64)}, "2\\^64");
@@ -1631,9 +1631,9 @@ TEST(AssignmentTest, full_int64_grid_compound_ops) {
     constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
     constexpr std::int64_t  i64_min = std::numeric_limits<std::int64_t>::min();
     constexpr std::int64_t  i64_max = std::numeric_limits<std::int64_t>::max();
-    using I64                       = inside<{{i64_min, i64_max}, 1}>;
-    using I64W                      = inside<{{i64_min, i64_max}, 1}, wrap>;
-    using I64C                      = inside<{{i64_min, i64_max}, 1}, clamp>;
+    using I64                       = id<key{grid{{i64_min, i64_max}, 1}}>;
+    using I64W                      = id<key{grid{{i64_min, i64_max}, 1}, wrap}>;
+    using I64C                      = id<key{grid{{i64_min, i64_max}, 1}, clamp}>;
     constexpr auto a                = [] {
         I64W x{i64_max};
         ++x;
@@ -1673,14 +1673,14 @@ TEST(AssignmentTest, full_int64_grid_compound_ops) {
 // A value-raw source with Lower ≠ 0 mapped onto a coarser notch: the affine
 // map read the raw (the value) as a 0-based offset.
 TEST(AssignmentTest, value_raw_source_affine_mapping) {
-    using R = inside<{-5, 5}>; // int8 value raw
-    using L = inside<{{-6, 6}, 3}, round_half_away>;
+    using R = id<"[-5..5]">; // int8 value raw
+    using L = id<"[-6..6] 3 round_half_away">;
     static_assert(detail::integer_value_storage<R>);
     static_assert(rational{L{R{-5}}} == -6);
     static_assert(rational{L{R{-4}}} == -3);
     static_assert(rational{L{R{4}}} == 3);
     static_assert(rational{L{R{5}}} == 6);
-    using LX = inside<{{-6, 6}, 3}, round_half_away>;
+    using LX = id<"[-6..6] 3 round_half_away">;
     static_assert(rational{LX{R{-5}}} == -6);
 
     L l{0};
@@ -1692,20 +1692,20 @@ TEST(AssignmentTest, value_raw_source_affine_mapping) {
 // nearest to it may sit on a rounding boundary the exact value is not on
 // (4096/961 · 2^48 is …523.388, its double …523.5, a tie).
 TEST(AssignmentTest, store_rounds_the_exact_value_not_its_double) {
-    using f48 = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_half_away>;
+    using f48 = id<key{grid{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_half_away}>;
     const rational want{1199710202504523ull, std::int64_t{1} << 48};
     EXPECT_EQ((rational{f48{rational{4096, 961}}}), want);
     f48 a{0};
     a = rational{4096, 961};
     EXPECT_EQ(rational{a}, want);
     // An inside source whose values are not doubles exactly takes the same route.
-    using thirds = inside<{{0, 8}, rational{1, 961}}>;
+    using thirds = id<"[0..8] 1/961">;
     a            = thirds{rational{4096, 961}};
     EXPECT_EQ(rational{a}, want);
 
     // Directed modes: 1 + 2^-60 is above the grid point 1.0, its double is 1.0.
-    using up   = inside<{{0, 2}, per<1024>}, round_ceil>;
-    using down = inside<{{0, 2}, per<1024>}, round_floor>;
+    using up   = id<"[0..2] 1/1024 round_ceil">;
+    using down = id<"[0..2] 1/1024 round_floor">;
     const rational above{(std::uint64_t{1} << 60) + 1, std::int64_t{1} << 60};
     const rational below{(std::uint64_t{1} << 60) - 1, std::int64_t{1} << 60};
     EXPECT_EQ(rational{test::store<up>(above)}, (rational{1025, 1024}));
@@ -1721,8 +1721,8 @@ TEST(AssignmentTest, compound_and_policy_handle_with_a_rounding_inside) {
     // Integer division/modulo now flow through the insidable path; `round_toward_zero`
     // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
     // the old raw-int compound assigns had.
-    using sb = inside<{-100, 100}, round_toward_zero>;
-    using d  = inside<{1, 100}>; // a divisor without 0: /= and %= need no channel
+    using sb = id<"[-100..100] round_toward_zero">;
+    using d  = id<"[1..100]">; // a divisor without 0: /= and %= need no channel
 
     sb a{20};
     a /= d{3}; // integer division, truncates toward zero
@@ -1747,7 +1747,7 @@ TEST(AssignmentTest, compound_and_policy_handle_with_a_rounding_inside) {
 //---------------------------------------------------------------------------
 // double store out of range: checked policy
 TEST(AssignmentTest, double_store_out_of_range_checked_policy) {
-    using rbc = inside<{{-1, 1}, per<1024>}, checked>;
+    using rbc = id<"[-1..1] 1/1024">;
     ASSERT_EQ(test::store_error<rbc>(test::at_run_time(5.0)), error::overflow); // out of range -> report
 }
 
@@ -1761,8 +1761,8 @@ TEST(AssignmentTest, cross_grid_conversion_of_a_negative_off_notch_value) {
     // notch 1/2 source -> notch 1/3 target: Factor = 3/2 (non-integer mapping),
     // so the rational store path runs; the negative value drives the
     // negative-denominator branch.
-    using src_t = inside<{{-4, 4}, per<2>}>;
-    using dst_t = inside<{{-4, 4}, per<3>}, round_toward_zero>;
+    using src_t = id<"[-4..4] 1/2">;
+    using dst_t = id<"[-4..4] 1/3 round_toward_zero">;
 
     src_t s{-1.5};
     dst_t d = s;
@@ -1781,7 +1781,7 @@ TEST(AssignmentTest, cross_grid_conversion_of_a_negative_off_notch_value) {
 // wrap to a negative index (it returned −1 when the index was narrowed to
 // int64), and a result past the rational range is error::overflow.
 TEST(AssignmentTest, round_to_lattice_keeps_notch_indices_past_int64) {
-    using L       = inside<grid{{0, 1ll << 61}, per<8>}>;
+    using L       = id<key{grid{{0, 1ll << 61}, per<8>}}>;
     const auto v  = rational{(1ull << 61) - 1, 1};
     const auto nv = rational{(1ull << 61) - 1, -1};
     ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_half_even>>(v) == v));
@@ -1800,7 +1800,7 @@ TEST(AssignmentTest, round_to_lattice_keeps_notch_indices_past_int64) {
 // whose lattice neighbours pass the rational range, reports overflow instead
 // of a wrapped index.
 TEST(AssignmentTest, round_to_lattice_unanchored_rounds_and_reports_overflow) {
-    using U = inside<grid{{rational{1, 16}, rational{17, 16}}, per<8>}>;
+    using U = id<"[1/16..17/16] 1/8">;
     ASSERT_TRUE((*try_round_to_lattice<U, call_policy<round_floor>>(rational{5, 1}) == rational{79, 16}));
     ASSERT_TRUE((*try_round_to_lattice<U, call_policy<round_ceil>>(rational{5, 1}) == rational{81, 16}));
     ASSERT_TRUE((*try_round_to_lattice<U, call_policy<round_half_away>>(rational{5, -1}) == rational{81, -16}));
@@ -1814,7 +1814,7 @@ TEST(AssignmentTest, round_to_lattice_unanchored_rounds_and_reports_overflow) {
 // 2^64: its slot came from (v − Lower)/Notch in 64-bit rationals, unwrapped
 // with .value(), and std::bad_expected_access escaped the store.
 TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
-    using wide_span = inside<{{-(just<3> * just<(1ll << 62)>), just<2> * just<(1ll << 62)>}, 4}, round_half_away>;
+    using wide_span = id<key{grid{{-(just<3> * just<(1ll << 62)>), just<2> * just<(1ll << 62)>}, 4}, round_half_away}>;
     static_assert(sizeof(wide_span::raw_type) == 8);
     wide_span w{0};
     w = rational{(std::uint64_t{1} << 63) + 1}; // 2^63 + 1 rounds to Upper, 2^63
@@ -1829,10 +1829,10 @@ TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
 // every value were positive and its own parity were the offset's: ties went
 // up, toward zero went down, half_even picked odd value indices.
 TEST(AssignmentTest, rounding_on_a_grid_whose_lower_index_passes_int64) {
-    constexpr grid R{{-3074457345618258603LL, -3074457345618258593LL}, per<3>}; // Lower/Notch = −2^63 − 1
-    using halves  = inside<grid{R.Interval, per<2>}>;
+    static constexpr grid R{{-3074457345618258603LL, -3074457345618258593LL}, per<3>}; // Lower/Notch = −2^63 − 1
+    using halves  = id<key{grid{R.interval(), per<2>}}>;
     const auto at = []<policy_flag F>(std::integral_constant<policy_flag, F>, int raw) {
-        return inside<R, F>{halves::from_raw(test::at_run_time(raw), unsafe)}.raw();
+        return id<key{R, F}>{halves::from_raw(test::at_run_time(raw), unsafe)}.raw();
     };
     using std::integral_constant;
     EXPECT_EQ(at(integral_constant<policy_flag, round_half_away>{}, 1), 1); // a tie, away from zero
@@ -1841,15 +1841,15 @@ TEST(AssignmentTest, rounding_on_a_grid_whose_lower_index_passes_int64) {
     EXPECT_EQ(at(integral_constant<policy_flag, round_floor>{}, 1), 1);
     EXPECT_EQ(at(integral_constant<policy_flag, round_ceil>{}, 1), 2);
     EXPECT_EQ(at(integral_constant<policy_flag, round_half_away>{}, 3), 4);
-    static_assert(inside<R, round_toward_zero>{halves::from_raw(3, unsafe)}.raw() == 5);
+    static_assert(id<key{R, round_toward_zero}>{halves::from_raw(3, unsafe)}.raw() == 5);
 }
 
 // An unanchored grid whose −Lower/Notch is no 64-bit rational (2^-32 over a
 // notch of 2^31 + 1): a store that rounds did not compile.
 TEST(AssignmentTest, rounding_on_an_unanchored_grid_past_the_64_bit_lower_index) {
     constexpr grid G{{-0x1p-32_g, -0x1p-32_g + 2147483649_g}, 2147483649};
-    using nearest = inside<G, round_half_away>;
-    using to_zero = inside<G, round_toward_zero>;
+    using nearest = id<key{G, round_half_away}>;
+    using to_zero = id<key{G, round_toward_zero}>;
     static_assert(nearest::try_make(0.25)->raw() == 0 && nearest::try_make(-0x1p-33)->raw() == 0);
     static_assert(to_zero::try_make(-0x1p-33)->raw() == 1); // below zero: up, toward it
     EXPECT_EQ(to_zero::try_make(test::at_run_time(-0x1p-33))->raw(), 1);
@@ -1867,19 +1867,19 @@ using detail::rational;
 
 // A non-negative rational is past an all-negative grid.
 TEST(AssignmentArmTest, non_negative_rational_into_a_negative_grid) {
-    EXPECT_EQ((inside<{-10, -1}>::try_make(rational{test::at_run_time(1), 3}).error()), error::overflow);
+    EXPECT_EQ((id<"[-10..-1]">::try_make(rational{test::at_run_time(1), 3}).error()), error::overflow);
 }
 
 // A wide grid: NaN, and ±∞ without clamp, are not_finite; clamp saturates
 // ±∞. (A run-time double needs a report channel, so a clamp hook alone takes
 // none.)
 TEST(AssignmentArmTest, non_finite_doubles_into_a_wide_grid) {
-    using W = inside<{0, 1180591620717411303424_g}>; // 2^70
+    using W = id<"[0..1180591620717411303424]">; // 2^70
     static_assert(detail::wide_valued<W>);
     const double inf = test::at_run_time(std::numeric_limits<double>::infinity());
     EXPECT_EQ(W::try_make(test::at_run_time(std::numeric_limits<double>::quiet_NaN())).error(), error::not_finite);
     EXPECT_EQ(W::try_make(inf).error(), error::not_finite);
-    inside<{0, 1180591620717411303424_g}, clamp> c{5};
+    id<"[0..1180591620717411303424] clamp"> c{5};
     error                                        ec{};
     c.on_error(ec) = -inf;
     EXPECT_TRUE(c == 0 && ec == error{});
@@ -1888,15 +1888,15 @@ TEST(AssignmentArmTest, non_finite_doubles_into_a_wide_grid) {
 // wrap onto a continuous grid folds only values with a 64-bit rational form:
 // a double of 2^63 or more reports overflow.
 TEST(AssignmentArmTest, wrap_of_a_huge_double_onto_a_continuous_grid) {
-    using C = inside<{{0, 1}, max_denominator{10}}, wrap>;
+    using C = id<"[0..1] <10> wrap">;
     EXPECT_EQ(C::try_make(test::at_run_time(0x1p70)).error(), error::overflow);
 }
 
 // on_clamp's overshoot keeps the source's storage: a 64-bit rational for a
 // bounded continuous source, the one value for a point.
 TEST(AssignmentArmTest, clamp_overshoot_of_a_continuous_and_a_point_source) {
-    using S = inside<{{0, 10}, max_denominator{100}}>;
-    inside<{{0, 5}, max_denominator{100}}, clamp> c{0};
+    using S = id<"[0..10] <100>">;
+    id<"[0..5] <100> clamp"> c{0};
     rational                                      over{0};
     c.on_clamp([&](auto&, auto o) {
         static_assert(std::is_same_v<detail::raw_t<decltype(o)>, rational>);
@@ -1904,7 +1904,7 @@ TEST(AssignmentArmTest, clamp_overshoot_of_a_continuous_and_a_point_source) {
     }) = test::store<S>(rational{test::at_run_time(13), 2});
     EXPECT_TRUE((c == 5 && over == rational{3, 2}));
 
-    inside<{5, 5}, clamp> p{5};
+    id<"[5..5] clamp"> p{5};
     p.on_clamp([&](auto&, auto o) {
         static_assert(detail::point_storage<decltype(o)>);
         over = rational{o};
@@ -1914,21 +1914,21 @@ TEST(AssignmentArmTest, clamp_overshoot_of_a_continuous_and_a_point_source) {
 
 // A point stores a run-time double of its value.
 TEST(AssignmentArmTest, point_from_a_run_time_double) {
-    inside<{5, 5}> p;
-    p = test::store<inside<{5, 5}>>(test::at_run_time(5.0));
+    id<"[5..5]"> p;
+    p = test::store<id<"[5..5]">>(test::at_run_time(5.0));
     EXPECT_TRUE(p == 5);
-    EXPECT_EQ((inside<{5, 5}>::try_make(test::at_run_time(4.0)).error()), error::overflow);
+    EXPECT_EQ((id<"[5..5]">::try_make(test::at_run_time(4.0)).error()), error::overflow);
 }
 
 // An exact value past 64 bits off a bounded continuous grid's bound, folded
 // by wrap, is off the grid; so is an off-notch value folded onto a wide grid
 // without rounding.
 TEST(AssignmentArmTest, wrap_of_an_exact_value_off_the_grid) {
-    using F = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}>; // bound 2^70
+    using F = id<"[0..2] <1180591620717411303424>">; // bound 2^70
     static_assert(detail::fraction_storage<F>);
     const F f = *parse_exact<F>("1180591620717411303425/1180591620717411303424"); // 1 + 2^-70
-    EXPECT_EQ((inside<{{0, 1}, max_denominator{10}}, wrap>::try_make(f).error()), error::rounding_error);
-    EXPECT_EQ((parse<inside<{0, 1180591620717411303424_g}, wrap>>("2361183241434822606848.5").error()),
+    EXPECT_EQ((id<"[0..1] <10> wrap">::try_make(f).error()), error::rounding_error);
+    EXPECT_EQ((parse<id<"[0..1180591620717411303424] wrap">>("2361183241434822606848.5").error()),
               error::rounding_error); // 2^71 + 1/2
 }
 } // namespace reached_arms_tests
@@ -1941,7 +1941,7 @@ using detail::rational;
 // round_half_even onto a bound: a tie goes to the even numerator (1/4 → 0),
 // else the smaller denominator (3/4 → 1).
 TEST(AssignmentArmTest, half_even_tie_onto_a_bound) {
-    using C = inside<{{0, 1}, max_denominator{2}}, round_half_even>;
+    using C = id<"[0..1] <2> round_half_even">;
     EXPECT_TRUE((test::store<C>(rational{test::at_run_time(1), 4}) == 0));
     EXPECT_TRUE((test::store<C>(rational{test::at_run_time(3), 4}) == 1));
 }
@@ -1955,23 +1955,23 @@ using detail::rational;
 // A fraction raw past 64 bits rounds an exact value off its bound onto it
 // (1/(2^71 + 1) → 0 on the bound 2^70).
 TEST(AssignmentArmTest, fraction_raw_rounds_onto_its_bound) {
-    using F = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}, round_half_away>;
+    using F = id<"[0..2] <1180591620717411303424> round_half_away">;
     EXPECT_TRUE((*parse<F>("1/2361183241434822606849") == 0));
 }
 
 // A double finer than 2^-62 past a notch-0 point reports overflow.
 TEST(AssignmentArmTest, fine_double_past_a_point) {
-    EXPECT_EQ((inside<grid{5}>::try_make(test::at_run_time(0x1p-70)).error()), error::overflow);
+    EXPECT_EQ((id<"[5]">::try_make(test::at_run_time(0x1p-70)).error()), error::overflow);
 }
 
 // The raw mapping 7/5 · raw past 64 bits takes the exact store; a value just
 // off a bound that rounds past it (16/15 → 10/9) is out of range.
 TEST(AssignmentArmTest, raw_mapping_past_64_bits_and_rounding_past_a_limit) {
-    using L   = inside<{{0, 1152921504606846976_g}, per<7>}, round_half_away>; // [0, 2^60] by 1/7
-    using R   = inside<{{0, 1152921504606846976_g}, per<5>}>;
+    using L   = id<"[0..1152921504606846976] 1/7 round_half_away">; // [0, 2^60] by 1/7
+    using R   = id<"[0..1152921504606846976] 1/5">;
     const R r = R::from_step(5764607523034234879_ins); // 2^60 − 1/5
     EXPECT_TRUE((L{r} == L{rational{5764607523034234879u, 5}}));
-    using C = inside<{{0, 1}, max_denominator{10}}, round_half_away>;
+    using C = id<"[0..1] <10> round_half_away">;
     EXPECT_EQ(C::try_make(rational{test::at_run_time(16), 15}).error(), error::overflow);
 }
 } // namespace reached_arms_tests

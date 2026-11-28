@@ -25,7 +25,7 @@ its own lattice: the sum of two copies of `{{0.5, 255.5}, 1}` is on the
 integers again, and the product of two half-offset grids has notch 1/2.
 
 Multiplying by a point scales the lattice instead of forming a product grid:
-`x * just<3, 2>` on `inside<{0, 100}>` is `{{0, 150}, 1.5}` with the same raw,
+`x * just<3, 2>` on `id<"[0..100]">` is `{{0, 150}, 1.5}` with the same raw,
 about one native multiply. So `c * 9_ins / 5_ins + 32_ins` converts ℃ to ℉
 with no `std::expected` and no fraction.
 
@@ -34,7 +34,7 @@ with no `std::expected` and no fraction.
 A result keeps the policy its operands share. A point with the default policy
 (`just<2>`, `2_ins`) is neutral, and operands with different policies give
 the default. So a rounding mode survives an intermediate step: with
-`inside<{0, 10}, round_floor> a{7}`, both `a / 2_ins` and `(a + 0_ins) / 2_ins`
+`id<"[0..10] round_floor"> a{7}`, both `a / 2_ins` and `(a + 0_ins) / 2_ins`
 are 3. `std::common_type_t<L, R>` (also `common_inside_t<L, R>`) is the hull
 of both grids, with the gcd notch, under the same rule.
 
@@ -58,14 +58,14 @@ Both native paths divide in 32 bits when the operands fit, so `/` and `%` on
 small grids run at native speed.
 
 ```cpp
-using fp = inside<{{0, 255}, per<(1 << 8)>}, unsafe>;      // Q8.8; unsafe rounds toward zero
+using fp = id<"[0..255] 1/256 unsafe">;                    // Q8.8; unsafe rounds toward zero
 auto q = div(fp{200}, fp{3}, round_toward_zero);           // path A: raw 17066, about 66.664
 ```
 
 Path A multiplies before it divides: (51200 × 256) / 768 = 17066, that is
 ⌊66.667 × 256⌋. Dividing first would give 66 × 256 = 16896 and lose the
 fraction. It also **widens the interval**: Q8.8 / Q8.8 has the type
-`inside<{{0, 65280}, per<(1 << 8)>}>`, because 255 divided by the smallest nonzero
+`id<"[0..65280] 1/256">`, because 255 divided by the smallest nonzero
 divisor, 1/256, is 65280.
 
 Path C splits a divisor range that straddles 0 into its positive part
@@ -82,8 +82,8 @@ times the divisor's largest numerator. The result grid records that bound
 `div<Out>` rounds the quotient onto a type you name instead.
 
 ```cpp
-using fine = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
-auto f = fine{0.5} / inside<{{1, 2}, per<(std::uint64_t{1} << 40)>}>{1.5};
+using fine = id<key{grid{{0, 1}, per<(std::uint64_t{1} << 40)>}}>;
+auto f = fine{0.5} / id<key{grid{{1, 2}, per<(std::uint64_t{1} << 40)>}}>{1.5};
 // 1/3, a plain value: denominators up to 2^81, in a fraction sized for them
 ```
 
@@ -99,8 +99,8 @@ whole multiple of the source's: notch 2 → 1 is always exact, 1 → 2 may
 round. To round, say so for one store or for the type:
 
 ```cpp
-using coarse = inside<{{0, 10}, 2}>;   // 0, 2, 4, …, 10
-using finer  = inside<{{0, 10}, 1}>;   // 0, 1, 2, …, 10
+using coarse = id<"[0..10] 2">;        // 0, 2, 4, …, 10
+using finer  = id<"[0..10] 1">;        // 0, 1, 2, …, 10
 coarse c{0};
 finer  f{3};
 // c = f;                              // does not compile: 3 is between notches
@@ -128,7 +128,7 @@ offset from the multiples of the notch (`{{0.5, 10.5}, 1}`):
 On an offset grid 0 itself lies between two points (−0.5 and 0.5 on
 `{{-10.5, 10.5}, 1}`): `round_half_away` takes 0.5, and `round_toward_zero`
 takes −0.5, since 0 counts as non-negative. A rounding mode rounds before the
-range check, so 9.5 into `inside<{0, 9}, round_floor>` stores 9.
+range check, so 9.5 into `id<"[0..9] round_floor">` stores 9.
 
 ### Rounding a quotient
 
@@ -138,7 +138,7 @@ so `(a / b) * b + a % b == a` for every mode: under `round_floor`,
 `-8 / 3 == -3` and `-8 % 3 == 1`; under `round_toward_zero`, `-2` and `-2`.
 Off the native paths a rounding mode rounds the exact quotient once onto the
 multiples of the dividend's notch:
-`div(inside<{{0, 10}, per<100>}>{just<123, 100>}, inside<{1, 9}>{7}, round_floor)`
+`div(id<"[0..10] 1/100">{just<123, 100>}, id<"[1..9]">{7}, round_floor)`
 is 0.17. A store into a type that rounds (`x /= b`) divides exactly there
 and rounds once onto `x`'s own lattice.
 Without a rounding mode, `/` is exact and `%` truncates. `%` and `divmod` need
@@ -177,16 +177,16 @@ continuous grid its bound. The result's fraction is sized for the bound, so
 the operation cannot overflow and returns a plain value:
 
 ```cpp
-auto q = inside<{0, 100}>{50} / inside<{1, 7}>{3};   // 50/3, denominators ≤ 7
+auto q = id<"[0..100]">{50} / id<"[1..7]">{3};       // 50/3, denominators ≤ 7
 auto f = q * 7_ins / 5_ins + 2_ins;                  // 76/3, denominators ≤ 35
 auto s = q * q - q;                                  // 2350/9, denominators ≤ 343
 ```
 
 A continuous grid you declare names its bound with `max_denominator`;
-`inside<{{0, 1}, 0}>` does not compile:
+`id<"[0..1] 0">` does not compile:
 
 ```cpp
-using thousandths = inside<{{0, 1}, max_denominator{1000}}>;
+using thousandths = id<"[0..1] <1000>">;
 thousandths t{just<1, 1000>};
 auto p = t * t;                       // a plain value, denominators ≤ 10^6
 // t = just<1, 1001>;             // rounding_error: off the grid
@@ -201,7 +201,7 @@ A stored value whose denominator passes the bound is a `rounding_error`
 unless the policy rounds. Then it goes to a neighbouring fraction within the
 bound (a Farey neighbour): `round_floor`, `round_ceil` and `round_toward_zero`
 pick a side, `round_half_away` the closer one. So
-`inside<{{0, 1}, max_denominator{1000}}, round_half_away>{0.1}` holds exactly
+`id<"[0..1] <1000> round_half_away">{0.1}` holds exactly
 1/10, although the `double` 0.1 is not 1/10.
 
 ## The free functions

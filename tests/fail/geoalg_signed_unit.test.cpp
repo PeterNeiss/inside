@@ -8,6 +8,6 @@ inline constexpr auto e2_basis_vector = ins::basis_vector<"e2", ins::geometric<1
 
 int main() {
     using namespace ins;
-    quantity<e2_basis_vector * e1_basis_vector, inside<{0, 10}>> q{};
+    id<quantity_key<e2_basis_vector * e1_basis_vector, id<key{grid{0, 10}}>>> q{};
     (void)q;
 }

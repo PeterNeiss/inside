@@ -104,7 +104,7 @@ inline std::string number_text(const grid_number& v) {
 }
 inline std::string grid_text(const grid& g) {
     std::string out =
-        "{[" + number_text(g.Interval.Lower) + ", " + number_text(g.Interval.Upper) + "], " + number_text(g.Notch);
+        "{[" + number_text(g.Lower) + ", " + number_text(g.Upper) + "], " + number_text(g.Notch);
     if (g.MaxDenominator != 0)
         out += ", den ≤ " + number_text(g.MaxDenominator);
     return out + "}";

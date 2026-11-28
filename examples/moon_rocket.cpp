@@ -21,9 +21,9 @@ namespace
 int main()
 {
   // 1. The stage: dry mass 15 t, payload 4500 kg, propellant 85 t. The sums run in kg.
-  using dry_tonnes        = quantity<si::tonne   , inside<{1, 50    }>>;
-  using kilograms         = quantity<si::kilogram, inside<{0, 10'000}>>;
-  using propellant_tonnes = quantity<si::tonne   , inside<{0, 200   }>>;
+  using dry_tonnes        = id<"[1..50] [t]">;
+  using kilograms         = id<"[0..10'000] [kg]">;
+  using propellant_tonnes = id<"[0..200] [t]">;
 
   const dry_tonnes        dry       {15  , si::tonne};
   const kilograms         payload   {4500, si::kilogram};
@@ -37,8 +37,8 @@ int main()
   // 2. The rocket equation, Δv = v_e·ln(m0/mf):
   // m0/mf is a plain number, exactly 209/39 (a denominator up to 60000, mf in kg).
   // Over the masses' grids it can pass 300, so it is checked into the ratio's range.
-  using mass_ratio = inside<{{1, 300}, max_denominator{60'000}}>;
-  using km_per_s   = quantity<km_s, inside<{{1, 5}, per<10>}>>;
+  using mass_ratio = id<"[1..300] <60'000>">;
+  using km_per_s   = id<quantity_key<km_s, id<"[1..5] 1/10">>>;
   const auto checked_ratio{mass_ratio::try_make((m0 / m_final).numerical_value_in(one))};
   if (!checked_ratio)
     return 1;
@@ -53,8 +53,8 @@ int main()
   // 3. A parking orbit at 185 km: altitude + radius is a length,
   // and √(μ/r) takes the unit's root (km²/s² → km/s), rounded once onto 1e-6 km/s.
   // μ of the Earth is exact.
-  using altitude_km = quantity<isq::altitude[km], inside<{100 , 1000}>>;
-  using radius_km   = quantity<isq::radius[km]  , inside<{6300, 6400}>>;
+  using altitude_km = id<"[100..1000] [km]{altitude}">;
+  using radius_km   = id<"[6300..6400] [km]{radius}">;
 
   const altitude_km altitude{185 , isq::altitude[km]};
   const radius_km   earth   {6371, isq::radius[km]};
@@ -77,8 +77,8 @@ int main()
 
   // Half the ellipse's period, π·a·√(a/μ): √(s²/km²) is s/km, so a·√(a/μ) is a time;
   // pi keeps π in the unit until the cast to hours rounds once with the true π.
-  using tenths     = inside<{{0, 200}, per<10> }, round_half_away>;
-  using hundredths = inside<{{0, 10 }, per<100>}, round_half_away>;
+  using tenths     = id<"[0..200] 1/10 round_half_away">;
+  using hundredths = id<"[0..10] 1/100 round_half_away">;
   const auto rt {math::sqrt<per<1'000'000'000>>(a / mu)};
   const auto t_h{value_cast<si::hour, tenths>(pi * (a * rt))};
   const auto t_d{value_cast<si::day, hundredths>(pi * (a * rt))};
@@ -89,11 +89,10 @@ int main()
   // 5. Kinetic energy after the burn, m·v² with v to 1 m/s:
   // mass·speed² is a kinetic energy by its recipe, so it converts implicitly (in GJ).
   // A torque has the same dimension but another recipe:
-  //   quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v; // does not compile
+  //   id<quantity_key<isq::torque[si::newton * si::metre], …>> τ = m_final * v * v; // does not compile
   // (A value_cast into a grid that may not hold the value is an expected.)
-  using speed          = quantity<km_s, inside<{{0, 20}, per<1000>}, round_half_away>>;
-  using kinetic_energy = quantity<isq::kinetic_energy[si::giga(si::joule)],
-                                  inside<{{0, 10'000}, per<1000>}, round_half_away>>;
+  using speed          = id<quantity_key<km_s, id<"[0..20] 1/1000 round_half_away">>>;
+  using kinetic_energy = id<"[0..10'000] 1/1000 [GJ]{kinetic_energy} round_half_away">;
   const auto v         {value_cast<speed>(kind_cast<isq::speed>(v_peri))};
   const auto checked_ke{value_cast<si::giga(si::joule), kinetic_energy::rep>(m_final * v * v)};
   if (!checked_ke)
@@ -104,8 +103,8 @@ int main()
     return 1;
 
   // 110 kN on 104.5 t, in units of standard gravity (exact: g₀ is rational).
-  using kilonewtons  = quantity<si::kilo(si::newton), inside<{1, 1000}>>;
-  using acceleration = quantity<si2019::standard_gravity, inside<{{0, 10}, per<1000>}, round_half_away>>;
+  using kilonewtons  = id<"[1..1000] [kN]">;
+  using acceleration = id<"[0..10] 1/1000 [g_0] round_half_away">;
   const kilonewtons thrust{110, si::kilo(si::newton)};
   const auto        acc   {value_cast<acceleration>(thrust / m0)};
   if (!acc)

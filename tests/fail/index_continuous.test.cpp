@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    const inside<{{0, 1}, max_denominator{10}}> x = 0;
+    const id<"[0..1] <10>"> x = 0;
     (void)x.step();
 }

@@ -10,7 +10,7 @@
 #include <inside/inside/grid.hpp>
 #include <inside/inside/detail/call_policy.hpp>
 
-// multiplication: mul(L, R, policy) -> inside<grid_of<L> * grid_of<R>>.
+// multiplication: mul(L, R, policy) -> id<key{grid_of<L> * grid_of<R>}>.
 // Integer raws multiply their value indices (wide_value.hpp), in int64 where the grids' bounds allow,
 // else by wrapping arithmetic as wide as the result raw.
 // A point scale and rational results have their own branches.
@@ -20,7 +20,7 @@ namespace ins::detail
   struct multiplication
   {
     static constexpr grid result_grid = grid_of<L> * grid_of<R>;
-    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
+    using result = id<key{result_grid, result_flags<L, R>}>; // the operands' shared policy
 
     // Total, as a sum is: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>

@@ -8,7 +8,7 @@
 inline constexpr auto x = ins::basis_vector<"x", ins::polynomial>;
 
 int main() {
-    using angle = ins::inside<{{-1, 1}, ins::per<1024>}>;
+    using angle = ins::id<"[-1..1] 1/1024">;
     auto e      = ins::math::exp<ins::per<1024>>(ins::just<1> + angle{0.5} * x);
     (void)e;
 }

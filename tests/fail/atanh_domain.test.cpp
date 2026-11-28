@@ -7,7 +7,7 @@
 using namespace ins;
 
 int main() {
-    using unit_value = inside<{{-1, 1}, per<1024>}, round_half_away>;
+    using unit_value = id<"[-1..1] 1/1024 round_half_away">;
     auto r           = math::atanh(unit_value{0});
     (void)r;
 }

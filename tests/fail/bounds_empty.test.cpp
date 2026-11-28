@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    inside<{0, 1, bounds::open}> x{0};
+    id<key{grid{0, 1, bounds::open}}> x{0};
     (void)x;
 }

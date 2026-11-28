@@ -24,9 +24,9 @@ namespace
 // A 24-hour clock: seconds → minutes → hours, wrapping at 24.
 struct clock24
 {
-  using hours_t   = quantity<si::hour  , inside<{0, 24, bounds::half_open}, wrap>>;
-  using minutes_t = quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>>;
-  using seconds_t = quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>>;
+  using hours_t   = id<"[0..24) [h] wrap">;
+  using minutes_t = id<"[0..60) [min] wrap">;
+  using seconds_t = id<"[0..60) [s] wrap">;
 
   hours_t   hours  {0, si::hour};
   minutes_t minutes{0, si::minute};
@@ -48,7 +48,7 @@ struct clock24
   void add_hours(const auto& d) { hours += d; }
 
   // A time of day from a duration: whole days wrap away on the store, then one divmod per field.
-  using day_seconds = quantity<si::second, inside<{0, 86400, bounds::half_open}>>;
+  using day_seconds = id<"[0..86400) [s]">;
   static clock24 from(const auto& since_midnight)
   {
     const day_seconds s{since_midnight, wrap};
@@ -84,9 +84,9 @@ struct clock24
 // A calendar: days 1–30 → months 1–12 → years, which take the final carry.
 struct date
 {
-  using day_of_month  = quantity<si::day, inside<{1   , 30  }, wrap>>;
-  using month_of_year = quantity<month  , inside<{1   , 12  }, wrap>>;
-  using calendar_year = quantity<year   , inside<{1900, 2200}>>;
+  using day_of_month  = id<"[1..30] [d] wrap">;
+  using month_of_year = id<"[1..12] [mo] wrap">;
+  using calendar_year = id<"[1900..2200] [yr]">;
 
   day_of_month  day   {1   , si::day};
   month_of_year months{1   , month};
@@ -154,7 +154,7 @@ int main()
     return 1;
 
   // Weeks and the day of the week by one divmod: a week's grid excludes 0, so it cannot fail.
-  using day_number = quantity<si::day, inside<{0, 1'000'000}, round_toward_zero>>;
+  using day_number = id<"[0..1'000'000] [d] round_toward_zero">;
   // The quotient counts whole weeks: a number, times the week a duration again.
   const auto [weeks, dow] = divmod(day_number{14003, si::day}, week);
   std::cout << "day 14003 is " << weeks * week << " + " << dow << " (0 d = the reference day's weekday)\n";

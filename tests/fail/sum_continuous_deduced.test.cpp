@@ -8,7 +8,7 @@
 
 int main() {
     using namespace ins;
-    using ratio = inside<{{0, 1}, max_denominator{100}}>;
+    using ratio = id<"[0..1] <100>">;
     std::array<ratio, 2> r{};
     (void)sum(std::mdspan{r.data(), std::extents<std::size_t, 2>{}});
 }

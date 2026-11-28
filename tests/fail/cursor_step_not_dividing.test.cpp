@@ -5,7 +5,7 @@
 
 int main() {
     using namespace ins;
-    using bad = cursor<inside<{0, 10}>, 3>;
+    using bad = cursor<id<"[0..10]">, 3>;
     bad b;
     (void)b;
 }

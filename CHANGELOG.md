@@ -1,5 +1,125 @@
 # Changelog
 
+## Unreleased
+
+An inside type can be spelled as text, and prints the same way:
+`ins::id<"[0..10) 1/4 clamp">` is the grid from 0 to 39/4 in quarters that
+clamps, and diagnostics print it as `ins::id<ins::key{"[0..10) 1/4 clamp"}>`.
+Every spelling of a grid and policy is one type, and the operators' results
+read the same way: `decltype(id<"[1..9]">{} + id<"[1..9]">{})` is
+`id<"[2..18]">`. A string `_ins` literal is a value with its type:
+`"42 [1..100)"_ins` ([spelling a type as text](docs/guide/id.md)).
+A quantity's type adds its unit: `id<"[0..300] [km/h] clamp">` is a quantity
+in km/h, read by the unit's symbol among the units visible where it is named,
+with a kind that is not the unit's own after it in braces
+(`id<"[0..9] [m]{height}">`, `[m*s]{any duration*length}`), and
+`"42 [1..100) [km/h]"_ins` a quantity value. Every quantity is an `id`.
+
+Shorter type names for insides and quantities: a grid holds its limits as
+members of their own, a zero grid number is all zero bits (so a mangled name
+leaves it out), kind and origin references are plain pointers, and a
+quantity in a named unit and its own kind (m, kg, km, ℃) holds that unit
+alone. A quantity in metres prints in 232 characters instead of 404.
+
+### Upgrading from 0.11.0
+
+- Every type is `id<key K>`: `inside<G, P>`, `quantity<R, Rep>`,
+  `quantity_point<R, O, Rep>` and `basic_quantity` are gone. Write the text
+  (`id<"[0..100] clamp">`, `id<"[0..300] [km/h]">`,
+  `id<"[-40..125] [`C] @ice_point">`), or for a type computed from values
+  `id<key{G, P}>`, `id<quantity_key<R, Rep>>` and `id<point_key<R, O, Rep>>`.
+  `tools/convert_ids.py` rewrites a code base: every spelling it can read as
+  text, as written, the rest in the computed form; with `--check` it writes
+  each rewrite as a type a build proves equal to the old one.
+- Deduce `template <key K> f(id<K>)` for `template <grid G, policy_flag P>
+  f(inside<G, P>)`, `quantity_like Q` (with `Q::reference` and `Q::rep`)
+  for `quantity<R, Rep>`, and `point_like P` (with `P::reference`,
+  `P::origin` and `P::rep`) for `quantity_point<R, O, Rep>`. A partial
+  specialization on a quantity takes `detail::basic_of_t<Q>` or a
+  constraint on `quantity_like`; an explicit instantiation is
+  `template struct id<…>`. `grid_of<T>` and `policy_of<T>` read the grid and
+  the policy as before. Hooks (`on_wrap`, `on_clamp`, `on_error`) get the
+  quantity as its own type.
+- A string `_ins` literal with an origin is a point:
+  `"21.5 [-40..125] 1/10 [`C] @ice_point"_ins`.
+- A quantity's unit needs a text that reads back to it where the type is
+  formed, or the quantity does not compile: give a unit of your own a symbol
+  the catalog does not read, and a prefixed unit of your own a tag
+  (`inline constexpr auto kftm = si::kilo(ftm);`). A text reads whole symbols
+  only: a unit's own, the catalog's prefixed units in wide use (km, ms, kHz,
+  …) and tags of your own; no prefix is read into a symbol.
+- A unit whose plain symbol has an ASCII one of its own is read and printed
+  in ASCII by that one: the speed of light is `c_0`, Boltzmann's constant
+  `k_B`, Planck's `h_P`, Faraday's `F_Faraday` (`text_encoding::ascii`; the
+  symbols print as before).
+- Two units equal in every respect with one symbol (a unit declared twice,
+  as a named definition and as a one-liner) are one quantity type: a type
+  spells its unit by its symbol.
+- `grid`'s members are `Lower`, `Upper`, `Notch` and `MaxDenominator`; the
+  nested `Interval` is gone. `g.interval()` gives the limits as an interval,
+  and a structured binding of a grid takes four names. `grid{{lo, hi}, notch}`
+  is spelled as before.
+- A `reference`'s parts are read through `unit()`, `kind()`, `kind_of()` and
+  `derived()` (`Q::reference.U` is `Q::reference.unit()`), and
+  `r.with_unit(u)` is the same kind facts on another unit.
+- `kind_ref` and `origin_ref` are `const kind_def*` and `const origin_def*`
+  and never null: none is `&kind_def::none` or `&origin_def::none`, which have no name.
+  `ref_or_none` and its `.P` are gone. A truth test such as `if (opts.kind)`
+  or `!P::origin` still compiles but is now always true or always false:
+  test `->Name.empty()`. A kind and an origin need a name.
+- `unit_value::Size` is `size()`.
+- A zero grid number is `grid_number{0, 0, 0}`, and a value past 64 bits
+  `grid_number{1, 0, …}`, for code that reads `Num` and `Den` itself.
+
+### Changed
+
+- Every type holds its grid, policy, unit, kind and origin as text
+  (`ins::key`), so it prints as it is spelled. `tools/symbol_lengths.sh`,
+  GCC 16, characters, 0.11.0 → the shorter names below → the text:
+
+  | Type | Mangled | Printed |
+  |---|---|---|
+  | `id<"[0..100]">` | 135 → 96 → 86 | 147 → 132 → 29 |
+  | `id<"[0..1] 1/100 round_half_away">` | 136 → 97 → 196 | 151 → 136 → 49 |
+  | `id<"[0..1] <1000>">` | 136 → 103 → 111 | 148 → 133 → 34 |
+  | `id<"[0..100] [m]">` | 373 → 206 → 107 | 404 → 232 → 33 |
+  | `id<"[0..100] [km/h]">` | 377 → 350 → 124 | 429 → 448 → 36 |
+  | `id<"[-50..50] [`C] @ice_point">` | 469 → 260 → 178 | 508 → 276 → 46 |
+
+  A mangled name holds about 5 characters per character of the text, so a
+  long text (flag words) mangles longer than the grid numbers did. The 12
+  injected errors of `examples/` print 99 578 characters (0.11.0: 122 484).
+  Compile time (`perf stat`, instructions, against the shorter names):
+  `inside.hpp` +2.5 %, `units.hpp` +61 %, 200 inside expressions +18 %, 200
+  quantity expressions +49 %, `units.test.cpp` +80 %, `arithmetic.test.cpp`
+  +20 %. A quantity's type reads its text back where it is formed (a lookup
+  of each symbol, the catalog's tables first), and the catalog's kinds and
+  origins have tables of their own. Run time: the instruction counts of the
+  perf workload are unchanged. The tests and examples form 4018 types; their
+  longest text is 1033 characters, of the 2048 a key holds.
+- Type names (`tools/symbol_lengths.sh`, GCC 16, characters):
+
+  | Type | Mangled before → now | Printed before → now |
+  |---|---|---|
+  | `inside<{0, 100}>` | 135 → 96 | 147 → 132 |
+  | `inside<{{0, 1}, per<100>}, round_half_away>` | 136 → 97 | 151 → 136 |
+  | `quantity<si::metre, …>`, also kg and km | 373 → 206 | 404 → 232 |
+  | J | 373 → 206 | 404 → 232 |
+  | S | 380 → 209 | 410 → 234 |
+  | a point in ℃ | 469 → 260 | 508 → 276 |
+  | ftm: `defined_by` | 363 → 196 | 393 → 221 |
+  | km/h | 377 → 344 | 429 → 441 |
+  | `isq::velocity[m/s]` | 413 → 357 | 455 → 453 |
+
+  A reference that is not one named unit and its own kind (a unit of several
+  factors, a kind named with `kind[unit]`, a product of kinds) holds its parts
+  and keeps about its length. The 46 examples' symbols at -O0 shrink by 12 %
+  (31.9 MB → 28.2 MB), their objects by 7 %. Compile time (`perf stat`,
+  instructions): `units.hpp` −1.0 %, 200 quantity expressions −1.7 %, 200
+  inside expressions unchanged, `inside.hpp` +0.1 %, `arithmetic.test.cpp`
+  +0.4 %. Run time: the instruction counts of the perf workload are
+  unchanged.
+
 ## 0.11.0 — 2026-11-21
 
 Short type names: the catalog's units, kinds and origins are named definition

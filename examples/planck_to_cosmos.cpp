@@ -13,8 +13,8 @@
 
 using namespace ins;
 
-using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_half_away>; // positive: log10 needs it
-using metres        = quantity<si::metre, length_number>;
+using length_number = id<"[1e-41..1e27] 1e-41 round_half_away">; // positive: log10 needs it
+using metres        = id<"[1e-41..1e27] 1e-41 [m] round_half_away">;
 
 int main()
 {

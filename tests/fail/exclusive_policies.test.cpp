@@ -5,6 +5,6 @@
 #include <inside/inside.hpp>
 
 int main() {
-    ins::inside<{0, 100}, ins::clamp | ins::wrap> contradictory{};
+    ins::id<ins::key{ins::grid{0, 100}, ins::clamp | ins::wrap}> contradictory{};
     (void)contradictory;
 }

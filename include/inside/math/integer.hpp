@@ -23,7 +23,7 @@
 //   gcd(a, b), lcm(a, b)      as std::gcd and std::lcm: ≥ 0, gcd(0, 0) = 0,
 //                             lcm(0, b) = 0
 // Each result type holds exactly the values its inputs can produce, worked out at compile time:
-// factorial of inside<{0, 20}> is inside<{1, 20!}>, of inside<{0, 100}> a wide raw.
+// factorial of id<"[0..20]"> is id<key{grid{1, 20!}}>, of id<"[0..100]"> a wide raw.
 // fn<Out>(…) stores the result into Out by Out's policy (math/detail/functions.hpp has every call form).
 // A count (n, k) is an inside on the integers from 0, of any size; gcd and lcm take integer grids of any sign and
 // size. A result whose limit would pass max_count_bits has no type: its grid number is computed while compiling.
@@ -435,7 +435,7 @@ namespace ins::math
       requires detail::count<N> && (detail::factorial_grid<N>.Fits)
     [[nodiscard]] constexpr auto factorial_of(N n) noexcept
     {
-      using R = inside<detail::factorial_grid<N>.Grid>;
+      using R = id<key{detail::factorial_grid<N>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n;
@@ -461,7 +461,7 @@ namespace ins::math
       requires detail::count<N> && detail::count<K> && (detail::falling_grid<N, K>.Fits)
     [[nodiscard]] constexpr auto falling_factorial_of(N n, K k) noexcept
     {
-      using R = inside<detail::falling_grid<N, K>.Grid>;
+      using R = id<key{detail::falling_grid<N, K>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n, (void)k;
@@ -483,7 +483,7 @@ namespace ins::math
       requires detail::count<N> && detail::count<K> && (detail::rising_grid<N, K>.Fits)
     [[nodiscard]] constexpr auto rising_factorial_of(N n, K k) noexcept
     {
-      using R = inside<detail::rising_grid<N, K>.Grid>;
+      using R = id<key{detail::rising_grid<N, K>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n, (void)k;
@@ -507,7 +507,7 @@ namespace ins::math
       requires detail::count<N> && detail::count<K> && (detail::binomial_grid<N, K>.Fits)
     [[nodiscard]] constexpr auto binomial_of(N n, K k) noexcept
     {
-      using R = inside<detail::binomial_grid<N, K>.Grid>;
+      using R = id<key{detail::binomial_grid<N, K>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)n, (void)k;
@@ -534,7 +534,7 @@ namespace ins::math
       requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (detail::multinomial_grid<Ks...>.Fits)
     [[nodiscard]] constexpr auto multinomial_of(Ks... ks) noexcept
     {
-      using R = inside<detail::multinomial_grid<Ks...>.Grid>;
+      using R = id<key{detail::multinomial_grid<Ks...>.Grid}>;
       if constexpr (detail::point_grid<R>)
       {
         ((void)ks, ...);
@@ -583,7 +583,7 @@ namespace ins::math
       requires detail::has_lattice<A> && detail::has_lattice<B>
     [[nodiscard]] constexpr auto gcd_of(A a, B b) noexcept
     {
-      using R = inside<detail::gcd_grid<A, B>>;
+      using R = id<key{detail::gcd_grid<A, B>}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)a, (void)b;
@@ -620,7 +620,7 @@ namespace ins::math
       requires detail::has_lattice<A> && detail::has_lattice<B> && detail::lcm_fits<A, B>
     [[nodiscard]] constexpr auto lcm_of(A a, B b) noexcept
     {
-      using R = inside<detail::lcm_grid<A, B>>;
+      using R = id<key{detail::lcm_grid<A, B>}>;
       if constexpr (detail::point_grid<R>)
       {
         (void)a, (void)b;

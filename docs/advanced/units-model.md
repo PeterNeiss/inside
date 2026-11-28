@@ -13,7 +13,7 @@ header costs to compile. [Units](../guide/units.md) has the everyday view.
 | unit | named units to integer powers, with prefixes and a magnitude | `si::kilo(si::metre) / si::hour` |
 | kind | a kind of quantity in the ISQ tree: `height` → `altitude` → `length` | `isq::height` |
 | reference | a unit and a kind | `isq::height[si::metre]`, or a bare unit |
-| quantity | a number (an inside) of a reference | `quantity<si::metre, inside<{0, 10}>>` |
+| quantity | a number (an inside) of a reference | `id<"[0..10] [m]">` |
 | quantity point | a quantity counted from an origin | `point<si::degree_Celsius>(t)` |
 
 Units, kinds and references are **values**, combined by `consteval`
@@ -42,8 +42,8 @@ call says why: each reason is a deleted overload with a message
 ## Conversions are grid rescales
 
 `q.in(u)` multiplies the grid's interval and notch by the factor between the
-two units and keeps the raw. km → m on `inside<{0, 10}>` gives
-`inside<{0, 10000}>` with notch 1000 and the same raw; km → mm compiles to a
+two units and keeps the raw. km → m on `id<"[0..10]">` gives
+`id<"[0..10000]">` with notch 1000 and the same raw; km → mm compiles to a
 single `mov` (pinned by a codegen test). m → km gives notch 1/1000, and
 inch → mm is ×25.4. All exact. The rescaled number keeps its policy.
 
@@ -59,7 +59,7 @@ inch → mm is ×25.4. All exact. The rescaled number keeps its policy.
 
 A conversion is implicit when the
 kind converts implicitly and the rescaled number converts implicitly into the
-target's number: `quantity<si::joule, R>` takes an N·m quantity.
+target's number: `id<quantity_key<si::joule, R>>` takes an N·m quantity.
 
 ### Factors of π round once
 
@@ -128,14 +128,14 @@ common ancestor: width + height is a length.
 
 ## Points and origins
 
-`quantity_point<R, O, Rep>` counts a quantity from an origin. An origin is
+`id<point_key<R, O, Rep>>` counts a quantity from an origin. An origin is
 absolute (`si::absolute_zero`) or at an exact offset from one: `si::ice_point`
 is absolute zero + 273.15 K, `international::zeroth_degree_Fahrenheit` is
 45967/180 K. Changing the origin shifts the grid by the offset in the point's
 unit, and inside's offset grids keep that exact:
 
 ```cpp
-auto room = point<si::degree_Celsius>(inside<{{-50, 50}, per<10>}>{20});
+auto room = point<si::degree_Celsius>(id<"[-50..50] 1/10">{20});
 auto k    = room.point_for(si::absolute_zero).in(si::kelvin);   // 293.15 K
 room.point_in(international::degree_Fahrenheit);                // 68.00 ℉
 bool same = k == room;                                          // true: one absolute origin
@@ -144,7 +144,7 @@ bool same = k == room;                                          // true: one abs
 | Spelling | Gives |
 |---|---|
 | `point<U>(v)` | a point counted from U's origin (K, ℃ and ℉ have one), else the dimension's zero |
-| `P{v, u}`, `P{v, u, clamp}` | a point of type P = `quantity_point<R, O, Rep>` from a number in its own unit, counted from O |
+| `P{v, u}`, `P{v, u, clamp}` | a point of type P = `id<point_key<R, O, Rep>>` from a number in its own unit, counted from O |
 | `delta<U>(v)` | a difference in U, to add to a point |
 | `p.point_in(u)` | the same point in `u`, counted from `u`'s origin: 350 ℉ → 530/3 ℃ |
 | `p.in(u)` | the same point in `u`, keeping the origin |
@@ -194,7 +194,7 @@ siblings (activity and frequency are both 1/s), and `.recipe` for a child with
 a recipe of its own (velocity: displacement / duration, under speed).
 
 ```cpp
-inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
+inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "`R", .origin = si::absolute_zero}>;
 inline constexpr auto rpm     = unit<"rpm", one / si::minute, {.kind = isq::frequency}>;
 inline constexpr auto turn    = unit<"tr", just<2> * pi * si::radian, {.space_before = false}>;
 inline constexpr auto level   = kind<"level", isq::dimensionless, {.distinct = true}>;   // dB: no plain number
@@ -220,9 +220,9 @@ inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
 inline constexpr auto     fathom = defined_by<fathom_def>;
 ```
 
-A quantity in fathoms then prints in about 390 characters instead of 700, and
-one in a base unit of your own (a named kind and unit) in 380 instead of
-1300 (`tools/symbol_lengths.sh`). In a header, declare the definition
+A quantity in fathoms then prints in about 220 characters instead of 520, and
+one in a base unit of your own (a named kind and unit) in 220 instead of
+770 (`tools/symbol_lengths.sh`). In a header, declare the definition
 `inline constexpr`, so that every translation unit has the same one.
 
 ### Base dimensions of your own
@@ -300,7 +300,7 @@ the numbers, so it still rounds once and checks once.
 | `std::hash<Q>`, `std::numeric_limits<Q>` | the number's, with the limits as quantities |
 
 ```cpp
-quantity<si::second, inside<{0, 86399}>> t{3725, si::second};
+id<"[0..86399] [s]"> t{3725, si::second};
 auto [h, rest] = divmod(t, si::hour);             // 1, 125 s: the remainder keeps its unit
 ```
 
@@ -376,4 +376,4 @@ those grids; units add about 16 ms per expression.
   `parse`) work on quantities.
 - A number names its unit going in and coming out, as in mp-units
   (`Q{42, si::metre}`, `q.numerical_value_in(si::metre)`), and for unit one
-  too: `quantity<one, …>{42, one}`.
+  too: `id<quantity_key<one, …>>{42, one}`.

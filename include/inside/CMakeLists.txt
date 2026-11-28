@@ -22,6 +22,7 @@ target_sources(
                 inside/detail/error.hpp
                 inside/detail/float_bits.hpp
                 inside/detail/grid_rational.hpp
+                inside/detail/id_text.hpp
                 inside/detail/introspection.hpp
                 inside/detail/lift.hpp
                 inside/detail/limb_algorithms.hpp
@@ -40,6 +41,7 @@ target_sources(
                 inside/grid.hpp
                 inside/interval.hpp
                 inside/io.hpp
+                inside/key.hpp
                 inside/mdspan.hpp
                 inside/numeric_limits.hpp
                 inside/policy_flag.hpp
@@ -66,6 +68,8 @@ target_sources(
                 units/detail/point.hpp
                 units/detail/define.hpp
                 units/detail/quantity.hpp
+                units/detail/unit_grammar.hpp
+                units/detail/unit_key.hpp
                 units/geoalg.hpp
                 units/io.hpp
                 units/mdspan.hpp

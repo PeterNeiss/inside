@@ -42,10 +42,10 @@ std::map<std::string, std::string_view> scan(std::string_view json)
   return fields;
 }
 
-using order_id      = inside<{0, 9'000'000'000'000'000'000}>;                                     // 64-bit IDs
-using usd_per_item  = quantity<USD / item, inside<{{0, 1'000'000}, per<100>}, round_half_away>>; // to the cent
-using items         = quantity<item, inside<{1, 1000}>>;                                          // whole items
-using discount_rate = quantity<percent, inside<{0, 100}>>;                                        // whole percent
+using order_id      = id<"[0..9'000'000'000'000'000'000]">;                                     // 64-bit IDs
+using usd_per_item  = id<"[0..1'000'000] 1/100 [USD/item] round_half_away">; // to the cent
+using items         = id<"[1..1000] [item]">;                                                     // whole items
+using discount_rate = id<"[0..100] [%]">;                                                         // whole percent
 
 struct order
 {
@@ -104,7 +104,7 @@ std::string write_order(const order& o)
 int main()
 {
   // 1. A valid order: 2^53 + 1 survives, and the total is exact until its one rounding.
-  using dollars = quantity<USD, inside<{{0, 1'000'000'000}, per<100>}, round_half_away>>;
+  using dollars = id<"[0..1'000'000'000] 1/100 [USD] round_half_away">;
   constexpr std::string_view good =
     R"({"id": 9007199254740993, "price[USD/item]": 19.99, "quantity[item]": 3, "discount[%]": 15})";
   const auto o{read_order(good)};

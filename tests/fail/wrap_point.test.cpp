@@ -8,6 +8,6 @@
 using namespace ins;
 
 int main() {
-    inside<{3}, wrap> x{5};
+    id<"[3] wrap"> x{5};
     (void)x;
 }

@@ -43,11 +43,11 @@ using namespace ins::detail;
 // to<T>() is an expected only where it can fail: a grid of integers within
 // T's limits, a requested rounding, and every floating T give a plain T.
 TEST(InsideToTest, to_is_plain_where_it_cannot_fail) {
-    using digits = inside<{0, 9}>;
-    using money  = inside<{{0, 100}, per<100>}>;
+    using digits = id<"[0..9]">;
+    using money  = id<"[0..100] 1/100">;
     static_assert(std::same_as<decltype(digits{}.to<std::uint8_t>()), std::uint8_t>);
-    static_assert(std::same_as<decltype(inside<{0, 1000}>{}.to<std::uint8_t>()), std::expected<std::uint8_t, error>>);
-    static_assert(std::same_as<decltype(inside<{-5, 5}>{}.to<unsigned>()), std::expected<unsigned, error>>);
+    static_assert(std::same_as<decltype(id<"[0..1000]">{}.to<std::uint8_t>()), std::expected<std::uint8_t, error>>);
+    static_assert(std::same_as<decltype(id<"[-5..5]">{}.to<unsigned>()), std::expected<unsigned, error>>);
     static_assert(std::same_as<decltype(money{}.to<int>()), std::expected<int, error>>); // 0.25 does not round
     static_assert(std::same_as<decltype(money{}.to<int, round_floor>()), int>);
     static_assert(std::same_as<decltype(money{}.to<double>()), double>);
@@ -58,7 +58,7 @@ TEST(InsideToTest, to_is_plain_where_it_cannot_fail) {
 TEST(InsideToTest, inside_to_unsigned_t) {
     {
         SCOPED_TRACE("trivially-fits grid takes the fast path");
-        using B = inside<{0, 100}>;
+        using B = id<"[0..100]">;
         ASSERT_TRUE(B{42}.to<std::uint8_t>() == 42);
         ASSERT_TRUE(B{0}.to<std::uint32_t>() == 0);
         ASSERT_TRUE(B{100}.to<std::size_t>() == 100);
@@ -66,7 +66,7 @@ TEST(InsideToTest, inside_to_unsigned_t) {
 
     {
         SCOPED_TRACE("runtime overflow when Upper > T::max");
-        using B = inside<{0, 1000}>;
+        using B = id<"[0..1000]">;
         auto r  = B{500}.to<std::uint8_t>();
         ASSERT_FALSE(r.has_value());
         ASSERT_EQ(r.error(), error::overflow);
@@ -74,7 +74,7 @@ TEST(InsideToTest, inside_to_unsigned_t) {
 
     {
         SCOPED_TRACE("negative inside to unsigned -> overflow");
-        using B = inside<{-10, 10}>;
+        using B = id<"[-10..10]">;
         auto r  = B{-5}.to<std::uint8_t>();
         ASSERT_FALSE(r.has_value());
         ASSERT_EQ(r.error(), error::overflow);
@@ -82,7 +82,7 @@ TEST(InsideToTest, inside_to_unsigned_t) {
 
     {
         SCOPED_TRACE("a fractional value needs permission to round");
-        using B = inside<{{0, 1}, per<2>}>;
+        using B = id<"[0..1] 1/2">;
         ASSERT_EQ(B{0.5}.to<std::uint8_t>().error(), error::rounding_error); // no rounding named
         ASSERT_TRUE((B{0.5}.to<std::uint8_t, round_toward_zero>() == 0));    // 0.5 -> 0
         ASSERT_TRUE(B{1}.to<std::uint8_t>().value() == 1);
@@ -90,7 +90,7 @@ TEST(InsideToTest, inside_to_unsigned_t) {
 
     {
         SCOPED_TRACE("Q-format fast path");
-        using B = inside<{{0, 255}, per<256>}, round_half_away>;
+        using B = id<"[0..255] 1/256 round_half_away">;
         ASSERT_TRUE(B{42.5}.to<std::uint8_t>() == 43); // the type's mode: a tie away from zero
     }
 }
@@ -99,14 +99,14 @@ TEST(InsideToTest, inside_to_unsigned_t) {
 TEST(InsideToTest, inside_to_signed_t) {
     {
         SCOPED_TRACE("trivially-fits grid takes the fast path");
-        using B = inside<{-50, 50}>;
+        using B = id<"[-50..50]">;
         ASSERT_TRUE(B{-7}.to<std::int8_t>() == -7);
         ASSERT_TRUE(B{42}.to<std::int32_t>() == 42);
     }
 
     {
         SCOPED_TRACE("overflow upward -> error::overflow");
-        using B = inside<{0, 1000}>;
+        using B = id<"[0..1000]">;
         auto r  = B{500}.to<std::int8_t>();
         ASSERT_FALSE(r.has_value());
         ASSERT_EQ(r.error(), error::overflow);
@@ -114,7 +114,7 @@ TEST(InsideToTest, inside_to_signed_t) {
 
     {
         SCOPED_TRACE("overflow downward -> error::overflow");
-        using B = inside<{-1000, 0}>;
+        using B = id<"[-1000..0]">;
         auto r  = B{-500}.to<std::int8_t>();
         ASSERT_FALSE(r.has_value());
         ASSERT_EQ(r.error(), error::overflow);
@@ -125,13 +125,13 @@ TEST(InsideToTest, inside_to_signed_t) {
 TEST(InsideToTest, inside_to_floating_t) {
     {
         SCOPED_TRACE("ordinary value");
-        using B = inside<{{0, 1}, per<2>}>;
+        using B = id<"[0..1] 1/2">;
         ASSERT_TRUE(B{0.5}.to<double>() == 0.5);
     }
 
     {
         SCOPED_TRACE("to<double> works even on a strict-policy inside (no policy gate)");
-        using B = inside<{0, 10}, checked>;
+        using B = id<"[0..10]">;
         ASSERT_TRUE(B{3}.to<double>() == 3.0);
     }
 }
@@ -140,13 +140,13 @@ TEST(InsideToTest, inside_to_floating_t) {
 TEST(InsideToTest, inside_to_rational_conversion) {
     {
         SCOPED_TRACE("ordinary value");
-        using B = inside<{0, 10}>;
+        using B = id<"[0..10]">;
         ASSERT_TRUE(static_cast<rational>(B{5}) == 5);
     }
 
     {
         SCOPED_TRACE("fractional grid is preserved exactly");
-        using B = inside<{{0, 1}, per<2>}>;
+        using B = id<"[0..1] 1/2">;
         ASSERT_TRUE(static_cast<rational>(B{0.5}) == 0.5_r);
     }
 }
@@ -154,10 +154,10 @@ TEST(InsideToTest, inside_to_rational_conversion) {
 // The implicit integer conversion is an index's alone (non-negative integers
 // within int64, mdspan.test.cpp); to<T>() / to<T>() read every other grid.
 TEST(InsideToTest, integers_are_read_with_as_or_to) {
-    using narrow = inside<{-100, 100}>;
-    using wide   = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
-    static_assert(std::is_convertible_v<inside<{0, 100}>, std::int64_t>);
-    static_assert(std::is_convertible_v<inside<{0, 100}>, std::size_t>);
+    using narrow = id<"[-100..100]">;
+    using wide   = id<key{grid{0, std::numeric_limits<std::uint64_t>::max()}}>;
+    static_assert(std::is_convertible_v<id<"[0..100]">, std::int64_t>);
+    static_assert(std::is_convertible_v<id<"[0..100]">, std::size_t>);
     static_assert(!std::is_convertible_v<narrow, std::int64_t>);
     static_assert(!std::is_convertible_v<narrow, std::size_t>);
     static_assert(!std::is_convertible_v<wide, std::int64_t>);
@@ -165,13 +165,13 @@ TEST(InsideToTest, integers_are_read_with_as_or_to) {
     ASSERT_EQ(narrow{42}.to<std::int64_t>(), 42);
     // A grid past T's range reports the value that does not fit.
     ASSERT_EQ(narrow{42}.to<std::int8_t>(), std::int8_t{42});
-    ASSERT_EQ((inside<{0, 300}>{300}.to<std::uint8_t>()), std::unexpected{error::overflow});
+    ASSERT_EQ((id<"[0..300]">{300}.to<std::uint8_t>()), std::unexpected{error::overflow});
 }
 
 // An index reads as a size_t: to<std::size_t>() keeps no check on an
 // index-shaped grid.
 TEST(InsideToTest, as_size_t_indexes_a_container) {
-    using idx_t = inside<{0, 9}>;
+    using idx_t = id<"[0..9]">;
     std::vector<int> v{0, 10, 20, 30, 40, 50, 60, 70, 80, 90};
     idx_t            i{3};
     ASSERT_EQ(v[i], 30);
@@ -182,10 +182,10 @@ TEST(InsideToTest, as_size_t_indexes_a_container) {
 // A double is read with to<double>() (rounded once), under every policy; there is no operator double, so
 // static_cast<double>(x) names to<double>() in its diagnostic.
 TEST(InsideToTest, a_double_is_read_with_to_double) {
-    using B_round  = inside<{{0, 1}, per<2>}, round_half_away>;
-    using B_ignore = inside<{{0, 1}, per<2>}, round_toward_zero>;
-    using B_strict = inside<{{0, 1}, per<2>}, checked>;
-    using B_floor  = inside<{{0, 1}, per<2>}, round_floor>;
+    using B_round  = id<"[0..1] 1/2 round_half_away">;
+    using B_ignore = id<"[0..1] 1/2 round_toward_zero">;
+    using B_strict = id<"[0..1] 1/2">;
+    using B_floor  = id<"[0..1] 1/2 round_floor">;
 
     static_assert(!std::is_constructible_v<double, B_round>);
     static_assert(!std::is_constructible_v<double, B_strict>);
@@ -200,8 +200,8 @@ TEST(InsideToTest, a_double_is_read_with_to_double) {
 
 // to<T>() is a non-expected shortcut for to<T>().value()
 TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
-    using narrow = inside<{0, 100}>;
-    using frac   = inside<{{0, 100}, per<10>}, round_half_away>;
+    using narrow = id<"[0..100]">;
+    using frac   = id<"[0..100] 1/10 round_half_away">;
 
     // Matches the integer-extraction value path.
     ASSERT_TRUE(narrow{42}.to<std::int64_t>() == 42);
@@ -231,8 +231,8 @@ concept has_member_to = requires(B b) { b.template to<T>(); };
 
 // A double is read from every inside, rounded once, by to<double>() (the only spelling: no operator double).
 TEST(InsideToTest, double_is_read_from_every_inside) {
-    using strict_b  = inside<{0, 100}>; // no rounding flag
-    using rounded_b = inside<{0, 100}, round_half_away>;
+    using strict_b  = id<"[0..100]">; // no rounding flag
+    using rounded_b = id<"[0..100] round_half_away">;
     static_assert(has_member_to<strict_b, double> && has_member_to<rounded_b, double>);
     static_assert(!std::is_constructible_v<double, strict_b> && !std::is_constructible_v<double, rounded_b>);
     static_assert(!std::is_convertible_v<strict_b, double>);
@@ -243,7 +243,7 @@ TEST(InsideToTest, double_is_read_from_every_inside) {
 // to<T>() takes only a conversion the grid proves total; where a value may
 // not convert, to<T>() reports it as an expected.
 TEST(InsideToTest, to_is_total_or_reports) {
-    using s = inside<{-5, 5}>;
+    using s = id<"[-5..5]">;
     static_assert(!std::same_as<decltype(s{}.to<unsigned>()), unsigned>);
     ASSERT_EQ(s{-1}.to<unsigned>().error(), error::overflow); // does not fit
     ASSERT_EQ(s{3}.to<int>(), 3);
@@ -268,39 +268,39 @@ using namespace ins::detail;
 TEST(ConstantTest, point_inside_assignment_onto_non_unit_notch_grids) {
     // values {0,3,6,9}
     static_assert([] {
-        inside<{{0, 9}, 3}> b = 0_ins;
+        id<"[0..9] 3"> b = 0_ins;
         return b == 0;
     }());
     static_assert([] {
-        inside<{{0, 9}, 3}> b = 3_ins;
+        id<"[0..9] 3"> b = 3_ins;
         return b == 3;
     }());
     static_assert([] {
-        inside<{{0, 9}, 3}> b = 9_ins;
+        id<"[0..9] 3"> b = 9_ins;
         return b == 9;
     }());
     // values {0,2,..,10}
     static_assert([] {
-        inside<{{0, 10}, 2}> b = 0_ins;
+        id<"[0..10] 2"> b = 0_ins;
         return b == 0;
     }());
     static_assert([] {
-        inside<{{0, 10}, 2}> b = 4_ins;
+        id<"[0..10] 2"> b = 4_ins;
         return b == 4;
     }());
     // offset grid (non-zero Lower), values {3,6,9}
     static_assert([] {
-        inside<{{3, 9}, 3}> b = 6_ins;
+        id<"[3..9] 3"> b = 6_ins;
         return b == 6;
     }());
 
     // The insidable path now matches the integer path for the same grid.
     static_assert([] {
-        inside<{{0, 9}, 3}> b = 0;
+        id<"[0..9] 3"> b = 0;
         return b == 0;
     }());
     static_assert([] {
-        inside<{{0, 9}, 3}> b = 0_ins;
+        id<"[0..9] 3"> b = 0_ins;
         return b == 0;
     }());
 }
@@ -308,15 +308,15 @@ TEST(ConstantTest, point_inside_assignment_onto_non_unit_notch_grids) {
 // point-inside assignment rejected when not representable
 TEST(ConstantTest, point_inside_assignment_rejected_when_not_representable) {
     // not on a notch
-    static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(1_ins)>);
-    static_assert(!inside_assignable<inside<{{0, 10}, 2}>, decltype(3_ins)>);
+    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(1_ins)>);
+    static_assert(!inside_assignable<id<"[0..10] 2">, decltype(3_ins)>);
     // out of range (valid grids: Lower divisible by notch)
-    static_assert(!inside_assignable<inside<{{3, 9}, 3}>, decltype(0_ins)>);
-    static_assert(!inside_assignable<inside<{6, 12}>, decltype(0_ins)>);
+    static_assert(!inside_assignable<id<"[3..9] 3">, decltype(0_ins)>);
+    static_assert(!inside_assignable<id<"[6..12]">, decltype(0_ins)>);
 
     // still admitted where representable
-    static_assert(inside_assignable<inside<{{0, 9}, 3}>, decltype(0_ins)>);
-    static_assert(inside_assignable<inside<{{3, 9}, 3}>, decltype(6_ins)>);
+    static_assert(inside_assignable<id<"[0..9] 3">, decltype(0_ins)>);
+    static_assert(inside_assignable<id<"[3..9] 3">, decltype(6_ins)>);
 }
 
 //---------------------------------------------------------------------------
@@ -325,39 +325,39 @@ TEST(ConstantTest, point_inside_assignment_rejected_when_not_representable) {
 // just<0> / just<1> assign across storage kinds
 TEST(ConstantTest, just_0_and_just_1_assign_across_storage_kinds) {
     static_assert([] {
-        inside<{0, 200}> b = just<0>;
+        id<"[0..200]"> b = just<0>;
         return b == 0;
     }());
     static_assert([] {
-        inside<{0, 200}> b = just<1>;
+        id<"[0..200]"> b = just<1>;
         return b == 1;
     }());
     static_assert([] {
-        inside<{-40, 60}> b = just<0>;
+        id<"[-40..60]"> b = just<0>;
         return b == 0;
     }()); // signed value storage
     static_assert([] {
-        inside<{-40, 60}> b = just<1>;
+        id<"[-40..60]"> b = just<1>;
         return b == 1;
     }());
     static_assert([] {
-        inside<{{0, 9}, 3}> b = just<0>;
+        id<"[0..9] 3"> b = just<0>;
         return b == 0;
     }()); // non-unit notch
     // Q8.8: value 1 is raw 256.
     static_assert([] {
-        inside<{{0, 1}, 0x1p-8_r}> b = just<1>;
+        id<"[0..1] 0x1p-8"> b = just<1>;
         return static_cast<std::int64_t>(b.raw()) == 256;
     }());
 
     // assignment operator (not just construction)
     static_assert([] {
-        inside<{0, 200}> b = 5;
+        id<"[0..200]"> b = 5;
         b                  = just<0>;
         return b == 0;
     }());
     static_assert([] {
-        inside<{0, 200}> b = 5;
+        id<"[0..200]"> b = 5;
         b                  = just<1>;
         return b == 1;
     }());
@@ -365,13 +365,13 @@ TEST(ConstantTest, just_0_and_just_1_assign_across_storage_kinds) {
 
 // just<0> / just<1> rejected where not representable
 TEST(ConstantTest, just_0_and_just_1_rejected_where_not_representable) {
-    static_assert(!inside_assignable<inside<{5, 10}>, decltype(just<0>)>);     // 0 out of range
-    static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(just<1>)>); // 1 not on notch
+    static_assert(!inside_assignable<id<"[5..10]">, decltype(just<0>)>);       // 0 out of range
+    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(just<1>)>);      // 1 not on notch
 }
 
 // just<0> / just<1> in comparison and arithmetic
 TEST(ConstantTest, just_0_and_just_1_in_comparison_and_arithmetic) {
-    using B = inside<{0, 200}>;
+    using B = id<"[0..200]">;
 
     // comparison (both orders — C++20 rewritten/reversed candidates)
     static_assert(B{0} == just<0>);
@@ -399,7 +399,7 @@ TEST(ConstantTest, just_numerator_denominator) {
     static_assert(rational{just<-6, 5>} == rational(-6, 5));
     static_assert(std::is_same_v<decltype(just<4, 2>), decltype(just<2>)>);
     static_assert(std::is_same_v<decltype(just<7>), decltype(just<7, 1>)>);
-    static_assert(lower_of<inside<{{just<-1, 10>, just<1, 10>}, per<1000>}>> == rational(-1, 10));
+    static_assert(lower_of<id<"[-1/10..1/10] 1/1000">> == rational(-1, 10));
 }
 } // namespace constant_tests
 
@@ -430,15 +430,15 @@ template <class T>
 concept indexes_a_vector = requires(std::vector<int>& v, T t) { v[t]; };
 
 TEST(ConversionTest, predicates_on_tiny_doubles) {
-    using unit_value = inside<{{0, 1}, per<100>}>;
+    using unit_value = id<"[0..1] 1/100">;
     static_assert(conversion_rounds<unit_value>(1e-20) && !conversion_overflows<unit_value>(1e-20));
     static_assert(conversion_overflows<unit_value>(-1e-20) && !conversion_rounds<unit_value>(-1e-20));
-    static_assert(conversion_rounds<inside<{{0, 1}, per<100>}, round_half_away>>(-1e-20));
+    static_assert(conversion_rounds<id<"[0..1] 1/100 round_half_away">>(-1e-20));
 }
 
 TEST(ConversionTest, no_comparison_with_floating_point) {
-    using C      = inside<grid{interval{0, 1}, max_denominator{1000}}>;
-    using thirds = inside<{{0, 1}, rational{1, 3}}>;
+    using C      = id<"[0..1] <1000>">;
+    using thirds = id<"[0..1] 1/3">;
     static_assert(!compares_with<C, double> && !compares_with<thirds, float> && !compares_with<C, long double>);
     static_assert(compares_with<C, int> && compares_with<C, rational>);
     static_assert(C{rational{1, 2}} == 0.5_r && thirds{rational{1, 3}} == just<1, 3>);
@@ -448,20 +448,20 @@ TEST(ConversionTest, no_comparison_with_floating_point) {
 // int8 is 127, −0.5 → unsigned is 0. Without a rounding a fractional value
 // is a rounding_error.
 TEST(ConversionTest, to_rounds_before_the_range_check) {
-    using H = inside<{{-0.5, 200}, 0.5}>;
+    using H = id<"[-0.5..200] 0.5">;
     static_assert(*H{-0.5}.to<unsigned, round_toward_zero>() == 0u);
     static_assert(*H{127.5}.to<std::int8_t, round_toward_zero>() == 127);
     static_assert(H{127.5}.to<std::int8_t>().error() == error::rounding_error);
     static_assert(H{127.5}.to<int, round_half_away>() == 128 && H{127.5}.to<int, round_floor>() == 127);
-    static_assert(inside<{{0, 10}, per<4>}, round_half_away>{2.75}.to<int>() == 3); // the type's own mode
+    static_assert(id<"[0..10] 1/4 round_half_away">{2.75}.to<int>() == 3); // the type's own mode
     static_assert(H{128}.to<std::int8_t>().error() == error::overflow);
-    static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == error::overflow);
+    static_assert(id<"[-5..5]">{-1}.to<unsigned>().error() == error::overflow);
 }
 
 // A bounded continuous grid rejects a denominator past its bound: so does
 // conversion_rounds (it said false, and parse_exact relied on it).
 TEST(ConversionTest, conversion_rounds_on_a_bounded_continuous_grid) {
-    using B = inside<grid{interval{0, 1}, max_denominator{2}}>;
+    using B = id<"[0..1] <2>">;
     static_assert(conversion_rounds<B>(rational{1, 3}) && !conversion_rounds<B>(rational{1, 2}));
     static_assert(!conversion_rounds<B>(0.5) && conversion_rounds<B>(0.25));
     static_assert(!conversion_rounds<B>(rational{3}) && conversion_overflows<B>(rational{3}));
@@ -469,16 +469,16 @@ TEST(ConversionTest, conversion_rounds_on_a_bounded_continuous_grid) {
 }
 
 TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
-    using three  = inside<{3}>;              // a point grid
-    using halves = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
-    using digit  = inside<{0, 9}>;
-    using small  = inside<{-7, 5}>;
+    using three  = id<"[3]">;                // a point grid
+    using halves = id<"[0.5..10.5] 1">;      // Lower off the notch's multiples
+    using digit  = id<"[0..9]">;
+    using small  = id<"[-7..5]">;
     static_assert(can_clamp_cast<digit, int> && can_clamp_cast<digit, small>);
     static_assert(!can_clamp_cast<halves, three> && can_exact_cast<halves, three>); // 3 is off the .5 lattice
     // An output that may miss a result (|0| = 0) makes it an expected.
-    static_assert(can_abs<digit, small> && can_abs<inside<{1, 10}>, small>);
-    EXPECT_EQ((math::abs<inside<{1, 10}>>(small{0}).error()), error::overflow);
-    static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, max_denominator{1000}}>>);
+    static_assert(can_abs<digit, small> && can_abs<id<"[1..10]">, small>);
+    EXPECT_EQ((math::abs<id<"[1..10]">>(small{0}).error()), error::overflow);
+    static_assert(can_pown<5, digit> && can_pown<0, id<"[-2..2] <1000>">>);
     EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
     EXPECT_EQ((digit{small{-3}, clamp}), 0_ins);
 }
@@ -486,9 +486,9 @@ TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
 // conversion_rounds divided loudly (a compile error for a quotient past 64
 // bits) and guessed for doubles past the 64-bit rationals.
 TEST(ConversionTest, predicates_decide_exactly) {
-    using F = inside<{{0, 1}, rational{1, 1ll << 61}}>;
-    using C = inside<{{0, 2}, rational{1, 1ll << 61}}, round_half_away>;
-    using N = inside<{{0, 10}, rational{1, 3}}, round_half_away>;
+    using F = id<key{grid{{0, 1}, rational{1, 1ll << 61}}}>;
+    using C = id<key{grid{{0, 2}, rational{1, 1ll << 61}}, round_half_away}>;
+    using N = id<"[0..10] 1/3 round_half_away">;
     EXPECT_FALSE(conversion_rounds<F>(0x1p-61));
     EXPECT_TRUE(conversion_rounds<F>(0x1p-62));
     EXPECT_TRUE(conversion_overflows<N>(1e30));
@@ -500,7 +500,7 @@ TEST(ConversionTest, predicates_decide_exactly) {
     static_assert(!conversion_rounds<C>(rational{3, 1ll << 61}));
     // A bounded continuous grid rounds before its range check: 22/21 rounds
     // onto 1 in sevenths (rounding, not overflow), as the exact path decides.
-    using S = inside<grid{interval{0, 1}, max_denominator{7}}, round_half_away>;
+    using S = id<"[0..1] <7> round_half_away">;
     static_assert(conversion_rounds<S>(rational{22, 21}) && !conversion_overflows<S>(rational{22, 21}));
     static_assert(!conversion_rounds<S>(rational{3, 2}) && conversion_overflows<S>(rational{3, 2}));
 }
@@ -508,7 +508,7 @@ TEST(ConversionTest, predicates_decide_exactly) {
 // A double finer than a continuous grid's bound is off the grid; the
 // predicates agree with the store.
 TEST(ConversionTest, continuous_predicates_see_the_rational_store) {
-    using C        = inside<{{-1, 1}, max_denominator{std::int64_t{1} << 62}}>;
+    using C        = id<key{grid{{-1, 1}, max_denominator{std::int64_t{1} << 62}}}>;
     const double d = 0x1.644cb4ec9ec46p-20;
     EXPECT_EQ(C::try_make(d).error(), error::rounding_error);
     EXPECT_FALSE(conversion_overflows<C>(d));
@@ -522,36 +522,36 @@ TEST(ConversionTest, numerator_past_int64) {
     using I64             = std::int64_t;
     constexpr I64 I64_MAX = std::numeric_limits<I64>::max();
     using detail::big_int;
-    using X      = inside<grid{{I64{1} << 62, (I64{1} << 62) + 1}, rational{1, 2}}>;
+    using X      = id<key{grid{{I64{1} << 62, (I64{1} << 62) + 1}, rational{1, 2}}}>;
     const X    x = rational{(std::uint64_t{1} << 63) + 1, 2};
     const auto n = x.numerator();
     EXPECT_TRUE(n == (std::uint64_t{1} << 63) + 1);
-    using Z      = inside<grid{{-I64_MAX, -I64_MAX + 1}, rational{1, 2}}>;
+    using Z      = id<key{grid{{-I64_MAX, -I64_MAX + 1}, rational{1, 2}}}>;
     const Z    z = rational{UINT64_MAX - 2, -2};
     const auto m = z.numerator();
     EXPECT_TRUE(m == -just<grid_number{big_int{UINT64_MAX - 2}}>);
     // Numerators and denominators get the tightest integer grids.
-    static_assert(grid_of<decltype(std::declval<inside<{{0, 10}, rational{1, 4}}>>().numerator())> == grid{0, 40});
-    static_assert(grid_of<decltype(std::declval<inside<{{0, 1}, max_denominator{1000}}>>().numerator())> ==
+    static_assert(grid_of<decltype(std::declval<id<"[0..10] 1/4">>().numerator())> == grid{0, 40});
+    static_assert(grid_of<decltype(std::declval<id<"[0..1] <1000>">>().numerator())> ==
                   grid{0, 1000});
-    static_assert(grid_of<decltype(std::declval<inside<{{0, 1}, max_denominator{1000}}>>().denominator())> ==
+    static_assert(grid_of<decltype(std::declval<id<"[0..1] <1000>">>().denominator())> ==
                   grid{1, 1000});
 }
 
 // The one-shot casts OR-ed their flags with the type's, so the type's
 // rounding mode or clamp won.
 TEST(ConversionTest, casts_override_the_declared_policy) {
-    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_half_away}), 3);
-    EXPECT_EQ((inside<{0, 100}, round_half_even>{2.5, clamp | round_half_away}), 3);
-    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_ceil}), 3);
-    EXPECT_EQ((inside<{0, 100}, round_ceil>{2.2, clamp | round_half_away}), 2);
-    EXPECT_EQ((inside<{0, 100}, clamp>{150, wrap}), 49);
-    EXPECT_EQ((inside<{0, 100}, wrap>{150, clamp}), 100);
-    EXPECT_EQ((inside<{0, 100}, round_floor>{7.9, clamp}), 7); // the type's rounding stays
+    EXPECT_EQ((id<"[0..100] round_floor">{2.5, clamp | round_half_away}), 3);
+    EXPECT_EQ((id<"[0..100] round_half_even">{2.5, clamp | round_half_away}), 3);
+    EXPECT_EQ((id<"[0..100] round_floor">{2.5, clamp | round_ceil}), 3);
+    EXPECT_EQ((id<"[0..100] round_ceil">{2.2, clamp | round_half_away}), 2);
+    EXPECT_EQ((id<"[0..100] clamp">{150, wrap}), 49);
+    EXPECT_EQ((id<"[0..100] wrap">{150, clamp}), 100);
+    EXPECT_EQ((id<"[0..100] round_floor">{7.9, clamp}), 7); // the type's rounding stays
 }
 
 TEST(ConversionTest, inside_against_long_double) {
-    using Q = inside<{{-100, 100}, per<4>}>;
+    using Q = id<"[-100..100] 1/4">;
     static_assert(!compares_with_fp<Q, long double> && !compares_with_fp<Q, double>);
 }
 
@@ -560,16 +560,16 @@ TEST(ConversionTest, inside_against_long_double) {
 TEST(ConversionTest, to_long_double_is_rounded_once) {
     using I64 = std::int64_t;
 #if WIDE_LONG_DOUBLE
-    using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
-    using T = inside<{{-1, 1}, per<3>}>;
+    using F = id<key{grid{{-2, 2}, per<(I64{1} << 62)>}}>;
+    using T = id<"[-1..1] 1/3">;
     static_assert(F{(rational{1} + rational{1, I64{1} << 60})}.to<long double>() == 1.0L + 0x1p-60L);
     static_assert(T{rational{1, 3}}.to<long double>() == 1.0L / 3);
     const F f{(rational{-1} - rational{1, I64{1} << 62})};
     EXPECT_EQ(f.to<long double>(), -1.0L - 0x1p-62L);
-    using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
+    using Q = id<"[-1000000..1000000] 1/1000000007">;
     const Q q{rational{1, 1000000007}};
     EXPECT_EQ(q.to<long double>(), 1.0L / 1000000007);
-    using S = inside<{{-9223372036854775807, 9223372036854775807}, 1}>;
+    using S = id<"[-9223372036854775807..9223372036854775807] 1">;
     EXPECT_EQ(test::store<S>(test::at_run_time(I64{9223372036854775807})).to<long double>(), 9223372036854775807.0L);
 #endif
 }
@@ -577,7 +577,7 @@ TEST(ConversionTest, to_long_double_is_rounded_once) {
 // to<float>() rounded through a double: 1 + 2^-24 + 2^-60 rounded to the
 // double 1 + 2^-24, a tie the float broke to even (1), not up.
 TEST(ConversionTest, to_float_rounds_once) {
-    using T     = inside<{{0, 2}, per<(1ll << 60)>}>;
+    using T     = id<key{grid{{0, 2}, per<(1ll << 60)>}}>;
     const T x   = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1), unsafe);
     const T low = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) - 1), unsafe);
     const T tie = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36)), unsafe);
@@ -592,7 +592,7 @@ TEST(ConversionTest, to_float_rounds_once) {
 TEST(ConversionTest, predicates_handle_non_finite_input) {
     using namespace ins;
     using namespace ins::formats;
-    using B          = inside<{0, 10}>;
+    using B          = id<"[0..10]">;
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
     EXPECT_TRUE(conversion_overflows<B>(nan));
@@ -608,11 +608,11 @@ TEST(ConversionTest, predicates_handle_non_finite_input) {
 //---------------------------------------------------------------------------
 // exact_cast returns the value on the in-range happy path (runtime)
 TEST(ConversionTest, exact_cast_in_range_at_run_time) {
-    using pct = inside<{0, 100}>;
+    using pct = id<"[0..100]">;
     pct p     = *exact_cast<pct>(test::at_run_time(42)); // an int may not fit: an expected
     ASSERT_EQ(p, 42);
 
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     ASSERT_TRUE(exact_cast<coarse>(4) == coarse{4}); // on-notch, in-range
 }
 
@@ -621,7 +621,7 @@ TEST(ConversionTest, exact_cast_in_range_at_run_time) {
 //---------------------------------------------------------------------------
 // conversion_rounds is false for out-of-range values (runtime)
 TEST(ConversionTest, conversion_rounds_is_false_out_of_range) {
-    using coarse = inside<{{0, 10}, 2}>;
+    using coarse = id<"[0..10] 2">;
     // Out of range is overflow, not truncation: the predicate is false.
     ASSERT_FALSE(conversion_rounds<coarse>(11));
     ASSERT_FALSE(conversion_rounds<coarse>(-1));
@@ -634,8 +634,8 @@ TEST(ConversionTest, conversion_rounds_is_false_out_of_range) {
 //---------------------------------------------------------------------------
 // inside -> dyadic conversion lands on the grid
 TEST(ConversionTest, to_a_dyadic_grid_lands_on_the_grid) {
-    using src_t = inside<{-2, 2}>;                               // integer-backed source
-    using rb    = inside<{{-2, 2}, per<1024>}, round_half_away>; // dyadic target
+    using src_t = id<"[-2..2]">;                                 // integer-backed source
+    using rb    = id<"[-2..2] 1/1024 round_half_away">;          // dyadic target
 
     src_t src{1};
     rb    dst = src; // insidable -> dyadic store
@@ -649,8 +649,8 @@ TEST(ConversionTest, to_a_dyadic_grid_lands_on_the_grid) {
 // An index (non-negative integers) converts to the builtin integers that
 // hold its grid; nothing else converts, and nothing narrows.
 TEST(ConversionTest, implicit_integer_conversion_of_an_index_only) {
-    using idx = inside<{0, 9}>;
-    using off = inside<{-1, 9}>;
+    using idx = id<"[0..9]">;
+    using off = id<"[-1..9]">;
     static_assert(std::is_convertible_v<idx, std::int64_t>);
     static_assert(std::is_convertible_v<idx, int>);
     static_assert(std::is_constructible_v<int, idx>);
@@ -658,21 +658,21 @@ TEST(ConversionTest, implicit_integer_conversion_of_an_index_only) {
     static_assert(indexes_a_vector<idx>);
     static_assert(!std::is_convertible_v<off, std::int64_t> && !std::is_constructible_v<int, off>);
     static_assert(!casts_to_int64<off> && !indexes_a_vector<off>);
-    static_assert(!std::is_convertible_v<inside<{{0, 9}, per<2>}, round_half_away>, std::int64_t>);
-    static_assert(!std::is_convertible_v<inside<{0, 10'000'000'000}>, int>); // would narrow silently
-    static_assert(std::is_convertible_v<inside<{0, 10'000'000'000}>, std::int64_t>);
+    static_assert(!std::is_convertible_v<id<"[0..9] 1/2 round_half_away">, std::int64_t>);
+    static_assert(!std::is_convertible_v<id<"[0..10'000'000'000]">, int>); // would narrow silently
+    static_assert(std::is_convertible_v<id<"[0..10'000'000'000]">, std::int64_t>);
 
     idx          a{5};
     std::int64_t val = a.to<std::int64_t>();
     ASSERT_EQ(val, 5);
 
-    using idx2 = inside<{1, 10}>;
+    using idx2 = id<"[1..10]">;
     idx2 b{7};
     ASSERT_EQ(b.to<int>(), 7);
 
     // an array subscript names the index type
     int arr[] = {10, 20, 30, 40, 50};
-    using ai  = inside<{0, 4}>;
+    using ai  = id<"[0..4]">;
     ai c{3};
     ASSERT_EQ(arr[c], 40);
 }
@@ -682,7 +682,7 @@ TEST(ConversionTest, implicit_integer_conversion_of_an_index_only) {
 //---------------------------------------------------------------------------
 // operator rational() round-trips through Q-format fast path
 TEST(ConversionTest, rational_of_a_q_format_value) {
-    using fp = inside<{{0, 255}, 0x1p-8_r}, unsafe>;
+    using fp = id<"[0..255] 0x1p-8 unsafe">;
 
     // Bit-for-bit exactness over a sampling of values.
     for (int v : {0, 1, 50, 127, 254, 255}) {
@@ -696,7 +696,7 @@ TEST(ConversionTest, rational_of_a_q_format_value) {
 
 // operator rational() handles fractional Q-format value
 TEST(ConversionTest, rational_of_a_fractional_q_format_value) {
-    using fp = inside<{{0, 255}, 0x1p-8_r}, unsafe>;
+    using fp = id<"[0..255] 0x1p-8 unsafe">;
     // Raw=128 → value 128/256 = 0.5.
     auto     b = fp::from_raw(128, unsafe);
     rational r = b;
@@ -707,7 +707,7 @@ TEST(ConversionTest, rational_of_a_fractional_q_format_value) {
 // numerator()/denominator() and to_value fast paths agree with the rational view.
 //---------------------------------------------------------------------------
 TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
-    using Q = inside<{-4, 4, just<1, 8>}>; // dyadic, negative Lower
+    using Q = id<"[-4..4] 1/8">; // dyadic, negative Lower
     static_assert(index_storage<Q> && q_format_fits<Q>);
     for (std::int64_t k = 0; k <= 64; ++k) {
         Q                  q = Q::from_raw(static_cast<Q::raw_type>(k), unsafe);
@@ -716,7 +716,7 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
         EXPECT_EQ(q.numerator(), num);
         EXPECT_EQ(q.denominator(), static_cast<std::int64_t>(abs_den(r.Den)));
     }
-    using I = inside<{-30, 90, 3}>; // integer notch 3, index storage
+    using I = id<"[-30..90] 3">; // integer notch 3, index storage
     static_assert(index_storage<I> && integer_lattice<I>);
     for (std::int64_t v = -30; v <= 90; v += 3) {
         I i = test::store<I>(v);
@@ -741,31 +741,31 @@ using detail::rational;
 // The exact paths of the conversion predicates: a double past the 64-bit
 // rationals, a long double that is no double, grid numbers past 64 bits.
 TEST(ConversionsArmTest, predicates_on_the_exact_paths) {
-    using I = inside<{0, 10}>;
+    using I = id<"[0..10]">;
     EXPECT_TRUE(conversion_overflows<I>(1e30) && !conversion_rounds<I>(1e30));
     EXPECT_TRUE(conversion_overflows<I>(1e30L));
     // Just past Upper, onto the bound by the grid's rounding: rounds.
-    using C = inside<{{0, 1}, max_denominator{10}}, round_half_away>;
+    using C = id<"[0..1] <10> round_half_away">;
     EXPECT_TRUE(!conversion_overflows<C>(1.0L + 0x1p-63L) && conversion_rounds<C>(1.0L + 0x1p-63L));
-    using P = inside<{1180591620717411303424_g, 1180591620717411303424_g}>; // the point 2^70
+    using P = id<"[1180591620717411303424..1180591620717411303424]">; // the point 2^70
     EXPECT_TRUE(!conversion_overflows<P>(0x1p70) && !conversion_rounds<P>(0x1p70));
-    using W = inside<{0, 1180591620717411303424_g}>;
+    using W = id<"[0..1180591620717411303424]">;
     EXPECT_TRUE(!conversion_overflows<W>(5) && !conversion_rounds<W>(5));
 }
 
 // A point rounds nothing; on a fine lattice an in-range value whose 64-bit
 // steps overflow is decided exactly.
 TEST(ConversionsArmTest, rounds_on_a_point_and_past_the_64_bit_steps) {
-    EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(5)));
-    EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(rational{5})));
+    EXPECT_FALSE((conversion_rounds<id<"[5..5]">>(5)));
+    EXPECT_FALSE((conversion_rounds<id<"[5..5]">>(rational{5})));
     EXPECT_TRUE(
-        (conversion_rounds<inside<{{0, 4}, per<3>}>>(rational{(std::uint64_t{1} << 63) + 1, std::int64_t{1} << 62})));
+        (conversion_rounds<id<"[0..4] 1/3">>(rational{(std::uint64_t{1} << 63) + 1, std::int64_t{1} << 62})));
 }
 
 // A lattice past the 64-bit rationals converts the values that fit; one
 // past them is reported.
 TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
-    using T = inside<{{-12000000000000000000_g, 12000000000000000000_g}, just<3, 2>}>;
+    using T = id<"[-12000000000000000000..12000000000000000000] 3/2">;
     static_assert(detail::rational_readable<T>);
     const T t = T::from_step(15333333333333333333_ins);                              // 10999999999999999999.5
     EXPECT_DEATH((void)rational{t}, "ins: inside: value past the 64-bit rationals"); // a precondition
@@ -781,7 +781,7 @@ using namespace ins::formats;
 // rational and raised inside the noexcept predicates (terminate), also under
 // parse_exact.
 TEST(ConversionsPinnedTest, predicates_on_a_bound_past_64_bits) {
-    using F = inside<{{0, 1}, max_denominator{1180591620717411303424_g}}>; // bound 2^70
+    using F = id<"[0..1] <1180591620717411303424>">; // bound 2^70
     static_assert(detail::fraction_storage<F>);
     EXPECT_FALSE(conversion_rounds<F>(test::at_run_time(0)));
     EXPECT_TRUE(conversion_overflows<F>(test::at_run_time(2)));
@@ -799,12 +799,12 @@ using detail::rational;
 // to<long double>() and to<float>() of exact values past the type's range
 // are ±infinity, below its least subnormal 0; zero is 0.
 TEST(ConversionsArmTest, floats_of_values_past_the_range) {
-    using Big = inside<{{0, grid_number{detail::grid_int{1} << 20000}}, grid_number{detail::grid_int{1} << 19990}}>;
+    using Big = id<key{grid{{0, grid_number{detail::grid_int{1} << 20000}}, grid_number{detail::grid_int{1} << 19990}}}>;
     EXPECT_EQ(Big::from_step(1024_ins).to<long double>(), std::numeric_limits<long double>::infinity());
     EXPECT_EQ(Big::from_step(1024_ins).to<float>(), std::numeric_limits<float>::infinity());
-    using F = inside<{0, 340282366920938463463374607431768211456_g}>; // to 2^128
+    using F = id<"[0..340282366920938463463374607431768211456]">; // to 2^128
     EXPECT_EQ(F{just<340282366920938463463374607431768211456_g>}.to<float>(), std::numeric_limits<float>::infinity());
-    using T = inside<{{0, 1}, max_denominator{grid_number{detail::grid_int{1} << 20000}}}>;
+    using T = id<key{grid{{0, 1}, max_denominator{grid_number{detail::grid_int{1} << 20000}}}}>;
     EXPECT_EQ((*parse_exact<T>("0")).to<long double>(), 0.0L);
     EXPECT_EQ((*parse_exact<T>("0x1p-19999")).to<long double>(), 0.0L);
 }
@@ -823,13 +823,13 @@ using namespace ins;
 using namespace ins::formats;
 using detail::rational;
 
-// A notch-0 point (inside<grid{5}>; {5, 5} derives notch 1) rounds nothing,
+// A notch-0 point (id<"[5]">; {5, 5} derives notch 1) rounds nothing,
 // on the 64-bit path and the exact one; an integer compares on the left.
 TEST(ConversionsArmTest, notch_zero_point_and_reversed_comparison) {
-    using P = inside<grid{5}>;
+    using P = id<"[5]">;
     static_assert(grid_of<P>.Notch == 0);
     EXPECT_FALSE(conversion_rounds<P>(5));
-    EXPECT_FALSE(conversion_rounds<P>(inside<{0, 1180591620717411303424_g}>{5}));
+    EXPECT_FALSE(conversion_rounds<P>(id<"[0..1180591620717411303424]">{5}));
     EXPECT_TRUE((5 < rational{test::at_run_time(11), 2}));
 }
 } // namespace reached_arms_tests
@@ -863,9 +863,9 @@ template <class S, class U>
 void check_wide_builtins() {
     const S big  = (S{1} << 70) | 5; // 2^70 + 5
     const U ubig = (U{1} << 100) | 3;
-    using W      = inside<{0, 1180591620717411303424_g * 4}>;                     // [0, 2^72]
-    using WS     = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>; // [-2^70, 2^70]
-    using u64    = inside<{0, 18446744073709551615_g}>;
+    using W      = id<key{grid{0, 1180591620717411303424_g * 4}}>;                // [0, 2^72]
+    using WS     = id<"[-1180591620717411303424..1180591620717411303424]">;       // [-2^70, 2^70]
+    using u64    = id<"[0..18446744073709551615]">;
 
     // Grid numbers and the type's interval.
     static_assert(grid_number{S{1} << 100} == 1267650600228229401496703205376_g);
@@ -875,38 +875,38 @@ void check_wide_builtins() {
     static_assert(static_cast<S>(detail::big_int{-big}) == -big && static_cast<U>(detail::big_int{ubig}) == ubig);
 
     // Stores: out of a 64-bit grid by the policy, never truncated.
-    EXPECT_TRUE((inside<{0, 100}, clamp>{big} == 100));
-    EXPECT_TRUE((inside<{0, 100}, clamp>{-big} == 0));
-    EXPECT_TRUE((inside<{0, 9}, wrap>{big} == 9)); // 2^70 ≡ 4 (mod 10)
-    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(big))), error::overflow);
-    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(ubig))), error::overflow);
-    EXPECT_TRUE((inside<{{0, 10}, per<4>}, clamp>{big} == 10));
-    EXPECT_TRUE((inside<{{rational{1, 2}, rational{21, 2}}, 1}, clamp>{big} == rational{21, 2}));
-    EXPECT_TRUE((inside<{{0, 10}, max_denominator{3}}, clamp>{big} == 10));
-    EXPECT_TRUE((inside<{{0, 10}, per<4>}>{S{7}} == 7));
+    EXPECT_TRUE((id<"[0..100] clamp">{big} == 100));
+    EXPECT_TRUE((id<"[0..100] clamp">{-big} == 0));
+    EXPECT_TRUE((id<"[0..9] wrap">{big} == 9)); // 2^70 ≡ 4 (mod 10)
+    EXPECT_EQ((test::store_error<id<"[0..100]">>(test::at_run_time(big))), error::overflow);
+    EXPECT_EQ((test::store_error<id<"[0..100]">>(test::at_run_time(ubig))), error::overflow);
+    EXPECT_TRUE((id<"[0..10] 1/4 clamp">{big} == 10));
+    EXPECT_TRUE((id<"[1/2..21/2] 1 clamp">{big} == rational{21, 2}));
+    EXPECT_TRUE((id<"[0..10] <3> clamp">{big} == 10));
+    EXPECT_TRUE((id<"[0..10] 1/4">{S{7}} == 7));
     EXPECT_TRUE(test::store<W>(test::at_run_time(big)) == big);
 
     // Comparisons.
-    EXPECT_FALSE((inside<{0, 100}>{5} == test::at_run_time(big)));
-    EXPECT_TRUE((inside<{0, 100}>{5} < big));
-    EXPECT_TRUE((inside<{0, 100}>{5} > -big));
-    EXPECT_TRUE((inside<{0, 100}>{5} == S{5}));
-    EXPECT_TRUE((inside<{0, 100}>{5} < ubig));
+    EXPECT_FALSE((id<"[0..100]">{5} == test::at_run_time(big)));
+    EXPECT_TRUE((id<"[0..100]">{5} < big));
+    EXPECT_TRUE((id<"[0..100]">{5} > -big));
+    EXPECT_TRUE((id<"[0..100]">{5} == S{5}));
+    EXPECT_TRUE((id<"[0..100]">{5} < ubig));
     EXPECT_TRUE(WS{-(big - 10)} == -(big - 10));
     EXPECT_TRUE(WS{-(big - 10)} < -(big - 11));
 
     // Reads.
-    EXPECT_TRUE((inside<{-5, 5}>{-3}.template to<S>() == S{-3}));
-    EXPECT_TRUE((inside<{-5, 5}>{-3}.template to<S>() == S{-3}));
-    EXPECT_FALSE((inside<{-5, 5}>{-3}.template to<U>().has_value()));
+    EXPECT_TRUE((id<"[-5..5]">{-3}.template to<S>() == S{-3}));
+    EXPECT_TRUE((id<"[-5..5]">{-3}.template to<S>() == S{-3}));
+    EXPECT_FALSE((id<"[-5..5]">{-3}.template to<U>().has_value()));
     EXPECT_TRUE(W{big}.template to<S>() == big);
     EXPECT_TRUE(u64{18446744073709551615u}.template to<U>() == U{18446744073709551615u});
     EXPECT_TRUE(W::from_step(big) == W{big});
 
     // A 64-bit rational has no such integer.
     EXPECT_DEATH((void)rational{test::at_run_time(big)}, "ins"); // (detail) a precondition
-    EXPECT_FALSE((conversion_overflows<inside<{0, 2361183241434822606848_g}>>(big)));
-    EXPECT_TRUE((conversion_overflows<inside<{0, 100}>>(big)));
+    EXPECT_FALSE((conversion_overflows<id<"[0..2361183241434822606848]">>(big)));
+    EXPECT_TRUE((conversion_overflows<id<"[0..100]">>(big)));
 }
 
 TEST(ConversionTest, builtin_integers_past_64_bits) {
@@ -929,7 +929,7 @@ TEST(ConversionTest, uniform_from_a_generator_past_64_bits) {
         if constexpr (std::uniform_random_bit_generator<G>) {
             G g;
             EXPECT_EQ(detail::random_word(g), std::uint64_t{7}); // (2^64 + 7) mod 2^64
-            const auto v = uniform<inside<{0, 100}>>(g);
+            const auto v = uniform<id<"[0..100]">>(g);
             EXPECT_TRUE(v >= 0 && v <= 100);
         }
     }.template operator()<wide_generator>();
@@ -998,7 +998,7 @@ constexpr ref_mode ref_of = F == round_floor       ? ref_mode::floor
 
 template <policy_flag F>
 void check_to_int() {
-    using q = inside<{{-8, 8}, per<16>}>; // values n/16, n in [-128, 128]
+    using q = id<"[-8..8] 1/16">; // values n/16, n in [-128, 128]
     for (int n = -128; n <= 128; ++n) {
         const q x = q::from_raw(static_cast<detail::raw_t<q>>(n + 128), unsafe);
         EXPECT_EQ((to<int, F>(x)), ref_div(n, 16, ref_of<F>)) << n;
@@ -1018,11 +1018,11 @@ TEST(IntegerFastPathTest, to_integer_rounds_as_the_reference) {
     check_to_int<round_half_away>();
     check_to_int<round_half_even>();
     // Without permission to round, a fraction is an error; an integer is not.
-    using q = inside<{{-8, 8}, per<16>}>;
+    using q = id<"[-8..8] 1/16">;
     EXPECT_EQ((q{just<3, 16>}.to<int>().error()), error::rounding_error);
     EXPECT_EQ(*q{just<-3>}.to<int>(), -3);
     // An integer grid past the target: only the range is checked.
-    using wide = inside<{-1000, 1000}>;
+    using wide = id<"[-1000..1000]">;
     EXPECT_EQ(*wide{255}.to<std::uint8_t>(), 255);
     EXPECT_EQ(wide{256}.to<std::uint8_t>().error(), error::overflow);
     EXPECT_EQ(wide{-1}.to<std::uint8_t>().error(), error::overflow);
@@ -1032,9 +1032,9 @@ TEST(IntegerFastPathTest, to_integer_rounds_as_the_reference) {
 
 template <policy_flag F>
 void check_coarse_store() {
-    using sixty = inside<{{-600, 600}, 60}>;      // anchored, notch 60
-    using odd   = inside<{{-7, 14}, just<7, 2>}>; // anchored, notch 7/2
-    using off   = inside<{{1, 601}, 60}>;         // unanchored: 1, 61, …
+    using sixty = id<"[-600..600] 60">;           // anchored, notch 60
+    using odd   = id<"[-7..14] 7/2">;             // anchored, notch 7/2
+    using off   = id<"[1..601] 60">;              // unanchored: 1, 61, …
     for (int n = -600; n <= 600; ++n) {
         const auto r = sixty::try_make<F>(n);
         ASSERT_TRUE(r) << n;
@@ -1059,15 +1059,15 @@ TEST(IntegerFastPathTest, stores_onto_a_coarse_notch_round_as_the_reference) {
     check_coarse_store<round_ceil>();
     check_coarse_store<round_half_away>();
     check_coarse_store<round_half_even>();
-    using sixty = inside<{{-600, 600}, 60}>;
+    using sixty = id<"[-600..600] 60">;
     EXPECT_EQ(sixty::try_make(61).error(), error::rounding_error);
     EXPECT_EQ(*sixty::try_make(-120), -120);
     EXPECT_EQ(sixty::try_make(660).error(), error::overflow);
 }
 
 TEST(IntegerFastPathTest, a_wrap_within_one_period_is_the_modulo) {
-    using deg = inside<{0, 359}, wrap>;
-    using off = inside<{-5, 6}, wrap>; // period 12
+    using deg = id<"[0..359] wrap">;
+    using off = id<"[-5..6] wrap">; // period 12
     for (int a = 0; a < 360; a += 7)
         for (int b = 0; b < 360; ++b) {
             deg x{a}, y{a};
@@ -1091,7 +1091,7 @@ TEST(IntegerFastPathTest, a_wrap_within_one_period_is_the_modulo) {
     EXPECT_EQ(bottom, 359);
     // More than one period away: the general fold.
     deg far{10};
-    far += inside<{0, 10000}>{725};
+    far += id<"[0..10000]">{725};
     EXPECT_EQ(far, 15);
 }
 } // namespace integer_fast_path_tests

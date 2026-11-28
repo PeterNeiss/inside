@@ -14,7 +14,7 @@ using namespace ins;
 namespace
 {
   inline constexpr auto x = basis_vector<"x", polynomial>;
-  inline constexpr auto t = basis_vector<"t", polynomial>;
+  inline constexpr auto y = basis_vector<"y", polynomial>;
 } // namespace
 
 int main()
@@ -26,15 +26,15 @@ int main()
     return 1;
 
   // 2. substitute gives a value, by Horner's rule: coefficients in [-10, 10] and an argument in [0, 2]
-  // prove p(a) in [-70, 70]. A polynomial in its place gives the composition: p(1 + t) = t² - t.
-  using coefficient = inside<{-10, 10}>;
-  using argument    = inside<{{0, 2}, per<10>}>;
+  // prove p(a) in [-70, 70]. A polynomial in its place gives the composition: p(1 + y) = y² - y.
+  using coefficient = id<"[-10..10]">;
+  using argument    = id<"[0..2] 1/10">;
   const auto p{coefficient{2} - coefficient{3} * x + coefficient{1} * x * x}; // (x - 1)(x - 2)
   const auto v{substitute(p, x, argument{1.5})};
   static_assert(lower_of<decltype(v)> == grid_number{-70} && upper_of<decltype(v)> == grid_number{70});
-  std::cout << "p = " << p << ", p(1.5) = " << v << ", p(1 + t) = " << substitute(p, x, just<1> + t)
+  std::cout << "p = " << p << ", p(1.5) = " << v << ", p(1 + y) = " << substitute(p, x, just<1> + y)
             << '\n';
-  if (!(v == just<-1, 4>) || !(substitute(p, x, just<1> + t) == t * t - t))
+  if (!(v == just<-1, 4>) || !(substitute(p, x, just<1> + y) == y * y - y))
     return 1;
 
   // 3. The calculus: p′ = 2 x - 3, and ∫₀² p dx = F(2) - F(0) = 2/3 from the antiderivative F.

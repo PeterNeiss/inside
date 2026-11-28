@@ -27,7 +27,7 @@ constexpr auto ms = si::milli(si::second);
 int main()
 {
   // Ten bins, 0–9.9, 10–19.9, …, 90–100 ms; a count saturates at a bar height of 9.
-  using bar_height = quantity<smp, clamp_counter<9>>;
+  using bar_height = id<quantity_key<smp, clamp_counter<9>>>;
   std::vector<bar_height> bins(10, bar_height{0, smp});
 
   // In-range samples, outliers, and values off the 0.1 ms notch.
@@ -37,9 +37,9 @@ int main()
     3.05, // off the notch: lossy, as is any double with a decimal fraction (12.3 is 12.300000000000000711)
   };
 
-  using milliseconds = quantity<ms, inside<{{0, 100}, per<10>}, round_half_away>>;
-  using bin          = inside<{0, 9}, clamp | round_floor>; // 100 ms → the last bin; bins takes it as an index
-  using tally        = quantity<smp, clamp_counter<1'000'000>>;
+  using milliseconds = id<"[0..100] 1/10 [ms] round_half_away">;
+  using bin          = id<"[0..9] clamp|round_floor">; // 100 ms → the last bin; bins takes it as an index
+  using tally        = id<quantity_key<smp, clamp_counter<1'000'000>>>;
   tally rejected{0, smp};
   tally lossy   {0, smp};
 
@@ -67,7 +67,7 @@ int main()
   }
 
   // values<bin> iterates every bin, and each indexes bins with no check left: the index type is the proof.
-  using bin_label = quantity<ms, inside<{0, 99}>>;
+  using bin_label = id<"[0..99] [ms]">;
   std::cout << "bin          count\n";
   for (bin b : values<bin>)
   {

@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    quantity_point<si::degree_Celsius, si::ice_point, inside<{-40, 60}>> t{20, si::kelvin};
+    id<"[-40..60] [`C] @ice_point"> t{20, si::kelvin};
     (void)t;
 }

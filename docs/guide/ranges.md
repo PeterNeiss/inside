@@ -4,7 +4,7 @@ The values of a grid form a range you can loop over, and insides work with
 the standard containers and algorithms.
 
 ```cpp
-using bin = inside<{0, 9}>;
+using bin = id<"[0..9]">;
 std::vector<int> bins(10);
 for (bin b : values<bin>)            // 0, 1, …, 9
     bins[b] = 0;                     // an index, with no check left
@@ -40,7 +40,7 @@ It steps through `T`'s range by `Step`, starting at `T`'s lower limit, and
 `end(t)` is the value one step past the last:
 
 ```cpp
-using fine = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
+using fine = id<"[-4..4] 1/1024 round_half_away">;
 for (cursor<fine, per<4>> x; x != end(x); ++x)          // −4, −3.75, …, 4
     std::cout << x << ' ';
 for (cursor<fine, per<4>> x = -2_ins; x <= 2; ++x)    // any start, the classic test
@@ -65,7 +65,7 @@ number; here the readings are ℃ points:
 
 ```cpp
 constexpr auto deg_C = si::degree_Celsius;
-using celsius = quantity_point<deg_C, si::ice_point, inside<{{-40, 60}, 0.5}, round_half_away>>;
+using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;
 std::vector<celsius> temps = {{21.5, deg_C}, {-5.0, deg_C}, {37.0, deg_C}, {0.0, deg_C}, {15.5, deg_C}};
 std::ranges::sort(temps);
 auto hot      = std::ranges::count_if(temps, [](celsius c) { return c > celsius{30, deg_C}; });
@@ -86,14 +86,14 @@ matrix products.
 `min`, `max` and `midpoint` are found by argument-dependent lookup, so
 unqualified calls in generic code work. On two different grids, the result
 type holds exactly the values the result can take: `min` of
-`inside<{0, 100}>` and `inside<{0, 10}>` is an `inside<{0, 10}>`. `midpoint` is
+`id<"[0..100]">` and `id<"[0..10]">` is an `id<"[0..10]">`. `midpoint` is
 the **exact** mean, on a grid with half the notch: unlike `std::midpoint` on
 integers, it neither rounds nor overflows.
 
 ```cpp
-inside<{0, 100}> a = 30, b = 71;
-inside<{0, 10}>  c = 4;
-auto lo  = min(a, c);           // 4, an inside<{0, 10}>
+id<"[0..100]"> a = 30, b = 71;
+id<"[0..10]">  c = 4;
+auto lo  = min(a, c);           // 4, an id<"[0..10]">
 auto mid = midpoint(a, b);      // 50.5, exactly
 ```
 
@@ -107,9 +107,9 @@ quantities, so an inside works as a key of `std::unordered_set` and
 `std::unordered_map`:
 
 ```cpp
-std::unordered_set<inside<{0, 9}>> seen;
-seen.insert(inside<{0, 9}>{3});
-static_assert(std::numeric_limits<inside<{0, 100}>>::max() == 100);
+std::unordered_set<id<"[0..9]">> seen;
+seen.insert(id<"[0..9]">{3});
+static_assert(std::numeric_limits<id<"[0..100]">>::max() == 100);
 ```
 
 ## Random values: `uniform<T>(rng)`
@@ -119,8 +119,8 @@ point of `T`'s grid uniformly from any standard engine:
 
 ```cpp
 std::mt19937 rng{42};
-auto die  = uniform<inside<{1, 6}>>(rng);                     // 1 … 6
-auto gain = uniform<inside<{{0, 1}, per<(1 << 8)>}>>(rng);    // one of the 257 points of [0, 1]
+auto die  = uniform<id<"[1..6]">>(rng);                       // 1 … 6
+auto gain = uniform<id<"[0..1] 1/256">>(rng);                 // one of the 257 points of [0, 1]
 ```
 
 A seed gives the same values on every standard library, because the draw

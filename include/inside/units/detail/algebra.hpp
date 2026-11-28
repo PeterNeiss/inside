@@ -495,25 +495,19 @@ namespace ins
   // Distinct starts a separate kind under its parent: it never converts implicitly across that boundary
   // (angular_measure vs a dimensionless ratio).
   struct kind_def;
+  struct origin_def;
 
-  // An optional reference to a static object (a parent kind, a unit's kind, an origin).
-  // It is tested by its flag, never against nullptr, and compared by content, never by address:
-  // under GCC's -fsanitize=undefined `&obj == nullptr`, and under -fsanitize=pointer-compare `&a == &b`,
-  // is no constant expression.
-  template <class T>
-  struct ref_or_none
+  // A reference to a kind's definition, a static object (a parent kind, a unit's kind, a quantity's kind).
+  // None is the named object kind_def::none, never null: a reference is tested by content (detail::has:
+  // kind_def::none has no name), never against nullptr, and compared by content, never by address
+  // (under GCC's -fsanitize=undefined `&obj == nullptr`, and under -fsanitize=pointer-compare `&a == &b`,
+  // is no constant expression). A plain pointer, so that a type which holds one prints and mangles the
+  // definition's name: (& ins::isq::length_def).
+  using kind_ref = const kind_def*;
+  namespace detail
   {
-    const T* P{};
-    bool     Set{false};
-
-    constexpr ref_or_none() = default;
-    constexpr ref_or_none(std::nullptr_t) {}
-    constexpr ref_or_none(const T* p) : P{p}, Set{true} {} // p is not null
-    constexpr explicit operator bool() const { return Set; }
-    constexpr const T* operator->() const { return P; }
-  };
-
-  using kind_ref = ref_or_none<kind_def>;
+    constexpr bool has(kind_ref k);
+  } // namespace detail
 
   struct kind_factor
   {
@@ -532,6 +526,8 @@ namespace ins
   {
     kind_factor F[detail::max_kind_factors]{};
     std::int8_t Size{0};
+    // (Assigned as an lvalue only: an assignment to reference::derived() would change nothing.)
+    constexpr recipe& operator=(const recipe&) & = default;
     friend constexpr bool operator==(const recipe& a, const recipe& b)
     {
       return a.Size == b.Size && std::equal(a.F, a.F + a.Size, b.F);
@@ -563,17 +559,22 @@ namespace ins
   {
     std::string_view Name;
     dimension        Dim{};
-    kind_ref         Parent{};
+    kind_ref         Parent{&none};
     recipe           Recipe{};
     bool             Distinct{false};
 
+    // The kind_def that means none: no name. (A static member: an extern variable redeclared inline constexpr
+    // crashes GCC 16 under -fmodules-ts, which CMake's module scan turns on with Ninja.)
+    static const kind_def none;
+    constexpr kind_def() = default;
     // A base quantity: a dimension of its own (length, currency).
-    constexpr kind_def(std::string_view name, dimension d) : Name{name}, Dim{d} {}
+    constexpr kind_def(std::string_view name, dimension d) : Name{named(name)}, Dim{d} {}
     // A child of a named kind.
     template <const kind_def* P>
-    constexpr kind_def(std::string_view name, kind_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
+    constexpr kind_def(std::string_view name, kind_t<P>) : Name{named(name)}, Dim{P->Dim}, Parent{P} {}
     // A derived root: named by its recipe.
-    constexpr kind_def(std::string_view name, const kind_expr& e) : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
+    constexpr kind_def(std::string_view name, const kind_expr& e)
+      : Name{named(name)}, Dim{e.Dim}, Recipe{e.Recipe} {}
     // Any of these with options, as kind<"name", parent, options> takes them:
     // kind_def{"velocity", isq::speed, {.recipe = isq::displacement / isq::duration}}.
     template <class P>
@@ -582,33 +583,46 @@ namespace ins
       Distinct = o.distinct;
       if (o.recipe.Recipe.Size == 0)
         return;
-      if (!Parent)
+      if (!detail::has(Parent))
         ins::detail::constexpr_error<"units: a recipe of its own is for a child of a named kind - "
                                      "kind<\"velocity\", isq::speed, {.recipe = …}>">();
       if (!(o.recipe.Dim == Dim))
         ins::detail::constexpr_error<"units: a kind's recipe must have its parent's dimension">();
       Recipe = o.recipe.Recipe;
     }
+
+  private:
+    // A kind has a name (kind_def::none is the one without).
+    // (Letters, digits and _: a quantity's type spells it, [m]{height}.)
+    static constexpr std::string_view named(std::string_view name)
+    {
+      if (name.empty())
+        ins::detail::constexpr_error<"units: a kind needs a name">();
+      for (char c : name)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
+          ins::detail::constexpr_error<"units: a kind's name is letters, digits and _ (a quantity's type spells it, "
+                                       "[m]{height})">();
+      return name;
+    }
   };
+
+  inline constexpr kind_def kind_def::none{};
 
   namespace detail
   {
-    // Identity by content (see ref_or_none).
+    // Whether a kind reference names a kind: everything but kind_def::none, the one without a name.
+    constexpr bool has(kind_ref k) { return !k->Name.empty(); }
+
+    // Identity by content (see kind_ref).
     // A kind is its name, dimension, recipe, kind boundary and parent chain:
     // a user kind that reuses a name ("length") under another parent is another kind.
-    constexpr bool same(const kind_def* a, const kind_def* b) // both set
+    constexpr bool same(kind_ref a, kind_ref b)
     {
+      if (!has(a) || !has(b))
+        return !has(a) && !has(b);
       if (a->Name != b->Name || !(a->Dim == b->Dim) || a->Distinct != b->Distinct || !(a->Recipe == b->Recipe))
         return false;
-      if (!a->Parent || !b->Parent)
-        return !a->Parent && !b->Parent;
-      return same(a->Parent.P, b->Parent.P);
-    }
-    constexpr bool same(const kind_ref& a, const kind_ref& b)
-    {
-      if (!a || !b)
-        return !a && !b;
-      return same(a.P, b.P);
+      return same(a->Parent, b->Parent);
     }
 
   } // namespace detail
@@ -624,8 +638,8 @@ namespace ins
     // The kind's kind root: the first Distinct kind on the way up, else the root.
     consteval const kind_def* kind_root(const kind_def* s)
     {
-      while (!s->Distinct && s->Parent)
-        s = s->Parent.P;
+      while (!s->Distinct && has(s->Parent))
+        s = s->Parent;
       return s;
     }
     // a is s or an ancestor of s within s's kind (not above an Distinct boundary).
@@ -635,9 +649,9 @@ namespace ins
       {
         if (same(s, a))
           return true;
-        if (s->Distinct || !s->Parent)
+        if (s->Distinct || !has(s->Parent))
           return false;
-        s = s->Parent.P;
+        s = s->Parent;
       }
     }
 
@@ -776,25 +790,45 @@ namespace ins
   // origin_def: where a quantity_point's number counts from.
   // An absolute origin (absolute zero) or one at an exact offset from one, in the coherent unit of the dimension
   // (the ice point: absolute zero + 273.15 K).
+  // A reference to an origin's definition, as kind_ref is to a kind's: none is origin_def::none, the implicit zero of a
+  // dimension, tested by content (detail::has).
+  using origin_ref = const origin_def*;
+
   struct origin_def
   {
-    std::string_view        Name;
-    dimension               Dim{};
-    ref_or_none<origin_def> Absolute{}; // none for an absolute origin
-    grid_number             Offset{0};  // from Absolute, in the coherent unit
+    std::string_view Name;
+    dimension        Dim{};
+    origin_ref       Absolute{&none}; // none for an absolute origin
+    grid_number      Offset{0};       // from Absolute, in the coherent unit
 
+    // The origin_def that means none, the implicit zero of a dimension: no name (a static member, as kind_def's).
+    static const origin_def none;
+    constexpr origin_def() = default;
     // An absolute origin: the zero of a dimension, or of a kind's (absolute zero).
-    constexpr origin_def(std::string_view name, dimension d) : Name{name}, Dim{d} {}
+    constexpr origin_def(std::string_view name, dimension d) : Name{named(name)}, Dim{d} {}
     template <const kind_def* K>
-    constexpr origin_def(std::string_view name, kind_t<K>) : Name{name}, Dim{K->Dim} {}
-    // One at a constant point of another origin: origin_def{"ice point", si::absolute_zero + 273.15_ins * si::kelvin}
+    constexpr origin_def(std::string_view name, kind_t<K>) : Name{named(name)}, Dim{K->Dim} {}
+    // One at a constant point of another origin: origin_def{"ice_point", si::absolute_zero + 273.15_ins * si::kelvin}
     // (defined in units/detail/define.hpp).
     template <class P>
       requires requires(const P& p) { p.quantity_from_origin(); }
     constexpr origin_def(std::string_view name, const P&);
+
+    // An origin has a name (origin_def::none is the one without).
+    // (Letters, digits and _: a point's type spells it, @ice_point.)
+    static constexpr std::string_view named(std::string_view name)
+    {
+      if (name.empty())
+        ins::detail::constexpr_error<"units: an origin needs a name">();
+      for (char c : name)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
+          ins::detail::constexpr_error<"units: an origin's name is letters, digits and _ (a point's type spells it, "
+                                       "@ice_point)">();
+      return name;
+    }
   };
 
-  using origin_ref = ref_or_none<origin_def>; // none: the implicit zero of a dimension
+  inline constexpr origin_def origin_def::none{};
 
   template <origin_ref O>
   struct origin_t
@@ -805,15 +839,20 @@ namespace ins
 
   namespace detail
   {
-    consteval origin_ref absolute_of(origin_ref o) { return o && o->Absolute ? o->Absolute : o; }
+    // Whether an origin reference names an origin: everything but origin_def::none, the one without a name.
+    constexpr bool has(origin_ref o) { return !o->Name.empty(); }
+    consteval origin_ref absolute_of(origin_ref o) { return has(o) && has(o->Absolute) ? o->Absolute : o; }
     // By content, as same() for kinds and units (see there).
-    constexpr bool same(const origin_ref& a, const origin_ref& b)
+    constexpr bool same(origin_ref a, origin_ref b)
     {
-      if (!a || !b)
-        return !a && !b;
+      if (!has(a) || !has(b))
+        return !has(a) && !has(b);
       return a->Name == b->Name && a->Dim == b->Dim && a->Offset == b->Offset && same(a->Absolute, b->Absolute);
     }
-    consteval grid_number offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_number{0}; }
+    consteval grid_number offset_of(origin_ref o)
+    {
+      return has(o) && has(o->Absolute) ? o->Offset : grid_number{0};
+    }
   } // namespace detail
 
   // A short text held by value (a symbol, a name), so that a type which holds one is structural:
@@ -846,8 +885,8 @@ namespace ins
   struct unit_options
   {
     symbol_text ascii{};
-    kind_ref    kind{};
-    origin_ref  origin{};
+    kind_ref    kind{&kind_def::none};
+    origin_ref  origin{&origin_def::none};
     bool        space_before{true};
   };
 
@@ -866,18 +905,32 @@ namespace ins
 
   // unit: a product of named units to integer powers, each with an optional decimal prefix (k, m, µ…),
   // times a scale (mag<1000> * m; the common unit of a sum). A structural value: it is the template argument.
+  // The atoms in use come first, sorted; an unused one is zero (exponent 0), so the count needs no member of its own
+  // and a type name spells none.
   struct unit_value
   {
-    unit_atom   Atoms[detail::max_unit_atoms]{};
-    std::int8_t Size{0};
-    magnitude   Scale{};
+    unit_atom Atoms[detail::max_unit_atoms]{};
+    magnitude Scale{};
 
     constexpr unit_value() = default;
-    constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}}, Size{1} {}
+    constexpr unit_value(const unit_def& u) : Atoms{{&u, 0, 1}} {}
+    constexpr explicit unit_value(unit_atom a) : Atoms{a} {} // (by value: see reference)
+    // (Assigned as an lvalue only: an assignment to reference::unit() would change nothing.)
+    constexpr unit_value& operator=(const unit_value&) & = default;
+
+    // The number of atoms in use.
+    [[nodiscard]] constexpr std::int8_t size() const
+    {
+      std::int8_t n{0};
+      while (n < static_cast<std::int8_t>(detail::max_unit_atoms) && Atoms[n].Exp != 0)
+        ++n;
+      return n;
+    }
 
     friend constexpr bool operator==(const unit_value& a, const unit_value& b)
     {
-      return a.Size == b.Size && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + a.Size, b.Atoms);
+      const std::int8_t n{a.size()};
+      return n == b.size() && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + n, b.Atoms);
     }
   };
 
@@ -903,9 +956,9 @@ namespace ins
     symbol_text      Ascii; // empty: the symbol itself
     dimension        Dim{};
     magnitude        Mag{};
-    kind_ref         Kind{};
+    kind_ref         Kind{&kind_def::none};
     bool             SpaceBefore{true};
-    origin_ref       Origin{}; // the default origin of its points (K: absolute zero)
+    origin_ref       Origin{&origin_def::none}; // the default origin of its points (K: absolute zero)
 
     // A base unit of a kind: the coherent unit of its dimension, or a scale of it (g: 1/1000 of the coherent kg).
     template <const kind_def* K>
@@ -949,7 +1002,7 @@ namespace ins
     {
       if (rule.Product == basis_product::none)
         ins::detail::constexpr_error<"units: a basis vector has a rule - geometric<S>">();
-      if (o.kind || o.origin)
+      if (detail::has(o.kind) || detail::has(o.origin))
         ins::detail::constexpr_error<"units: a basis vector has no kind or origin">();
       Unit.Dim = dimension_of(Self);
     }
@@ -983,8 +1036,9 @@ namespace ins
 
     consteval void unit_add(unit_value& u, unit_atom a)
     {
+      std::int8_t size{u.size()};
       if (!sorted_add(
-            u.Atoms, u.Size, a, a.Exp,
+            u.Atoms, size, a, a.Exp,
             [](const unit_atom& x, const unit_atom& y) { return same(x.U, y.U) && x.Prefix == y.Prefix; },
             atom_before))
         ins::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with unit<\"sym\", …>">();
@@ -995,7 +1049,7 @@ namespace ins
     constexpr bool is_basis_atom(const unit_atom& a) { return has_basis(a.U->Dim); }
     constexpr bool has_blade_atoms(const unit_value& u)
     {
-      return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
+      return std::any_of(u.Atoms, u.Atoms + u.size(), [](const unit_atom& a) { return is_blade_atom(a); });
     }
 
     consteval unit_value blade_unit_mul(const unit_value& a, const unit_value& b, int sign);
@@ -1004,7 +1058,7 @@ namespace ins
     {
       if (has_blade_atoms(a) || has_blade_atoms(b))
         return blade_unit_mul(a, b, sign);
-      for (std::int8_t i = 0; i < b.Size; ++i)
+      for (std::int8_t i = 0; i < b.size(); ++i)
       {
         unit_atom t{b.Atoms[i]};
         t.Exp = static_cast<std::int8_t>(t.Exp * sign);
@@ -1024,7 +1078,7 @@ namespace ins
         return r;
       }
       unit_value r{};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
         unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, dimension::exponent(u.Atoms[i].Exp * n)});
       r.Scale = u.Scale.pow(n);
       return r;
@@ -1051,10 +1105,10 @@ namespace ins
   // A unit's dimension, magnitude (relative to the coherent unit of its dimension) and kind.
   consteval dimension dimension_of(const unit_value& u)
   {
-    if (u.Size == 1 && u.Atoms[0].Exp == 1) // a named unit: its dimension, interned already
+    if (u.size() == 1 && u.Atoms[0].Exp == 1) // a named unit: its dimension, interned already
       return u.Atoms[0].U->Dim;
     detail::exponents d;
-    for (std::int8_t i = 0; i < u.Size; ++i)
+    for (std::int8_t i = 0; i < u.size(); ++i)
     {
       const dimension& a{u.Atoms[i].U->Dim};
       for (std::size_t j = 0; j < a.Size; ++j)
@@ -1070,7 +1124,7 @@ namespace ins
     {
       blade acc;
       int   s{1};
-      for (std::int8_t i = 0; i < u.Size; ++i)
+      for (std::int8_t i = 0; i < u.size(); ++i)
       {
         if (!is_blade_atom(u.Atoms[i]))
           continue;
@@ -1089,7 +1143,7 @@ namespace ins
   consteval magnitude magnitude_of(const unit_value& u)
   {
     magnitude m{u.Scale};
-    for (std::int8_t i = 0; i < u.Size; ++i)
+    for (std::int8_t i = 0; i < u.size(); ++i)
       m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
     if (detail::has_blade_atoms(u))
       m = m * magnitude{grid_number{detail::atoms_blade_sign(u)}};
@@ -1123,7 +1177,7 @@ namespace ins
       std::vector<unit_atom> blades;
       const auto take = [&](const unit_value& u, int sgn)
       {
-        for (std::int8_t i = 0; i < u.Size; ++i)
+        for (std::int8_t i = 0; i < u.size(); ++i)
         {
           unit_atom t{u.Atoms[i]};
           if (is_blade_atom(t))
@@ -1163,7 +1217,7 @@ namespace ins
     // One named unit (with a prefix too) to the power 1, unscaled: its kind, origin and spacing are the unit's.
     consteval bool is_single_named(const unit_value& u)
     {
-      return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
+      return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
     }
     // Whether a quantity's text puts a space before the unit (not before °).
     consteval bool space_before(const unit_value& u)
@@ -1175,7 +1229,7 @@ namespace ins
   // The kind a unit measures: a named unit's (with a prefix too), else none.
   consteval kind_ref kind_of(const unit_value& u)
   {
-    return detail::is_single_named(u) ? u.Atoms[0].U->Kind : kind_ref{};
+    return detail::is_single_named(u) ? u.Atoms[0].U->Kind : &kind_def::none;
   }
 
   namespace detail
@@ -1183,7 +1237,7 @@ namespace ins
     // The kind a unit defined by U inherits: its one factor's (min: 60 s).
     consteval kind_ref inherited_kind(const unit_value& u)
     {
-      return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : kind_ref{};
+      return u.size() == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : &kind_def::none;
     }
   } // namespace detail
 
@@ -1193,13 +1247,13 @@ namespace ins
       Ascii{o.ascii},
       Dim{dimension_of(U)},
       Mag{magnitude_of(U)},
-      Kind{o.kind ? o.kind : detail::inherited_kind(U)},
+      Kind{detail::has(o.kind) ? o.kind : detail::inherited_kind(U)},
       SpaceBefore{o.space_before},
       Origin{o.origin}
   {
-    if (Kind && !(Kind->Dim == Dim))
+    if (detail::has(Kind) && !(Kind->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
-    if (Origin && !(Origin->Dim == Dim))
+    if (detail::has(Origin) && !(Origin->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
     if (detail::has_basis(Dim) && !detail::same_outside_blade(Dim, dim_one))
       ins::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
@@ -1302,41 +1356,84 @@ namespace ins
     template <unit_value U>
     consteval auto operator()(unit_t<U>) const
     {
-      static_assert(U.Size == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
+      static_assert(U.size() == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
                     "units: a prefix applies to a named unit without a prefix (kilo(metre), not kilo(m/s))");
       return unit_t<detail::unit_prefixed(U, P)>{};
     }
   };
 
   // reference: what a quantity's number means, a unit plus a kind.
-  //   Kind named, KindOf false   isq::height[m]: exactly that kind
-  //   Kind named, KindOf true    a unit's kind (si::hertz): any kind of its kind
-  //   Kind null, Derived set     a product of kinds (width * height)
-  //   Kind null, Derived empty   any quantity of the unit's dimension (m/s)
+  // Its parts (unit(), kind(), kind_of(), derived()):
+  //   kind named, kind_of false   isq::height[m]: exactly that kind
+  //   kind named, kind_of true    a unit's kind (si::hertz): any kind of its kind
+  //   kind none, derived set      a product of kinds (width * height)
+  //   kind none, derived empty    any quantity of the unit's dimension (m/s)
+  // The most common reference, one named unit (with a prefix too) and its own kind (si::metre, si::kilogram), holds
+  // that unit alone, so a quantity's type spells it short: reference{ref_form{unit_atom{(& si::metre_def), 0, 1}},
+  // false}. Any other holds its parts. Each reference has one form, so equal references are one template argument.
+  struct ref_parts
+  {
+    kind_ref   Kind{&kind_def::none};
+    unit_value U{};
+    bool       KindOf{false};
+    recipe     Derived{}; // (KindOf and Derived last: false and empty drop out of a mangled name)
+  };
+
+  union ref_form
+  {
+    unit_atom Atom; // a named unit and its own kind
+    ref_parts Parts;
+  };
+
   struct reference
   {
-    kind_ref   Kind{};
-    bool       KindOf{false};
-    recipe     Derived{};
-    unit_value U{};
+    ref_form Form;
+    bool     HasParts{false}; // which member of Form holds the reference
 
-    constexpr reference() = default;
-    constexpr reference(kind_ref s, bool kind_of, recipe derived, unit_value u)
-      : Kind{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
-    // A unit tag as a reference: quantity<si::metre, …>.
+    constexpr reference() : reference{&kind_def::none, false, recipe{}, unit_value{}} {}
+    // (By value: a member copied from a const object through a reference keeps its const in GCC's template
+    // argument, which then differs from an equal one.)
+    constexpr reference(kind_ref k, bool any_of_kind, recipe derived, unit_value u)
+      : Form{atom_form(k, any_of_kind, derived, u) ? ref_form{.Atom = u.Atoms[0]}
+                                                   : ref_form{.Parts = {k, u, any_of_kind, derived}}},
+        HasParts{!atom_form(k, any_of_kind, derived, u)} {}
+    // A unit tag as a reference: id<quantity_key<si::metre, …>>.
     template <unit_value V>
-    constexpr reference(unit_t<V>) : Kind{kind_of(V)}, KindOf{static_cast<bool>(kind_of(V))}, U{V} {}
+    constexpr reference(unit_t<V>) : reference{ins::kind_of(V), detail::has(ins::kind_of(V)), recipe{}, V} {}
+
+    // The parts, whichever form holds them (values: a reference on another unit is with_unit's).
+    [[nodiscard]] constexpr unit_value unit() const { return HasParts ? Form.Parts.U : unit_value{Form.Atom}; }
+    [[nodiscard]] constexpr kind_ref   kind() const { return HasParts ? Form.Parts.Kind : Form.Atom.U->Kind; }
+    [[nodiscard]] constexpr bool       kind_of() const
+    {
+      return HasParts ? Form.Parts.KindOf : detail::has(Form.Atom.U->Kind);
+    }
+    [[nodiscard]] constexpr recipe derived() const { return HasParts ? Form.Parts.Derived : recipe{}; }
+    // The same kind facts on another unit.
+    [[nodiscard]] constexpr reference with_unit(const unit_value& u) const
+    {
+      return reference{kind(), kind_of(), derived(), u};
+    }
 
     friend constexpr bool operator==(const reference& a, const reference& b)
     {
-      return detail::same(a.Kind, b.Kind) && a.KindOf == b.KindOf && a.Derived == b.Derived && a.U == b.U;
+      return detail::same(a.kind(), b.kind()) && a.kind_of() == b.kind_of() && a.derived() == b.derived()
+          && a.unit() == b.unit();
+    }
+
+  private:
+    // Whether the parts are one named unit (detail::is_single_named) and its own kind.
+    static constexpr bool atom_form(kind_ref k, bool any_of_kind, const recipe& derived, const unit_value& u)
+    {
+      return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() && derived.Size == 0
+          && any_of_kind == detail::has(u.Atoms[0].U->Kind) && detail::same(k, u.Atoms[0].U->Kind);
     }
   };
 
   consteval reference reference_of(const unit_value& u)
   {
     const kind_ref k{kind_of(u)};
-    return reference{k, static_cast<bool>(k), recipe{}, u};
+    return reference{k, detail::has(k), recipe{}, u};
   }
 
   template <reference R>
@@ -1377,11 +1474,11 @@ namespace ins
   template <class U>
   consteval auto kind_t<S>::operator[](U) const
   {
-    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Size; }, "units: kind[unit] takes a unit");
+    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Atoms; }, "units: kind[unit] takes a unit");
     constexpr unit_value u{U::value};
     static_assert(dimension_of(u) == S->Dim, "units: kind[unit] - the unit has another dimension than the kind");
     constexpr kind_ref k{kind_of(u)};
-    static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
+    static_assert(!detail::has(k) || detail::same(detail::kind_root(k), detail::kind_root(S)),
                   "units: kind[unit] - the unit measures another kind of quantity (Hz for activity?)");
     return reference_t<reference{S, false, recipe{}, u}>{};
   }
@@ -1389,51 +1486,51 @@ namespace ins
   namespace detail
   {
     // Which kind facts a reference carries.
-    consteval bool is_generic(const reference& r) { return !r.Kind && r.Derived.Size == 0; }
+    consteval bool is_generic(const reference& r) { return !has(r.kind()) && r.derived().Size == 0; }
 
     // Whether a reference's quantity may convert implicitly to a named kind `to`.
     consteval bool derived_converts_to(const reference& from, const kind_def* to)
     {
-      if (to->Distinct && !from.KindOf)
+      if (to->Distinct && !from.kind_of())
         return false;
       // Any quantity of the dimension names a kind root: m/s → speed, N·m → energy.
-      if (!to->Parent && !to->Distinct)
+      if (!has(to->Parent) && !to->Distinct)
         return true;
-      if (from.KindOf)
-        return derived_converts_to(reference{nullptr, false, from.Derived, from.U}, kind_root(to))
-               || recipe_matches(from.Derived, recipe_of(kind_root(to)));
-      return to->Recipe.Size > 0 && recipe_matches(from.Derived, to->Recipe);
+      if (from.kind_of())
+        return derived_converts_to(reference{&kind_def::none, false, from.derived(), from.unit()}, kind_root(to))
+               || recipe_matches(from.derived(), recipe_of(kind_root(to)));
+      return to->Recipe.Size > 0 && recipe_matches(from.derived(), to->Recipe);
     }
 
     // Implicit conversion between the kinds of two references of one dimension.
     consteval bool kind_converts(const reference& from, const reference& to)
     {
       if (is_generic(to)) // a dimension's quantity takes any of its kinds but an Distinct one
-        return !from.Kind || !kind_root(from.Kind.P)->Distinct;
+        return !has(from.kind()) || !kind_root(from.kind())->Distinct;
       if (is_generic(from))
-        return !to.Kind || !kind_root(to.Kind.P)->Distinct;
-      if (!to.Kind) // a derived target: the source's recipe, by kind
+        return !has(to.kind()) || !kind_root(to.kind())->Distinct;
+      if (!has(to.kind())) // a derived target: the source's recipe, by kind
       {
-        const recipe have{from.Kind ? recipe_of(from.Kind.P) : from.Derived};
-        return recipe_by_kind(have) == recipe_by_kind(to.Derived);
+        const recipe have{has(from.kind()) ? recipe_of(from.kind()) : from.derived()};
+        return recipe_by_kind(have) == recipe_by_kind(to.derived());
       }
-      if (!from.Kind)
-        return derived_converts_to(from, to.KindOf ? kind_root(to.Kind.P) : to.Kind.P);
-      if (to.KindOf || from.KindOf) // a unit's kind takes and gives any kind of that kind
-        return same(kind_root(from.Kind.P), kind_root(to.Kind.P));
-      return is_within_kind_ancestor(from.Kind.P, to.Kind.P);
+      if (!has(from.kind()))
+        return derived_converts_to(from, to.kind_of() ? kind_root(to.kind()) : to.kind());
+      if (to.kind_of() || from.kind_of()) // a unit's kind takes and gives any kind of that kind
+        return same(kind_root(from.kind()), kind_root(to.kind()));
+      return is_within_kind_ancestor(from.kind(), to.kind());
     }
 
     // Explicit conversion (kind_cast): any kind of the same dimension, but not across Distinct kinds.
     consteval bool kind_casts(const reference& from, const kind_def* to)
     {
-      const kind_ref  fk{from.Kind ? kind_ref{kind_root(from.Kind.P)} : kind_ref{}};
+      const kind_ref  fk{has(from.kind()) ? kind_root(from.kind()) : &kind_def::none};
       const kind_def* tk{kind_root(to)};
-      if (same(fk, kind_ref{tk}))
+      if (same(fk, tk))
         return true;
-      if (fk && fk->Distinct)
+      if (has(fk) && fk->Distinct)
         return false;
-      return !tk->Distinct || !from.Kind;
+      return !tk->Distinct || !has(from.kind());
     }
 
     // The kind part of a sum's reference; ok = false when the two cannot add.
@@ -1445,66 +1542,69 @@ namespace ins
 
     consteval kind_result common_kind(const reference& a, const reference& b)
     {
-      if (same(a.Kind, b.Kind) && a.KindOf == b.KindOf && a.Derived == b.Derived)
+      if (same(a.kind(), b.kind()) && a.kind_of() == b.kind_of() && a.derived() == b.derived())
         return {true, a};
       if (kind_converts(a, b) && !kind_converts(b, a))
         return {true, b};
       if (kind_converts(b, a) && !kind_converts(a, b))
         return {true, a};
-      if (a.Kind && b.Kind)
+      if (has(a.kind()) && has(b.kind()))
       {
-        if (a.KindOf && b.KindOf && same(kind_root(a.Kind.P), kind_root(b.Kind.P)))
-          return {true, reference{kind_root(a.Kind.P), true, {}, a.U}};
-        if (a.KindOf != b.KindOf && same(kind_root(a.Kind.P), kind_root(b.Kind.P))) // kind_of + a named kind of it
-          return {true, a.KindOf ? b : a};
+        if (a.kind_of() && b.kind_of() && same(kind_root(a.kind()), kind_root(b.kind())))
+          return {true, reference{kind_root(a.kind()), true, {}, a.unit()}};
+        // A unit's kind and a named kind of it.
+        if (a.kind_of() != b.kind_of() && same(kind_root(a.kind()), kind_root(b.kind())))
+          return {true, a.kind_of() ? b : a};
         // The nearest common ancestor within one kind.
-        for (const kind_def* s = a.Kind.P;; s = s->Parent.P)
+        for (const kind_def* s = a.kind();; s = s->Parent)
         {
-          if (is_within_kind_ancestor(b.Kind.P, s))
-            return {true, reference{s, false, {}, a.U}};
-          if (s->Distinct || !s->Parent)
+          if (is_within_kind_ancestor(b.kind(), s))
+            return {true, reference{s, false, {}, a.unit()}};
+          if (s->Distinct || !has(s->Parent))
             break;
         }
         return {};
       }
       if (kind_converts(a, b) && kind_converts(b, a)) // e.g. two recipes of one kind
-        return {true, reference{nullptr, false, {}, a.U}};
+        return {true, reference{&kind_def::none, false, {}, a.unit()}};
       return {};
     }
 
     // The kind part of a product: named factors multiply into a recipe.
-    // (Kind null, KindOf, no recipe) is the empty product: 1 / x starts there.
+    // (Kind none, KindOf, no recipe) is the empty product: 1 / x starts there.
     consteval reference kind_product(const reference& a, const reference& b, int sign, const unit_value& u)
     {
-      const auto empty = [](const reference& r) consteval { return !r.Kind && r.KindOf && r.Derived.Size == 0; };
+      const auto empty = [](const reference& r) consteval
+      {
+        return !has(r.kind()) && r.kind_of() && r.derived().Size == 0;
+      };
       if ((is_generic(a) && !empty(a)) || (is_generic(b) && !empty(b)))
-        return reference{nullptr, false, {}, u};
+        return reference{&kind_def::none, false, {}, u};
       const auto factors = [](const reference& r) consteval
       {
-        if (!r.Kind)
-          return r.Derived;
+        if (!has(r.kind()))
+          return r.derived();
         recipe f{};
-        recipe_add(f, r.KindOf ? kind_root(r.Kind.P) : r.Kind.P, 1);
+        recipe_add(f, r.kind_of() ? kind_root(r.kind()) : r.kind(), 1);
         return f;
       };
       recipe f{factors(a)};
       if (!recipe_merge(f, factors(b), sign) || f.Size == 0) // too many factors, or a pure ratio
-        return reference{nullptr, false, {}, u};
-      const bool kind_of{(a.KindOf || empty(a)) && (b.KindOf || empty(b))};
+        return reference{&kind_def::none, false, {}, u};
+      const bool kind_of{(a.kind_of() || empty(a)) && (b.kind_of() || empty(b))};
       if (f.Size == 1 && f.F[0].Exp == 1)
         return reference{f.F[0].Kind, kind_of, {}, u};
-      return reference{nullptr, kind_of, f, u};
+      return reference{&kind_def::none, kind_of, f, u};
     }
 
     consteval reference kind_pow(const reference& a, int n, const unit_value& u)
     {
       if (is_generic(a) || n == 0)
-        return reference{nullptr, false, {}, u};
-      reference r{a};
-      r.U = u;
+        return reference{&kind_def::none, false, {}, u};
+      reference r{a.with_unit(u)};
       for (int i = 1; i < (n < 0 ? -n : n); ++i)
         r = kind_product(r, a, 1, u);
-      return n < 0 ? kind_product(reference{nullptr, true, {}, u}, r, -1, u) : r;
+      return n < 0 ? kind_product(reference{&kind_def::none, true, {}, u}, r, -1, u) : r;
     }
   } // namespace detail
 
@@ -1528,7 +1628,7 @@ namespace ins
         if constexpr (policy_of<decltype(x)> == policy_of<V>)
           return x;
         else
-          return inside<grid_of<decltype(x)>, policy_of<V>>::from_raw(x.raw(), unsafe);
+          return id<key{grid_of<decltype(x)>, policy_of<V>}>::from_raw(x.raw(), unsafe);
       }
     }
 
@@ -1538,10 +1638,10 @@ namespace ins
     // A fixed order of units: fewer atoms first, then by symbol and exponent.
     consteval bool unit_before(const unit_value& a, const unit_value& b)
     {
-      if (a.Size != b.Size)
-        return a.Size < b.Size;
+      if (a.size() != b.size())
+        return a.size() < b.size();
       return std::lexicographical_compare(
-        a.Atoms, a.Atoms + a.Size, b.Atoms, b.Atoms + b.Size,
+        a.Atoms, a.Atoms + a.size(), b.Atoms, b.Atoms + b.size(),
         [](const unit_atom& x, const unit_atom& y)
         {
           if (atom_before(x, y) || atom_before(y, x))

@@ -914,13 +914,13 @@ namespace ins
         grid_number hi{upper_of<A> < upper_of<B> ? upper_of<B> : upper_of<A>};
         if (g.Notch != 0) // onto the lattice, inward
         {
-          const grid_number base{g.Interval.Lower}, n{g.Notch};
+          const grid_number base{g.Lower}, n{g.Notch};
           lo = base + n * grid_round<round_mode::ceil>((lo - base) / n);
           hi = base + n * grid_round<round_mode::floor>((hi - base) / n);
         }
         // Only ever narrower: a point (the lerp of constants) stays a point.
-        g.Interval = interval{g.Interval.Lower < lo ? lo : g.Interval.Lower,
-                              hi < g.Interval.Upper ? hi : g.Interval.Upper};
+        g.Lower = g.Lower < lo ? lo : g.Lower;
+        g.Upper = hi < g.Upper ? hi : g.Upper;
       }
       return g;
     }
@@ -934,7 +934,7 @@ namespace ins
   {
     const auto w{a + (b - a) * t};
     using W = std::remove_cvref_t<decltype(w)>;
-    using R = inside<detail::lerp_grid<W, A, B, T>(), policy_of<W>>;
+    using R = id<key{detail::lerp_grid<W, A, B, T>(), policy_of<W>}>;
     if constexpr (std::is_same_v<R, W>)
       return w;
     else
@@ -949,7 +949,7 @@ namespace ins
     template <insidable Lhs, insidable Rhs>
     struct common_inside
     {
-      using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>>;
+      using type = id<key{hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>}>;
     };
 
     // Same type stays itself (policy included), mirroring std::common_type<T, T>.
@@ -976,18 +976,19 @@ namespace ins
     template <insidable Lhs, insidable Rhs, bool Max>
     consteval grid extreme_grid()
     {
-      grid           h{hull(grid_of<Lhs>, grid_of<Rhs>)};
-      const interval a{grid_of<Lhs>.Interval}, b{grid_of<Rhs>.Interval};
+      grid        h{hull(grid_of<Lhs>, grid_of<Rhs>)};
+      const grid& a{grid_of<Lhs>};
+      const grid& b{grid_of<Rhs>};
       if constexpr (Max)
-        h.Interval = interval{a.Lower < b.Lower ? b.Lower : a.Lower, h.Interval.Upper};
+        h.Lower = a.Lower < b.Lower ? b.Lower : a.Lower;
       else
-        h.Interval = interval{h.Interval.Lower, a.Upper < b.Upper ? a.Upper : b.Upper};
+        h.Upper = a.Upper < b.Upper ? a.Upper : b.Upper;
       return h;
     }
     template <insidable Lhs, insidable Rhs, bool Max>
     struct extreme_type
     {
-      using type = inside<extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>>;
+      using type = id<key{extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>}>;
     };
     template <insidable Same, bool Max>
     struct extreme_type<Same, Same, Max>
@@ -1193,8 +1194,8 @@ namespace ins
 
 // std::common_type is the grid hull (ins::common_inside_t above),
 // so mixed-grid insides work in generic code (std::max over two grids, ranges).
-template <ins::grid G1, ins::policy_flag P1, ins::grid G2, ins::policy_flag P2>
-struct std::common_type<ins::inside<G1, P1>, ins::inside<G2, P2>>
-  : ins::detail::common_inside<ins::inside<G1, P1>, ins::inside<G2, P2>> {};
+template <ins::key K1, ins::key K2>
+  requires(ins::detail::inside_key<K1> && ins::detail::inside_key<K2>)
+struct std::common_type<ins::id<K1>, ins::id<K2>> : ins::detail::common_inside<ins::id<K1>, ins::id<K2>> {};
 
 #endif // INSIDE_INSIDE_ARITHMETIC_HPP

@@ -5,5 +5,5 @@
 
 int main() {
     using namespace ins;
-    (void)quantity<si::metre, inside<{0, 100}>>::try_make(42);
+    (void)id<"[0..100] [m]">::try_make(42);
 }

@@ -6,7 +6,7 @@
 
 int main() {
     using namespace ins;
-    inside<{0, 300}> i{};
+    id<"[0..300]"> i{};
     unsigned char    c = i;
     (void)c;
 }

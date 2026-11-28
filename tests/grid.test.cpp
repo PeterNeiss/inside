@@ -36,9 +36,9 @@ using namespace ins::detail;
 TEST(GridTest, grid_structured_binding) {
 
     grid g{{0, 100}, 2};
-    auto [iv, notch, max_den] = g;
-    ASSERT_EQ(iv.Lower, 0);
-    ASSERT_EQ(iv.Upper, 100);
+    auto [lower, upper, notch, max_den] = g;
+    ASSERT_EQ(lower, 0);
+    ASSERT_EQ(upper, 100);
     ASSERT_EQ(notch, 2);
     ASSERT_EQ(max_den, 0); // a lattice bounds its denominators itself
 }
@@ -59,7 +59,7 @@ TEST(GridTest, just_inside_values_work_as_grid_corners) {
     static_assert(grid{just<2>} == grid{2}); // 1-arg point grid
     static_assert(grid{just<0>, just<8>, just<2>} == grid{0, 8, 2});
     // ...and as inside<> grid-spec corners (the rifle.cpp use case).
-    static_assert(grid_of<inside<{0, just<30>}, wrap>> == grid_of<inside<{0, 30}, wrap>>);
+    static_assert(grid_of<id<key{grid{0, just<30>}, wrap}>> == grid_of<id<key{grid{0, 30}, wrap}>>);
 }
 
 // grid raw_for selection
@@ -93,8 +93,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid a{{0, 10}, 1};
         constexpr grid b{{0, 5}, 1};
         constexpr auto r = a + b;
-        ASSERT_TRUE(r.Interval.Lower == 0);
-        ASSERT_TRUE(r.Interval.Upper == 15);
+        ASSERT_TRUE(r.Lower == 0);
+        ASSERT_TRUE(r.Upper == 15);
         ASSERT_TRUE(r.Notch == 1);
     }
 
@@ -103,8 +103,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid a{{0, 10}, 1};
         constexpr grid b{{0, 5}, 1};
         constexpr auto r = a * b;
-        ASSERT_TRUE(r.Interval.Lower == 0);
-        ASSERT_TRUE(r.Interval.Upper == 50);
+        ASSERT_TRUE(r.Lower == 0);
+        ASSERT_TRUE(r.Upper == 50);
     }
 
     {
@@ -130,8 +130,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid b{{0, 5}, 1}; // includes zero, positive upper
         constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
-        ASSERT_TRUE(r->Interval.Lower == 0);
-        ASSERT_TRUE(r->Interval.Upper == 10); // 10 / 1 = 10
+        ASSERT_TRUE(r->Lower == 0);
+        ASSERT_TRUE(r->Upper == 10); // 10 / 1 = 10
         ASSERT_TRUE(r->Notch == 0);
     }
 
@@ -142,7 +142,7 @@ TEST(GridTest, grid_arithmetic) {
         constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
         // dividing positives by negatives gives non-positive result
-        ASSERT_TRUE(r->Interval.Upper <= 0);
+        ASSERT_TRUE(r->Upper <= 0);
         ASSERT_TRUE(r->Notch == 0);
     }
 
@@ -153,8 +153,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
         // result must span both signs once we exclude zero
-        ASSERT_TRUE(r->Interval.Lower < 0);
-        ASSERT_TRUE(r->Interval.Upper > 0);
+        ASSERT_TRUE(r->Lower < 0);
+        ASSERT_TRUE(r->Upper > 0);
         ASSERT_TRUE(r->Notch == 0);
     }
 
@@ -166,8 +166,8 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid c{{-5, 5}, max_denominator{4}}; // nonzero values are at least 1/4 in magnitude
         constexpr auto r = a / c;
         ASSERT_TRUE(r.has_value());
-        ASSERT_TRUE(r->Interval.Lower == -40);
-        ASSERT_TRUE(r->Interval.Upper == 40);
+        ASSERT_TRUE(r->Lower == -40);
+        ASSERT_TRUE(r->Upper == 40);
     }
 }
 
@@ -200,7 +200,7 @@ TEST(GridTest, two_limit_ctor_derives_the_notch) {
     static_assert(grid{0, 2.5_g}.Notch == rational{1, 2});
     static_assert(1'000_g == 1000 && 25e-2_g == rational{1, 4} && 1.5e3_g == 1500);
 
-    using half = inside<{0.5, 10}>;
+    using half = id<"[0.5..10]">;
     static_assert(std::is_same_v<half::raw_type, std::uint8_t>);
     static_assert(max_index_of<half> == 19);
     EXPECT_EQ(rational{half{2.5}}, (rational{5, 2}));
@@ -216,7 +216,7 @@ constexpr bool derived_notch_is_coarsest() {
     if (n.Num != 1)
         return false; // always 1/k
     auto on = [](rational v, rational step) { return divides_evenly(v, step); };
-    if (!on(1, n) || !on(G.Interval.Lower, n) || !on(G.Interval.Upper, n))
+    if (!on(1, n) || !on(G.Lower, n) || !on(G.Upper, n))
         return false;
     const std::uint64_t k    = abs_den(n.Den);
     std::uint64_t       rest = k;
@@ -228,7 +228,7 @@ constexpr bool derived_notch_is_coarsest() {
         while (rest % p == 0)
             rest /= p;
         const rational coarser{std::uint64_t{1}, static_cast<std::int64_t>(k / p)};
-        if (on(G.Interval.Lower, coarser) && on(G.Interval.Upper, coarser))
+        if (on(G.Lower, coarser) && on(G.Upper, coarser))
             return false; // a coarser step works
     }
     return true;
@@ -236,7 +236,7 @@ constexpr bool derived_notch_is_coarsest() {
 
 template <grid G>
 constexpr bool max_index_matches() {
-    const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower));
+    const rational span = (detail::to_rational(G.Upper) - detail::to_rational(G.Lower));
     return rational{detail::max_index(G)} == (span / detail::to_rational(G.Notch));
 }
 } // namespace
@@ -284,7 +284,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     // A whole number written as a fraction stays an integer grid.
     constexpr grid g{just<6, 3>, just<20, 4>};
     static_assert(g.Notch == 1);
-    static_assert(g.Interval.Lower == 2 && g.Interval.Upper == 5);
+    static_assert(g.Lower == 2 && g.Upper == 5);
 
     // Equal limits: a point; the two-limit form still derives a valid notch.
     constexpr grid h{just<3, 10>, just<3, 10>};
@@ -298,13 +298,13 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     static_assert(grid::validate<i>() && derived_notch_is_coarsest<i>() && max_index_matches<i>());
 
     // inside on derived fractional grids: storage, exact values, assignment.
-    using eightieths = inside<{just<3, 10>, just<13, 16>}>;
+    using eightieths = id<"[3/10..13/16]">;
     static_assert(std::is_same_v<eightieths::raw_type, std::uint8_t>);
     EXPECT_EQ(rational{eightieths{0.5}}, (rational{1, 2})); // 40/80
     EXPECT_EQ((rational{eightieths{just<13, 16>}}), (rational{13, 16}));
     EXPECT_EQ(eightieths::try_make(rational{just<1, 3>}).error(), error::rounding_error); // 1/3 is not k/80
 
-    using signed_63 = inside<{just<-5, 7>, just<4, 9>}, round_half_away>;
+    using signed_63 = id<"[-5/7..4/9] round_half_away">;
     EXPECT_EQ((rational{signed_63{just<-5, 7>}}), (rational{-5, 7}));
     EXPECT_EQ(rational{signed_63{0.0}}, rational{0});
     EXPECT_EQ((rational{signed_63{just<1, 4>}}), (rational{16, 63})); // 1/4 = 15.75/63 → nearest 16/63
@@ -313,8 +313,8 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
 // bounds: an open limit is a spelling, moved in by one notch; the grid is
 // stored closed, so both spellings are the same type.
 static_assert(grid{0, 10, bounds::closed} == grid{0, 10});
-static_assert(std::is_same_v<inside<{0, 360, bounds::half_open}>, inside<{0, 359}>>);
-static_assert(std::is_same_v<inside<{{0, 64}, per<16>, bounds::half_open}>, inside<{{0, 63.9375}, per<16>}>>);
+static_assert(std::is_same_v<id<"[0..360)">, id<"[0..359]">>);
+static_assert(std::is_same_v<id<"[0..64) 1/16">, id<"[0..63.9375] 1/16">>);
 static_assert(grid{0, 10, bounds::open} == grid{1, 9});
 static_assert(grid{0.5, 10, bounds::half_open} == grid{{0.5, 9.5}, 0.5}); // derived notch 1/2
 static_assert(grid{-8, -2, 2, bounds::open} == grid{{-6, -4}, 2});
@@ -322,12 +322,12 @@ static_assert(grid{{0.5, 10.5}, 1, bounds::half_open} == grid{{0.5, 9.5}, 1}); /
 static_assert(grid{0, 2, bounds::open} == grid{{1, 1}, 1});                    // one point left
 
 TEST(GridTest, half_open_wrap_has_the_written_period) {
-    inside<{0, 360, bounds::half_open}, wrap> deg{0};
+    id<"[0..360) wrap"> deg{0};
     deg = 370;
     EXPECT_EQ(deg, 10);
     deg = 360;
     EXPECT_EQ(deg, 0);
-    inside<{{0, 64}, per<16>, bounds::half_open}, wrap> x{0};
+    id<"[0..64) 1/16 wrap"> x{0};
     x = 66;
     EXPECT_EQ(x, 2);
 }
@@ -402,7 +402,7 @@ using namespace ins::formats;
 using namespace ins::detail;
 
 TEST(GridConstructionTest, well_formed_grids) {
-    static_assert(grid{interval{0, 100}, 1_r}.Interval == interval{0, 100} && grid{interval{0, 100}, 1_r}.Notch == 1);
+    static_assert(grid{interval{0, 100}, 1_r}.interval() == interval{0, 100} && grid{interval{0, 100}, 1_r}.Notch == 1);
     static_assert(grid{interval{0, 0}, 0_r}.Notch == 0); // a point
     static_assert(grid{interval{0, 1}, max_denominator{1000}}.Notch == 0 &&
                   grid{interval{0, 1}, max_denominator{1000}}.MaxDenominator == 1000);
@@ -650,7 +650,7 @@ using namespace ins::detail;
 // A bound of 2^63 or more: the range prefilter's step 1/MaxDenominator
 // narrowed to int64 and did not compile.
 TEST(GridTest, max_denominator_past_int64) {
-    using B = inside<{{0, 1}, max_denominator{rational{std::uint64_t{1} << 63}}}, round_toward_zero>;
+    using B = id<key{grid{{0, 1}, max_denominator{rational{std::uint64_t{1} << 63}}}, round_toward_zero}>;
     B x{};
     x = 0.3;
     EXPECT_EQ(x, rational(0.3));
@@ -768,7 +768,7 @@ TEST(GridTest, spellings_past_64_bits) {
     static_assert(std::is_same_v<decltype(per<4>), const detail::rational>);
     static_assert(per<two_70> == grid_number{1} / two_70 && per<1024_g> == detail::rational{1, 1024});
     static_assert(per<(1ull << 63)> == grid_number{1} / 9223372036854775808_g);
-    static_assert(notch_of<inside<{{0, 1}, per<two_70>}>> == grid_number{1} / two_70);
+    static_assert(notch_of<id<key{grid{{0, 1}, per<two_70>}}>> == grid_number{1} / two_70);
     // just<N, D> with a grid-number D.
     static_assert(lower_of<decltype(just<1, two_70>)> == grid_number{1} / two_70);
     static_assert(lower_of<decltype(just<3, 6_g>)> == grid_number{detail::rational{1, 2}});
@@ -786,5 +786,34 @@ TEST(GridTest, spellings_past_64_bits) {
     wrap_counter<two_70> c{two_70};
     ++c;
     EXPECT_TRUE(c == 0);
+}
+
+// Zero is all zero bits, grid_number{0, 0, 0}, however it is spelled or reached, so a mangled name leaves it out;
+// a value past 64 bits is marked by Num 1 and Den 0.
+TEST(GridTest, zero_is_all_zero_bits) {
+    constexpr auto zero_bits = [](const grid_number& g) { return g.Num == 0 && g.Den == 0; };
+    static_assert(zero_bits(grid_number{}) && zero_bits(grid_number{0}) && zero_bits(grid_number{0.0}));
+    static_assert(zero_bits(0_g) && zero_bits(grid_number{detail::rational{0, 5}}) && zero_bits(-grid_number{0}));
+    static_assert(zero_bits(two_70 - two_70) && zero_bits(grid_number{3} - grid_number{3}));
+    static_assert(zero_bits(abs(grid_number{0})) && zero_bits(lower_of<decltype(just<0>)>));
+    static_assert(zero_bits(grid{{0, 10}, 1}.MaxDenominator) && zero_bits(grid{{0, 10}, 1}.Lower));
+    static_assert(std::is_same_v<id<"[0..10]">, id<"[0.0..10]">>);
+    static_assert(std::is_same_v<id<key{grid{0, 10}}>, id<key{grid{0_g, 10}}>>);
+    static_assert(std::is_same_v<id<key{grid{0, 10}}>, id<key{grid{just<0>, 10}}>>);
+    // Zero takes the 64-bit paths.
+    static_assert(grid_number{0}.is_zero() && grid_number{0}.is_integer() && !grid_number{0}.negative());
+    static_assert(grid_number{0}.fits_rational() && detail::rational(grid_number{0}) == 0);
+    static_assert(grid_number{0} < grid_number{1} && grid_number{-1} < grid_number{0} && grid_number{0} == 0);
+    static_assert(grid_number{0} < detail::rational{1, 3} && grid_number{0} > detail::rational{-1, 3});
+    static_assert(grid_number{0}.big() == detail::big_rational{} && grid_number{0}.denominator() == detail::big_int{1});
+    // Past 64 bits.
+    constexpr grid_number tiny{grid_number{1} / two_70};
+    static_assert(tiny.Num == 1 && tiny.Den == 0 && !tiny.fits_rational() && !tiny.is_zero() && tiny != 0);
+    static_assert(grid_number{0} < tiny && -tiny < grid_number{0} && (-tiny).negative() && abs(-tiny) == tiny);
+    // At run time.
+    EXPECT_TRUE(includes(interval{0, 10}, test::at_run_time(0)));
+    EXPECT_FALSE(includes(interval{1, 10}, test::at_run_time(0)));
+    EXPECT_TRUE(grid_number{test::at_run_time(0)} == grid_number{0});
+    EXPECT_TRUE(grid_number{test::at_run_time(0)} < grid_number{test::at_run_time(1)});
 }
 } // namespace big_spelling_tests

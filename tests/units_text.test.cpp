@@ -17,24 +17,24 @@ namespace units_text_tests {
 using namespace ins;
 
 namespace {
-using metres   = quantity<si::metre, inside<{{0, 100'000}, per<1000>}>>;
-using minutes  = quantity<si::minute, inside<{{0, 1000}, per<10>}>>;
-using speeds   = quantity<si::metre / si::second, inside<{{0, 100}, per<100>}>>;
-using areas    = quantity<square(si::metre), inside<{{0, 1'000'000}, per<1000>}>>;
-using energies = quantity<si::joule, inside<{{0, 1'000'000}, per<1000>}>>;
-using percents = quantity<percent, inside<{{0, 100}, per<10>}>>;
-using ones     = quantity<one, inside<{{0, 10}, per<4>}>>;
-using hertzes  = quantity<si::hertz, inside<{0, 100}>>;
-using becqs    = quantity<si::becquerel, inside<{0, 100}>>;
-using radians  = quantity<si::radian, inside<{{0, 7}, per<1000>}, round_half_away>>;
-using degrees  = quantity<si::degree, inside<{0, 360}>>;
-using kelvins  = quantity<si::kelvin, inside<{{0, 100}, per<10>}>>;
-using rounding = quantity<si::metre, inside<{{0, 100}, per<100>}, round_half_away>>;
-using celsius  = quantity_point<si::degree_Celsius, si::ice_point, inside<{{-300, 300}, max_denominator{180}}>>;
+using metres   = id<"[0..100'000] 1/1000 [m]">;
+using minutes  = id<"[0..1000] 1/10 [min]">;
+using speeds   = id<"[0..100] 1/100 [m/s]">;
+using areas    = id<"[0..1'000'000] 1/1000 [m^2]">;
+using energies = id<"[0..1'000'000] 1/1000 [J]">;
+using percents = id<"[0..100] 1/10 [%]">;
+using ones     = id<"[0..10] 1/4 [1]">;
+using hertzes  = id<"[0..100] [Hz]">;
+using becqs    = id<"[0..100] [Bq]">;
+using radians  = id<"[0..7] 1/1000 [rad] round_half_away">;
+using degrees  = id<"[0..360] [deg]">;
+using kelvins  = id<"[0..100] 1/10 [K]">;
+using rounding = id<"[0..100] 1/100 [m] round_half_away">;
+using celsius  = id<"[-300..300] <180> [`C] @ice_point">;
 
 inline constexpr auto level_kind = kind<"level", isq::dimensionless, {.distinct = true}>;
 inline constexpr auto dB         = unit<"dB", one, {.kind = level_kind}>;
-using levels                     = quantity<dB, inside<{{-100, 100}, per<10>}>>;
+using levels                     = id<"[-100..100] 1/10 [dB]">;
 
 // Seen by this translation unit only (units_text_other.cpp does not see it).
 inline constexpr auto cent = unit<"¢", 0.01_ins * units_text_other::USD, {.ascii = "c"}>;
@@ -67,13 +67,12 @@ TEST(UnitsTextTest, to_string_reads_back) {
     check(percents{12.5, percent});
     check(degrees{90, si::degree});
     check(levels{-3.5, dB});
-    check(quantity<si::kilo(si::metre) / si::hour, inside<{0, 300}>>{120, si::kilo(si::metre) / si::hour});
-    check(quantity<units_text_other::USD / units_text_other::item, inside<{{0, 100}, per<100>}>>{
+    check(id<"[0..300] [km/h]">{120, si::kilo(si::metre) / si::hour});
+    check(id<quantity_key<units_text_other::USD / units_text_other::item, id<"[0..100] 1/100">>>{
         19.99_ins, units_text_other::USD / units_text_other::item});
-    check(quantity<si::micro(si::second), inside<{0, 1000}>>{250, si::micro(si::second)});
+    check(id<"[0..1000] [us]">{250, si::micro(si::second)});
     check(celsius{21.5, si::degree_Celsius});
-    check(quantity_point<international::degree_Fahrenheit, international::zeroth_degree_Fahrenheit,
-                         inside<{0, 600}>>{350, international::degree_Fahrenheit});
+    check(id<"[0..600] [`F] @zeroth_degree_Fahrenheit">{350, international::degree_Fahrenheit});
     // The common unit of a sum: a scaled unit, [1/381 ft].
     check(international::foot + si::metre);
     // Unit one prints no unit, and reads a bare number.
@@ -170,7 +169,7 @@ TEST(UnitsTextTest, a_stream_reads_into_an_expected) {
     constexpr auto                 kg_m2_s2 = si::kilogram * square(si::metre) / square(si::second);
     const energies                 e{5, si::joule};
     std::stringstream              io;
-    io << quantity<kg_m2_s2, inside<{0, 10}>>{5, kg_m2_s2} << " " << e;
+    io << id<quantity_key<kg_m2_s2, id<"[0..10]">>>{5, kg_m2_s2} << " " << e;
     std::expected<energies, error> a, b;
     io >> a >> b;
     EXPECT_EQ(io.str(), "5 kg·m²/s² 5.000 J");

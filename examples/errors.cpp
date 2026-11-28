@@ -25,7 +25,7 @@ int main()
   // 1. Reporting an out-of-range 200 %.
   // A constant is checked while compiling (`percentage x{200, percent};` does not compile),
   // and a run-time int may not fit, so `percentage x{n, percent};` does not compile either: name a channel.
-  using percentage = quantity<percent, inside<{0, 100}, checked>>;
+  using percentage = id<"[0..100] [%]">;
   const int  n{read(200)};
   const auto n_percent{formats::int32{n} * percent}; // any int fits int32: a quantity to store and check
 
@@ -50,13 +50,13 @@ int main()
     }) = n_percent;
   std::cout << "          (r=" << r << ")" << "\n";
 
-  inside<{0, 100}> w(50);
+  id<"[0..100]"> w(50);
   w.with<clamp>() = 200;
   std::cout << "clamped:  value=" << w << " (this store saturates)" << "\n";
 
   // 3. The other error values:
   // rounding_error (in a hook) and division_by_zero (in the expected of a division).
-  using coarse = inside<{{0, 10}, 2}>; // notch 2
+  using coarse = id<"[0..10] 2">; // notch 2
   coarse c(0);
   c.on_error(
     [](auto& self, error code, std::string_view msg)
@@ -67,8 +67,8 @@ int main()
   std::cout << "          (c=" << c << ")" << "\n";
 
   // An average speed over 0 s.
-  using metres  = quantity<si::metre, inside<{0, 100}>>;
-  using seconds = quantity<si::second, inside<{0, 60}>>;
+  using metres  = id<"[0..100] [m]">;
+  using seconds = id<"[0..60] [s]">;
   const auto quotient{div(metres{10, si::metre}, seconds{0, si::second})};
   if (!quotient)
     std::cout << "div/0:    [" << error_message(quotient.error()) << "] -> recover to 0 m/s" << "\n";
@@ -82,9 +82,9 @@ int main()
             << " (q has_value=" << (qz.has_value() ? "true" : "false") << ")" << "\n";
 
   // 5. Policies that avoid errors: clamp saturates, wrap is modular; try_make reports.
-  using clamped_percentage = quantity<percent, inside<{0, 100}, clamp>>;
-  using heading            = quantity<si::degree, inside<{0, 359}, wrap>>;
-  using digit              = inside<{0, 9}>;
+  using clamped_percentage = id<"[0..100] [%] clamp">;
+  using heading            = id<"[0..359] [deg] wrap">;
+  using digit              = id<"[0..9]">;
 
   clamped_percentage cl{150, percent};
   std::cout << "clamp:    150 % -> " << cl << "\n";
@@ -96,14 +96,14 @@ int main()
   std::cout << "try_make: 10  -> " << (tm ? "has value" : error_message(tm.error())) << "\n";
 
   // 6. Watching clamp and wrap: on_clamp and on_wrap add their policy, so the inside need not have it.
-  inside<{0, 100}> p(80);
+  id<"[0..100]"> p(80);
   p.on_clamp(
     [](auto& self, auto overshoot)
     {
       std::cout << "on_clamp: overshoot=" << overshoot << " (saturated to " << self << ")" << "\n";
     }) = 150;
 
-  quantity<si::second, inside<{0, 59}>> sec{50, si::second}; // the seconds of a clock
+  id<"[0..59] [s]"> sec{50, si::second}; // the seconds of a clock
   sec.on_wrap(
     [](auto& self, auto carry)
     {

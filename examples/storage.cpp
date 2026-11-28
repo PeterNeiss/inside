@@ -26,13 +26,13 @@ constexpr auto m     = si::metre;
 int main()
 {
   // 1. Deduced storage: the value itself where a whole-number range costs no width, else the 0-based index.
-  using register_value = inside<{5   , 100 }>;   // uint8_t, raw == value (no wider than the index)
-  using offset         = inside<{200 , 300 }>;   // uint8_t, raw == value − 200 (300 needs 16 bits)
-  using half_steps     = inside<{{-5, 5}, 0.5}>; // uint8_t index: a fractional notch is offset-encoded
+  using register_value = id<"[5..100]">;         // uint8_t, raw == value (no wider than the index)
+  using offset         = id<"[200..300]">;       // uint8_t, raw == value − 200 (300 needs 16 bits)
+  using half_steps     = id<"[-5..5] 0.5">;      // uint8_t index: a fractional notch is offset-encoded
   // A unit adds no byte: a quantity, or a point, stores its number.
-  using percentage     = quantity<percent, inside<{0, 100}>>;                    // uint8_t, raw == value
-  using celsius        = quantity_point<deg_C, si::ice_point, inside<{-40, 85}>>; // int8_t, raw == value (signed)
-  using altitude       = quantity<si::metre, inside<{-500, 9000}>>;              // int16_t
+  using percentage     = id<"[0..100] [%]">;                    // uint8_t, raw == value
+  using celsius        = id<"[-40..85] [`C] @ice_point">; // int8_t, raw == value (signed)
+  using altitude       = id<"[-500..9000] [m]">;              // int16_t
   static_assert(sizeof(half_steps) == 1 && sizeof(percentage) == 1 && sizeof(celsius) == 1
                 && sizeof(altitude) == 2);
   const celsius cold{-12, deg_C};
@@ -51,7 +51,7 @@ int main()
   // 2. Presets at native widths that still carry a range and a policy, here as the numbers of PCM samples.
   static_assert(sizeof(uint8) == 1 && sizeof(int16) == 2 && sizeof(unorm16) == 2 && sizeof(uq8_8) == 2
                 && sizeof(uq16_16) == 4);
-  using sample = quantity<LSB, int16>;
+  using sample = id<quantity_key<LSB, int16>>;
   static_assert(sizeof(sample) == 2);
   sample mixed{0, LSB};
   mixed.with<clamp>() = sample{30000, LSB} + sample{20000, LSB};                  // a mix: 50000 saturates
@@ -65,7 +65,7 @@ int main()
   {
     std::uint16_t slot; // 0..65535
   };
-  using slot = inside<{0, 1000}>;
+  using slot = id<"[0..1000]">;
   const packet p{slot{750}}; // an index-like inside converts to an integer that holds its grid
   std::cout << "packet slot " << p.slot << "\n";
   if (p.slot != 750)

@@ -14,9 +14,9 @@
 
 using namespace ins;
 
-inline constexpr auto nm = per<1'000'000'000>;
-using position_metres = quantity<si::metre, inside<{{-10'000'000'000'000, 10'000'000'000'000}, nm}>>; // ±10^13 m
-using leg_metres      = quantity<si::metre, inside<{{-10'000'000        , 10'000'000        }, nm}>>; // ±10 000 km
+// Positions to the nanometre:
+using position_metres = id<"[-10'000'000'000'000..10'000'000'000'000] 1/1'000'000'000 [m]">;          // ±10^13 m
+using leg_metres      = id<"[-10'000'000..10'000'000] 1/1'000'000'000 [m]">;                          // ±10 000 km
 
 int main()
 {
@@ -26,7 +26,7 @@ int main()
   const leg_metres      step = just<1000> * si::kilo(si::metre) + si::nano(si::metre); // 1e6 m + 1 nm
   // The accumulator's type cannot show that a run-time count of legs fits,
   // so it clamps at ±10^13 m (never here).
-  using clamped_position = quantity<si::metre, inside<grid_of<position_metres::rep>, clamp>>;
+  using clamped_position = id<quantity_key<si::metre, id<key{grid_of<position_metres::rep>, clamp}>>>;
   clamped_position x = start;
   double           xd{1.433e12};
   for (int i = 0; i < 1'000'000; ++i)

@@ -17,18 +17,18 @@ the correctly rounded point of any output grid.
 #include <inside/units/math.hpp>   // math on quantities
 using namespace ins;
 
-inside<{0, 100}> a{70}, b{58};
-auto sum = a + b;                           // inside<{0, 200}>: 128, cannot overflow
-inside<{0, 100}, clamp> capped{sum};        // 100: the type's policy decides
+id<"[0..100]"> a{70}, b{58};
+auto sum = a + b;                           // id<"[0..200]">: 128, cannot overflow
+id<"[0..100] clamp"> capped{sum};           // 100: the type's policy decides
 
-quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>> leg{12.5, si::kilo(si::metre)};
+id<"[0..500] 1/1000 [km]"> leg{12.5, si::kilo(si::metre)};
 auto total = leg + just<800> * si::metre;   // 13300 m, exact
-auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
+auto speed = total / id<"[1..600] [min]">{20, si::minute};
 speed.in(si::kilo(si::metre) / si::hour);   // 39.9 km/h
 
-using amplitude = inside<{{-1, 1}, per<1000>}, round_half_away>;
-math::sin<amplitude>(just<30> * si::degree);                       // exactly 0.5
-math::sqrt(inside<{{0, 10}, per<1000>}, round_half_away>{2});              // 1.414, correctly rounded
+using amplitude = id<"[-1..1] 1/1000 round_half_away">;
+math::sin<amplitude>(just<30> * si::degree);           // exactly 0.5
+math::sqrt(id<"[0..10] 1/1000 round_half_away">{2});   // 1.414, correctly rounded
 ```
 
 **[Try it on Compiler Explorer](https://godbolt.org/z/fzczsvPsW).**

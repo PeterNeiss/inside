@@ -23,13 +23,13 @@ namespace
 } // namespace
 
 // [0, 64) px in 1/16-pixel steps, so wrap's period is 64 px.
-using pixels = quantity<px, inside<{{0, 64}, per<16>, bounds::half_open}, wrap | round_half_away>>;
+using pixels = id<"[0..64) 1/16 [px] wrap|round_half_away">;
 // A run-time step has a range too: name it, so x += d stays quantity += quantity.
-using pixel_delta = quantity<px, inside<{{-64, 64}, per<16>}, round_half_away>>;
+using pixel_delta = id<"[-64..64] 1/16 [px] round_half_away">;
 
 struct sprite
 {
-  using crossings = quantity<crossing, clamp_counter<1'000'000>>;
+  using crossings = id<quantity_key<crossing, clamp_counter<1'000'000>>>;
 
   pixels    x{0, px}, y{0, px};
   crossings edge_x_crossings{0, crossing};
@@ -70,7 +70,7 @@ int main()
   }
 
   // Every cell of the viewport, as for a tilemap pass; the first 8 here.
-  using cell = inside<{0, 63}>; // whole pixels
+  using cell = id<"[0..63]">; // whole pixels
   std::cout << "\nviewport columns (values<cell>) — first 8:\n  ";
   for (cell c : values<cell> | std::views::take(8))
     std::cout << c << " ";
