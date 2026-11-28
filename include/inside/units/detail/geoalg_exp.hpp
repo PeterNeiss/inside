@@ -354,7 +354,7 @@ namespace ins::detail::gaexp
   template <quantity_like P, class N>
   struct with_number<P, N>
   {
-    using type = id<quantity_key<P::reference, N>>;
+    using type = with_rep_t<P, N>;
   };
   template <class F, std::size_t Q>
   using twin_part =

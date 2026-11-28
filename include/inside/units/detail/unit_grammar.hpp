@@ -20,15 +20,19 @@ namespace ins::detail
 {
   // ---- The units a text may name: every unit visible at the call ----
 
-  // A set of named units, interned: a template argument, so each set is a specialization of its own.
+  // The units a quantity's text may name, interned: named units with their prefixes (a tag of km names km), in
+  // groups searched one after another (units/detail/unit_key.hpp: the catalog's tables, then every other unit tag
+  // visible where the text is read). A template argument, so each set is a specialization of its own.
   struct unit_set
   {
-    const unit_def* const* Data{};
+    const unit_def* const* Units{};
+    const std::int8_t*     Prefixes{};
+    const std::size_t*     Ends{}; // where each group ends
+    std::size_t            Groups{0};
     std::size_t            Size{0};
   };
 
-  // The namespaces searched: all but std, detail, reserved names and si2019 (its constants c, h, e and k are no
-  // units of measurement, and would shadow the prefixes and the hour). Unnamed namespaces are searched.
+  // The namespaces searched: all but std, detail and reserved names. Unnamed namespaces are searched.
   consteval bool searched_namespace(std::meta::info ns)
   {
     if (std::meta::is_namespace_alias(ns))
@@ -36,40 +40,7 @@ namespace ins::detail
     if (!std::meta::has_identifier(ns))
       return true;
     const std::string_view name{std::meta::identifier_of(ns)};
-    return name != "std" && name != "detail" && name != "si2019" && !name.starts_with('_');
-  }
-
-  // A named unit a text can name (no basis vector or polynomial variable), once: units equal by content are one.
-  consteval void add_text_unit(std::vector<const unit_def*>& out, const unit_def* u)
-  {
-    if (has_basis(u->Dim))
-      return;
-    for (const unit_def* v : out)
-      if (same(v, u))
-        return;
-    out.push_back(u);
-  }
-
-  consteval void collect_text_units(std::meta::info ns, std::vector<const unit_def*>& out)
-  {
-    for (const std::meta::info m : std::meta::members_of(ns, std::meta::access_context::unchecked()))
-      if (std::meta::is_namespace(m))
-      {
-        if (searched_namespace(m))
-          collect_text_units(m, out);
-      }
-      else if (std::meta::is_variable(m))
-      {
-        const std::meta::info t{std::meta::remove_cvref(std::meta::type_of(m))};
-        if (t == ^^unit_def)
-          add_text_unit(out, &std::meta::extract<const unit_def&>(m));
-        else if (std::meta::has_template_arguments(t) && std::meta::template_of(t) == ^^unit_t)
-        {
-          const unit_value u{std::meta::extract<unit_value>(std::meta::template_arguments_of(t)[0])};
-          for (std::int8_t i = 0; i < u.size(); ++i)
-            add_text_unit(out, u.Atoms[i].U);
-        }
-      }
+    return name != "std" && name != "detail" && !name.starts_with('_');
   }
 
   // The tags' definitions a key's text may name: the units (each with its prefix: a tag of km names km), kinds and
@@ -137,18 +108,6 @@ namespace ins::detail
       }
   }
 
-  // The named units of every unit variable visible where it runs: the catalog (unit_def objects and their
-  // defined_by tags), your own one-liners and aliases, in any namespace.
-  // Q only makes the call depend on the template, so it runs where parse<Q> is used.
-  template <class Q>
-  consteval unit_set visible_units()
-  {
-    std::vector<const unit_def*> units;
-    collect_text_units(^^::, units);
-    const auto s{std::define_static_array(units)};
-    return {s.data(), s.size()};
-  }
-
   // ---- The grammar of a unit's text ----
 
   inline constexpr int max_text_exponent  = 9;  // |exponent| of one symbol
@@ -166,6 +125,28 @@ namespace ins::detail
     {"da", 1},  {"q", -30}, {"r", -27}, {"y", -24}, {"z", -21}, {"a", -18}, {"f", -15}, {"p", -12}, {"n", -9},
     {"µ", -6},  {"μ", -6},  {"u", -6},  {"m", -3},  {"c", -2},  {"d", -1},  {"h", 2},   {"k", 3},   {"M", 6},
     {"G", 9},   {"T", 12},  {"P", 15},  {"E", 18},  {"Z", 21},  {"Y", 24},  {"R", 27},  {"Q", 30}};
+
+  // Whether w is the symbol of the unit u with the prefix p: the prefix's symbol (µ, μ or u for micro) and the
+  // unit's ASCII symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its
+  // own is only printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
+  constexpr bool names_unit(const unit_def* u, std::int8_t p, std::string_view w)
+  {
+    const auto rest = [&](std::string_view s)
+    {
+      if (s == u->ascii())
+        return true;
+      bool plain{true};
+      for (char c : u->Utf8)
+        plain = plain && static_cast<unsigned char>(c) < 0x80;
+      return !plain && s == u->Utf8;
+    };
+    if (p == 0)
+      return rest(w);
+    for (const text_prefix& x : text_prefixes)
+      if (x.Pow == p && w.starts_with(x.Sym) && rest(w.substr(x.Sym.size())))
+        return true;
+    return false;
+  }
 
   // A separator between a unit's factors at i: a space, '*' or the middle dot; its length in bytes, 0 for none.
   constexpr std::size_t text_separator(std::string_view t, std::size_t i)

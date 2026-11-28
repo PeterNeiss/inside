@@ -52,6 +52,11 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   in ASCII by that one: the speed of light is `c_0`, Boltzmann's constant
   `k_B`, Planck's `h_P`, Faraday's `F_Faraday` (`text_encoding::ascii`; the
   symbols print as before).
+- `parse<Q>` and `>>` read a unit as a type's text reads it: whole symbols,
+  the catalog's tables first (its constants too: `"1 c_0"` parses), then
+  your own unit tags. No prefix is read into a symbol any more (`"5 Mm"`,
+  `"5 rd"` are unknown units unless a tag names them), and a symbol two of
+  your own units share is unknown instead of read with a prefix.
 - ℃ and ℉ are `deg_C` and `deg_F` in ASCII (were `` `C `` and `` `F ``), the
   arcminute and the arcsecond `arcmin` and `arcsec` (were `'` and `''`, which
   a number's digit separator kept from reading back), so a type spells

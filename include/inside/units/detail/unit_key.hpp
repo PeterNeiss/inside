@@ -94,6 +94,41 @@ namespace ins::detail
     return c;
   }
 
+  // The units a quantity's text reads at run time (parse<Q>, >>), as a key's text reads them: the catalog's tables,
+  // then every other unit tag visible here, each a group; basis vectors are left out. (Context only makes the call
+  // depend on the template, so it runs where parse<Q> is used.)
+  template <class Context>
+  consteval unit_set readable_units()
+  {
+    const catalog_list           c{catalog_table<Context>()};
+    std::vector<const unit_def*> units;
+    std::vector<std::int8_t>     prefixes;
+    std::vector<std::size_t>     ends;
+    const auto                   add = [&](const unit_def* u, std::int8_t p)
+    {
+      if (!has_basis(u->Dim))
+      {
+        units.push_back(u);
+        prefixes.push_back(p);
+      }
+    };
+    for (std::size_t t = 0; t < c.Size; ++t)
+    {
+      for (std::size_t i = 0; i < c.Sets[t].Units.Size; ++i)
+        add(c.Sets[t].Units.Units[i], c.Sets[t].Units.Prefixes[i]);
+      ends.push_back(units.size());
+    }
+    tag_vectors others;
+    collect_tags(^^::, others, c.Size != 0 ? ^^ins : std::meta::info{});
+    for (const unit_atom& a : others.Units)
+      add(a.U, a.Prefix);
+    ends.push_back(units.size());
+    const auto u{std::define_static_array(units)};
+    const auto p{std::define_static_array(prefixes)};
+    const auto e{std::define_static_array(ends)};
+    return {u.data(), p.data(), e.data(), e.size(), u.size()};
+  }
+
   // A name of a kind or an origin: letters, digits and _ (a key's text spells it).
   constexpr bool identifier_name(std::string_view s)
   {
@@ -140,27 +175,8 @@ namespace ins::detail
       return Others;
     }
 
-    // Whether w is the symbol of the prefixed unit a: the prefix's symbol (µ, μ or u for micro) and the unit's ASCII
-    // symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its own is only
-    // printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
-    static consteval bool symbol_is(const unit_atom& a, std::string_view w)
-    {
-      const auto rest = [&](std::string_view s)
-      {
-        if (s == a.U->ascii())
-          return true;
-        bool plain{true};
-        for (char c : a.U->Utf8)
-          plain = plain && static_cast<unsigned char>(c) < 0x80;
-        return !plain && s == a.U->Utf8;
-      };
-      if (a.Prefix == 0)
-        return rest(w);
-      for (const text_prefix& p : text_prefixes)
-        if (p.Pow == a.Prefix && w.starts_with(p.Sym) && rest(w.substr(p.Sym.size())))
-          return true;
-      return false;
-    }
+    // Whether w is the symbol of the prefixed unit a (unit_grammar.hpp: names_unit).
+    static consteval bool symbol_is(const unit_atom& a, std::string_view w) { return names_unit(a.U, a.Prefix, w); }
     // The one unit of units[0, n) a symbol names (several units equal by content are one).
     template <class Units>
     static consteval bool match_in(const Units& units, std::size_t n, std::string_view w, unit_atom& a,
@@ -702,8 +718,8 @@ namespace ins::detail
   inline constexpr quantity_read quantity_of_name =
     read_quantity<quantity_name_context<T>>(T.Unit.view(), T.Kind.view(), T.Origin.view());
 
-  // A key's quantity texts, as a quantity_name.
-  consteval quantity_name quantity_name_of(const id_spec& s)
+  // A key's quantity texts, as a quantity_name (without the origin: a point's quantity).
+  consteval quantity_name quantity_name_of(const id_spec& s, bool origin = true)
   {
     quantity_name n;
     const auto    copy = [](unit_name& out, std::string_view text)
@@ -713,7 +729,8 @@ namespace ins::detail
     };
     copy(n.Unit, s.Unit);
     copy(n.Kind, s.Kind);
-    copy(n.Origin, s.Origin);
+    if (origin)
+      copy(n.Origin, s.Origin);
     return n;
   }
   consteval quantity_read checked_quantity(const quantity_read& q)

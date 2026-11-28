@@ -29,7 +29,7 @@ namespace ins::detail
   {
     using number = typename Q::rep;
     template <insidable N>
-    using rebind = ins::id<ins::quantity_key<Q::reference, N>>;
+    using rebind = ins::detail::with_rep_t<Q, N>;
     static constexpr const number& number_of(const Q& q) noexcept { return ins::detail::value_of(q); }
     static constexpr Q             make(const number& n) { return ins::detail::quantity_access::make<Q>(n); }
     // (total: the caller proved the total fits; try_total reports it.)
@@ -42,7 +42,7 @@ namespace ins::detail
       N    out{};
       auto policy{make_policy<policy_of<N>>()};
       sum_into(numbers, out, policy);
-      return Q{ins::detail::quantity_access::make<ins::id<ins::quantity_key<P::reference, N>>>(out)};
+      return Q{ins::detail::quantity_access::make<ins::detail::with_rep_t<P, N>>(out)};
     }
     template <class Rng>
     static constexpr std::expected<Q, error> try_total(Rng&& r)
@@ -52,7 +52,7 @@ namespace ins::detail
       auto numbers{std::forward<Rng>(r) | std::views::transform([](const P& p) { return ins::detail::value_of(p); })};
       return try_store<N, policy_of<N>>([&](N& out, auto&& policy) { sum_into(numbers, out, policy); })
         .transform([](const N& t)
-                   { return Q{ins::detail::quantity_access::make<ins::id<ins::quantity_key<P::reference, N>>>(t)}; });
+                   { return Q{ins::detail::quantity_access::make<ins::detail::with_rep_t<P, N>>(t)}; });
     }
     template <class V>
     static constexpr std::expected<Q, error> try_store_of(const V& v)

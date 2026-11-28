@@ -787,7 +787,7 @@ namespace ins
 
   struct unit_def;
 
-  // origin_def: where a quantity_point's number counts from.
+  // origin_def: where a point's number counts from.
   // An absolute origin (absolute zero) or one at an exact offset from one, in the coherent unit of the dimension
   // (the ice point: absolute zero + 273.15 K).
   // A reference to an origin's definition, as kind_ref is to a kind's: none is origin_def::none, the implicit zero of a

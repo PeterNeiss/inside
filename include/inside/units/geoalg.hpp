@@ -530,7 +530,7 @@ namespace ins
       if constexpr (quantity_like<P>)
         return p.template in<unit_mul(U, blade_atoms(P::reference.unit()), 1)>();
       else
-        return quantity_access::make<id<quantity_key<reference_of(unit_value{}), P>>>(p).template in<U>();
+        return as_quantity(p).template in<U>();
     }
     template <unit_value U, class P>
     concept part_in_unit = requires(const P& p) { part_in<U>(p); };

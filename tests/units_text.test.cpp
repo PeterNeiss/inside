@@ -39,6 +39,9 @@ using levels                     = id<"[-100..100] 1/10 [dB]">;
 // Seen by this translation unit only (units_text_other.cpp does not see it).
 inline constexpr auto cent = unit<"¢", 0.01_ins * units_text_other::USD, {.ascii = "c"}>;
 inline constexpr auto ftm  = unit<"ftm", 1.8288_ins * si::metre>;
+// Two units of one's own with one symbol and different definitions: the symbol names neither.
+inline constexpr auto dup_two   = unit<"dup", just<2> * si::metre>;
+inline constexpr auto dup_three = unit<"dup", just<3> * si::metre>;
 
 template <class Q, class Tag>
 concept can_parse_in = requires(Tag u) { parse<Q>("1", u); };
@@ -132,6 +135,17 @@ TEST(UnitsTextTest, errors_name_the_cause) {
     EXPECT_EQ(parse<metres>("12.5x m").error(), error::invalid_format);
     EXPECT_EQ(parse<metres>(" m").error(), error::invalid_format);
     EXPECT_EQ(parse<metres>("200 km").error(), error::overflow);
+}
+
+// A unit reads as a type's text reads it: whole symbols (the catalog's prefixed units in wide use, tags of one's
+// own), the catalog first, its constants too; no prefix is read into a symbol.
+TEST(UnitsTextTest, whole_symbols_as_a_types_text) {
+    EXPECT_EQ(to_string(*parse<metres>("12.5 km")), "12500.000 m");
+    EXPECT_EQ(parse<metres>("5 Mm").error(), error::unknown_unit);  // no megametre in the catalog
+    EXPECT_EQ(parse<id<"[0..10] [d]">>("5 rd").error(), error::unknown_unit); // no ronto-day
+    EXPECT_EQ(parse<metres>("1 dup").error(), error::unknown_unit); // two units have it
+    EXPECT_EQ(to_string(*parse<id<"[0..1'000'000'000] [m/s]">>("1 c_0")), "299792458 m/s");
+    EXPECT_EQ(to_string(*parse<id<"[0..100] 1/100000 [m/s^2]">>("1 g_0")), "9.80665 m/s²");
 }
 
 TEST(UnitsTextTest, the_number_type_stores) {

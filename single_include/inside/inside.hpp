@@ -6290,18 +6290,20 @@ namespace ins
   // (callers never name the rational return type).
   namespace detail
   {
-    template <typename B>
-    struct inside_params;
+    // The key of an id type: an inside's, a quantity's, a point's.
+    template <class T>
+    struct key_of_id;
     template <key K>
-      requires(inside_key<K>)
-    struct inside_params<id<K>>
+    struct key_of_id<id<K>>
     {
-      static constexpr grid grid_v = key_grid<K>;
+      static constexpr key value = K;
     };
+    template <class T>
+    inline constexpr key key_v = key_of_id<std::remove_cvref_t<T>>::value;
   } // namespace detail
 
   template <insidable B>
-  inline constexpr grid grid_of = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
+  inline constexpr grid grid_of = detail::key_grid<detail::key_v<B>>;
 
   namespace detail
   {
@@ -25274,7 +25276,7 @@ namespace ins::math
 //  inside/units/core.hpp
 // ======================================================================
 // The units machinery without the catalog:
-// dimensions, magnitudes, kinds, units, references, quantity and quantity_point,
+// dimensions, magnitudes, kinds, units, references, quantities and points,
 // and the tools for units of your own (unit, base_unit, kind, origin, base_dimension).
 // <inside/units.hpp> adds the catalog (units/systems.hpp).
 
@@ -26066,7 +26068,7 @@ namespace ins
 
   struct unit_def;
 
-  // origin_def: where a quantity_point's number counts from.
+  // origin_def: where a point's number counts from.
   // An absolute origin (absolute zero) or one at an exact offset from one, in the coherent unit of the dimension
   // (the ice point: absolute zero + 273.15 K).
   // A reference to an origin's definition, as kind_ref is to a kind's: none is origin_def::none, the implicit zero of a
@@ -27035,15 +27037,19 @@ namespace ins::detail
 {
   // ---- The units a text may name: every unit visible at the call ----
 
-  // A set of named units, interned: a template argument, so each set is a specialization of its own.
+  // The units a quantity's text may name, interned: named units with their prefixes (a tag of km names km), in
+  // groups searched one after another (units/detail/unit_key.hpp: the catalog's tables, then every other unit tag
+  // visible where the text is read). A template argument, so each set is a specialization of its own.
   struct unit_set
   {
-    const unit_def* const* Data{};
+    const unit_def* const* Units{};
+    const std::int8_t*     Prefixes{};
+    const std::size_t*     Ends{}; // where each group ends
+    std::size_t            Groups{0};
     std::size_t            Size{0};
   };
 
-  // The namespaces searched: all but std, detail, reserved names and si2019 (its constants c, h, e and k are no
-  // units of measurement, and would shadow the prefixes and the hour). Unnamed namespaces are searched.
+  // The namespaces searched: all but std, detail and reserved names. Unnamed namespaces are searched.
   consteval bool searched_namespace(std::meta::info ns)
   {
     if (std::meta::is_namespace_alias(ns))
@@ -27051,40 +27057,7 @@ namespace ins::detail
     if (!std::meta::has_identifier(ns))
       return true;
     const std::string_view name{std::meta::identifier_of(ns)};
-    return name != "std" && name != "detail" && name != "si2019" && !name.starts_with('_');
-  }
-
-  // A named unit a text can name (no basis vector or polynomial variable), once: units equal by content are one.
-  consteval void add_text_unit(std::vector<const unit_def*>& out, const unit_def* u)
-  {
-    if (has_basis(u->Dim))
-      return;
-    for (const unit_def* v : out)
-      if (same(v, u))
-        return;
-    out.push_back(u);
-  }
-
-  consteval void collect_text_units(std::meta::info ns, std::vector<const unit_def*>& out)
-  {
-    for (const std::meta::info m : std::meta::members_of(ns, std::meta::access_context::unchecked()))
-      if (std::meta::is_namespace(m))
-      {
-        if (searched_namespace(m))
-          collect_text_units(m, out);
-      }
-      else if (std::meta::is_variable(m))
-      {
-        const std::meta::info t{std::meta::remove_cvref(std::meta::type_of(m))};
-        if (t == ^^unit_def)
-          add_text_unit(out, &std::meta::extract<const unit_def&>(m));
-        else if (std::meta::has_template_arguments(t) && std::meta::template_of(t) == ^^unit_t)
-        {
-          const unit_value u{std::meta::extract<unit_value>(std::meta::template_arguments_of(t)[0])};
-          for (std::int8_t i = 0; i < u.size(); ++i)
-            add_text_unit(out, u.Atoms[i].U);
-        }
-      }
+    return name != "std" && name != "detail" && !name.starts_with('_');
   }
 
   // The tags' definitions a key's text may name: the units (each with its prefix: a tag of km names km), kinds and
@@ -27152,18 +27125,6 @@ namespace ins::detail
       }
   }
 
-  // The named units of every unit variable visible where it runs: the catalog (unit_def objects and their
-  // defined_by tags), your own one-liners and aliases, in any namespace.
-  // Q only makes the call depend on the template, so it runs where parse<Q> is used.
-  template <class Q>
-  consteval unit_set visible_units()
-  {
-    std::vector<const unit_def*> units;
-    collect_text_units(^^::, units);
-    const auto s{std::define_static_array(units)};
-    return {s.data(), s.size()};
-  }
-
   // ---- The grammar of a unit's text ----
 
   inline constexpr int max_text_exponent  = 9;  // |exponent| of one symbol
@@ -27181,6 +27142,28 @@ namespace ins::detail
     {"da", 1},  {"q", -30}, {"r", -27}, {"y", -24}, {"z", -21}, {"a", -18}, {"f", -15}, {"p", -12}, {"n", -9},
     {"µ", -6},  {"μ", -6},  {"u", -6},  {"m", -3},  {"c", -2},  {"d", -1},  {"h", 2},   {"k", 3},   {"M", 6},
     {"G", 9},   {"T", 12},  {"P", 15},  {"E", 18},  {"Z", 21},  {"Y", 24},  {"R", 27},  {"Q", 30}};
+
+  // Whether w is the symbol of the unit u with the prefix p: the prefix's symbol (µ, μ or u for micro) and the
+  // unit's ASCII symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its
+  // own is only printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
+  constexpr bool names_unit(const unit_def* u, std::int8_t p, std::string_view w)
+  {
+    const auto rest = [&](std::string_view s)
+    {
+      if (s == u->ascii())
+        return true;
+      bool plain{true};
+      for (char c : u->Utf8)
+        plain = plain && static_cast<unsigned char>(c) < 0x80;
+      return !plain && s == u->Utf8;
+    };
+    if (p == 0)
+      return rest(w);
+    for (const text_prefix& x : text_prefixes)
+      if (x.Pow == p && w.starts_with(x.Sym) && rest(w.substr(x.Sym.size())))
+        return true;
+    return false;
+  }
 
   // A separator between a unit's factors at i: a space, '*' or the middle dot; its length in bytes, 0 for none.
   constexpr std::size_t text_separator(std::string_view t, std::size_t i)
@@ -27376,6 +27359,41 @@ namespace ins::detail
     return c;
   }
 
+  // The units a quantity's text reads at run time (parse<Q>, >>), as a key's text reads them: the catalog's tables,
+  // then every other unit tag visible here, each a group; basis vectors are left out. (Context only makes the call
+  // depend on the template, so it runs where parse<Q> is used.)
+  template <class Context>
+  consteval unit_set readable_units()
+  {
+    const catalog_list           c{catalog_table<Context>()};
+    std::vector<const unit_def*> units;
+    std::vector<std::int8_t>     prefixes;
+    std::vector<std::size_t>     ends;
+    const auto                   add = [&](const unit_def* u, std::int8_t p)
+    {
+      if (!has_basis(u->Dim))
+      {
+        units.push_back(u);
+        prefixes.push_back(p);
+      }
+    };
+    for (std::size_t t = 0; t < c.Size; ++t)
+    {
+      for (std::size_t i = 0; i < c.Sets[t].Units.Size; ++i)
+        add(c.Sets[t].Units.Units[i], c.Sets[t].Units.Prefixes[i]);
+      ends.push_back(units.size());
+    }
+    tag_vectors others;
+    collect_tags(^^::, others, c.Size != 0 ? ^^ins : std::meta::info{});
+    for (const unit_atom& a : others.Units)
+      add(a.U, a.Prefix);
+    ends.push_back(units.size());
+    const auto u{std::define_static_array(units)};
+    const auto p{std::define_static_array(prefixes)};
+    const auto e{std::define_static_array(ends)};
+    return {u.data(), p.data(), e.data(), e.size(), u.size()};
+  }
+
   // A name of a kind or an origin: letters, digits and _ (a key's text spells it).
   constexpr bool identifier_name(std::string_view s)
   {
@@ -27422,27 +27440,8 @@ namespace ins::detail
       return Others;
     }
 
-    // Whether w is the symbol of the prefixed unit a: the prefix's symbol (µ, μ or u for micro) and the unit's ASCII
-    // symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its own is only
-    // printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
-    static consteval bool symbol_is(const unit_atom& a, std::string_view w)
-    {
-      const auto rest = [&](std::string_view s)
-      {
-        if (s == a.U->ascii())
-          return true;
-        bool plain{true};
-        for (char c : a.U->Utf8)
-          plain = plain && static_cast<unsigned char>(c) < 0x80;
-        return !plain && s == a.U->Utf8;
-      };
-      if (a.Prefix == 0)
-        return rest(w);
-      for (const text_prefix& p : text_prefixes)
-        if (p.Pow == a.Prefix && w.starts_with(p.Sym) && rest(w.substr(p.Sym.size())))
-          return true;
-      return false;
-    }
+    // Whether w is the symbol of the prefixed unit a (unit_grammar.hpp: names_unit).
+    static consteval bool symbol_is(const unit_atom& a, std::string_view w) { return names_unit(a.U, a.Prefix, w); }
     // The one unit of units[0, n) a symbol names (several units equal by content are one).
     template <class Units>
     static consteval bool match_in(const Units& units, std::size_t n, std::string_view w, unit_atom& a,
@@ -27984,8 +27983,8 @@ namespace ins::detail
   inline constexpr quantity_read quantity_of_name =
     read_quantity<quantity_name_context<T>>(T.Unit.view(), T.Kind.view(), T.Origin.view());
 
-  // A key's quantity texts, as a quantity_name.
-  consteval quantity_name quantity_name_of(const id_spec& s)
+  // A key's quantity texts, as a quantity_name (without the origin: a point's quantity).
+  consteval quantity_name quantity_name_of(const id_spec& s, bool origin = true)
   {
     quantity_name n;
     const auto    copy = [](unit_name& out, std::string_view text)
@@ -27995,7 +27994,8 @@ namespace ins::detail
     };
     copy(n.Unit, s.Unit);
     copy(n.Kind, s.Kind);
-    copy(n.Origin, s.Origin);
+    if (origin)
+      copy(n.Origin, s.Origin);
     return n;
   }
   consteval quantity_read checked_quantity(const quantity_read& q)
@@ -28049,13 +28049,6 @@ namespace ins
     // The key of a quantity on R, its number Rep: id<"[0..100] [km/h]">, the type every quantity is
     // (units/detail/unit_key.hpp writes and reads its text). A reference whose text names another one where the
     // type is formed (a symbol of your own the catalog reads, a symbol several visible units share) has no type.
-    template <class Rep>
-    struct number_key;
-    template <key K>
-    struct number_key<id<K>>
-    {
-      static constexpr key value = K;
-    };
     template <reference R, insidable Rep, origin_ref O = &origin_def::none, bool Point = false>
     consteval key quantity_key_of()
     {
@@ -28066,21 +28059,26 @@ namespace ins
         constexpr_error<"units: this quantity's unit or kind has no text that names it here - give a unit of your "
                         "own a symbol of its own (a symbol the catalog reads names the catalog's unit), and a kind "
                         "or an origin a name of its own">();
-      return key_of(key_grid<number_key<Rep>::value>, key_policy<number_key<Rep>::value>,
-                    quantity_name_for(R, O, Point).Name);
+      return key_of(grid_of<Rep>, policy_of<Rep>, quantity_name_for(R, O, Point).Name);
     }
     // A key's number: the inside with the key's grid and policy.
     template <key K>
     using key_rep = id<key_of(key_grid<K>, key_policy<K>)>;
+    // A quantity's (a point's) type on the number N: its key's text with N's grid and policy, read once already.
+    template <class Q, insidable N>
+    using with_rep_t = id<key_of(grid_of<N>, policy_of<N>, quantity_name_of(key_spec<key_v<Q>>))>;
+    // A point's quantity: its key without the origin.
+    template <key K>
+    using point_quantity_t = id<key_of(key_grid<K>, key_policy<K>, quantity_name_of(key_spec<K>, false))>;
   } // namespace detail
 
   namespace detail
   {
     // Whether Rep{n} (Rep{n, pol}) stores at run time, as the constructor an inside chooses: an inside, a number
     // the grids prove, or a policy that reports; else only while compiling (a consteval store of a constant).
-    // A quantity's constructors split the same way (constexpr and consteval): GCC 16 does not reliably carry a
-    // constructor that becomes consteval through what it calls over to the code that calls it (it calls a function
-    // it never emits).
+    // A quantity's constructors split the same way (constexpr and consteval), so that a function one level above
+    // them (a point's constructor, a wrapper of one's own) becomes consteval one level only: GCC 16 links a
+    // two-level escalation through inside's consteval store only now and then (it calls a function it never emits).
     template <class Rep, class N>
     consteval bool runtime_store()
     {
@@ -28363,12 +28361,12 @@ namespace ins
     }
 
     // q.on_clamp(f): f(q, overshoot), the inside's overshoot as a quantity in q's unit and kind.
-    template <reference R, class F, class Q>
+    template <class F, class Q>
     constexpr auto on_quantity_clamp(Q& q, F&& f)
     {
       return [&q, f = std::forward<F>(f)](auto&, auto&& over) mutable -> decltype(auto)
       {
-        return f(q, make_quantity<R>(std::forward<decltype(over)>(over)));
+        return f(q, make_quantity<Q::reference>(std::forward<decltype(over)>(over)));
       };
     }
 
@@ -28419,11 +28417,12 @@ namespace ins
     template <class Rep>
     concept step_needs_channel = insidable<Rep> && notch_of<Rep> != 0 && !requires(Rep& n) { ++n; };
 
-    template <reference R, class Q, class Ref>
+    template <class Q, class Ref>
     struct quantity_action_ref
     {
-      Q&  Self;
-      Ref NumRef;
+      static constexpr reference R{Q::reference};
+      Q&                         Self;
+      Ref                        NumRef;
 
       template <quantity_like QR2>
         requires rescalable_into<QR2, R> && requires(Ref& r, const rescaled_into_t<QR2, R>& v) { r = v; }
@@ -28469,10 +28468,10 @@ namespace ins
         return Self;
       }
     };
-    template <reference R, class Q, class Ref>
+    template <class Q, class Ref>
     constexpr auto make_action_ref(Q& q, Ref&& r)
     {
-      return quantity_action_ref<R, Q, std::remove_cvref_t<Ref>>{q, std::forward<Ref>(r)};
+      return quantity_action_ref<Q, std::remove_cvref_t<Ref>>{q, std::forward<Ref>(r)};
     }
   } // namespace detail
 
@@ -28500,16 +28499,16 @@ namespace ins
       // (The owner builds the value: a consteval store stays in its constructor.)
       constexpr explicit private_member(const T& v) : Value(v) {}
     };
-    template <class Rep, class T, class Owner>
+    template <key K, class T>
     using member_holder =
-      std::conditional_t<lower_of<Rep> == upper_of<Rep>, public_member<T>, private_member<T, Owner>>;
+      std::conditional_t<key_grid<K>.Lower == key_grid<K>.Upper, public_member<T>, private_member<T, id<K>>>;
   } // namespace detail
 
   // A quantity: a number Rep (an inside, the key's grid and policy) of the reference R (the key's unit and kind),
   // the type id<"[0..100] [km/h]">, which id<quantity_key<R, Rep>> names.
   template <key K>
     requires detail::unit_key<K>
-  struct id<K> : public detail::member_holder<detail::key_rep<K>, detail::key_rep<K>, id<K>>
+  struct id<K> : public detail::member_holder<K, detail::key_rep<K>>
   {
   private:
     static constexpr ins::reference R{detail::key_reference<K>};
@@ -28518,7 +28517,7 @@ namespace ins
     static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
-    using holder = detail::member_holder<Rep, Rep, id>;
+    using holder = detail::member_holder<K, Rep>;
     using holder::Value;
 
   public:
@@ -28785,18 +28784,17 @@ namespace ins
       --Value;
       return *this;
     }
-    // (The old value as the quantity type, id<"…"> where the unit has a text, not this base.)
-    constexpr auto operator++(int)
+    constexpr id operator++(int)
       requires requires(Rep& n) { ++n; }
     {
-      auto old{detail::make_quantity<R>(Value)};
+      id old{*this};
       ++Value;
       return old;
     }
-    constexpr auto operator--(int)
+    constexpr id operator--(int)
       requires requires(Rep& n) { --n; }
     {
-      auto old{detail::make_quantity<R>(Value)};
+      id old{*this};
       --Value;
       return old;
     }
@@ -28828,25 +28826,21 @@ namespace ins
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry) when the sum wraps.
     // Stores take quantities; f gets the quantity,
     // then the carry (a count of periods), the overshoot (a quantity) or the error.
-    // (f gets the quantity as its own type, an id<…> where the unit has a text: self, not this base.)
-    template <class Self, class F>
-    [[nodiscard]] constexpr auto on_wrap(this Self& self, F&& f)
+    template <class F>
+    [[nodiscard]] constexpr auto on_wrap(F&& f)
     {
-      id& q{self};
-      return detail::make_action_ref<R>(q, q.Value.on_wrap(detail::on_quantity(self, std::forward<F>(f))));
+      return detail::make_action_ref(*this, Value.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
     }
-    template <class Self, class F>
-    [[nodiscard]] constexpr auto on_clamp(this Self& self, F&& f)
+    template <class F>
+    [[nodiscard]] constexpr auto on_clamp(F&& f)
     {
-      id& q{self};
-      return detail::make_action_ref<R>(q, q.Value.on_clamp(detail::on_quantity_clamp<R>(self, std::forward<F>(f))));
+      return detail::make_action_ref(*this, Value.on_clamp(detail::on_quantity_clamp(*this, std::forward<F>(f))));
     }
-    template <class Self, class F>
+    template <class F>
       requires(!std::same_as<std::remove_cvref_t<F>, error>)
-    [[nodiscard]] constexpr auto on_error(this Self& self, F&& f)
+    [[nodiscard]] constexpr auto on_error(F&& f)
     {
-      id& q{self};
-      return detail::make_action_ref<R>(q, q.Value.on_error(detail::on_quantity(self, std::forward<F>(f))));
+      return detail::make_action_ref(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
     }
 
     // A store under Rep's policy plus F, as inside's with<F>(): its =, += and -= take quantities, *= and /= numbers.
@@ -28854,12 +28848,12 @@ namespace ins
     template <policy_flag F = ins::detail::none>
     [[nodiscard]] constexpr auto with() &
     {
-      return detail::make_action_ref<R>(*this, Value.template with<F>());
+      return detail::make_action_ref(*this, Value.template with<F>());
     }
     template <policy_flag F = ins::detail::none>
     [[nodiscard]] constexpr auto on_error(error& ec)
     {
-      return detail::make_action_ref<R>(*this, Value.template on_error<F>(ec));
+      return detail::make_action_ref(*this, Value.template on_error<F>(ec));
     }
 
     // Rep's try_make of a number and its unit:
@@ -28892,9 +28886,6 @@ namespace ins
   // A value with its quantity type: "42 [1..100) [km/h]"_ins is 42 km/h of type id<"[1..99] [km/h]">, the number
   // in the type's unit, stored while compiling as Q{just<v>, unit} stores it; "42 [km/h]"_ins is the point 42 km/h.
   // (Without a unit, the literal is an inside's: inside/detail/core.hpp.)
-  template <key K>
-    requires detail::unit_key<K>
-  struct id<K>;
   inline namespace literals
   {
     template <detail::value_text T>
@@ -28921,7 +28912,7 @@ namespace ins::detail
   {
     using number = typename Q::rep;
     template <class N>
-    using rebind = ins::id<ins::quantity_key<Q::reference, N>>;
+    using rebind = with_rep_t<Q, N>;
     template <class N>
     static constexpr rebind<N> make(const N& n)
     {
@@ -29450,8 +29441,7 @@ namespace ins
     requires requires(const typename QR::rep& v) { Rep2::try_make(v); }
   [[nodiscard]] constexpr auto value_cast(const QR& q)
   {
-    constexpr ins::reference R{QR::reference};
-    return detail::cast_number<id<quantity_key<R, Rep2>>, Rep2>(ins::detail::value_of(q));
+    return detail::cast_number<detail::with_rep_t<QR, Rep2>, Rep2>(ins::detail::value_of(q));
   }
   // value_cast<U, Rep2>(q): in unit U with representation Rep2, the exact value in U, stored by Rep2's constructor.
   // (A pi factor, degree ↔ radian, rounds once: units/math.hpp.)
@@ -29833,8 +29823,7 @@ namespace ins
 } // namespace ins
 
 // std::hash and std::numeric_limits of a quantity: its number's, the limits as quantities in its unit.
-template <class Q>
-  requires ins::detail::is_quantity_v<Q>
+template <ins::quantity_like Q>
 struct std::hash<Q>
 {
   constexpr std::size_t operator()(const Q& q) const noexcept
@@ -29843,8 +29832,7 @@ struct std::hash<Q>
   }
 };
 
-template <class Q>
-  requires ins::detail::is_quantity_v<Q>
+template <ins::quantity_like Q>
 struct std::numeric_limits<Q> : std::numeric_limits<typename Q::rep>
 {
 private:
@@ -29900,6 +29888,13 @@ namespace ins
   template <class T>
   concept point_like = detail::is_quantity_point_v<std::remove_cvref_t<T>>;
 
+  namespace detail
+  {
+    // A quantity or a point: what a text reads into and prints from.
+    template <class T>
+    concept quantity_or_point = quantity_like<T> || point_like<T>;
+  } // namespace detail
+
   // The key of a point of a quantity on R from origin O, its number Rep, for a type computed from them:
   // id<point_key<si::degree_Celsius, si::ice_point, id<"[-40..125]">>> is id<"[-40..125] [deg_C] @ice_point">.
   template <reference R, origin_ref O, insidable Rep>
@@ -29937,24 +29932,6 @@ namespace ins
       return is_single_named(u) ? u.Atoms[0].U->Origin : &origin_def::none;
     }
 
-    // Whether Rep stores the plain number V (under the one-shot flags Pol) only while compiling:
-    // the condition of inside's consteval constructors.
-    template <class Rep, class Pol>
-    inline constexpr policy_flag point_flags_with =
-      ins::detail::override_flags(policy_of<Rep>, policy_of<std::remove_cvref_t<Pol>>);
-    template <class Rep, class V, class... Pol>
-    inline constexpr bool point_store_immediate = false;
-    template <class Rep, class V>
-      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
-    inline constexpr bool point_store_immediate<Rep, V> =
-      !ins::detail::store_proven<Rep, std::remove_cvref_t<V>, policy_of<Rep>>;
-    template <class Rep, class V, class Pol>
-      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
-    inline constexpr bool point_store_immediate<Rep, V, Pol> =
-      !ins::detail::store_proven<id<key{grid_of<Rep>, point_flags_with<Rep, Pol>}>, std::remove_cvref_t<V>,
-                                 point_flags_with<Rep, Pol>>
-      && !ins::detail::reports_into_errc<Pol>;
-
     template <origin_ref O, class Q>
     constexpr auto make_point(Q&& q)
     {
@@ -29966,15 +29943,14 @@ namespace ins
   template <key K>
     requires detail::origin_key<K>
   struct id<K>
-    : public detail::member_holder<detail::key_rep<K>, id<quantity_key<detail::key_reference<K>, detail::key_rep<K>>>,
-                                   id<K>>
+    : public detail::member_holder<K, detail::point_quantity_t<K>>
   {
   private:
     static constexpr ins::reference R{detail::key_reference<K>};
     static constexpr origin_ref     O{detail::key_origin<K>};
     using Rep    = detail::key_rep<K>;
-    using Q      = id<quantity_key<R, Rep>>;
-    using holder = detail::member_holder<Rep, Q, id>;
+    using Q      = detail::point_quantity_t<K>;
+    using holder = detail::member_holder<K, Q>;
     using holder::Value; // the quantity from the origin
 
     static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
@@ -29992,19 +29968,12 @@ namespace ins
 
     // From a number in the point's own unit, counted from its origin, stored as its quantity Q{v, u} stores it:
     // celsius{21.5, si::degree_Celsius}, celsius{v, si::degree_Celsius, clamp}.
-    // A plain number the grids cannot prove is stored only while compiling, as by inside's consteval constructor;
-    // this constructor is consteval then itself, so no escalation is left to infer.
+    // (A plain number the grids cannot prove is stored only while compiling: Q's constructor is consteval then, and
+    // this one becomes so through it, one level.)
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
            && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
-           && (!detail::point_store_immediate<Rep, V, Pol...>)
     constexpr id(V&& v, Tag u, Pol&&... pol)
-      : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
-    template <class V, class Tag, class... Pol>
-      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
-           && detail::point_store_immediate<Rep, V, Pol...>
-    consteval id(V&& v, Tag u, Pol&&... pol)
       : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
     // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
     template <class V, class Tag, class... Pol>
@@ -30106,28 +30075,20 @@ namespace ins
   // (The point of a cast quantity, or an expected one: the cast's error passed on.)
   namespace detail
   {
-    template <origin_ref O, class Q>
-    constexpr auto point_at(const Q& q)
-    {
-      if constexpr (ins::detail::is_expected_v<Q>)
-        return q.transform([](const auto& x) { return point_at<O>(x); });
-      else
-        return id<point_key<Q::reference, O, typename Q::rep>>{q};
-    }
   } // namespace detail
   template <insidable Rep2, point_like P>
     requires requires(const typename P::quantity_type& q) { value_cast<Rep2>(q); }
   [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     constexpr origin_ref O{P::origin};
-    return detail::point_at<O>(value_cast<Rep2>(p.quantity_from_origin()));
+    return detail::make_point<O>(value_cast<Rep2>(p.quantity_from_origin()));
   }
   template <auto U, insidable Rep2, point_like P>
     requires requires(const typename P::quantity_type& q) { value_cast<U, Rep2>(q); }
   [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     constexpr origin_ref O{P::origin};
-    return detail::point_at<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
+    return detail::make_point<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
   }
 
   // point<si::degree_Celsius>(v): a point at the unit's default origin (the implicit zero for a unit without one).
@@ -31615,7 +31576,7 @@ namespace ins
       if constexpr (quantity_like<P>)
         return p.template in<unit_mul(U, blade_atoms(P::reference.unit()), 1)>();
       else
-        return quantity_access::make<id<quantity_key<reference_of(unit_value{}), P>>>(p).template in<U>();
+        return as_quantity(p).template in<U>();
     }
     template <unit_value U, class P>
     concept part_in_unit = requires(const P& p) { part_in<U>(p); };
@@ -32201,9 +32162,9 @@ namespace ins::detail
 
   struct text_atom
   {
-    std::string_view Utf8;
-    std::string_view Ascii;
-    grid_number      Ratio{1};        // its magnitude, against the coherent unit of its dimension
+    const unit_def*  U{};
+    std::int8_t      Prefix{0};
+    grid_number      Ratio{1};        // its magnitude (without the prefix), against the coherent unit of its dimension
     std::int8_t      Pi{0};
     bool             KindOk{false};   // as a whole text: a quantity in it adds to one of the target's kind
     bool             OriginOk{false}; // a point: its origin (or the dimension's zero) shares the target's absolute one
@@ -32225,7 +32186,7 @@ namespace ins::detail
       };
       add(dimension_of(R.unit()));
       for (std::size_t a = 0; a < S.Size; ++a)
-        add(S.Data[a]->Dim);
+        add(S.Units[a]->Dim);
       return b;
     }
     static constexpr std::size_t B     = basis_of().size();
@@ -32248,7 +32209,7 @@ namespace ins::detail
       std::array<std::int8_t, S.Size * B> e{};
       for (std::size_t a = 0; a < S.Size; ++a)
       {
-        const auto x{exponents_of(S.Data[a]->Dim)};
+        const auto x{exponents_of(S.Units[a]->Dim)};
         std::ranges::copy(x, e.begin() + static_cast<std::ptrdiff_t>(a * B));
       }
       return e;
@@ -32261,9 +32222,9 @@ namespace ins::detail
                                                         ? (grid_number{0} - offset_of(O)) / target_mag.Ratio
                                                         : grid_number{0};
 
-    static consteval text_atom atom_of(const unit_def* u)
+    static consteval text_atom atom_of(const unit_def* u, std::int8_t p)
     {
-      text_atom t{u->Utf8, u->ascii(), u->Mag.Ratio, u->Mag.Pi, false, false, grid_number{0}};
+      text_atom t{u, p, u->Mag.Ratio, u->Mag.Pi, false, false, grid_number{0}};
       if (u->Dim == dimension_of(R.unit()))
         t.KindOk = common_kind(reference_of(unit_value{*u}), R).Ok;
       if constexpr (Point)
@@ -32278,7 +32239,7 @@ namespace ins::detail
     {
       std::array<text_atom, S.Size> t{};
       for (std::size_t a = 0; a < S.Size; ++a)
-        t[a] = atom_of(S.Data[a]);
+        t[a] = atom_of(S.Units[a], S.Prefixes[a]);
       return t;
     }
     static constexpr std::array<text_atom, S.Size> atoms = atoms_of();
@@ -32309,31 +32270,25 @@ namespace ins::detail
       std::size_t Atom{std::string_view::npos};
       std::int8_t Prefix{0};
     };
-    // The unit a symbol names exactly; none when no unit, or more than one, has it.
+    // The unit a symbol names, a whole one (units/detail/unit_key.hpp's rule): the first group's one unit that has
+    // it; none when no unit has it, or when two of one group do.
     static constexpr symbol_match match_exact(std::string_view w)
     {
-      symbol_match m;
-      for (std::size_t a = 0; a < S.Size; ++a)
-        if (atoms[a].Utf8 == w || atoms[a].Ascii == w)
-        {
-          if (m.Atom != std::string_view::npos)
-            return {};
-          m.Atom = a;
-        }
-      return m;
-    }
-    // A symbol exactly, else a prefix and a symbol (min is the minute, mm the millimetre).
-    static constexpr symbol_match match_symbol(std::string_view w)
-    {
-      if (const symbol_match m{match_exact(w)}; m.Atom != std::string_view::npos)
-        return m;
-      for (const text_prefix& p : text_prefixes)
-        if (w.size() > p.Sym.size() && w.starts_with(p.Sym))
-          if (symbol_match m{match_exact(w.substr(p.Sym.size()))}; m.Atom != std::string_view::npos)
+      std::size_t begin{0};
+      for (std::size_t g = 0; g < S.Groups; ++g)
+      {
+        symbol_match m;
+        for (std::size_t a = begin; a < S.Ends[g]; ++a)
+          if (names_unit(atoms[a].U, atoms[a].Prefix, w))
           {
-            m.Prefix = p.Pow;
-            return m;
+            if (m.Atom != std::string_view::npos)
+              return {};
+            m = {a, atoms[a].Prefix};
           }
+        if (m.Atom != std::string_view::npos)
+          return m;
+        begin = S.Ends[g];
+      }
       return {};
     }
 
@@ -32376,7 +32331,7 @@ namespace ins::detail
     {
       if (const symbol_match m{match_exact(t)}; m.Atom != std::string_view::npos)
       {
-        u.Terms[u.Size++] = {m.Atom, 0, 1};
+        u.Terms[u.Size++] = {m.Atom, m.Prefix, 1};
         return true;
       }
       std::size_t i{0};
@@ -32386,7 +32341,7 @@ namespace ins::detail
         const std::size_t end{symbol_end(t, i)};
         if (end == i || u.Size == max_unit_atoms)
           return false;
-        const symbol_match m{match_symbol(t.substr(i, end - i))};
+        const symbol_match m{match_exact(t.substr(i, end - i))};
         if (m.Atom == std::string_view::npos)
           return false;
         i = end;
@@ -32620,46 +32575,47 @@ namespace ins
   //   parse<Q, F>(number, unit)   the two apart: a JSON key price[USD/item], a CSV header
   //   parse<Q, F>(number, u)      a bare number in a unit named in code (u a unit tag)
   //   parse_exact<Q>(…)           the same, accepting only a value Q holds exactly
-  // The unit may be any unit visible at the call that converts exactly to Q's (a rational factor): the catalog's
-  // and your own, with SI prefixes, products, quotients and powers ("km/h", "kg m²/s²"). The number is multiplied
+  // The unit may be any unit visible at the call that converts exactly to Q's (a rational factor), read as a type's
+  // text reads it: whole symbols (the catalog's units and its prefixed ones in wide use, km, ms, kHz, …, and your
+  // own tags; the catalog first), products, quotients and powers ("km/h", "kg m²/s²"). The number is multiplied
   // by that factor exactly (a point also shifted between origins), then stored by Q's number type and the flags F.
   // A single unit's kind must add to Q's (Hz is no Bq); a compound unit's kind is Q's.
   // Errors: missing_unit, unknown_unit, incompatible_unit, then the number's and the store's own.
-  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view text)
   {
     const auto t{detail::split_quantity_text(text)};
     return detail::parse_quantity_text<Q, F, false, Units>(t.Number, t.Unit);
   }
-  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, std::string_view unit)
   {
     return detail::parse_quantity_text<Q, F, false, Units>(number, unit);
   }
   template <class Q, policy_flag F = detail::none, class Tag>
-    requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
+    requires detail::quantity_or_point<Q> && detail::is_reference_tag_v<Tag>
          && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, Tag)
   {
     return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).unit()>(number);
   }
-  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view text)
   {
     const auto t{detail::split_quantity_text(text)};
     return detail::parse_quantity_text<Q, detail::none, true, Units>(t.Number, t.Unit);
   }
-  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, std::string_view unit)
   {
     return detail::parse_quantity_text<Q, detail::none, true, Units>(number, unit);
   }
   template <class Q, class Tag>
-    requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
+    requires detail::quantity_or_point<Q> && detail::is_reference_tag_v<Tag>
          && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, Tag)
   {
@@ -32670,8 +32626,8 @@ namespace ins
   // token carries it (90°). e holds the value or the error; the stream stays good on a parse error, and only
   // running out of input sets failbit (e: invalid_format without a number, missing_unit without a unit).
   // (No >> into a plain quantity: every way to read one reports through an expected.)
-  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   std::istream& operator>>(std::istream& stream, std::expected<Q, error>& e)
   {
     std::string number;
@@ -32868,20 +32824,18 @@ namespace ins
 
 // std::format: the spec formats the number as for its inside ({:.2f}, {:>8}), then the unit symbol follows
 // ("5 km", "90°").
-template <class Q>
-  requires ins::detail::is_quantity_v<Q>
+template <ins::quantity_like Q>
 struct std::formatter<Q> : std::formatter<typename Q::rep>
 {
   template <typename Ctx>
   auto format(const Q& q, Ctx& ctx) const
   {
-    namespace u = ins;
     constexpr ins::reference R{Q::reference};
     auto              out{std::formatter<typename Q::rep>::format(ins::detail::value_of(q), ctx)};
-    const std::string sym{u::unit_symbol(R.unit())};
+    const std::string sym{ins::unit_symbol(R.unit())};
     if (sym.empty())
       return out;
-    if constexpr (u::detail::space_before(R.unit()))
+    if constexpr (ins::detail::space_before(R.unit()))
       *out++ = ' ';
     return std::ranges::copy(sym, out).out;
   }
@@ -34346,7 +34300,7 @@ namespace ins::detail::gaexp
   template <quantity_like P, class N>
   struct with_number<P, N>
   {
-    using type = id<quantity_key<P::reference, N>>;
+    using type = with_rep_t<P, N>;
   };
   template <class F, std::size_t Q>
   using twin_part =
@@ -36325,7 +36279,7 @@ namespace ins::detail
   {
     using number = typename Q::rep;
     template <insidable N>
-    using rebind = ins::id<ins::quantity_key<Q::reference, N>>;
+    using rebind = ins::detail::with_rep_t<Q, N>;
     static constexpr const number& number_of(const Q& q) noexcept { return ins::detail::value_of(q); }
     static constexpr Q             make(const number& n) { return ins::detail::quantity_access::make<Q>(n); }
     // (total: the caller proved the total fits; try_total reports it.)
@@ -36338,7 +36292,7 @@ namespace ins::detail
       N    out{};
       auto policy{make_policy<policy_of<N>>()};
       sum_into(numbers, out, policy);
-      return Q{ins::detail::quantity_access::make<ins::id<ins::quantity_key<P::reference, N>>>(out)};
+      return Q{ins::detail::quantity_access::make<ins::detail::with_rep_t<P, N>>(out)};
     }
     template <class Rng>
     static constexpr std::expected<Q, error> try_total(Rng&& r)
@@ -36348,7 +36302,7 @@ namespace ins::detail
       auto numbers{std::forward<Rng>(r) | std::views::transform([](const P& p) { return ins::detail::value_of(p); })};
       return try_store<N, policy_of<N>>([&](N& out, auto&& policy) { sum_into(numbers, out, policy); })
         .transform([](const N& t)
-                   { return Q{ins::detail::quantity_access::make<ins::id<ins::quantity_key<P::reference, N>>>(t)}; });
+                   { return Q{ins::detail::quantity_access::make<ins::detail::with_rep_t<P, N>>(t)}; });
     }
     template <class V>
     static constexpr std::expected<Q, error> try_store_of(const V& v)

@@ -27,13 +27,6 @@ namespace ins
     // The key of a quantity on R, its number Rep: id<"[0..100] [km/h]">, the type every quantity is
     // (units/detail/unit_key.hpp writes and reads its text). A reference whose text names another one where the
     // type is formed (a symbol of your own the catalog reads, a symbol several visible units share) has no type.
-    template <class Rep>
-    struct number_key;
-    template <key K>
-    struct number_key<id<K>>
-    {
-      static constexpr key value = K;
-    };
     template <reference R, insidable Rep, origin_ref O = &origin_def::none, bool Point = false>
     consteval key quantity_key_of()
     {
@@ -44,21 +37,26 @@ namespace ins
         constexpr_error<"units: this quantity's unit or kind has no text that names it here - give a unit of your "
                         "own a symbol of its own (a symbol the catalog reads names the catalog's unit), and a kind "
                         "or an origin a name of its own">();
-      return key_of(key_grid<number_key<Rep>::value>, key_policy<number_key<Rep>::value>,
-                    quantity_name_for(R, O, Point).Name);
+      return key_of(grid_of<Rep>, policy_of<Rep>, quantity_name_for(R, O, Point).Name);
     }
     // A key's number: the inside with the key's grid and policy.
     template <key K>
     using key_rep = id<key_of(key_grid<K>, key_policy<K>)>;
+    // A quantity's (a point's) type on the number N: its key's text with N's grid and policy, read once already.
+    template <class Q, insidable N>
+    using with_rep_t = id<key_of(grid_of<N>, policy_of<N>, quantity_name_of(key_spec<key_v<Q>>))>;
+    // A point's quantity: its key without the origin.
+    template <key K>
+    using point_quantity_t = id<key_of(key_grid<K>, key_policy<K>, quantity_name_of(key_spec<K>, false))>;
   } // namespace detail
 
   namespace detail
   {
     // Whether Rep{n} (Rep{n, pol}) stores at run time, as the constructor an inside chooses: an inside, a number
     // the grids prove, or a policy that reports; else only while compiling (a consteval store of a constant).
-    // A quantity's constructors split the same way (constexpr and consteval): GCC 16 does not reliably carry a
-    // constructor that becomes consteval through what it calls over to the code that calls it (it calls a function
-    // it never emits).
+    // A quantity's constructors split the same way (constexpr and consteval), so that a function one level above
+    // them (a point's constructor, a wrapper of one's own) becomes consteval one level only: GCC 16 links a
+    // two-level escalation through inside's consteval store only now and then (it calls a function it never emits).
     template <class Rep, class N>
     consteval bool runtime_store()
     {
@@ -341,12 +339,12 @@ namespace ins
     }
 
     // q.on_clamp(f): f(q, overshoot), the inside's overshoot as a quantity in q's unit and kind.
-    template <reference R, class F, class Q>
+    template <class F, class Q>
     constexpr auto on_quantity_clamp(Q& q, F&& f)
     {
       return [&q, f = std::forward<F>(f)](auto&, auto&& over) mutable -> decltype(auto)
       {
-        return f(q, make_quantity<R>(std::forward<decltype(over)>(over)));
+        return f(q, make_quantity<Q::reference>(std::forward<decltype(over)>(over)));
       };
     }
 
@@ -397,11 +395,12 @@ namespace ins
     template <class Rep>
     concept step_needs_channel = insidable<Rep> && notch_of<Rep> != 0 && !requires(Rep& n) { ++n; };
 
-    template <reference R, class Q, class Ref>
+    template <class Q, class Ref>
     struct quantity_action_ref
     {
-      Q&  Self;
-      Ref NumRef;
+      static constexpr reference R{Q::reference};
+      Q&                         Self;
+      Ref                        NumRef;
 
       template <quantity_like QR2>
         requires rescalable_into<QR2, R> && requires(Ref& r, const rescaled_into_t<QR2, R>& v) { r = v; }
@@ -447,10 +446,10 @@ namespace ins
         return Self;
       }
     };
-    template <reference R, class Q, class Ref>
+    template <class Q, class Ref>
     constexpr auto make_action_ref(Q& q, Ref&& r)
     {
-      return quantity_action_ref<R, Q, std::remove_cvref_t<Ref>>{q, std::forward<Ref>(r)};
+      return quantity_action_ref<Q, std::remove_cvref_t<Ref>>{q, std::forward<Ref>(r)};
     }
   } // namespace detail
 
@@ -478,16 +477,16 @@ namespace ins
       // (The owner builds the value: a consteval store stays in its constructor.)
       constexpr explicit private_member(const T& v) : Value(v) {}
     };
-    template <class Rep, class T, class Owner>
+    template <key K, class T>
     using member_holder =
-      std::conditional_t<lower_of<Rep> == upper_of<Rep>, public_member<T>, private_member<T, Owner>>;
+      std::conditional_t<key_grid<K>.Lower == key_grid<K>.Upper, public_member<T>, private_member<T, id<K>>>;
   } // namespace detail
 
   // A quantity: a number Rep (an inside, the key's grid and policy) of the reference R (the key's unit and kind),
   // the type id<"[0..100] [km/h]">, which id<quantity_key<R, Rep>> names.
   template <key K>
     requires detail::unit_key<K>
-  struct id<K> : public detail::member_holder<detail::key_rep<K>, detail::key_rep<K>, id<K>>
+  struct id<K> : public detail::member_holder<K, detail::key_rep<K>>
   {
   private:
     static constexpr ins::reference R{detail::key_reference<K>};
@@ -496,7 +495,7 @@ namespace ins
     static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
-    using holder = detail::member_holder<Rep, Rep, id>;
+    using holder = detail::member_holder<K, Rep>;
     using holder::Value;
 
   public:
@@ -763,18 +762,17 @@ namespace ins
       --Value;
       return *this;
     }
-    // (The old value as the quantity type, id<"…"> where the unit has a text, not this base.)
-    constexpr auto operator++(int)
+    constexpr id operator++(int)
       requires requires(Rep& n) { ++n; }
     {
-      auto old{detail::make_quantity<R>(Value)};
+      id old{*this};
       ++Value;
       return old;
     }
-    constexpr auto operator--(int)
+    constexpr id operator--(int)
       requires requires(Rep& n) { --n; }
     {
-      auto old{detail::make_quantity<R>(Value)};
+      id old{*this};
       --Value;
       return old;
     }
@@ -806,25 +804,21 @@ namespace ins
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry) when the sum wraps.
     // Stores take quantities; f gets the quantity,
     // then the carry (a count of periods), the overshoot (a quantity) or the error.
-    // (f gets the quantity as its own type, an id<…> where the unit has a text: self, not this base.)
-    template <class Self, class F>
-    [[nodiscard]] constexpr auto on_wrap(this Self& self, F&& f)
+    template <class F>
+    [[nodiscard]] constexpr auto on_wrap(F&& f)
     {
-      id& q{self};
-      return detail::make_action_ref<R>(q, q.Value.on_wrap(detail::on_quantity(self, std::forward<F>(f))));
+      return detail::make_action_ref(*this, Value.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
     }
-    template <class Self, class F>
-    [[nodiscard]] constexpr auto on_clamp(this Self& self, F&& f)
+    template <class F>
+    [[nodiscard]] constexpr auto on_clamp(F&& f)
     {
-      id& q{self};
-      return detail::make_action_ref<R>(q, q.Value.on_clamp(detail::on_quantity_clamp<R>(self, std::forward<F>(f))));
+      return detail::make_action_ref(*this, Value.on_clamp(detail::on_quantity_clamp(*this, std::forward<F>(f))));
     }
-    template <class Self, class F>
+    template <class F>
       requires(!std::same_as<std::remove_cvref_t<F>, error>)
-    [[nodiscard]] constexpr auto on_error(this Self& self, F&& f)
+    [[nodiscard]] constexpr auto on_error(F&& f)
     {
-      id& q{self};
-      return detail::make_action_ref<R>(q, q.Value.on_error(detail::on_quantity(self, std::forward<F>(f))));
+      return detail::make_action_ref(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
     }
 
     // A store under Rep's policy plus F, as inside's with<F>(): its =, += and -= take quantities, *= and /= numbers.
@@ -832,12 +826,12 @@ namespace ins
     template <policy_flag F = ins::detail::none>
     [[nodiscard]] constexpr auto with() &
     {
-      return detail::make_action_ref<R>(*this, Value.template with<F>());
+      return detail::make_action_ref(*this, Value.template with<F>());
     }
     template <policy_flag F = ins::detail::none>
     [[nodiscard]] constexpr auto on_error(error& ec)
     {
-      return detail::make_action_ref<R>(*this, Value.template on_error<F>(ec));
+      return detail::make_action_ref(*this, Value.template on_error<F>(ec));
     }
 
     // Rep's try_make of a number and its unit:
@@ -870,9 +864,6 @@ namespace ins
   // A value with its quantity type: "42 [1..100) [km/h]"_ins is 42 km/h of type id<"[1..99] [km/h]">, the number
   // in the type's unit, stored while compiling as Q{just<v>, unit} stores it; "42 [km/h]"_ins is the point 42 km/h.
   // (Without a unit, the literal is an inside's: inside/detail/core.hpp.)
-  template <key K>
-    requires detail::unit_key<K>
-  struct id<K>;
   inline namespace literals
   {
     template <detail::value_text T>
@@ -899,7 +890,7 @@ namespace ins::detail
   {
     using number = typename Q::rep;
     template <class N>
-    using rebind = ins::id<ins::quantity_key<Q::reference, N>>;
+    using rebind = with_rep_t<Q, N>;
     template <class N>
     static constexpr rebind<N> make(const N& n)
     {
@@ -1428,8 +1419,7 @@ namespace ins
     requires requires(const typename QR::rep& v) { Rep2::try_make(v); }
   [[nodiscard]] constexpr auto value_cast(const QR& q)
   {
-    constexpr ins::reference R{QR::reference};
-    return detail::cast_number<id<quantity_key<R, Rep2>>, Rep2>(ins::detail::value_of(q));
+    return detail::cast_number<detail::with_rep_t<QR, Rep2>, Rep2>(ins::detail::value_of(q));
   }
   // value_cast<U, Rep2>(q): in unit U with representation Rep2, the exact value in U, stored by Rep2's constructor.
   // (A pi factor, degree ↔ radian, rounds once: units/math.hpp.)
@@ -1811,8 +1801,7 @@ namespace ins
 } // namespace ins
 
 // std::hash and std::numeric_limits of a quantity: its number's, the limits as quantities in its unit.
-template <class Q>
-  requires ins::detail::is_quantity_v<Q>
+template <ins::quantity_like Q>
 struct std::hash<Q>
 {
   constexpr std::size_t operator()(const Q& q) const noexcept
@@ -1821,8 +1810,7 @@ struct std::hash<Q>
   }
 };
 
-template <class Q>
-  requires ins::detail::is_quantity_v<Q>
+template <ins::quantity_like Q>
 struct std::numeric_limits<Q> : std::numeric_limits<typename Q::rep>
 {
 private:

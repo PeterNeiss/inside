@@ -33,6 +33,13 @@ namespace ins
   template <class T>
   concept point_like = detail::is_quantity_point_v<std::remove_cvref_t<T>>;
 
+  namespace detail
+  {
+    // A quantity or a point: what a text reads into and prints from.
+    template <class T>
+    concept quantity_or_point = quantity_like<T> || point_like<T>;
+  } // namespace detail
+
   // The key of a point of a quantity on R from origin O, its number Rep, for a type computed from them:
   // id<point_key<si::degree_Celsius, si::ice_point, id<"[-40..125]">>> is id<"[-40..125] [deg_C] @ice_point">.
   template <reference R, origin_ref O, insidable Rep>
@@ -70,24 +77,6 @@ namespace ins
       return is_single_named(u) ? u.Atoms[0].U->Origin : &origin_def::none;
     }
 
-    // Whether Rep stores the plain number V (under the one-shot flags Pol) only while compiling:
-    // the condition of inside's consteval constructors.
-    template <class Rep, class Pol>
-    inline constexpr policy_flag point_flags_with =
-      ins::detail::override_flags(policy_of<Rep>, policy_of<std::remove_cvref_t<Pol>>);
-    template <class Rep, class V, class... Pol>
-    inline constexpr bool point_store_immediate = false;
-    template <class Rep, class V>
-      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
-    inline constexpr bool point_store_immediate<Rep, V> =
-      !ins::detail::store_proven<Rep, std::remove_cvref_t<V>, policy_of<Rep>>;
-    template <class Rep, class V, class Pol>
-      requires ins::detail::numeric<std::remove_cvref_t<V>> && (!insidable<std::remove_cvref_t<V>>)
-    inline constexpr bool point_store_immediate<Rep, V, Pol> =
-      !ins::detail::store_proven<id<key{grid_of<Rep>, point_flags_with<Rep, Pol>}>, std::remove_cvref_t<V>,
-                                 point_flags_with<Rep, Pol>>
-      && !ins::detail::reports_into_errc<Pol>;
-
     template <origin_ref O, class Q>
     constexpr auto make_point(Q&& q)
     {
@@ -99,15 +88,14 @@ namespace ins
   template <key K>
     requires detail::origin_key<K>
   struct id<K>
-    : public detail::member_holder<detail::key_rep<K>, id<quantity_key<detail::key_reference<K>, detail::key_rep<K>>>,
-                                   id<K>>
+    : public detail::member_holder<K, detail::point_quantity_t<K>>
   {
   private:
     static constexpr ins::reference R{detail::key_reference<K>};
     static constexpr origin_ref     O{detail::key_origin<K>};
     using Rep    = detail::key_rep<K>;
-    using Q      = id<quantity_key<R, Rep>>;
-    using holder = detail::member_holder<Rep, Q, id>;
+    using Q      = detail::point_quantity_t<K>;
+    using holder = detail::member_holder<K, Q>;
     using holder::Value; // the quantity from the origin
 
     static_assert(!R.unit().Scale.Ratio.negative() && !R.unit().Scale.Ratio.is_zero(),
@@ -125,19 +113,12 @@ namespace ins
 
     // From a number in the point's own unit, counted from its origin, stored as its quantity Q{v, u} stores it:
     // celsius{21.5, si::degree_Celsius}, celsius{v, si::degree_Celsius, clamp}.
-    // A plain number the grids cannot prove is stored only while compiling, as by inside's consteval constructor;
-    // this constructor is consteval then itself, so no escalation is left to infer.
+    // (A plain number the grids cannot prove is stored only while compiling: Q's constructor is consteval then, and
+    // this one becomes so through it, one level.)
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
            && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
-           && (!detail::point_store_immediate<Rep, V, Pol...>)
     constexpr id(V&& v, Tag u, Pol&&... pol)
-      : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
-    template <class V, class Tag, class... Pol>
-      requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
-           && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
-           && detail::point_store_immediate<Rep, V, Pol...>
-    consteval id(V&& v, Tag u, Pol&&... pol)
       : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
     // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
     template <class V, class Tag, class... Pol>
@@ -239,28 +220,20 @@ namespace ins
   // (The point of a cast quantity, or an expected one: the cast's error passed on.)
   namespace detail
   {
-    template <origin_ref O, class Q>
-    constexpr auto point_at(const Q& q)
-    {
-      if constexpr (ins::detail::is_expected_v<Q>)
-        return q.transform([](const auto& x) { return point_at<O>(x); });
-      else
-        return id<point_key<Q::reference, O, typename Q::rep>>{q};
-    }
   } // namespace detail
   template <insidable Rep2, point_like P>
     requires requires(const typename P::quantity_type& q) { value_cast<Rep2>(q); }
   [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     constexpr origin_ref O{P::origin};
-    return detail::point_at<O>(value_cast<Rep2>(p.quantity_from_origin()));
+    return detail::make_point<O>(value_cast<Rep2>(p.quantity_from_origin()));
   }
   template <auto U, insidable Rep2, point_like P>
     requires requires(const typename P::quantity_type& q) { value_cast<U, Rep2>(q); }
   [[nodiscard]] constexpr auto value_cast(const P& p)
   {
     constexpr origin_ref O{P::origin};
-    return detail::point_at<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
+    return detail::make_point<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
   }
 
   // point<si::degree_Celsius>(v): a point at the unit's default origin (the implicit zero for a unit without one).
