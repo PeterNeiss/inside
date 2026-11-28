@@ -43,31 +43,31 @@ int main()
   // 1. clamp: a brightness, an RGB pixel.
   using brightness_percent = id<"[0..100] [%] clamp">;
   brightness_percent brightness{120, percent}; // 100 %
-  brightness -= just<200> * percent;           // 0 %: a constant steps a clamp type
+  brightness -= 200_q * percent;               // 0 %: a constant steps a clamp type
   std::cout << "brightness " << brightness << "\n";
 
   id<"[0..100]"> strict{50};   // checked by default …
   strict.with<clamp>() = 200;  // … clamped for this one store
   std::cout << "with<clamp> " << strict << "\n";
-  if (brightness != just<0> * percent || strict != 100)
+  if (brightness != 0_q * percent || strict != 100)
     return 1;
 
   rgb pixel{{200, DN}, {100, DN}, {50, DN}};
-  pixel.brighten(just<80> * DN);
+  pixel.brighten(80_q * DN);
   std::cout << "brighten   " << pixel << "\n"; // rgb(255 DN, 180 DN, 130 DN)
-  pixel.brighten(just<-300> * DN);
+  pixel.brighten(-300_q * DN);
   std::cout << "darken     " << pixel << "\n"; // rgb(0 DN, 0 DN, 0 DN)
-  if (pixel.R != just<0> * DN || pixel.G != just<0> * DN)
+  if (pixel.R != 0_q * DN || pixel.G != 0_q * DN)
     return 1;
 
   // 2. wrap: a compass heading in [0°, 360°), whole degrees.
   using heading_degrees = id<"[0..360) [deg] wrap">;
   heading_degrees heading{350, si::degree};
-  heading += 30_ins  * si::degree; // 20°
-  heading += -90_ins * si::degree; // 290°
-  heading += 360_ins * si::degree; // a full turn: 290°
+  heading += 30_q  * si::degree; // 20°
+  heading += -90_q * si::degree; // 290°
+  heading += 360_q * si::degree; // a full turn: 290°
   std::cout << "heading    " << heading << "\n";
-  if (heading != 290_ins * si::degree)
+  if (heading != 290_q * si::degree)
     return 1;
 
   // 3. Bounded loops: the index is an inside, so arr[i] is in range.

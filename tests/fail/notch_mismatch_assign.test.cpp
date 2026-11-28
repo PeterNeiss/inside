@@ -8,7 +8,7 @@
 using namespace ins;
 
 int main() {
-    id<"[0..1] 1/2"> halves{0.5_ins};
+    id<"[0..1] 1/2"> halves{0.5_q};
     id<"[0..1] 1/3"> thirds{};
     thirds = halves; // ill-formed: 1/2 grid points miss the 1/3 lattice
 }

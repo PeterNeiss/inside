@@ -30,11 +30,11 @@ values](#types-computed-from-values)).
 | `[0..10)`, `(0..10]`, `(0..10)` | an open limit: it moves in by one step, so `[0..10)` is `[0..9]` |
 | `[0..10) 1/4` | a step: any positive number that divides the interval as written |
 | `[0..1] <1000>` | a continuous grid: every fraction in the interval with a denominator of at most 1000 ([exact arithmetic](../advanced/exact-arithmetic.md#bounded-continuous-grids)). Its limits are closed |
-| `[3]` | a point: one value, held in the type (`3_ins`) |
+| `[3]` | a point: one value, held in the type (`3_q`) |
 | `[km/h]` | a unit: the type is a quantity ([quantities](#quantities)) |
 | `clamp`, `wrap`, `round_half_away`, `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`, `unsafe` | the policy ([policies](policies.md)), joined by `\|`: at most one rounding mode, not both `clamp` and `wrap`. No word is `checked`, the default |
 
-Numbers read as the `_ins` literal reads them: `-5`, `2/5`, `0.25`, `1e9`,
+Numbers read as the `_q` literal reads them: `-5`, `2/5`, `0.25`, `1e9`,
 `0x1p-4`, `1'000`, of any size. Spaces between the parts are free.
 
 ## One type, one text
@@ -79,7 +79,7 @@ The catalog names the prefixed units in wide use (`km`, `mm`, `ms`, `us`,
 (`rd` is no ronto-day). A prefixed unit of your own is a tag of your own:
 
 ```cpp
-inline constexpr auto fathom     = ins::unit<"ftm", 1.8288_ins * ins::si::metre>;
+inline constexpr auto fathom     = ins::unit<"ftm", 1.8288_q * ins::si::metre>;
 inline constexpr auto kilofathom = ins::si::kilo(fathom);   // [kftm]
 ```
 
@@ -118,7 +118,7 @@ A point, a quantity counted from an origin, names its origin after the unit,
 using celsius = ins::id<"[-40..125] 1/10 [deg_C] @ice_point">;   // id<point_key<si::degree_Celsius, si::ice_point, …>>
 static_assert(std::is_same_v<decltype(ins::point<ins::si::metre>(ins::id<"[0..9]">{3})),
                              ins::id<"[0..9] [m] @0">>);
-constexpr auto t{"21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins};  // 21.5 ℃
+constexpr auto t{"21.5 [-40..125] 1/10 [deg_C] @ice_point"_q};  // 21.5 ℃
 ```
 
 Without `@`, the type is a quantity: `id<"[-165..165] [deg_C]">` is a difference
@@ -154,25 +154,25 @@ twice, are one type.
 
 ## A value with its type
 
-A string `_ins` literal is a number and then the text of its type:
+A string `_q` literal is a number and then the text of its type:
 
 ```cpp
-constexpr auto n{"42 [1..100)"_ins};                  // 42, of type id<"[1..99]">
-constexpr auto q{"0.25 [0..1) 1/4"_ins};              // 1/4
-constexpr auto c{"200 [0..99] clamp"_ins};            // 99: stored as the type stores it
-constexpr auto r{"0.3 [0..1] 1/4 round_half_away"_ins}; // 1/4
+constexpr auto n{"42 [1..100)"_q};                  // 42, of type id<"[1..99]">
+constexpr auto q{"0.25 [0..1) 1/4"_q};              // 1/4
+constexpr auto c{"200 [0..99] clamp"_q};            // 99: stored as the type stores it
+constexpr auto r{"0.3 [0..1] 1/4 round_half_away"_q}; // 1/4
 ```
 
-The number is stored while compiling, as `T{just<v>}` stores it: the type's
-policy decides, and a value the type cannot hold (`"200 [0..99]"_ins`) does
-not compile. Without a type, `"42"_ins` is the point `42_ins`.
+The number is stored while compiling, as `T{std::cw<v>}` stores it: the type's
+policy decides, and a value the type cannot hold (`"200 [0..99]"_q`) does
+not compile. Without a type, `"42"_q` is the point `42_q`.
 
 With a unit the value is a quantity, its number in the type's unit, and a
 unit alone makes the point:
 
 ```cpp
-constexpr auto v{"42 [1..100) [km/h]"_ins};           // 42 km/h, of type id<"[1..99] [km/h]">
-constexpr auto p{"42 [km/h]"_ins};                    // the point 42 km/h, id<"[42] [km/h]">
+constexpr auto v{"42 [1..100) [km/h]"_q};           // 42 km/h, of type id<"[1..99] [km/h]">
+constexpr auto p{"42 [km/h]"_q};                    // the point 42 km/h, id<"[42] [km/h]">
 ```
 
 ## Generic code

@@ -162,7 +162,7 @@ namespace ins
                  "interval, or store with clamp or wrap";
         case error::rounding_error:
           return "inside: a checked store in a constant expression is not on the grid's notch - write the value "
-                 "exactly (3.49_ins, just<349, 100>), or store with a rounding policy";
+                 "exactly (3.49_q, \"1/3\"_q), or store with a rounding policy";
         default:
           return error_message(e);
       }
@@ -195,7 +195,7 @@ namespace ins
                         "the interval, or store with clamp or wrap">();
       if (code == error::rounding_error)
         constexpr_error<"inside: a checked store in a constant expression is not on the grid's notch - write the "
-                        "value exactly (3.49_ins, just<349, 100>), or store with a rounding policy">();
+                        "value exactly (3.49_q, \"1/3\"_q), or store with a rounding policy">();
       constexpr_error_of(code);
     }
 

@@ -302,7 +302,7 @@ namespace ins::math
       if constexpr (E == 0)
       {
         (void)x;
-        return just<1>;
+        return 1_q;
       }
       else if constexpr (E == 1)
         return x;

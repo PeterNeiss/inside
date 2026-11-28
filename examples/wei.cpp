@@ -19,8 +19,8 @@ using namespace ins;
 namespace
 {
   inline constexpr auto ETH  = base_unit<"ETH", "ether">;
-  inline constexpr auto gwei = unit<"gwei", 1e-9_ins  * ETH>;
-  inline constexpr auto wei  = unit<"wei" , 1e-18_ins * ETH>;
+  inline constexpr auto gwei = unit<"gwei", 1e-9_q  * ETH>;
+  inline constexpr auto wei  = unit<"wei" , 1e-18_q * ETH>;
   inline constexpr auto gas  = base_unit<"gas", "gas">;
   inline constexpr auto USD  = base_unit<"USD", "dollar">;
 } // namespace
@@ -39,14 +39,14 @@ int main()
             << "double   " << std::format("{:.17g}", std::stod(text)) << "\n";
   if (to_string(balance) != text)
     return 1;
-  static_assert(wei == 1e-18_ins * ETH); // one wei is the notch of the grid
+  static_assert(wei == 1e-18_q * ETH); // one wei is the notch of the grid
 
   // 2. A fee is gas × price: 21000 gas at 30 gwei/gas is 630000 gwei, exactly 0.00063 ETH.
   using gas_amount   = id<"[0..30'000'000] [gas]">;                   // units of work
   using gwei_per_gas = id<"[0..10'000] [gwei/gas]">;                  // whole gwei per gas
   const auto fee{gas_amount{21'000, gas} * gwei_per_gas{30, gwei / gas}};
   std::cout << "fee      " << fee << " = " << fee.in(ETH) << "\n";
-  if (fee != just<63, 100'000> * ETH || to_string(fee) != "630000 gwei")
+  if (fee != 0.00063_q * ETH || to_string(fee) != "630000 gwei")
     return 1;
 
   // An overdraft is reported, not wrapped: 1.4999 ETH + the fee is more than 1.5 ETH.

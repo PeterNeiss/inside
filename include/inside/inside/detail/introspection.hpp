@@ -80,7 +80,7 @@ namespace ins
   namespace detail
   {
     // The policy of an arithmetic result (and of the common type): the one both operands share,
-    // where a default-policy point (just<…>, 0_ins) is neutral, so (a + 0_ins) / 2_ins rounds as a / 2_ins does.
+    // where a default-policy point (0_q, std::cw<0>) is neutral, so (a + 0_q) / 2_q rounds as a / 2_q does.
     // Different policies give the default. A cursor's marker never carries over.
     template <insidable L, insidable R>
     inline constexpr policy_flag result_flags = []

@@ -7,8 +7,8 @@ inline constexpr auto other_zero = ins::origin<"other_zero", ins::base_dimension
 
 int main() {
     using namespace ins;
-    const auto a = other_zero + just<5> * si::kelvin;
-    const auto b = point<si::kelvin>(just<1>);
+    const auto a = other_zero + 5_q * si::kelvin;
+    const auto b = point<si::kelvin>(1_q);
     auto       d = a.quantity_from(si::absolute_zero);
     (void)b;
     (void)d;

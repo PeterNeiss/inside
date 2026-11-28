@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    id<"[0..10] [Hz]"> q = just<1> * si::becquerel;
+    id<"[0..10] [Hz]"> q = 1_q * si::becquerel;
     (void)q;
 }

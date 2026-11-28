@@ -10,6 +10,6 @@ inline constexpr auto euro         = ins::unit<"EUR", money_kind>;
 
 int main() {
     using namespace ins;
-    auto s = just<1> * euro + just<1> * si::metre;
+    auto s = 1_q * euro + 1_q * si::metre;
     (void)s;
 }

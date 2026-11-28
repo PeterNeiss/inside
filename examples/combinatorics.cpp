@@ -95,35 +95,35 @@ int main()
   if (!runners || !places)
     return 1;
   const auto podium   {math::falling_factorial(*runners, *places)};
-  const auto scoops   {math::rising_factorial(just<5>, just<3>) / math::factorial(just<3>)};
-  const auto mississip{math::multinomial(1_ins, 4_ins, 4_ins, 2_ins)}; // M, I, S, P
+  const auto scoops   {math::rising_factorial(5_q, 3_q) / math::factorial(3_q)};
+  const auto mississip{math::multinomial(1_q, 4_q, 4_q, 2_q)}; // M, I, S, P
   std::cout << "podiums     " << podium << "\nscoops      " << scoops << "\nMISSISSIPPI " << mississip << "\n";
   if (podium != 336 || scoops != 35 || mississip != 34'650)
     return 1;
 
   // 4. Odds as exact fractions: one ticket's chance is exactly 1/C(49, 6), which a double rounds.
-  const auto odds{just<1> / tickets}; // an expected: C(n, k) can be 0 on [0, 60]
+  const auto odds{1_q / tickets}; // an expected: C(n, k) can be 0 on [0, 60]
   std::cout << "lottery     " << *odds << " (double " << std::format("{:.17g}", 1.0 / 13'983'816) << ")\n";
   if (to_string(*odds) != "1/13983816")
     return 1;
 
   // Four of a kind: 13 ranks, any fifth card of 48, over C(52, 5) hands.
-  constexpr auto quads{just<13> * just<48> / math::binomial(just<52>, just<5>)};
+  constexpr auto quads{13_q * 48_q / math::binomial(52_q, 5_q)};
   std::cout << "4 of a kind " << quads << "\n";
-  static_assert(quads == just<1, 4165>);
+  static_assert(quads == "1/4165"_q);
 
   // The birthday problem, 1 − 365·364···(366 − n) / 365^n:
   // at 23 a shared birthday is more likely than not, at 22 not yet, decided exactly while compiling.
-  constexpr auto shared23{just<1> - math::falling_factorial(just<365>, just<23>) / math::pown<23>(just<365>)};
-  constexpr auto shared22{just<1> - math::falling_factorial(just<365>, just<22>) / math::pown<22>(just<365>)};
-  static_assert(shared23 > just<1, 2> && shared22 < just<1, 2>);
+  constexpr auto shared23{1_q - math::falling_factorial(365_q, 23_q) / math::pown<23>(365_q)};
+  constexpr auto shared22{1_q - math::falling_factorial(365_q, 22_q) / math::pown<22>(365_q)};
+  static_assert(shared23 > 0.5_q && shared22 < 0.5_q);
   std::cout << "birthday 23 " << std::format("{:.6f}", shared23.to<double>())
             << " (" << to_string(shared23).size() << " characters exactly)\n";
 
   // De Méré: P(at least one six in four rolls) = 1 − (5/6)^4.
-  constexpr auto demer{just<1> - math::pown<4>(just<5, 6>)};
+  constexpr auto demer{1_q - math::pown<4>("5/6"_q)};
   std::cout << "de Mere     " << demer << " > 1/2\n";
-  static_assert(demer > just<1, 2>);
+  static_assert(demer > 0.5_q);
   if (to_string(demer) != "671/1296")
     return 1;
 
@@ -140,7 +140,7 @@ int main()
   const auto        side{math::gcd(w, h)};
   std::cout << "buses meet  every " << meet << "\nsquare tile " << side << ": "
             << div(w, side, round_toward_zero) << " x " << div(h, side, round_toward_zero) << "\n";
-  if (meet != just<36> * si::minute || side != just<14> * cm)
+  if (meet != 36_q * si::minute || side != 14_q * cm)
     return 1;
   return 0;
 }

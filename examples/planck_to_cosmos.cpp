@@ -18,8 +18,8 @@ using metres        = id<"[1e-41..1e27] 1e-41 [m] round_half_away">;
 
 int main()
 {
-  const metres planck   = just<1.616255e-35_g> * si::metre;
-  const metres universe = just<8.8e26_g> * si::metre;
+  const metres planck   = 1.616255e-35_q * si::metre;
+  const metres universe = 8.8e26_q * si::metre;
 
   // 1. The universe in Planck lengths:
   // an exact plain ratio of 226-bit integers, and one rounding for its log10.
@@ -28,7 +28,7 @@ int main()
   const auto d{math::log10<per<(1 << 20)>>(ratio)}; // to 2^-20: about 61.74
   std::cout << std::format("log10              = {:.6f}\n", d);
   if (to_string(ratio) != "17600000000000000000000000000000000000000000000000000000000000000000/323251"
-      || d != just<64'734'859, (1 << 20)>)
+      || d != "64734859/1048576"_q)
     return 1;
 
   // 2. Their geometric mean, halfway on a log scale:

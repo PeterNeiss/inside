@@ -49,9 +49,9 @@ SHAPES = {
     "dec2": ("{{0, 1000000}, per<100>}", "decimal"),
     "dec3": ("{{-1000, 1000}, per<1000>}", "decimal"),
     "n60": ("{{0, 36000}, 60}", "coarse"),
-    "n72": ("{{-7, 14}, just<7, 2>}", "coarse"),
+    "n72": ("{{-7, 14}, 3.5_q}", "coarse"),
     "un": ("{{1, 601}, 60}", "unanchored"),
-    "half": ("{{just<1, 2>, just<201, 2>}, 1}", "unanchored"),
+    "half": ("{{0.5_q, 100.5_q}, 1}", "unanchored"),
     "cont": ("{{0, 100}, max_denominator{1000}}", "continuous"),
 }
 NOTCHED = [s for s, (_, k) in SHAPES.items() if k != "continuous"]
@@ -328,9 +328,9 @@ def f_step():
             yield Pair("++ and --", f"incr/{s}/{p}", [("x", D)], "++a; return a;",
                        f"return twin::finish<{D}, twin::range::{POLICIES[p][1]}>(static_cast<long long>(a) + 1);")
         C = T(s)
-        yield Pair("++ and --", f"incr/{s}/policy_ec", [X(s)], "error ec{}; a.on_error(ec) += 1_ins; return std::pair{a, ec};",
+        yield Pair("++ and --", f"incr/{s}/policy_ec", [X(s)], "error ec{}; a.on_error(ec) += 1_q; return std::pair{a, ec};",
                    f"return twin::finish<{C}, twin::range::check>(static_cast<long long>(a) + 1);",
-                   note="++ has no on_error(ec) form: += 1_ins")
+                   note="++ has no on_error(ec) form: += 1_q")
 
 
 # --- conversions out -----------------------------------------------------------
@@ -468,15 +468,15 @@ def f_units():
     deg = "quantity<si::degree, inside<{{0, 360}, per<64>}, round_half_away>>"
     rad = "quantity<si::radian, inside<{{0, 8}, per<(1 << 20)>}, round_half_away>>"
     yield Pair(F, "q_add/m+m", [("qn", m), ("qn", m)], "return a + b;", "return a + b;", "inside")
-    yield Pair(F, "q_add/m+km", [("qn", m), ("qn", km)], "return a + b;", "return a + b * just<1000>;", "inside")
-    yield Pair(F, "q_sub/km-m", [("qn", km), ("qn", m)], "return a - b;", "return a * just<1000> - b;", "inside")
+    yield Pair(F, "q_add/m+km", [("qn", m), ("qn", km)], "return a + b;", "return a + b * 1000_q;", "inside")
+    yield Pair(F, "q_sub/km-m", [("qn", km), ("qn", m)], "return a - b;", "return a * 1000_q - b;", "inside")
     yield Pair(F, "q_mul/m*s", [("qn", m), ("qn", s_)], "return a * b;", "return a * b;", "inside")
     yield Pair(F, "q_div/m/s", [("qn", m), ("qn", s_)], "return a / b;", "return a / b;", "inside")
-    yield Pair(F, "q_less/m<km", [("qn", m), ("qn", km)], "return a < b;", "return a < b * just<1000>;", "inside")
-    yield Pair(F, "q_equal/m==km", [("qn", m), ("qn", km)], "return a == b;", "return a == b * just<1000>;", "inside")
-    yield Pair(F, "q_in/km->m", [("qn", km)], "return a.in(si::metre);", "return a * just<1000>;", "inside")
+    yield Pair(F, "q_less/m<km", [("qn", m), ("qn", km)], "return a < b;", "return a < b * 1000_q;", "inside")
+    yield Pair(F, "q_equal/m==km", [("qn", m), ("qn", km)], "return a == b;", "return a == b * 1000_q;", "inside")
+    yield Pair(F, "q_in/km->m", [("qn", km)], "return a.in(si::metre);", "return a * 1000_q;", "inside")
     yield Pair(F, "q_numerical_value_in/km->m", [("qn", km)], "return a.numerical_value_in(si::metre);",
-               "return a * just<1000>;", "inside")
+               "return a * 1000_q;", "inside")
     yield Pair(F, "q_ctor_other_unit/min<-s", [("int", (0, 36000))],
                f"return {mn}::try_make<round_floor>(a, si::second);",
                "return inside<{{0, 36000}, 60}, round_floor>::try_make(a);", "inside")
@@ -486,20 +486,20 @@ def f_units():
                                             ("qn", f"quantity<si::metre, inside<{{0, 100000}}, clamp>>")],
                "a += b; return a;", "a += b; return a;", "inside")
     yield Pair(F, "q_compound/m+=km/clamp", [("qn", f"quantity<si::metre, inside<{{0, 100000}}, clamp>>"), ("qn", km)],
-               "a += b; return a;", "a += b * just<1000>; return a;", "inside")
+               "a += b; return a;", "a += b * 1000_q; return a;", "inside")
     yield Pair(F, "q_policy_ec/m+=m", [("qn", m), ("qn", m)], "error ec{}; a.on_error(ec) += b; return std::pair{a, ec};",
                "error ec{}; a.on_error(ec) += b; return std::pair{a, ec};", "inside")
     yield Pair(F, "q_scale/m*=n", [("qn", f"quantity<si::metre, inside<{{0, 100000}}, clamp>>"), ("int", (0, 9))],
                "a *= b; return a;", "a *= b; return a;", "inside")
     yield Pair(F, "q_value_cast/m->km", [("qn", m)],
                f"return value_cast<quantity<si::kilo(si::metre), inside<{{0, 100}}, round_half_away>>>(a);",
-               "return inside<{0, 100}, round_half_away>{a / just<1000>};", "inside")
+               "return inside<{0, 100}, round_half_away>{a / 1000_q};", "inside")
     yield Pair(F, "q_value_cast_pi/deg->rad", [("qn", deg)], "return value_cast<si::radian, inside<{{0, 8}, per<(1 << 20)>}, round_half_away>>(a);",
                "return inside<{{0, 8}, per<(1 << 20)>}, round_half_away>::try_make(double(a) * (std::numbers::pi / 180));",
                "inside", note="ideal rounds a double product: not correctly rounded")
     yield Pair(F, "q_kind_cast/height", [("qn", "quantity<isq::length[si::metre], inside<{0, 100000}>>")],
                "return kind_cast<isq::height>(a);", "return a;", "inside")
-    yield Pair(F, "q_min/m,km", [("qn", m), ("qn", km)], "return min(a, b);", "return min(a, b * just<1000>);", "inside")
+    yield Pair(F, "q_min/m,km", [("qn", m), ("qn", km)], "return min(a, b);", "return min(a, b * 1000_q);", "inside")
     yield Pair(F, "q_div_mode/m/s", [("qn", m), ("qn", s_)], "return div(a, b, round_floor);",
                "return div(a, b, round_floor);", "inside")
     yield Pair(F, "q_to/m->int", [("qn", m)], "return a.numerical_value_in(si::metre).to<long long>();",
@@ -514,13 +514,13 @@ def f_units():
                f"for (int j = 0; j < 1024; ++j) {{ ra[j] = sample<inside<{{{{0, 400}}, per<100>}}>>(g); "
                f"xa[j] = {kp}{{iu::detail::quantity_access::make<quantity<si::kelvin, inside<{{{{0, 400}}, per<100>}}>>>(ra[j])}}; }}",
                "xa[j]", "ra[j]"))],
-               "return a + just<1> * si::kelvin;", "return a + just<1>;", "inside")
+               "return a + 1_q * si::kelvin;", "return a + 1_q;", "inside")
     yield Pair(F, "point_in/K->degC", [("custom", (f"{kp} a", f"inside<{{{{0, 400}}, per<100>}}> a",
                f"std::vector<{kp}> xa(1024); std::vector<inside<{{{{0, 400}}, per<100>}}>> ra(1024); "
                f"for (int j = 0; j < 1024; ++j) {{ ra[j] = sample<inside<{{{{0, 400}}, per<100>}}>>(g); "
                f"xa[j] = {kp}{{iu::detail::quantity_access::make<quantity<si::kelvin, inside<{{{{0, 400}}, per<100>}}>>>(ra[j])}}; }}",
                "xa[j]", "ra[j]"))],
-               "return a.quantity_from(si::ice_point);", "return a - just<27315, 100>;", "inside")
+               "return a.quantity_from(si::ice_point);", "return a - 273.15_q;", "inside")
 
 
 # --- geometric algebra -----------------------------------------------------------
@@ -691,12 +691,12 @@ MATH1 = [  # name, input grid, glibc, CORE-MATH
     ("cbrt", "{{-8, 8}, per<16384>}", "std::cbrt", "cr_cbrt"),
     ("exp", "{{-10, 10}, per<16384>}", "std::exp", "cr_exp"),
     ("exp2", "{{-4, 4}, per<16384>}", "std::exp2", "cr_exp2"),
-    ("log", "{{just<1, 256>, 256}, per<256>}", "std::log", "cr_log"),
-    ("log2", "{{just<1, 256>, 256}, per<16384>}", "std::log2", "cr_log2"),
-    ("log10", "{{just<1, 256>, 256}, per<256>}", "std::log10", "cr_log10"),
+    ("log", "{{"1/256"_q, 256}, per<256>}", "std::log", "cr_log"),
+    ("log2", "{{"1/256"_q, 256}, per<16384>}", "std::log2", "cr_log2"),
+    ("log10", "{{"1/256"_q, 256}, per<256>}", "std::log10", "cr_log10"),
     ("sin", "{{-8, 8}, per<16384>}", "std::sin", "cr_sin"),
     ("cos", "{{-8, 8}, per<16384>}", "std::cos", "cr_cos"),
-    ("tan", "{{just<-3, 4>, just<3, 4>}, per<16384>}", "std::tan", "cr_tan"),
+    ("tan", "{{-0.75_q, 0.75_q}, per<16384>}", "std::tan", "cr_tan"),
     ("asin", "{{-1, 1}, per<16384>}", "std::asin", "cr_asin"),
     ("acos", "{{-1, 1}, per<16384>}", "std::acos", "cr_acos"),
     ("atan", "{{-1, 1}, per<16384>}", "std::atan", "cr_atan"),
@@ -705,7 +705,7 @@ MATH1 = [  # name, input grid, glibc, CORE-MATH
     ("tanh", "{{-10, 10}, per<16384>}", "std::tanh", "cr_tanh"),
     ("asinh", "{{-8, 8}, per<16384>}", "std::asinh", "cr_asinh"),
     ("acosh", "{{1, 8}, per<16384>}", "std::acosh", "cr_acosh"),
-    ("atanh", "{{just<-15, 16>, just<15, 16>}, per<16384>}", "std::atanh", "cr_atanh"),
+    ("atanh", "{{-0.9375_q, 0.9375_q}, per<16384>}", "std::atanh", "cr_atanh"),
 ]
 MATH_OUT = [("2^-20", "per<(1 << 20)>"), ("2^-40", "per<(std::int64_t{1} << 40)>"),
             ("2^-52", "per<(std::int64_t{1} << 52)>"), ("1e-6", "per<1000000>")]

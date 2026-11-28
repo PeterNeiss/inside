@@ -16,7 +16,7 @@ using namespace ins;
 namespace
 {
   inline constexpr auto px        = base_unit<"px", "screen">;
-  inline constexpr auto zero_area = just<0> * square(px);
+  inline constexpr auto zero_area = 0_q * square(px);
 } // namespace
 
 int main()

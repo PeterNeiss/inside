@@ -28,6 +28,7 @@ static_assert(Two1024 / 2 <= N && N < Two1024); // a 1024-bit modulus
 
 using residue  = id<key{grid{0, N - 1  }}>; // Z/nZ
 using modulus  = id<key{grid{N, N      }}>; // the point n: "% modulus{}" never divides by 0
+using totient  = id<key{grid{Phi, Phi  }}>; // the point phi(n)
 using exponent = id<key{grid{0, Phi - 1}}>; // exponents mod phi(n)
 
 // b^e mod M by right-to-left square-and-multiply, for the residues mod n and the 512-bit ones mod p and q.
@@ -37,10 +38,10 @@ constexpr Residue powmod(Residue b, Exponent e)
   Residue r = 1;
   while (e != 0)
   {
-    if (e % just<2> == 1)
+    if (e % 2_q == 1)
       r = r * b % Modulus{}; // a 2048-bit product, back onto [0, M - 1]
     b = b * b % Modulus{};
-    e = div(e, just<2>, round_toward_zero);
+    e = div(e, 2_q, round_toward_zero);
   }
   return r;
 }
@@ -68,7 +69,7 @@ std::expected<exponent, error> inverse_mod_phi()
   }
   if (r0 != 1)
     return std::unexpected(error::domain_error);
-  return exact_cast<exponent>(mod(t0, just<Phi>, round_floor));
+  return exact_cast<exponent>(mod(t0, totient{}, round_floor));
 }
 
 // Bytes in, big-endian: m = m * 256 + byte, checked to stay below n.
@@ -77,7 +78,7 @@ constexpr std::expected<residue, error> pack(std::string_view text)
   residue m = 0;
   for (const unsigned char c : text)
   {
-    const auto next{exact_cast<residue>(m * just<256> + id<"[0..255]">{c})};
+    const auto next{exact_cast<residue>(m * 256_q + id<"[0..255]">{c})};
     if (!next)
       return next;
     m = *next;
@@ -90,7 +91,7 @@ std::string unpack(residue m)
   std::string text;
   while (m != 0)
   {
-    const auto [rest, byte] = divmod(m, just<256>);
+    const auto [rest, byte] = divmod(m, 256_q);
     text.insert(text.begin(), static_cast<char>(byte.to<unsigned char>()));
     m = rest;
   }
@@ -111,7 +112,7 @@ int main()
   if (!checked_d)
     return 1;
   const exponent d{*checked_d};
-  if (exponent{E} * d % just<Phi> != 1)
+  if (exponent{E} * d % std::cw<Phi> != 1)
     return 1;
 
   // 2. Encrypt and decrypt, m^e and c^d mod n; the encryption also runs at compile time (17 squarings).
@@ -137,8 +138,8 @@ int main()
   using modulus_q  = id<key{grid{Q, Q    }}>;
   using exponent_p = id<key{grid{0, P - 2}}>;
   using exponent_q = id<key{grid{0, Q - 2}}>;
-  const exponent_p dp = d % just<P - 1>;
-  const exponent_q dq = d % just<Q - 1>;
+  const exponent_p dp = d % std::cw<P - 1>;
+  const exponent_q dq = d % std::cw<Q - 1>;
   // q^-1 mod p by Fermat: q^(p - 2), with P - 2 formed during compilation.
   const residue_p qinv{powmod<residue_p, modulus_p>(modulus_q{} % modulus_p{}, exponent_p{P - 2})};
   const residue_p mp  {powmod<residue_p, modulus_p>(c % modulus_p{}, dp)};

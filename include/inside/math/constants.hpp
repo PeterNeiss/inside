@@ -404,55 +404,55 @@ namespace ins::math
     }
     // The point within Eps of the constant: its simplest such fraction.
     template <auto Eps>
-    static constexpr auto within = just<detail::constants::convergent_within<Id, ::ins::grid_number{Eps}>()>;
+    static constexpr auto within = ins::detail::point_v<detail::constants::convergent_within<Id, ::ins::grid_number{Eps}>()>;
   };
 
   // x op c: c as the point x's resolution needs (see the top of the file).
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator*(const X& x, constant<Id>)
   {
-    return x * just<detail::constants::product_point<Id, X>>;
+    return x * ins::detail::point_v<detail::constants::product_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator*(constant<Id>, const X& x)
   {
-    return just<detail::constants::product_point<Id, X>> * x;
+    return ins::detail::point_v<detail::constants::product_point<Id, X>> * x;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator+(const X& x, constant<Id>)
   {
-    return x + just<detail::constants::sum_point<Id, X>>;
+    return x + ins::detail::point_v<detail::constants::sum_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator+(constant<Id>, const X& x)
   {
-    return just<detail::constants::sum_point<Id, X>> + x;
+    return ins::detail::point_v<detail::constants::sum_point<Id, X>> + x;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator-(const X& x, constant<Id>)
   {
-    return x - just<detail::constants::sum_point<Id, X>>;
+    return x - ins::detail::point_v<detail::constants::sum_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator-(constant<Id>, const X& x)
   {
-    return just<detail::constants::sum_point<Id, X>> - x;
+    return ins::detail::point_v<detail::constants::sum_point<Id, X>> - x;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator/(const X& x, constant<Id>)
   {
-    return x * just<detail::constants::quotient_point<Id, X>>;
+    return x * ins::detail::point_v<detail::constants::quotient_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator/(constant<Id>, const X& x)
   {
-    return just<detail::constants::dividend_point<Id>> / x;
+    return ins::detail::point_v<detail::constants::dividend_point<Id>> / x;
   }
   // Exact: no value of X equals the constant, and the point is closer to it than any value of X.
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr std::strong_ordering operator<=>(const X& x, constant<Id>)
   {
-    return x <=> just<detail::constants::separating_point<Id, X>>;
+    return x <=> ins::detail::point_v<detail::constants::separating_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr bool operator==(const X&, constant<Id>)

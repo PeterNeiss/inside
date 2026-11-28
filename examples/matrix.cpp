@@ -76,7 +76,7 @@ int main()
   std::cout << "R30·R30     [" << r60[0]    << ", " << r60[1]    << "; " << r60[2]    << ", " << r60[3]    << "]\n"
             << "R60         [" << direct[0] << ", " << direct[1] << "; " << direct[2] << ", " << direct[3] << "]\n";
   for (std::size_t k = 0; k < 4; ++k)
-    if (r60[k] - direct[k] > just<1, (1 << 14)> || direct[k] - r60[k] > just<1, (1 << 14)>)
+    if (r60[k] - direct[k] > "1/16384"_q || direct[k] - r60[k] > "1/16384"_q)
       return 1;
 
   // 4. Fibonacci: [[1, 1], [1, 0]]^n = [[F(n+1), F(n)], [F(n), F(n−1)]],

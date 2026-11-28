@@ -7,6 +7,6 @@ using namespace ins;
 
 int main() {
     ins::id<"[0..100]"> percent{50};
-    auto                  sum = percent + 1_ins;
+    auto                  sum = percent + 1_q;
     (void)sum;
 }

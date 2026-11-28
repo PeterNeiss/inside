@@ -43,7 +43,7 @@ It steps through `T`'s range by `Step`, starting at `T`'s lower limit, and
 using fine = id<"[-4..4] 1/1024 round_half_away">;
 for (cursor<fine, per<4>> x; x != end(x); ++x)          // −4, −3.75, …, 4
     std::cout << x << ' ';
-for (cursor<fine, per<4>> x = -2_ins; x <= 2; ++x)    // any start, the classic test
+for (cursor<fine, per<4>> x = -2_q; x <= 2; ++x)    // any start, the classic test
     std::cout << x << ' ';
 ```
 
@@ -52,7 +52,7 @@ for (cursor<fine, per<4>> x = -2_ins; x <= 2; ++x)    // any start, the classic 
 - `*t` is the value as a `T`. A cursor is also an inside, so arithmetic,
   printing and comparison work on it directly.
 - A cursor is its own bidirectional iterator, with `end(t)` as its sentinel:
-  `std::ranges::find(t, end(t), 1.5_ins)`.
+  `std::ranges::find(t, end(t), 1.5_q)`.
 
 `values` and `cursor` take [quantities](units.md) too; each value is then a
 quantity, and the step is a number in the quantity's unit.

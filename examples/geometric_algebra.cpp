@@ -23,7 +23,7 @@ namespace
   template <class X>
   constexpr auto f(const X& x)
   {
-    return x * x * x - just<2> * x;
+    return x * x * x - 2_q * x;
   }
 } // namespace
 
@@ -31,11 +31,11 @@ int main()
 {
   // 1. In G(3,0) with lengths: u v = u⌋v + u∧v,
   // a scalar in m² (the dot product) plus an oriented area.
-  const auto u{m * e1 + just<2> * m * e2 + just<3> * m * e3};
-  const auto v{just<4> * m * e1 + just<5> * m * e2 + just<6> * m * e3};
+  const auto u{m * e1 + 2_q * m * e2 + 3_q * m * e3};
+  const auto v{4_q * m * e1 + 5_q * m * e2 + 6_q * m * e3};
   std::cout << "u v = " << u * v << '\n';
   std::cout << "u⌋v = " << left_contraction(u, v) << ", u∧v = " << wedge(u, v) << '\n';
-  if (!(u * v == left_contraction(u, v) + wedge(u, v)) || !(left_contraction(u, v) == just<32> * square(m))
+  if (!(u * v == left_contraction(u, v) + wedge(u, v)) || !(left_contraction(u, v) == 32_q * square(m))
       || !(wedge(u, v) == -wedge(v, u)))
     return 1;
 
@@ -48,7 +48,7 @@ int main()
     return 1;
 
   // 3. u∧v∧x is the signed volume, and dual(u∧v, e₁e₂e₃) is u × v.
-  const auto x     {just<7> * m * e1 + just<8> * m * e2 + just<10> * m * e3};
+  const auto x     {7_q * m * e1 + 8_q * m * e2 + 10_q * m * e3};
   const auto volume{wedge(wedge(u, v), x)};
   const auto cross {dual(wedge(u, v), e1 * e2 * e3)};
   std::cout << "u∧v∧x = " << volume << ", u × v = " << cross << '\n';
@@ -57,10 +57,10 @@ int main()
 
   // 4. Dual numbers a + b ε: ε ε drops out of products,
   // so f(3 + ε) = f(3) + f′(3) ε, the exact derivative.
-  static_assert(std::same_as<decltype(just<1> * eps * (just<1> * eps)), multivector<>>);
-  const auto fx{f(just<3> + eps)};
+  static_assert(std::same_as<decltype(1_q * eps * (1_q * eps)), multivector<>>);
+  const auto fx{f(3_q + eps)};
   std::cout << "f(3 + ε) = " << fx << " (f(3) = 21, f′(3) = 25)\n";
-  if (!(fx == just<21> + just<25> * eps))
+  if (!(fx == 21_q + 25_q * eps))
     return 1;
   return 0;
 }

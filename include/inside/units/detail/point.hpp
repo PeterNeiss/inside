@@ -60,7 +60,7 @@ namespace ins
 
     // Whether shift<C> forms on V: inside's v + C exists.
     template <grid_number C, class V>
-    concept shift_forms = C == grid_number{0} || requires(const V& v) { v + just<C>; };
+    concept shift_forms = C == grid_number{0} || requires(const V& v) { v + detail::point_v<C>; };
 
     template <grid_number C, insidable V>
     constexpr auto shift(const V& v)
@@ -68,7 +68,7 @@ namespace ins
       if constexpr (C == grid_number{0})
         return v;
       else
-        return v + just<C>;
+        return v + detail::point_v<C>;
     }
 
     // The default origin of a unit's points: its named unit's (K, ℃, ℉).
@@ -118,8 +118,13 @@ namespace ins
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
            && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
+           && (!ins::detail::constant_number<V>)
     constexpr id(V&& v, Tag u, Pol&&... pol)
       : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    // A value computed while compiling, std::cw<v>: P{std::cw<v>, u} as P{point, u}, while compiling.
+    template <ins::detail::constant_number C, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && std::constructible_from<id, ins::detail::point_of_t<C>, Tag, Pol...>
+    consteval id(C, Tag u, Pol&&... pol) : id(ins::detail::point_of_t<C>{}, u, std::forward<Pol>(pol)...) {}
     // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
@@ -204,15 +209,15 @@ namespace ins
     }
   };
 
-  // A point with its type: "21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins is 21.5 ℃, the number in the type's unit
-  // counted from its origin, stored while compiling as P{just<v>, unit} stores it.
+  // A point with its type: "21.5 [-40..125] 1/10 [deg_C] @ice_point"_q is 21.5 ℃, the number in the type's unit
+  // counted from its origin, stored while compiling as P{point, unit} stores it.
   inline namespace literals
   {
     template <detail::value_text T>
       requires detail::origin_key<T.Key>
-    consteval auto operator""_ins()
+    consteval auto operator""_q()
     {
-      return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
+      return id<T.Key>{ins::detail::point_v<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
     }
   } // namespace literals
 
@@ -250,7 +255,7 @@ namespace ins
     return v * U;
   }
 
-  // origin + quantity: si::absolute_zero + just<300> * si::kelvin.
+  // origin + quantity: si::absolute_zero + 300_q * si::kelvin.
   template <origin_ref O, quantity_like QR>
   [[nodiscard]] constexpr auto operator+(origin_t<O>, const QR& q)
   {

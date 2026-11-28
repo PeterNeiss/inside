@@ -44,9 +44,9 @@ inline constexpr auto         R = basis_vector<"R", inner>;        // R·R = 1, 
 inline constexpr auto         G = basis_vector<"G", inner>;
 inline constexpr auto         x = basis_vector<"x", polynomial>;   // x·x = x²
 
-auto c = just<4, 5> * R + just<1, 2> * G;
-auto l = c * (just<1, 5> * R + just<7, 10> * G);   // 0.51: the dot product, a number
-auto p = just<3> + just<2> * x + x * x;            // 3 + 2 x + 1 x²
+auto c = 0.8_q * R + 0.5_q * G;
+auto l = c * (0.2_q * R + 0.7_q * G);   // 0.51: the dot product, a number
+auto p = 3_q + 2_q * x + x * x;         // 3 + 2 x + 1 x²
 ```
 
 | Rule | v·v | two different ones | exponent |
@@ -88,10 +88,10 @@ quantities multiply, the sign goes to the number, so the unit in a quantity's
 type never has one:
 
 ```cpp
-auto a = just<3> * e1;
-auto b = just<4> * e2;
+auto a = 3_q * e1;
+auto b = 4_q * e2;
 auto p = b * a;                      // -12 e₁·e₂
-auto q = (just<2> * i) * (just<3> * i);   // -6: i i is a number
+auto q = (2_q * i) * (3_q * i);   // -6: i i is a number
 ```
 
 A product keeps its factors' spelling when their blades share no basis vector
@@ -111,8 +111,8 @@ dividing by it is a compile error.
 A sum of quantities of different blades is a `multivector`:
 
 ```cpp
-auto z = just<3> + just<4> * i;                                    // 3 + 4 i
-auto v = just<2> * si::metre * e1 + si::metre * e2;                // 2 m·e₁ + 1 m·e₂
+auto z = 3_q + 4_q * i;                                        // 3 + 4 i
+auto v = 2_q * si::metre * e1 + si::metre * e2;                // 2 m·e₁ + 1 m·e₂
 ```
 
 - Its **parts** are insides (the scalar part, when it is a plain number) and
@@ -150,7 +150,7 @@ auto v = just<2> * si::metre * e1 + si::metre * e2;                // 2 m·e₁ 
 | `dual(x, I)` | x I⁻¹, for a pseudoscalar unit I that squares to ±1: `dual(u ∧ v, e1 * e2 * e3)` is u × v |
 | `complement(x, I)`, `uncomplement(x, I)` | the right complement within I's blade, A ∧ c(A) = I, without the metric, and its inverse |
 | `regressive(a, b, I)` | the regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA |
-| `==` | per blade; a missing part compares as 0. With multivectors and quantities only, never a number: `q * inverse(q) == one`, `i * i == -one`, `z * reverse(z) == just<25> * one` |
+| `==` | per blade; a missing part compares as 0. With multivectors and quantities only, never a number: `q * inverse(q) == one`, `i * i == -one`, `z * reverse(z) == 25_q * one` |
 | `to_string`, `<<`, `std::format` | units/io.hpp: `3 - 4 i`, `2 m·e₁ + 1 m·e₂`, `0` |
 
 A division by a grid that holds 0 gives an `std::expected`, as `/` does
@@ -200,7 +200,7 @@ below stays plain.
 using coef  = id<"[-1..1] 1/1048576 round_half_away">;
 using part  = id<"[-1..1] 1/65536 round_half_away">;
 using rotor = multivector<part, id<quantity_key<i, part>>, id<quantity_key<j, part>>, id<quantity_key<k, part>>>;
-const coef c{just<6045997880780726, 10000000000000000>};    // π/(3√3)
+const coef c{0.6045997880780726_q};                         // π/(3√3)
 math::exp<rotor>(c * i + c * j + c * k);                    // ½ + ½ i + ½ j + ½ k
 math::exp<part>(c * i + c * j + c * k);                     // the same rotor
 math::exp<per<(1 << 16)>>(c * i + c * j + c * k);           // the same, its range ±(1 + 2^-16)
@@ -248,7 +248,7 @@ microseconds where `exp` takes nanoseconds.
 ## Examples
 
 ```cpp
-auto w  = just<1> - just<2> * i;
+auto w  = 1_q - 2_q * i;
 auto zw = z * w;                     // 11 - 2 i
 auto zq = z / w;                     // -1 + 2 i, exactly
 auto r  = v * i;                     // -1 m·e₁ + 2 m·e₂: a quarter turn

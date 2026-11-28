@@ -207,7 +207,7 @@ namespace ins
 
   namespace detail
   {
-    // The text of a value literal, "42 [1..100)"_ins (inside/detail/core.hpp): a number, as id's text reads one,
+    // The text of a value literal, "42 [1..100)"_q (inside/detail/core.hpp): a number, as id's text reads one,
     // then the text of its type, or nothing for the point. A plain class, so the literal deduces nothing.
     // A number that does not read keeps the whole text in Key, with the mark, and NumberOk false.
     struct value_text
@@ -262,7 +262,7 @@ namespace ins
       grid_number            v;
       std::string_view       expected;
       (void)r.number(v, expected);
-      return diag_text{} << "inside: \"" << text << "\"_ins: expected " << expected << " at " << grid_number{r.At};
+      return diag_text{} << "inside: \"" << text << "\"_q: expected " << expected << " at " << grid_number{r.At};
     }
   } // namespace detail
 

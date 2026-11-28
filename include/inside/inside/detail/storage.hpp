@@ -954,7 +954,7 @@ namespace ins::detail
 
   // A single-point source (Lower == Upper) carries one value,
   // so its notch question is only whether that value lies on L's lattice:
-  // it admits 3_ins into {{0,9},3} and rejects 1_ins.
+  // it admits 3_q into {{0,9},3} and rejects 1_q.
   // (Range is the interval check's job, so clamp and wrap still take an out-of-range point.)
   // The raw Factor says nothing here: a point's notch is 0.
   template <typename L, typename R>

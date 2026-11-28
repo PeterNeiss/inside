@@ -46,16 +46,16 @@ int main()
   hp.on_clamp(
     [&](auto& self, auto overshoot)
     {
-      if (self == just<0> * HP)
+      if (self == 0_q * HP)
       {
         std::cout << "[downed — overshoot " << overshoot << "]\n"; // a quantity: "-163 HP"
         downed = true;
       }
-    }) -= just<200> * HP;
+    }) -= 200_q * HP;
   std::cout << "after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
 
   // A heal saturates at full health.
-  hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; }) += just<250> * HP;
+  hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; }) += 250_q * HP;
   std::cout << "after heal: " << hp << "\n";
 
   // A level-scaled bonus may pass 100 HP: hit_points' clamp policy clips the conversion, no flag needed.

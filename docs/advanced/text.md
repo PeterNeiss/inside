@@ -14,7 +14,7 @@ text: the **exact** value, never rounded. Its form follows the grid:
 | Grid | Prints | Examples |
 |---|---|---|
 | integer notch | the integer | `42`, `-7` |
-| decimal notch (a denominator 2ᵃ·5ᵇ with a 5, like `per<100>` or `0.05_ins`) | that notch's decimals, for every value | `19.90`, `2.00` on a cents grid |
+| decimal notch (a denominator 2ᵃ·5ᵇ with a 5, like `per<100>` or `0.05_q`) | that notch's decimals, for every value | `19.90`, `2.00` on a cents grid |
 | any other notch, or continuous | the shortest exact form: a decimal when there is one, else `N/D` | `0.5`, `0.0000152587890625` on `per<(1 << 16)>`; `7/3` |
 
 A column of prices lines up (`19.90`, not `19.9`), a binary fixed-point value

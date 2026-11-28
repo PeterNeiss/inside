@@ -25,16 +25,16 @@ its own lattice: the sum of two copies of `{{0.5, 255.5}, 1}` is on the
 integers again, and the product of two half-offset grids has notch 1/2.
 
 Multiplying by a point scales the lattice instead of forming a product grid:
-`x * just<3, 2>` on `id<"[0..100]">` is `{{0, 150}, 1.5}` with the same raw,
-about one native multiply. So `c * 9_ins / 5_ins + 32_ins` converts ℃ to ℉
+`x * 1.5_q` on `id<"[0..100]">` is `{{0, 150}, 1.5}` with the same raw,
+about one native multiply. So `c * 9_q / 5_q + 32_q` converts ℃ to ℉
 with no `std::expected` and no fraction.
 
 ## Result policies
 
 A result keeps the policy its operands share. A point with the default policy
-(`just<2>`, `2_ins`) is neutral, and operands with different policies give
+(`2_q`) is neutral, and operands with different policies give
 the default. So a rounding mode survives an intermediate step: with
-`id<"[0..10] round_floor"> a{7}`, both `a / 2_ins` and `(a + 0_ins) / 2_ins`
+`id<"[0..10] round_floor"> a{7}`, both `a / 2_q` and `(a + 0_q) / 2_q`
 are 3. `std::common_type_t<L, R>` (also `common_inside_t<L, R>`) is the hull
 of both grids, with the gcd notch, under the same rule.
 
@@ -138,7 +138,7 @@ so `(a / b) * b + a % b == a` for every mode: under `round_floor`,
 `-8 / 3 == -3` and `-8 % 3 == 1`; under `round_toward_zero`, `-2` and `-2`.
 Off the native paths a rounding mode rounds the exact quotient once onto the
 multiples of the dividend's notch:
-`div(id<"[0..10] 1/100">{just<123, 100>}, id<"[1..9]">{7}, round_floor)`
+`div(id<"[0..10] 1/100">{1.23_q}, id<"[1..9]">{7}, round_floor)`
 is 0.17. A store into a type that rounds (`x /= b`) divides exactly there
 and rounds once onto `x`'s own lattice.
 Without a rounding mode, `/` is exact and `%` truncates. `%` and `divmod` need
@@ -150,12 +150,12 @@ deleted overloads, so a `requires` probe answers false.
 
 `x op= y` computes `x op y` exactly and stores the result back through `x`'s
 policy, so it rounds and checks once. The right-hand side is an inside
-(`x += 0.5_ins`); a `double` and a `std::expected` are rejected (a builtin
+(`x += 0.5_q`); a `double` and a `std::expected` are rejected (a builtin
 integer steps `+=`, `-=` and `*=`). A zero divisor in `/=` or `%=` goes to `on_error`, the `error&`
 or the handler like any failed store; under `unsafe` it is undefined.
 
 Under `unsafe`, `+=`, `-=` and `*=` run at the raw type's width: a loop of
-byte-wide `b += 1_ins` vectorizes like native `uint8_t`.
+byte-wide `b += 1_q` vectorizes like native `uint8_t`.
 
 ## Bounded continuous grids
 
@@ -178,7 +178,7 @@ the operation cannot overflow and returns a plain value:
 
 ```cpp
 auto q = id<"[0..100]">{50} / id<"[1..7]">{3};       // 50/3, denominators ≤ 7
-auto f = q * 7_ins / 5_ins + 2_ins;                  // 76/3, denominators ≤ 35
+auto f = q * 7_q / 5_q + 2_q;                        // 76/3, denominators ≤ 35
 auto s = q * q - q;                                  // 2350/9, denominators ≤ 343
 ```
 
@@ -187,9 +187,9 @@ A continuous grid you declare names its bound with `max_denominator`;
 
 ```cpp
 using thousandths = id<"[0..1] <1000>">;
-thousandths t{just<1, 1000>};
+thousandths t{0.001_q};
 auto p = t * t;                       // a plain value, denominators ≤ 10^6
-// t = just<1, 1001>;             // rounding_error: off the grid
+// t = "1/1001"_q;             // rounding_error: off the grid
 ```
 
 Any bound works while a value's numerator and denominator together fit 1024

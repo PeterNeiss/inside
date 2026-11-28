@@ -37,17 +37,17 @@ int main()
   // Sums and products are exact: the product of two Q8.8 lives on 1/65536.
   const uq8_8 a{3.5}, b{7.25};
   std::cout << "\n3.5 + 7.25 = " << a + b << ", 3.5 * 7.25 = " << a * b << "\n";
-  if (a * b != just<203, 8>) // 25.375
+  if (a * b != 25.375_q) // 25.375
     return 1;
 
   // Back onto Q8.8: mul<uq8_8> rounds once, by the mode given
   // (an expected: the product can pass Q8.8's range).
-  const uq8_8 gain  {just<257, (1 << 8)>}; // 1.00390625
+  const uq8_8 gain  {"257/256"_q}; // 1.00390625
   const auto  scaled{mul<uq8_8>(b, gain, round_half_away)};
   if (!scaled)
     return 1;
   std::cout << "7.25 * 1.00390625 = " << b * gain << " -> Q8.8 " << *scaled << "\n";
-  if (*scaled != just<1863, (1 << 8)>) // 1863.25/256 rounds to 1863/256
+  if (*scaled != "1863/256"_q) // 1863.25/256 rounds to 1863/256
     return 1;
 
   // A 0.5 ℃ grid with its unit: a reading is a point on the ℃ scale,
@@ -56,7 +56,7 @@ int main()
   const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding: 21.5
   const celsius body{37, si::degree_Celsius};
   std::cout << "room " << room << ", body - room " << body - room << " = " << (body - room).in(si::kelvin) << "\n";
-  if (to_string(room) != "21.5 ℃" || body - room != just<31, 2> * si::kelvin)
+  if (to_string(room) != "21.5 ℃" || body - room != 15.5_q * si::kelvin)
     return 1;
   return 0;
 }

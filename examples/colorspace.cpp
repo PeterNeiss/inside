@@ -34,9 +34,9 @@ namespace
                               id<"[0..1] 1/1000 [R] round_half_away">>;
 
   // The rows of the sRGB to XYZ matrix (D65): X = rx·c, Y = ry·c (the luminance), Z = rz·c.
-  inline constexpr auto rx{0.4124_ins * R + 0.3576_ins * G + 0.1805_ins * B};
-  inline constexpr auto ry{0.2126_ins * R + 0.7152_ins * G + 0.0722_ins * B};
-  inline constexpr auto rz{0.0193_ins * R + 0.1192_ins * G + 0.9505_ins * B};
+  inline constexpr auto rx{0.4124_q * R + 0.3576_q * G + 0.1805_q * B};
+  inline constexpr auto ry{0.2126_q * R + 0.7152_q * G + 0.0722_q * B};
+  inline constexpr auto rz{0.0193_q * R + 0.1192_q * G + 0.9505_q * B};
 
   template <class C>
   constexpr auto to_xyz(const C& c)
@@ -48,7 +48,7 @@ namespace
   template <class C>
   constexpr auto red_glass(const C& c)
   {
-    return just<9, 10> * (c * R) * R + just<1, 5> * (c * G) * G + just<1, 10> * (c * B) * B;
+    return 0.9_q * (c * R) * R + 0.2_q * (c * G) * G + 0.1_q * (c * B) * B;
   }
 } // namespace
 
@@ -56,8 +56,8 @@ int main()
 {
   // 1. Lights add as vectors (Grassmann's law of colour mixing), and each channel's range is proved:
   // two colours sum to [0, 2] per channel, and the store into a colour clamps the sum to the gamut.
-  const colour orange{R + just<1, 2> * G};
-  const colour sky   {just<1, 5> * R + just<1, 2> * G + B};
+  const colour orange{R + 0.5_q * G};
+  const colour sky   {0.2_q * R + 0.5_q * G + B};
   const auto   sum   {orange + sky};
   static_assert(upper_of<decltype(part(sum, R))> == grid_number{2});
   const colour shown {sum, clamp};
@@ -70,35 +70,35 @@ int main()
   const colour white{R + G + B};
   std::cout << "orange·R = " << orange * R << ", luminance " << orange * ry << ", XYZ(white) = " << to_xyz(white)
             << '\n';
-  if (!(orange * R == 1) || !(orange * ry == 0.5702_ins)
-      || !(to_xyz(white) == 0.9505_ins * X + Y + 1.089_ins * Z))
+  if (!(orange * R == 1) || !(orange * ry == 0.5702_q)
+      || !(to_xyz(white) == 0.9505_q * X + Y + 1.089_q * Z))
     return 1;
 
   // 3. A filter passes a share of each channel: a diagonal map, ρ_R (c·R) R + ρ_G (c·G) G + ρ_B (c·B) B,
   // not a product (two colours multiply to a number).
   std::cout << "sky through red glass = " << red_glass(sky) << '\n';
-  if (!(red_glass(sky) == just<18, 100> * R + just<1, 10> * G + just<1, 10> * B))
+  if (!(red_glass(sky) == 0.18_q * R + 0.1_q * G + 0.1_q * B))
     return 1;
 
   // 4. A turn of hue is a rotation about the grey axis. The 120° rotor ½ - ½(e₁e₂ + e₂e₃ + e₃e₁) is exact
   // (cos 60° and sin 60° / √3 are both ½), and it moves red to green, green to blue, blue to red.
   const auto   v     {(orange * R) * e1 + (orange * G) * e2 + (orange * B) * e3};
-  const auto   rotor {just<1, 2> - just<1, 2> * e1 * e2 - just<1, 2> * e2 * e3 - just<1, 2> * e3 * e1};
+  const auto   rotor {0.5_q - 0.5_q * e1 * e2 - 0.5_q * e2 * e3 - 0.5_q * e3 * e1};
   const auto   w     {rotate(rotor, v)};
   const colour turned{part(w, e1) * R + part(w, e2) * G + part(w, e3) * B, clamp};
   std::cout << "orange turned 120° = " << turned << '\n';
-  if (!(turned == G + just<1, 2> * B))
+  if (!(turned == G + 0.5_q * B))
     return 1;
 
   // Any angle: the chroma a + b i of an opponent space (Lab) turns by e^(iθ), i·i = -1. A quarter turn is i,
   // exactly; e^(iπ/6) rounds each part once, onto 1/1000.
   using fine = id<"[-4..4] 1/1048576 round_half_away">;
   const fine pi = math::pi;
-  const auto chroma{just<3, 10> + just<4, 10> * i};
-  const auto turn  {math::exp<per<1000>>(pi / just<6> * i)};
+  const auto chroma{0.3_q + 0.4_q * i};
+  const auto turn  {math::exp<per<1000>>(pi / 6_q * i)};
   std::cout << "chroma " << chroma << ": turned 90° " << chroma * i << ", by e^(iπ/6) = " << turn << ": "
             << chroma * turn << '\n';
-  if (!(chroma * i == just<-4, 10> + just<3, 10> * i) || !(chroma * turn == 0.0598_ins + 0.4964_ins * i))
+  if (!(chroma * i == -0.4_q + 0.3_q * i) || !(chroma * turn == 0.0598_q + 0.4964_q * i))
     return 1;
   return 0;
 }

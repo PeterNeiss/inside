@@ -40,7 +40,7 @@ Any other format is one line: a signed Q1.14 sample is
   radix point or the shifts.
 - **Result grids widen by themselves.** `a * b` has a new grid, computed at
   compile time: Q8.8 × Q8.8 is Q16.16-shaped, exactly, with no headroom
-  analysis. Scaling by a constant point (`x * just<c>`) keeps integer storage
+  analysis. Scaling by a constant point (`x * std::cw<c>`) keeps integer storage
   on a scaled lattice.
 - **Storing back is a policy.** Onto a coarser grid a store truncates
   (`round_toward_zero`), rounds (`round_half_away`, …), saturates (`clamp`), wraps, or
@@ -109,7 +109,7 @@ auto mm = d.in(si::milli(si::metre));                        // 7000000 mm: the 
 - A unit conversion rescales the grid and keeps the raw: km → mm compiles to
   one `mov`.
 - `mul<Out>` on quantities folds the unit factor into the same single
-  rounding: `mul<usd>(subtotal, just<8> * percent)`.
+  rounding: `mul<usd>(subtotal, 8_q * percent)`.
 - A sensor count can be a dimension of its own: an ADC reading in `cts`
   never adds to a voltage, and a calibrated gain in cts/V turns it into volts
   with one exact division ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).

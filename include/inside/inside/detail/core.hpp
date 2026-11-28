@@ -3,7 +3,7 @@
 // The core type ins::id<ins::key{G, P}>:
 // construction and try_make, compound assignment, ++/--, the conversions (rational, double, to<T>),
 // numerator()/denominator(), raw()/from_raw, the per-store overrides (with<F>(), on_error(ec))
-// and hooks (on_wrap, on_clamp, on_error), parse(first, last), just<…> and the _ins literal.
+// and hooks (on_wrap, on_clamp, on_error), parse(first, last), the _q literal and std::cw<V> operands.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which need this complete type.
 #ifndef INSIDE_INSIDE_DETAIL_CORE_HPP
 #define INSIDE_INSIDE_DETAIL_CORE_HPP
@@ -13,6 +13,7 @@
 #include <inside/inside/generic.hpp>
 #include <inside/inside/detail/wide_value.hpp>
 #include <inside/inside/detail/lift.hpp>
+#include <inside/inside/detail/constant.hpp>
 #include <inside/inside/detail/call_policy.hpp>
 #include <inside/inside/detail/policy_ref.hpp>
 #include <inside/inside/detail/addition.hpp>
@@ -182,9 +183,9 @@ namespace ins
   namespace detail
   {
     // Where an inside keeps its raw.
-    // A point (just<5>, 0.1_ins) holds its value in its type and stores nothing,
+    // A point (5_q, 0.1_q) holds its value in its type and stores nothing,
     // so its empty raw can sit in a public base:
-    // that makes a point inside a structural type, a template argument (unit<"ftm", 1.8288_ins * si::metre>).
+    // that makes a point inside a structural type, a template argument (unit<"ftm", 1.8288_q * si::metre>).
     // Every other inside keeps its raw private.
     template <class R>
     struct public_raw
@@ -304,6 +305,11 @@ namespace ins
     {
       store_value(value);
     }
+    // A value computed while compiling, std::cw<V>: stored as its point is, T{std::cw<N>} as T{point}, while
+    // compiling (the value is a constant). A one-shot flag may follow: T{std::cw<N>, clamp}.
+    template <detail::constant_number C, class... Pol>
+      requires(sizeof...(Pol) <= 1) && std::constructible_from<id, detail::point_of_t<C>, Pol...>
+    consteval id(C, Pol&&... pol) : id(detail::point_of_t<C>{}, std::forward<Pol>(pol)...) {}
 
     // One-shot policy: a flag or make_policy<F>(ec) for this store.
     // Its rounding mode replaces the type's and its clamp or wrap the type's range handling
@@ -795,7 +801,7 @@ namespace ins
         return detail::try_store<id, O>([&](id& r, auto&& ec_pol) { r = id{step_value(i), ec_pol}; });
     }
 #define INSIDE_WHY_from_index \
-  "inside: from_step(i) takes a notch index - an inside on the integers (step_t<T>, 3_ins) or a builtin integer"
+  "inside: from_step(i) takes a notch index - an inside on the integers (step_t<T>, 3_q) or a builtin integer"
     template <insidable I>
       requires(!detail::integer_lattice<I>)
     static id from_step(const I&) = delete (INSIDE_WHY_from_index);
@@ -1048,7 +1054,7 @@ namespace ins
       requires(point_delta_ok<R> || raw_add_ok<R> || compound_assignable<sum_t<R>>) && compound_proven<sum_t<R>>
     constexpr id& operator+=(const R& rhs)
     {
-      // A point rhs (just<v>, 1_ins, ++) whose value is a whole number of this grid's notches:
+      // A point rhs (1_q, std::cw<v>, ++) whose value is a whole number of this grid's notches:
       // the raw delta is a compile-time constant and the raw encoding cancels every Lower term
       // (raw(v+d) = raw(v) + d/Notch for index and value raws alike), so this compiles to one integer add.
       if constexpr (point_delta_ok<R>)
@@ -1121,12 +1127,12 @@ namespace ins
 
   public:
     // A rational has no grid, like an int or a double:
-    // a compound assign takes an inside (x += 0.5_ins, x += just<1, 2>), as the binary operators do
+    // a compound assign takes an inside (x += 0.5_q, x += "1/3"_q), as the binary operators do
     // (arithmetic.hpp deletes inside ⋈ rational the same way).
 #define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                         \
   template <std::same_as<detail::rational> A>                                                                 \
   id& operator op(const A&) = delete ("an inside cannot be combined with a rational: write the constant " \
-                                          "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
+                                          "as 0.5_q or \"1/3\"_q (a grid), or store the rational into an "    \
                                           "inside first");
     INSIDE_NO_RATIONAL_ASSIGN(+=)
     INSIDE_NO_RATIONAL_ASSIGN(-=)
@@ -1219,9 +1225,9 @@ namespace ins
     // (which has the raw-level integer fast path) instead of the rational round-trip
     // (~30× the instructions on an integer grid).
     // On a notch-1 grid that is ±1; on a cursor, one step.
-    // just itself is declared after the class, so the point inside is spelled directly.
+    // detail::point_v is declared after the class, so the point inside is spelled directly.
     // ++ and -- store like +=: on a checked grid without clamp or wrap the step may leave the interval,
-    // so they are deleted there (step with x.on_error(ec) += 1_ins, or iterate with a cursor).
+    // so they are deleted there (step with x.on_error(ec) += 1_q, or iterate with a cursor).
     // A cursor steps one past its last value to its end;
     // stepping past the end is a precondition, reported to the error handler.
   private:
@@ -1279,8 +1285,8 @@ namespace ins
       return t;
     }
 #define INSIDE_WHY_step_out                                                                                         \
-  "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_ins, x.on_error(f) " \
-  "+= 1_ins, or iterate with a cursor"
+  "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_q, x.on_error(f) "   \
+  "+= 1_q, or iterate with a cursor"
     id& operator++()
       requires(G.Notch != 0 && !step_proven<up_step_t>)
     = delete (INSIDE_WHY_step_out);
@@ -1482,36 +1488,13 @@ namespace ins
     return detail::store_text_value<B, detail::none, true>(*w);
   }
 
-  // just<N, D>: the point grid holds the value, so no value constructor is needed,
-  // and grid numbers past 64 bits (_g) work too.
-  // just<N, D> is the point N/D for an integer D ≥ 1, a builtin or a grid number:
-  // just<1, 3>, just<-6, 5> for -1.2, just<1, 0x1p70_g>.
+  // The point V: its grid holds the value, so it stores nothing (a grid number past 64 bits works too).
+  // The library's own computed points; code spells a literal 0.25_q, "2/3"_q, and a computed value std::cw<V>.
   namespace detail
   {
-    template <auto den>
-    consteval bool integer_den()
-    {
-      if constexpr (std::integral<decltype(den)>)
-        return den >= 1;
-      else if constexpr (std::same_as<decltype(den), grid_number>)
-        return den >= 1 && grid_denominator(den) == grid_int{1};
-      else
-        return false;
-    }
-    template <auto value, auto den>
-    consteval auto just_point()
-    {
-      if constexpr (std::integral<decltype(den)> && den == 1)
-        return id<key{grid{value}}>::from_raw({}, unsafe);
-      else
-      {
-        static_assert(integer_den<den>(), "just<N, D>: D is an integer of at least 1");
-        return id<key{grid{grid_number{value} / grid_number{den}}}>::from_raw({}, unsafe);
-      }
-    }
+    template <auto V>
+    inline constexpr auto point_v = id<key{grid{V}}>::from_raw({}, unsafe);
   } // namespace detail
-  template <auto value, auto den = 1>
-  inline constexpr auto just = detail::just_point<value, den>();
 
   // step_t<T>, step_count_of<T>: a grid's counts as insides, for run time
   // (a grid number past 64 bits exists only at compile time).
@@ -1525,44 +1508,46 @@ namespace ins
 
   template <insidable T>
     requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
-  inline constexpr auto step_count_of = just<grid_number{grid_of<T>.step_count()}>;
+  inline constexpr auto step_count_of = detail::point_v<grid_number{grid_of<T>.step_count()}>;
 
-  // The _ins literal: a compile-time id<key{grid{V, V}}> from a numeric literal.
-  //   5_ins         id<"[5..5]">                 integer
-  //   1.25_ins      id<"[5/4]">        decimal
-  //   1.5e2_ins     id<"[150]">                  decimal scientific
-  //   0xff_ins      id<"[255]">                  hex integer
-  //   0b1010_ins    id<"[10]">                   binary integer
-  //   0x1p15_ins    id<"[32768]">                hex with a 2^N exponent (Q-format)
-  //   0x1p-15_ins   id<"[1/32768]">    1/2^15, a grid notch
-  //   0x1.8p3_ins   id<"[12]">                   hex float
-  //   1'000_ins     id<"[1000]">                 digit separator
+  // The _q literal: a compile-time point id<key{grid{V}}> from a numeric literal.
+  //   5_q           id<"[5]">          integer
+  //   1.25_q        id<"[5/4]">        decimal
+  //   1.5e2_q       id<"[150]">        decimal scientific
+  //   0xff_q        id<"[255]">        hex integer
+  //   0b1010_q      id<"[10]">         binary integer
+  //   0x1p15_q      id<"[32768]">      hex with a 2^N exponent (Q-format)
+  //   0x1p-15_q     id<"[1/32768]">    1/2^15, a grid notch
+  //   0x1.8p3_q     id<"[12]">         hex float
+  //   1'000_q       id<"[1000]">       digit separator
+  //   "2/3"_q       id<"[2/3]">        a fraction (the string form below)
   // The parse is exact (no double round-trip) and of any size, as _g reads it (inside/detail/grid_rational.hpp):
-  // 18446744073709551616_ins is the point 2^64. -1.5_ins parses as -(1.5_ins).
+  // 18446744073709551616_q is the point 2^64. -1.5_q parses as -(1.5_q).
+  // A value the code computes is std::cw<V> (inside/detail/constant.hpp).
   inline namespace literals
   {
     template <char... Chars>
-    constexpr auto operator""_ins()
+    constexpr auto operator""_q()
     {
-      return just<detail::parse_grid_literal<Chars...>()>;
+      return detail::point_v<detail::parse_grid_literal<Chars...>()>;
     }
 
-    // A value with its type: "42 [1..100)"_ins is 42 of type id<"[1..99]">, the number (as an id's text reads one:
-    // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{just<v>} stores it:
-    // "200 [0..99] clamp"_ins is 99, "0.3 [0..1] 1/4 round_half_away"_ins is 1/4, and a value the type cannot hold
-    // does not compile. Without a type, "42"_ins is the point 42_ins.
+    // A value with its type: "42 [1..100)"_q is 42 of type id<"[1..99]">, the number (as an id's text reads one:
+    // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{point} stores it:
+    // "200 [0..99] clamp"_q is 99, "0.3 [0..1] 1/4 round_half_away"_q is 1/4, and a value the type cannot hold
+    // does not compile. Without a type, "2/3"_q is the point 2/3, and "42"_q the point 42_q.
     // (A type with a unit is a quantity's: units/detail/quantity.hpp has that literal.)
     template <detail::value_text T>
       requires(detail::inside_key<T.Key>)
-    consteval auto operator""_ins()
+    consteval auto operator""_q()
     {
       static_assert(T.NumberOk, detail::value_text_error(T.Key));
       if constexpr (!T.Typed)
-        return just<T.Value>;
+        return detail::point_v<T.Value>;
       else if constexpr (!T.Key.ok())
         return id<T.Key>{}; // the type fails with where its text went wrong, and nothing else
       else
-        return id<T.Key>{just<T.Value>};
+        return id<T.Key>{detail::point_v<T.Value>};
     }
   } // namespace literals
 

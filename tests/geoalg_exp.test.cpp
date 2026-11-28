@@ -165,8 +165,8 @@ TEST(GeoalgExpTest, rotors_from_bivectors) {
     // A quarter turn about e₃ (θ = π/2 in the e₁e₂ plane): exp(-i π/4).
     const dom q{test::store<I>(rational{-50, 64}) * i + I{0} * j + I{0} * k};
     const cod r = math::exp<cod>(q);
-    EXPECT_TRUE(std::get<2>(r.parts()) == just<0> * j); // exact 0
-    EXPECT_TRUE(std::get<3>(r.parts()) == just<0> * k);
+    EXPECT_TRUE(std::get<2>(r.parts()) == 0_q * j); // exact 0
+    EXPECT_TRUE(std::get<3>(r.parts()) == 0_q * k);
 }
 
 TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
@@ -235,7 +235,7 @@ TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
     using mdom = multivector<id<quantity_key<g0 * g1, I>>, id<quantity_key<g1 * g2, I>>>;
     using mcod = multivector<O, id<quantity_key<g0 * g1, O>>, id<quantity_key<g1 * g2, O>>>;
     const mdom n{test::store<I>(rational{3, 4}) * (g0 * g1) + test::store<I>(rational{3, 4}) * (g1 * g2)};
-    EXPECT_TRUE((math::exp<mcod>(n) == just<1> + n));
+    EXPECT_TRUE((math::exp<mcod>(n) == 1_q + n));
     // A compile-time value equals the run-time one.
     constexpr dom x{I{1} + I{rational{1, 2}} * i};
     constexpr cod c = math::exp<cod>(x);
@@ -245,7 +245,7 @@ TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
     using qdom   = id<quantity_key<j, I>>;
     using qcod   = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>>;
     const qcod q = math::exp<qcod>(qdom{test::store<I>(rational{1, 2}), j});
-    EXPECT_TRUE(std::get<1>(q.parts()) == just<0> * i);
+    EXPECT_TRUE(std::get<1>(q.parts()) == 0_q * i);
     EXPECT_NEAR(static_cast<double>(coef(std::get<2>(q.parts()))), std::sin(0.5), 1e-6);
 }
 
@@ -521,7 +521,7 @@ TEST(GeoalgLogTest, domain_types_and_compile_time) {
     static_assert(std::same_as<decltype(math::log<ncod>(pdom{})), std::expected<ncod, error>>);
     // The deduced output takes the argument's notch, and log 1 is 0 exactly, at compile time too.
     constexpr auto one_plus = math::log<ccod>(pdom{P{1} + I{0} * i});
-    static_assert(std::get<0>(one_plus.parts()) == 0 && std::get<1>(one_plus.parts()) == just<0> * i);
+    static_assert(std::get<0>(one_plus.parts()) == 0 && std::get<1>(one_plus.parts()) == 0_q * i);
     static_assert(notch_of<std::tuple_element_t<0, std::remove_cvref_t<decltype(math::log(pdom{}).parts())>>> ==
                   rational{1, 64});
 }
@@ -544,12 +544,12 @@ TEST(GeoalgSqrtTest, complex_quaternion_boost_and_exact_roots) {
         }
     EXPECT_EQ(bad, 0);
     // Exact roots: √(3 + 4i) = 2 + i, √(-4) = 2i, √0 = 0; in the quaternions √(2i) = 1 + i.
-    EXPECT_TRUE(math::sqrt<ccod>(cdom{I{3} + I{4} * i}) == just<2> + i);
-    EXPECT_TRUE(math::sqrt<ccod>(cdom{I{-4} + I{0} * i}) == just<2> * i);
+    EXPECT_TRUE(math::sqrt<ccod>(cdom{I{3} + I{4} * i}) == 2_q + i);
+    EXPECT_TRUE(math::sqrt<ccod>(cdom{I{-4} + I{0} * i}) == 2_q * i);
     EXPECT_TRUE(math::sqrt<ccod>(cdom{}) == multivector<>{});
     using qdom = multivector<I, id<quantity_key<i, I>>, id<quantity_key<j, I>>, id<quantity_key<k, I>>>;
     using qcod = multivector<O, id<quantity_key<i, O>>, id<quantity_key<j, O>>, id<quantity_key<k, O>>>;
-    EXPECT_TRUE(*math::sqrt<qcod>(qdom{I{0} + I{2} * i + I{0} * j + I{0} * k}) == just<1> + i);
+    EXPECT_TRUE(*math::sqrt<qcod>(qdom{I{0} + I{2} * i + I{0} * j + I{0} * k}) == 1_q + i);
     // A quaternion's negative scalar has no axis; √x · √x = x elsewhere, within the roundings.
     EXPECT_EQ(math::sqrt<qcod>(qdom{I{-1} + I{0} * i + I{0} * j + I{0} * k}).error(), error::domain_error);
     int bad_q = 0;

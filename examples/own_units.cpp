@@ -15,10 +15,10 @@ namespace
 {
   // 1. A kind under length, and a unit defined by the metre.
   inline constexpr auto depth  = kind<"depth", isq::length>;
-  inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;
+  inline constexpr auto fathom = unit<"ftm", 1.8288_q * si::metre>;
 
   // 2. A temperature unit whose points count from absolute zero; the options name its ASCII symbol and origin.
-  inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "deg_R", .origin = si::absolute_zero}>;
+  inline constexpr auto rankine = unit<"°R", "5/9"_q * si::kelvin, {.ascii = "deg_R", .origin = si::absolute_zero}>;
 
   // 3. Currency: a base dimension, its base quantity and two units, as named definitions:
   //    diagnostics and symbols spell them money_def, euro_def and cent_def, not their content.
@@ -27,15 +27,15 @@ namespace
   inline constexpr auto     money = defined_by<money_def>;
   inline constexpr unit_def euro_def{"EUR", money};
   inline constexpr auto     euro = defined_by<euro_def>;
-  inline constexpr unit_def cent_def{"ct", 0.01_ins * euro};
+  inline constexpr unit_def cent_def{"ct", 0.01_q * euro};
   inline constexpr auto     cent = defined_by<cent_def>;
 
   // 4. Information: bit, byte (8 bit), KiB (1024 B).
   inline constexpr auto information = base_dimension<"information">;
   inline constexpr auto amount      = kind<"amount_of_information", information>;
   inline constexpr auto bit         = unit<"bit", amount>;
-  inline constexpr auto byte        = unit<"B"  , just<8> * bit>;
-  inline constexpr auto kibibyte    = unit<"KiB", just<1024> * byte>;
+  inline constexpr auto byte        = unit<"B"  , 8_q * bit>;
+  inline constexpr auto kibibyte    = unit<"KiB", 1024_q * byte>;
 
   // 5. A prefixed unit of your own is named by a tag of it: a quantity's type spells its unit by symbol (kftm, Mbit).
   inline constexpr auto kilofathom = si::kilo(fathom);
@@ -52,7 +52,7 @@ int main()
   const fathoms sounding{12, depth[fathom]};
   std::cout << "sounding   " << sounding << " = " << sounding.in(si::metre) << '\n';
   if (to_string(sounding.in(si::metre)) != "21.9456 m"
-      || to_string((just<1> * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
+      || to_string((1_q * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
     return 1;
   // Text names it too: parse finds every unit declared where it is called.
   using metres = id<"[0..1000] 1/10'000 [m]">;
@@ -64,10 +64,10 @@ int main()
 
   // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.
   using rankine_point = id<"[0..1000] 1/100 [deg_R] @absolute_zero">;
-  const rankine_point freezing{just<49167, 100>, rankine};
+  const rankine_point freezing{491.67_q, rankine};
   std::cout << "freezing   " << freezing << " = " << freezing.point_in(si::degree_Celsius) << " = "
             << freezing.point_in(international::degree_Fahrenheit) << '\n';
-  if (!(freezing == point<si::degree_Celsius>(just<0>))
+  if (!(freezing == point<si::degree_Celsius>(0_q))
       || to_string(freezing.point_in(international::degree_Fahrenheit)) != "32.00 ℉"
       || to_string(freezing, text_encoding::ascii) != "491.67 deg_R")
     return 1;
@@ -76,14 +76,14 @@ int main()
   using euros_per_kg = id<"[0..100] 1/100 [EUR/kg]">;
   using kilograms    = id<"[0..10] 1/1000 [kg]">;
 
-  const euros_per_kg price {just<399, 100> * (euro / si::kilogram)};
-  const kilograms    coffee{just<1250, 1000> * si::kilogram};
+  const euros_per_kg price {3.99_q * (euro / si::kilogram)};
+  const kilograms    coffee{1.25_q * si::kilogram};
   const auto         cost  {price * coffee};
-  const auto         paid  {cost + just<50> * cent};
+  const auto         paid  {cost + 50_q * cent};
   std::cout << "coffee     " << cost << ", with tip " << paid << '\n';
   if (to_string(cost) != "4.98750 EUR" || to_string(paid) != "548.750 ct")
     return 1;
-  static_assert(!addable<decltype(cost), decltype(just<1> * si::metre)>); // money never adds to a length
+  static_assert(!addable<decltype(cost), decltype(1_q * si::metre)>); // money never adds to a length
 
   // 4. A file size over a bandwidth is a time: 64 KiB at 1 Mbit/s takes 64·1024·8 / 10^6 s = 0.524288 s.
   using kibibytes      = id<"[0..1024] [KiB]">;

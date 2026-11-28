@@ -288,8 +288,8 @@ TEST(DefaultValueTest, zero_when_the_grid_holds_it_else_lower) {
 TEST(DefaultValueTest, wide_storage) {
     // a wide index (more than 2^64 slots)
     static_assert(id<"[0..0x1p100]">{} == 0);
-    static_assert(id<"[0x1p100..0x1p101]">{} == just<0x1p100>);
-    static_assert(id<"[-0x1p101..-0x1p100]">{} == -just<0x1p101>);
+    static_assert(id<"[0x1p100..0x1p101]">{} == 0x1p100_q);
+    static_assert(id<"[-0x1p101..-0x1p100]">{} == -0x1p101_q);
     // a fraction raw (a continuous grid past the 64-bit rational)
     using F0 = id<"[-0x1p70..0x1p70] <3>">;
     using F1 = id<"[1..0x1p70] <3>">;
@@ -656,7 +656,7 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     constexpr auto inc              = [] {
         U64   w{u64_max - 1};
         error ec{}; // (++ may step past the top: a channel)
-        w.on_error(ec) += 1_ins;
+        w.on_error(ec) += 1_q;
         return w == u64_max && ec == error{};
     }();
     static_assert(inc);
@@ -688,11 +688,11 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     static_assert(-(-U64{u64_max}) == U64{u64_max});
 
     static_assert(U64{u64_max} - U64{u64_max - 3} == 3); // result grid spans 2^65
-    static_assert(U64{u64_max} * just<1> == u64_max);
+    static_assert(U64{u64_max} * 1_q == u64_max);
 
     U64   x{u64_max};
     error ec{};
-    x.on_error(ec) += 1_ins;
+    x.on_error(ec) += 1_q;
     EXPECT_EQ(ec, error::overflow);
     EXPECT_EQ(x, u64_max);
 }

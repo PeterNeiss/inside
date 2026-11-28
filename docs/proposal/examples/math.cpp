@@ -18,9 +18,9 @@ int main() {
     // math::sqrt(id<"[-4..4] 1/256 round_half_away">{2.25}) does not compile:
     // the grid reaches below 0, so take abs(x) or store x into a non-negative grid first
     // [/listing]
-    if (s != 0.84149169921875_ins || c != 0.5390625_ins)
+    if (s != 0.84149169921875_q || c != 0.5390625_q)
         return 1;
-    if (r != 1.5_ins)
+    if (r != 1.5_q)
         return 1;
     return 0;
 }

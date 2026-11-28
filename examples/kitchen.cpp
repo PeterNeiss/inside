@@ -19,16 +19,16 @@ namespace
 int main()
 {
   // 1. Flour 1 lb + 200 g, butter 4 oz, milk 0.5 L + 150 mL: each sum runs in the common unit, exactly.
-  const auto flour {international::pound + just<200> * si::gram};
-  const auto butter{just<4> * international::ounce};
-  const auto milk  {just<1, 2> * si::litre + just<150> * ml};
+  const auto flour {international::pound + 200_q * si::gram};
+  const auto butter{4_q * international::ounce};
+  const auto milk  {0.5_q * si::litre + 150_q * ml};
   std::cout << "flour  " << flour.in(si::gram) << ", butter " << butter.in(si::gram) << ", milk " << milk << '\n';
   if (to_string(flour.in(si::gram)) != "653.59237 g" || to_string(butter.in(si::gram)) != "113.3980925 g"
       || to_string(milk) != "650 mL")
     return 1;
 
   // 2. Six servings instead of four: everything times 3/2, still exact.
-  constexpr auto scale{just<3, 2>};
+  constexpr auto scale{1.5_q};
   std::cout << "for 6:  flour " << (flour * scale).in(si::gram) << ", milk " << milk * scale << '\n';
   if (to_string((flour * scale).in(si::gram)) != "980.388555 g" || to_string(milk * scale) != "975 mL")
     return 1;
@@ -40,7 +40,7 @@ int main()
   const auto oven   {point<international::degree_Fahrenheit>(id<"[0..600]">{350})};
   const auto oven_c {oven.point_in(si::degree_Celsius)};
   const auto dial   {value_cast<oven_dial>(oven_c)};
-  const auto hotter {oven + delta<international::degree_Fahrenheit>(just<25>)};
+  const auto hotter {oven + delta<international::degree_Fahrenheit>(25_q)};
   const auto dial_up{value_cast<oven_dial>(hotter.point_in(si::degree_Celsius))};
   if (!dial || !dial_up)
     return 1;
@@ -57,7 +57,7 @@ int main()
   using millilitres  = id<"[0..1000] [mL]{volume}">;
   using grams        = id<"[0..2000] 1/100 [g]{mass}">;
 
-  const grams_per_ml density{just<53, 100> * isq::mass_density[si::gram / ml]};
+  const grams_per_ml density{0.53_q * isq::mass_density[si::gram / ml]};
   const millilitres  cup    {250, isq::volume[ml]};
   const grams        cup_of_flour = density * cup;
   std::cout << "cup    " << cup << " of flour = " << cup_of_flour << '\n';
@@ -67,7 +67,7 @@ int main()
   // 5. A flour jar that holds 2 kg, to the gram, starting at 1.5 kg:
   // a pound fits (rounded to the gram), and its clamp policy stops the second pound at 2 kg.
   using jar_kilograms = id<"[0..2] 1/1000 [kg] clamp|round_half_away">;
-  jar_kilograms jar{just<3, 2> * si::kilogram};
+  jar_kilograms jar{1.5_q * si::kilogram};
   jar += international::pound;
   const auto after_one{to_string(jar)};
   jar += international::pound;

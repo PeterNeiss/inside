@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    auto t = kind_cast<isq::duration>(just<1> * si::metre);
+    auto t = kind_cast<isq::duration>(1_q * si::metre);
     (void)t;
 }

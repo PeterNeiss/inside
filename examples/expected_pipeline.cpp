@@ -19,7 +19,7 @@ using reading_volts = id<"[-1/10..1/10] 1/1'000'000 [V]">; // ±100 mV to 1 µV
 using gain          = id<"[0..10] 1/100">; // 0 is possible: a dead channel
 using volts         = id<"[-1..1] 1/1'000'000 [V] round_half_away">; // the result, to 1 µV
 
-constexpr reading_volts offset{just<1, 4000> * si::volt}; // 0.25 mV
+constexpr reading_volts offset{"1/4000"_q * si::volt}; // 0.25 mV
 
 // One sample, a reading with its unit and the channel's gain as text.
 // The reading may come in any unit of voltage (mV, µV): parse converts it exactly, or reports why not.
@@ -72,13 +72,13 @@ int main()
 
   // The lift operators chain without and_then:
   // an expected operand makes the expression an expected, and the first error wins.
-  const auto chained{(reading_volts{0.01_ins * si::volt} - offset) / gain{0} * just<2>
-                     + reading_volts{just<1, 1000> * si::volt}};
+  const auto chained{(reading_volts{0.01_q * si::volt} - offset) / gain{0} * 2_q
+                     + reading_volts{0.001_q * si::volt}};
   std::cout << "chained -> " << error_message(chained.error()) << "\n";
 
   // A gain that cannot be 0 makes the division total: a plain value.
   using live_gain = id<"[0.5..10] 1/100">;
-  const auto always{(reading_volts{0.01_ins * si::volt} - offset) / live_gain{2}};
+  const auto always{(reading_volts{0.01_q * si::volt} - offset) / live_gain{2}};
   static_assert(quantity_like<decltype(always)>);
   std::cout << "zero-free gain -> " << always << "\n";
 

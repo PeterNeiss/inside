@@ -38,8 +38,8 @@ TYPES=(
 prologue() {
   printf '#include <inside/units.hpp>\n'
   printf 'using namespace ins;\n'
-  printf 'inline constexpr auto     ftm_line = unit<"ftm", just<18288, 10000> * si::metre>;\n'
-  printf 'inline constexpr unit_def ftm_def{"ftm", just<18288, 10000> * si::metre};\n'
+  printf 'inline constexpr auto     ftm_line = unit<"ftm", 1.8288_q * si::metre>;\n'
+  printf 'inline constexpr unit_def ftm_def{"ftm", 1.8288_q * si::metre};\n'
   printf 'inline constexpr auto     ftm = defined_by<ftm_def>;\n'
   printf 'inline constexpr auto     cts_line = base_unit<"cts", "count">;\n'
   printf 'inline constexpr kind_def count_def{"count", base_dimension<"count">};\n'

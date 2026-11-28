@@ -77,7 +77,7 @@ int main()
   std::cout << "...\n";
 
   if (to_string(s.x) != "8.75 px" || to_string(s.y) != "5 px" || s.edge_x_crossings != crossing
-      || s.edge_y_crossings != just<3> * crossing)
+      || s.edge_y_crossings != 3_q * crossing)
     return 1;
   return 0;
 }

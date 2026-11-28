@@ -82,8 +82,8 @@ id<"[0..20]"> n = 20;
 auto f = math::factorial(n);                    // id<"[1..2432902008176640000]">: 8 bytes
 using small = id<"[0..60]">;
 auto c = math::binomial(small{49}, small{6});   // 13983816, on [0, C(60, 30)]
-auto p = math::falling_factorial(just<8>, just<3>);        // 336: podium orders
-auto m = math::multinomial(1_ins, 4_ins, 4_ins, 2_ins);    // 34650: MISSISSIPPI
+auto p = math::falling_factorial(8_q, 3_q);                // 336: podium orders
+auto m = math::multinomial(1_q, 4_q, 4_q, 2_q);            // 34650: MISSISSIPPI
 auto big = math::factorial(id<"[0..100]">{100});           // 100!, on a wide raw
 ```
 
@@ -172,7 +172,7 @@ that unit: `math::atan2<bearing>(east, north)` with `bearing` a quantity in
 and `atan` give a plain inside, as in `<cmath>`.
 
 A level in dB converts to a gain with
-`math::pow_base<10, gain_t>(level / (just<20> * dB))`
+`math::pow_base<10, gain_t>(level / (20_q * dB))`
 ([`decibels.cpp`](../../examples/decibels.cpp)).
 
 ## Constants

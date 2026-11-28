@@ -1374,7 +1374,7 @@ namespace ins::detail::gaexp
       {
         if constexpr (F::src[P].Kind == part_source::zero)
         {
-          std::get<P>(st.Out) = num_t<std::tuple_element_t<P, CP>>(just<0>);
+          std::get<P>(st.Out) = num_t<std::tuple_element_t<P, CP>>(0_q);
           st.Done[P]          = true;
         }
       });
@@ -1386,16 +1386,16 @@ namespace ins::detail::gaexp
     const auto exact_parts = [&]
     {
       all_zero = true;
-      for_index<N>([&]<std::size_t J>() { all_zero = all_zero && ynum<F, J>(px) == just<0>; });
+      for_index<N>([&]<std::size_t J>() { all_zero = all_zero && ynum<F, J>(px) == 0_q; });
       for_index<NC>(
         [&]<std::size_t P>()
         {
           using O = num_t<std::tuple_element_t<P, CP>>;
           if constexpr (F::src[P].Kind == part_source::blade)
           {
-            if (ynum<F, F::src[P].Blade>(px) == just<0>)
+            if (ynum<F, F::src[P].Blade>(px) == 0_q)
             {
-              std::get<P>(st.Out) = O(just<0>);
+              std::get<P>(st.Out) = O(0_q);
               st.Done[P]          = true;
             }
           }
@@ -1409,7 +1409,7 @@ namespace ins::detail::gaexp
                 std::get<P>(st.Out) = ::ins::math::detail::entry::exp_fn::eval<O>(a);
               }
               else
-                std::get<P>(st.Out) = O(just<1>);
+                std::get<P>(st.Out) = O(1_q);
               st.Done[P] = true;
             }
           }

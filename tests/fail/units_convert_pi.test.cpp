@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    id<"[0..10] [rad]"> q = just<1> * si::degree;
+    id<"[0..10] [rad]"> q = 1_q * si::degree;
     (void)q;
 }

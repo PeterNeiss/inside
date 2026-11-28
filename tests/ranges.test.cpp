@@ -386,9 +386,9 @@ TEST(CursorTest, type) {
 TEST(CursorTest, three_loop_forms) {
     const auto            want = quarter_steps();
     std::vector<rational> a, b, c;
-    for (cur t = -4_ins; t <= 4; ++t)
+    for (cur t = -4_q; t <= 4; ++t)
         a.push_back(static_cast<rational>(t));
-    for (cur t = -4_ins; t != end(t); ++t)
+    for (cur t = -4_q; t != end(t); ++t)
         b.push_back(static_cast<rational>(t));
     for (cur t; t != end(t); ++t)
         c.push_back(static_cast<rational>(t));
@@ -412,7 +412,7 @@ TEST(CursorTest, default_starts_at_lower) {
     using off = cursor<id<"[0.25..1.25] 1/4">, 0.5_r>;
     static_assert([] {
         off t;
-        return t == 0.25_ins;
+        return t == 0.25_q;
     }());
     std::vector<rational> got;
     for (off t; t != end(t); ++t)
@@ -427,7 +427,7 @@ TEST(CursorTest, default_starts_at_lower) {
 TEST(CursorTest, steps_and_ends) {
     cur t;
     EXPECT_DEATH(--t, "ins: value does not fit"); // nothing before Lower: a precondition
-    cur u = 4_ins;
+    cur u = 4_q;
     ++u;                                          // the end
     EXPECT_DEATH(++u, "ins: value does not fit"); // nothing past the end: a precondition
     // the values convert back to T exactly
@@ -437,13 +437,13 @@ TEST(CursorTest, steps_and_ends) {
     }
     // a cursor works where an inside does
     using amp = id<"[0..64] 1/16384 round_half_away">;
-    cur w     = 1_ins;
+    cur w     = 1_q;
     EXPECT_EQ((math::exp<amp>(w)), (math::exp<amp>(time_t_{1})));
     EXPECT_EQ(to_string(w), "1");
 }
 
 TEST(CursorTest, marker_does_not_leak) {
-    cur t = 1_ins;
+    cur t = 1_q;
     static_assert(!has_flag(policy_of<decltype(t + t)>, cursor_marker));
     static_assert(!has_flag(policy_of<decltype(t * t)>, cursor_marker));
     static_assert(!has_flag(policy_of<decltype(-t)>, cursor_marker));
@@ -467,15 +467,15 @@ TEST(CursorTest, increment_moves_one_notch) {
 }
 
 TEST(CursorTest, point_compare_is_a_slot_compare) {
-    static_assert(point_is_slot<cur, decltype(4_ins)>);
+    static_assert(point_is_slot<cur, decltype(4_q)>);
     static_assert(point_is_slot<cur, decltype(end(cur{}))>);
-    static_assert(!point_is_slot<cur, decltype(0.1_ins)>); // not a slot
+    static_assert(!point_is_slot<cur, decltype(0.1_q)>); // not a slot
     for (cur t; t != end(t); ++t) {
         const rational v = static_cast<rational>(t);
-        EXPECT_EQ(t < 1.5_ins, v < 1.5_r);
-        EXPECT_EQ(t == 1.5_ins, v == 1.5_r);
-        EXPECT_EQ(2_ins <= t, rational{2} <= v);
-        EXPECT_EQ(t < 0.1_ins, v < 0.1_r); // the general path
+        EXPECT_EQ(t < 1.5_q, v < 1.5_r);
+        EXPECT_EQ(t == 1.5_q, v == 1.5_r);
+        EXPECT_EQ(2_q <= t, rational{2} <= v);
+        EXPECT_EQ(t < 0.1_q, v < 0.1_r); // the general path
     }
 }
 
@@ -505,7 +505,7 @@ TEST(CursorTest, is_an_iterator) {
     EXPECT_EQ(b, want);
     EXPECT_EQ(c, want);
     EXPECT_EQ(std::ranges::distance(t, end(t)), 33);
-    EXPECT_EQ(static_cast<rational>(*std::ranges::find(t, end(t), 1.5_ins)), 1.5_r);
+    EXPECT_EQ(static_cast<rational>(*std::ranges::find(t, end(t), 1.5_q)), 1.5_r);
 
     static_assert([] {
         cursor<id<"[0..9]">, 3> i;
@@ -704,7 +704,7 @@ TEST(IndexTest, counts_are_insides) {
     EXPECT_EQ(to_string(step_count_of<fine>), "1208925819614629174706176");
     EXPECT_TRUE(step_count_of<halves> == 10);
     // One more than the step count is the number of values, with an exact type.
-    const auto values = step_count_of<huge> + 1_ins;
+    const auto values = step_count_of<huge> + 1_q;
     EXPECT_EQ(to_string(values), "1267650600228229401496703205377");
 }
 
@@ -712,17 +712,17 @@ TEST(IndexTest, index_round_trips_past_64_bits) {
     const huge h = *huge::from_step(at_run_time(7)); // (an int index may miss: an expected)
     EXPECT_TRUE(h == 7);
     const huge last = huge::from_step(step_count_of<huge>);
-    EXPECT_TRUE(last == just<g(pow2(100))>);
+    EXPECT_TRUE(last == std::cw<g(pow2(100))>);
     // Index arithmetic at run time, on wide raws.
     const auto gap = last.step() - h.step(); // {−2^100, 2^100}
     EXPECT_EQ(to_string(gap), "1267650600228229401496703205369");
-    const huge mid = huge::from_step(div(last.step(), 2_ins, round_floor));
-    EXPECT_TRUE(mid == just<g(pow2(99))>);
+    const huge mid = huge::from_step(div(last.step(), 2_q, round_floor));
+    EXPECT_TRUE(mid == std::cw<g(pow2(99))>);
     EXPECT_TRUE(huge::from_step(mid.step()) == mid);
 
     const fine f = 0.5;
-    EXPECT_TRUE(f.step() == just<g(pow2(79))>);
-    EXPECT_TRUE(*fine::from_step(f.step() + 1_ins) > f);
+    EXPECT_TRUE(f.step() == std::cw<g(pow2(79))>);
+    EXPECT_TRUE(*fine::from_step(f.step() + 1_q) > f);
 
     const shuge s = -at_run_time(3);
     EXPECT_EQ(to_string(s.step()), "1267650600228229401496703205373"); // −3 + 2^100
@@ -740,7 +740,7 @@ TEST(IndexTest, index_within_64_bits) {
     EXPECT_TRUE(b.step() == 3);
     EXPECT_TRUE(bins::from_step(at_run_time(3)) == b);
     EXPECT_TRUE(five{}.step() == 0);
-    EXPECT_TRUE(five::from_step(0_ins) == 5);
+    EXPECT_TRUE(five::from_step(0_q) == 5);
     // Every value of a small grid round-trips.
     for (int k = 0; k <= 10; ++k)
         EXPECT_TRUE(halves::from_step(at_run_time(k))->step() == k); // (an int index: an expected)
@@ -759,7 +759,7 @@ TEST(IndexTest, from_step_out_of_range) {
     // Past 2^64 points: one past the last index.
     const auto beyond = step_count_of<huge> + test::store<id<"[0..1]">>(at_run_time(1));
     EXPECT_EQ(huge::from_step(beyond).error(), error::overflow);
-    EXPECT_TRUE(huge::from_step(beyond, clamp) == just<g(pow2(100))>);
+    EXPECT_TRUE(huge::from_step(beyond, clamp) == std::cw<g(pow2(100))>);
     EXPECT_TRUE(huge::from_step(beyond, wrap) == 0);
     EXPECT_EQ(huge::from_step(beyond).error(), error::overflow);
 }
@@ -786,11 +786,11 @@ TEST(IndexTest, numerator_and_denominator_are_insides) {
 
     // Past 64 bits: wide raws, exact.
     const fine f = fine::from_raw(fine::raw_type{3}, unsafe);
-    EXPECT_TRUE(f.numerator() == 3 && f.denominator() == just<g(pow2(80))>);
+    EXPECT_TRUE(f.numerator() == 3 && f.denominator() == std::cw<g(pow2(80))>);
     EXPECT_EQ(to_string(f.denominator()), "1208925819614629174706176");
 
     // A point's parts are points.
-    constexpr auto third = just<1, 3>;
+    constexpr auto third = "1/3"_q;
     static_assert(std::is_empty_v<std::remove_cvref_t<decltype(third.numerator())>>);
     EXPECT_TRUE(third.numerator() == 1 && third.denominator() == 3);
 }
@@ -891,7 +891,7 @@ TEST(RangeTest, uniform_covers_every_slot_and_stays_on_the_grid) {
         EXPECT_EQ(slots, floor(slots)); // on the 1/4 lattice
     }
     EXPECT_EQ(sample<thirds>(2000).size(), 4u);
-    EXPECT_EQ(sample<decltype(5_ins)>(10).size(), 1u); // a point
+    EXPECT_EQ(sample<decltype(5_q)>(10).size(), 1u); // a point
 }
 
 // The draw is the library's own, so these sequences are the same on every

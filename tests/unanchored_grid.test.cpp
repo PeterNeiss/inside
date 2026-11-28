@@ -283,8 +283,8 @@ TEST(UnanchoredGridTest, assignability) {
     using on_half = id<"[1.5..3.5] 1">; // on half's lattice
     using fine    = id<"[0..10] 0.5">;
     static_assert(inside_assignable<half, on_half>);
-    static_assert(inside_assignable<half, decltype(1.5_ins)>);
-    static_assert(!inside_assignable<half, decltype(1_ins)>);
+    static_assert(inside_assignable<half, decltype(1.5_q)>);
+    static_assert(!inside_assignable<half, decltype(1_q)>);
     static_assert(!inside_assignable<half, ints>); // different lattice
     static_assert(!inside_assignable<half, fine>); // finer
     static_assert(inside_assignable<fine, half>);  // half's lattice lies on fine's
@@ -339,11 +339,11 @@ TEST(UnanchoredGridTest, point_operands) {
     using half = id<key{half_off}>;
     for (const rational x : slots<half_off>()) {
         const half a = test::store<half>(x);
-        EXPECT_EQ(exact{a + 2_ins}, exact{x} + exact{2});
-        EXPECT_EQ(exact{a + 0.25_ins}, exact{x} + exact{0.25_r});
-        EXPECT_EQ(exact{a * 3_ins}, exact{x} * exact{3});
-        EXPECT_EQ(exact{a * -0.5_ins}, exact{x} * exact{-0.5_r});
-        EXPECT_EQ(exact{1_ins - a}, exact{1} - exact{x});
+        EXPECT_EQ(exact{a + 2_q}, exact{x} + exact{2});
+        EXPECT_EQ(exact{a + 0.25_q}, exact{x} + exact{0.25_r});
+        EXPECT_EQ(exact{a * 3_q}, exact{x} * exact{3});
+        EXPECT_EQ(exact{a * -0.5_q}, exact{x} * exact{-0.5_r});
+        EXPECT_EQ(exact{1_q - a}, exact{1} - exact{x});
         EXPECT_EQ(a <=> 3, x <=> rational{3});
         EXPECT_EQ(a == 2.5_r, x == 2.5_r);
         EXPECT_EQ(a < 4.75_r, x < 4.75_r);
@@ -384,10 +384,10 @@ TEST(UnanchoredGridTest, compound_assignment) {
     c.on_error(ec) *= id<"[2..2]">{2};
     EXPECT_EQ(static_cast<rational>(c), 5.5_r); // 5 rounds up to 5.5
     half i{4.5};
-    i.on_error(ec) += 1_ins; // (++ may step out of half: a channel)
+    i.on_error(ec) += 1_q; // (++ may step out of half: a channel)
     EXPECT_EQ(static_cast<rational>(i), 5.5_r);
-    i.on_error(ec) -= 1_ins;
-    i.on_error(ec) -= 1_ins;
+    i.on_error(ec) -= 1_q;
+    i.on_error(ec) -= 1_q;
     EXPECT_EQ(static_cast<rational>(i), 3.5_r);
     EXPECT_EQ(ec, error{});
 }

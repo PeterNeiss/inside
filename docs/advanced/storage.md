@@ -17,7 +17,7 @@ except in the cases at the end of this table.
 | Lower < 0, notch 1 | the smallest `int8_t` … `int64_t`, holding the value: native `int` speed | `id<"[-40..85]">`: `int8_t`; `id<"[-255..255]">`: `int16_t` |
 | Lower < 0, a fractional notch | an unsigned offset index | `id<"[-5..5] 0.5">`: `uint8_t` |
 | more than 2⁶⁴ points | a library `wide_int` of as many 64-bit limbs as needed | `id<key{grid{{0, 1ull << 34}, per<(1ull << 32)>}}>`: 2 limbs |
-| a single point (`just<…>`, `5_ins`) | nothing: the value is in the type | `sizeof(5_ins) == 1`, 0 bytes as a `[[no_unique_address]]` member |
+| a single point (`5_q`, `"2/3"_q`) | nothing: the value is in the type | `sizeof(5_q) == 1`, 0 bytes as a `[[no_unique_address]]` member |
 | notch 0 (continuous) | an exact fraction of two 64-bit integers, or past 64 bits a fraction of fixed-width integers sized from the bound | `id<"[-10..10] <1000>">`, and exact quotients |
 
 The selection uses each type's full range: `id<"[0..255]">` is a `uint8_t`
@@ -26,7 +26,7 @@ same lane count as native bytes.
 
 **Grids off the notch's multiples.** Lower need not be a multiple of the
 notch: `{{0.5, 255.5}, 1}` holds 0.5, 1.5, …, 255.5 (bin centres), and
-`{{-1.1_ins, 0.9_ins}, 0.2_ins}` holds −1.1, −0.9, …, 0.9. These always use an
+`{{-1.1_q, 0.9_q}, 0.2_q}` holds −1.1, −0.9, …, 0.9. These always use an
 offset index, because their values are not integers.
 
 ```cpp
@@ -36,11 +36,11 @@ auto    s = c + c;             // id<"[1..511] 1">: on the integers
 ```
 
 **A point** costs no storage, and an integer point takes the native integer
-paths (`a % 5_ins`, `a / 5_ins` under a rounding mode):
+paths (`a % 5_q`, `a / 5_q` under a rounding mode):
 
 ```cpp
 struct voice {
-    [[no_unique_address]] decltype(just<440> * si::hertz) pitch;   // 440 Hz, 0 bytes
+    [[no_unique_address]] decltype(440_q * si::hertz) pitch;   // 440 Hz, 0 bytes
     std::uint32_t frames;
 };
 static_assert(sizeof(voice) == 4);
@@ -79,8 +79,8 @@ exactly in any form of the literal grammar (decimal, `0x`, `0b`, a point, an
 `e` or `p` exponent):
 `id<"[0..1267650600228229401496703205376]">` is `id<"[0..0x1p100]">`,
 and `id<"[0..1] 1e-30">` has an exact decimal notch of 10⁻³⁰.
-`per<D>`, `just<N, D>` and `_ins` take grid numbers of any size too
-(`per<0x1p70_g>`, `18446744073709551616_ins`).
+`per<D>`, `_g` and `_q` take grid numbers of any size too
+(`per<0x1p70_g>`, `18446744073709551616_q`).
 
 Grid numbers past 64 bits exist only at compile time; the raw of such an
 inside is a fixed-width integer sized from them. A grid can hold huge values
@@ -105,12 +105,12 @@ runs stays exact:
 | `T::from_step(i)` | the value Lower + i·Notch: plain when `i`'s grid lies within the indices, else checked by T's policy (or `from_step(i, clamp)`, `from_step(i)`) |
 | `step_count_of<T>` | (Upper − Lower)/Notch as a point inside: 0 bytes, printable |
 | `x.numerator()`, `x.denominator()` | the value in lowest terms, as insides on the integers |
-| `std::numeric_limits<T>::min()`, `max()`, `just<lower_of<T>>` | the limits as insides |
+| `std::numeric_limits<T>::min()`, `max()`, `std::cw<lower_of<T>>` | the limits as insides |
 
 ```cpp
 using huge = id<"[0..0x1p100]">;
 huge h      = huge::from_step(step_count_of<huge>);         // 2¹⁰⁰
-auto half   = div(h.step(), 2_ins, round_floor);              // 2⁹⁹, at run time
+auto half   = div(h.step(), 2_q, round_floor);                // 2⁹⁹, at run time
 huge middle = huge::from_step(half);                          // a raw copy
 auto steps  = h.step() - middle.step();                      // id<key{grid{-2¹⁰⁰, 2¹⁰⁰}}>
 ```
@@ -127,8 +127,8 @@ quotients are plain values:
 ```cpp
 using length_number = id<"[1e-41..1e27] 1e-41 round_half_away">;
 using metres        = id<"[1e-41..1e27] 1e-41 [m] round_half_away">;
-const metres planck   = just<1.616255e-35_g> * si::metre;
-const metres universe = just<8.8e26_g> * si::metre;
+const metres planck   = 1.616255e-35_q * si::metre;
+const metres universe = 8.8e26_q * si::metre;
 auto ratio = universe / planck;       // exactly 1760…0/323251, a plain value
 math::log10<per<(1 << 20)>>(ratio);   // 61.73597…, rounded once onto 2^-20
 ```

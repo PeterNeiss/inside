@@ -11,18 +11,18 @@ concept addable = requires(A a, B b) { a + b; };
 
 // [listing]
 inline constexpr auto euro = base_unit<"EUR", "currency">;
-inline constexpr auto           cent = unit<"ct", 0.01_ins * euro>;
+inline constexpr auto           cent = unit<"ct", 0.01_q * euro>;
 
 using price = id<"[0..100] 1/100 [EUR/kg]">;
 using mass  = id<"[0..10] 1/1000 [kg]">;
 
-constexpr auto cost  = price{3.49_ins, euro / si::kilogram} * mass{1.25_ins, si::kilogram}; // 4.3625 EUR, exactly
+constexpr auto cost  = price{3.49_q, euro / si::kilogram} * mass{1.25_q, si::kilogram};     // 4.3625 EUR, exactly
 constexpr auto cents = cost.in(cent);                                                       // 436.25 ct: the same raw
 static_assert(!addable<decltype(cost), mass>);                                              // money never adds to a mass
 // [/listing]
 
 int main() {
-    if (cost.numerical_value_in(euro) != 4.3625_ins || cents.numerical_value_in(cent) != 436.25_ins)
+    if (cost.numerical_value_in(euro) != 4.3625_q || cents.numerical_value_in(cent) != 436.25_q)
         return 1;
     return 0;
 }

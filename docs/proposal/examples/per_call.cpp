@@ -20,7 +20,7 @@ int main() {
     using minutes = id<"[0..59] clamp">; // m += carry names what happens past 59
     seconds s = 50;
     minutes m = 0;
-    s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2
+    s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_q; // 125 s: s == 5, m == 2
     // [/listing]
     if (down != 3 || up != 4 || quo != 3 || rem != 2 || x != 100)
         return 1;

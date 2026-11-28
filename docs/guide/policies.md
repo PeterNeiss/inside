@@ -97,7 +97,7 @@ returns a handle; assign through it. On a clock's seconds and minutes:
 ```cpp
 id<"[0..59] [s] wrap">  seconds{0, si::second};
 id<"[0..59] [min] clamp"> minutes{0, si::minute};   // (+= carry names its range handling)
-seconds.on_wrap([&](auto&, auto carry) { minutes += carry * si::minute; }) = just<125> * si::second;
+seconds.on_wrap([&](auto&, auto carry) { minutes += carry * si::minute; }) = 125_q * si::second;
 // seconds == 5 s, minutes == 2 min
 ```
 
@@ -115,9 +115,9 @@ this way.
 
 ## Policies of results
 
-A result keeps the policy its operands share, and a constant such as `2_ins`
+A result keeps the policy its operands share, and a constant such as `2_q`
 counts as neutral. The policy acts when the result is stored: arithmetic
-itself is exact. With `id<"[0..10] round_floor"> a{7}`, `a / 2_ins` is
+itself is exact. With `id<"[0..10] round_floor"> a{7}`, `a / 2_q` is
 3.5, and storing it into `a`'s type gives 3.
 
 ## A store the grids cannot prove
@@ -130,13 +130,13 @@ NaN fits no range). Every other store names what happens, before it runs:
 ```cpp
 using bounded   = id<"[0..100]">;
 int        n    = 150;                          // read at run time
-const auto step = 1_ins;
+const auto step = 1_q;
 bounded x{50};                                  // a constant: checked while compiling
 auto    y = bounded::try_make(n);               // a run-time int: std::expected<bounded, error>
 bounded z{n, clamp};                            // or clamp, wrap, a rounding mode
 error ec{};
 x.on_error(ec) += step;                         // an error&: the first error is kept
-x.on_error([](auto& s, error, auto) { s = 0_ins; }) += step;   // an alternative value
+x.on_error([](auto& s, error, auto) { s = 0_q; }) += step;   // an alternative value
 x = bounded::try_make(n).value_or(bounded{0});  // the same, as an expected
 bounded u{n, unsafe};                           // the fit is your precondition
 // x += step;                           // ❌ does not compile: x + step may pass 100

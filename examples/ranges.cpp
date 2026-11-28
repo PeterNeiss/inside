@@ -36,7 +36,7 @@ int main()
 
   show("digits:      ", values<digit>);
   show("odd squares: ", values<digit>
-                          | views::filter([](digit d) { return d % 2_ins == 1; })
+                          | views::filter([](digit d) { return d % 2_q == 1; })
                           | views::transform([](digit d) { return d * d; })); // id<"[0..81]">: cannot overflow
   show("last three:  ", values<digit> | views::reverse | views::take(3));
   std::cout << "size:         " << values<digit>.size() << ", [7] = " << values<digit>[7]
@@ -55,17 +55,17 @@ int main()
   using tenths = id<"[-50..150] 1/10">;
   const auto celsius   {values<tenths> | views::transform([](tenths t) { return point<si::degree_Celsius>(t); })};
   const auto fahrenheit{[](const auto& c) { return c.point_in(international::degree_Fahrenheit); }};
-  const auto boiling   {point<international::degree_Fahrenheit>(212_ins)};
+  const auto boiling   {point<international::degree_Fahrenheit>(212_q)};
   const auto boil      {*rng::partition_point(celsius, [&](const auto& c) { return fahrenheit(c) <= boiling; })};
   std::cout << "above 212 ℉: " << boil << " = " << fahrenheit(boil) << "\n";
-  if (boil != point<si::degree_Celsius>(100.1_ins) || to_string(fahrenheit(boil)) != "212.18 ℉")
+  if (boil != point<si::degree_Celsius>(100.1_q) || to_string(fahrenheit(boil)) != "212.18 ℉")
     return 1;
 
   // The first thousandth whose square exceeds 2: sqrt(2), rounded up.
   using thousandths = id<"[0..2] 1/1000">;
   const auto root2{rng::partition_point(values<thousandths>, [](thousandths x) { return x * x <= 2; })};
   std::cout << "sqrt(2) <=    " << *root2 << '\n';
-  if (*root2 != 1.415_ins)
+  if (*root2 != 1.415_q)
     return 1;
 
   // 3. A ring buffer read oldest first:
@@ -79,8 +79,8 @@ int main()
   // and the ones in office hours. The cursor is an index; the range it walks yields quantities.
   cursor<id<"[0..1440]">, 15> c;
   const auto quarters{rng::subrange{c, end(c)} | views::transform([](auto n) { return n * si::minute; })};
-  const auto opens   {just<9> * si::hour};
-  const auto closes  {just<17> * si::hour};
+  const auto opens   {9_q * si::hour};
+  const auto closes  {17_q * si::hour};
   auto       office  {quarters | views::filter([&](const auto& t) { return t >= opens && t < closes; })};
   std::cout << "quarters:     " << rng::distance(quarters) << ", in office hours: " << rng::distance(office)
             << " (" << rng::min(office) << " … " << rng::max(office) << ")\n";

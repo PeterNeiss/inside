@@ -70,7 +70,7 @@ int main()
   std::cout << "  with<round_half_even>()   = 2.5  -> " << q << "\n";
 
   id<"[0..359] [deg]"> angle{0, si::degree}; // a quantity takes the same one-shot flags
-  angle.with<wrap>() = just<400> * si::degree;
+  angle.with<wrap>() = 400_q * si::degree;
   std::cout << "  with<wrap>()              = 400° -> " << angle << "\n";
   return 0;
 }

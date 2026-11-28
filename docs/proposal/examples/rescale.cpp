@@ -16,16 +16,16 @@ int main() {
     auto m = trip.in(si::metre);                                   // 12500 m: the same raw, grid × 1000
     static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
 
-    auto total = trip + just<800> * si::metre;                     // 13300 m: the sum runs in metres
+    auto total = trip + 800_q * si::metre;                     // 13300 m: the sum runs in metres
     auto speed = total / id<"[1..600] [min]">{20, si::minute};
     auto kmh   = speed.in(km / si::hour);                          // 39.9 km/h, exactly
-    id<"[0..1000] round_half_away|clamp"> laps = trip / (just<400> * si::metre); // 31: km / m is a number
-    static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
+    id<"[0..1000] round_half_away|clamp"> laps = trip / (400_q * si::metre); // 31: km / m is a number
+    static_assert(!addable<decltype(trip), decltype(1_q * si::second)>); // another dimension
     // [/listing]
     if (m.numerical_value_in(si::metre).raw() != trip.numerical_value_in(km).raw() ||
         m.numerical_value_in(si::metre) != 12'500)
         return 1;
-    if (total.numerical_value_in(si::metre) != 13'300 || kmh.numerical_value_in(km / si::hour) != 39.9_ins || laps != 31)
+    if (total.numerical_value_in(si::metre) != 13'300 || kmh.numerical_value_in(km / si::hour) != 39.9_q || laps != 31)
         return 1;
     return 0;
 }

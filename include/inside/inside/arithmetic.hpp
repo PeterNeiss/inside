@@ -1033,7 +1033,7 @@ namespace ins
   template <insidable Lhs, insidable Rhs>
   [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b)
   {
-    return (a + b) * just<1, 2>;
+    return (a + b) * 0.5_q;
   }
 
   // expected-lift operators: fallible results (division, modulo, checked rational arithmetic, ins::math)
@@ -1050,18 +1050,47 @@ namespace ins
     template <class T>
     inline constexpr bool lift_operand_v = insidable<T>;
 
+    // An expected operand, or a std::cw<V> on exactly one side, which is its point (inside/detail/constant.hpp):
+    // x * std::cw<N>, std::cw<v> * si::metre, e * std::cw<2> with e an expected.
+    // (Without these an integer inside and a wrapper would both convert to builtins.)
     template <class L, class R>
-    concept expected_operands =
-      (expected_like<L> || expected_like<R>) && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>);
+    concept lift_operands = constant_operands<L, R>
+                         || ((expected_like<L> || expected_like<R>)
+                             && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>));
+
+    // An operand's value as the lift operators combine it: an expected's value, a wrapper's point.
+    template <class T>
+    struct operand_of
+    {
+      using type = unwrap_t<T>;
+    };
+    template <constant_number C>
+    struct operand_of<C>
+    {
+      using type = point_of_t<C>;
+    };
+    template <class T>
+    using operand_t = typename operand_of<std::remove_cvref_t<T>>::type;
   } // namespace detail
 
-#define INSIDE_LIFT_OP(op)                                                              \
-  template <class L, class R>                                                           \
-    requires detail::expected_operands<L, R>                                            \
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }         \
-  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)                  \
-  {                                                                                     \
-    return detail::lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); \
+  // A compound assignment takes a std::cw<V> as its point too: x += std::cw<1>.
+#define INSIDE_LIFT_OP(op)                                                         \
+  template <class L, class R>                                                      \
+    requires detail::lift_operands<L, R>                                           \
+          && requires(detail::operand_t<L> l, detail::operand_t<R> r) { l op r; }  \
+  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)             \
+  {                                                                                \
+    if constexpr (detail::expected_like<L> || detail::expected_like<R>)            \
+      return detail::lift([](auto const& l, auto const& r) { return l op r; },     \
+                          detail::operand(lhs), detail::operand(rhs));             \
+    else                                                                           \
+      return detail::operand(lhs) op detail::operand(rhs);                         \
+  }                                                                                \
+  template <class B, detail::constant_number C>                                    \
+    requires requires(B&& b) { std::forward<B>(b) op##= detail::point_of_t<C>{}; } \
+  constexpr decltype(auto) operator op##=(B&& b, C)                                \
+  {                                                                                \
+    return std::forward<B>(b) op##= detail::point_of_t<C>{};                       \
   }
 
   INSIDE_LIFT_OP(+)
@@ -1074,21 +1103,23 @@ namespace ins
   // Grid-less scalar operands are rejected.
   // A raw int/double carries no grid, so `inside op rawscalar` has no type-safe result;
   // rather than silently escape into rational/double, these guidance overloads make it ill-formed with a fix
-  // (give the literal a grid: `1_ins` / `just<1>`, or an inside over its range).
+  // (give the literal a grid: `1_q`, `std::cw<n>`, or an inside over its range).
   // Compound assignment with a raw scalar is rejected the same way; comparisons with raw scalars are unaffected.
   //
   // Deleted, with the fix as the reason: `requires { b + 1; }` is false,
   // as for every other operation that cannot compile.
   namespace detail
   {
+    // (And a std::cw of a double: its binary value, not the decimal written. One atomic constraint, so a
+    // diagnostic explains it in one line.)
     template <typename A>
-    concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
+    concept builtin_arithmetic = bool(std::is_arithmetic_v<A> || floating_constant<A>);
   } // namespace detail
 
-#define INSIDE_SCALAR_MSG                                                                \
-  "an inside cannot be combined with a raw scalar: give the scalar a grid — "            \
-  "`1_ins`, `just<1>`, or `id<\"[lo..hi]\">::try_make(n)` for a run-time value with a " \
-  "known range"
+#define INSIDE_SCALAR_MSG                                                                    \
+  "an inside cannot be combined with a raw scalar: give the scalar a grid — "                \
+  "`1_q`, `0.5_q`, `std::cw<n>` for a computed integer, or `id<\"[lo..hi]\">::try_make(n)` " \
+  "for a run-time value with a known range"
 #define INSIDE_NO_SCALAR(op)                                  \
   template <insidable B, detail::builtin_arithmetic A>        \
   void operator op(B const&, A) = delete (INSIDE_SCALAR_MSG); \
@@ -1173,9 +1204,9 @@ namespace ins
   // an expected<rational, error> without a grid.
   // Deleted, with the spelling that keeps the grid;
   // so are the compound assignments (inside/detail/core.hpp, policy_ref.hpp).
-#define INSIDE_RATIONAL_MSG                                                                    \
-  "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
-  "(a grid), or store the rational into an inside first"
+#define INSIDE_RATIONAL_MSG                                                                           \
+  "an inside cannot be combined with a rational: write the constant as 0.5_q or \"1/3\"_q (a grid), " \
+  "or store the rational into an inside first"
 #define INSIDE_NO_RATIONAL(op)                                         \
   template <insidable B, std::same_as<detail::rational> Q>             \
   void operator op(B const&, Q const&) = delete (INSIDE_RATIONAL_MSG); \

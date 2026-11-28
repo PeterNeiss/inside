@@ -214,9 +214,9 @@ TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
 TEST(ConsistencyTest, compound_fast_path_honours_unsafe) {
     using X = id<"[0..10] unsafe">;
     X x{10};
-    EXPECT_NO_THROW(x += 1_ins);
+    EXPECT_NO_THROW(x += 1_q);
     X y{10};
-    EXPECT_NO_THROW(y = y + 1_ins);
+    EXPECT_NO_THROW(y = y + 1_q);
 }
 
 // unsafe on either operand silences a zero divisor in /= and %=, as in
@@ -313,11 +313,11 @@ TEST(ConsistencyTest, flags_are_call_policies) {
 TEST(ConsistencyTest, results_keep_the_shared_policy) {
     constexpr id<"[0..10] round_floor"> a{7};
     // (`/` is exact whatever the operands round; the mode rounds a store.)
-    static_assert(a / 2_ins == 3.5_ins && decltype(a){a / 2_ins} == 3 && decltype(a){(a + 0_ins) / 2_ins} == 3);
+    static_assert(a / 2_q == 3.5_q && decltype(a){a / 2_q} == 3 && decltype(a){(a + 0_q) / 2_q} == 3);
     static_assert(policy_of<decltype(a + a)> == round_floor && policy_of<decltype(a - a)> == round_floor);
     static_assert(policy_of<decltype(a + id<"[0..10]">{1})> == 0); // mixed: the default
     static_assert(policy_of<decltype(a + id<"[0..10] clamp">{1})> == 0);
-    static_assert(policy_of<decltype(cursor<id<"[0..10] clamp">>{} + 1_ins)> == clamp); // no cursor marker
+    static_assert(policy_of<decltype(cursor<id<"[0..10] clamp">>{} + 1_q)> == clamp); // no cursor marker
     static_assert(policy_of<std::common_type_t<decltype(a), id<"[0..20] round_floor">>> == round_floor);
 }
 
@@ -333,9 +333,9 @@ TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
     using I = id<"[0..10] 1/4">;
     static_assert(!rational_mix<I, rational> && !rational_mix<id<"[0..10]">, rational>);
     static_assert(!rational_compound<I, rational>);
-    static_assert(I{2} + just<1, 2> == 2.5_r);
+    static_assert(I{2} + 0.5_q == 2.5_r);
     id<"[0..10] 1/4 clamp"> x{2}; // (x + 0.5 may pass 10: clamp names it)
-    x += 0.5_ins;
+    x += 0.5_q;
     EXPECT_EQ(x, 2.5_r);
 }
 
@@ -452,7 +452,7 @@ TEST(ConsistencyTest, rounding_runs_before_the_range_check) {
     EXPECT_EQ(rational{bin{9.55}}, q(9));       // double source
     EXPECT_EQ(rational{bin{q(191, 20)}}, q(9)); // rational source
     using ms = id<"[0..100] 1/10 round_half_away">;
-    EXPECT_EQ(rational{test::store<bin>(ms{95.5} / just<10>)}, q(9)); // inside source
+    EXPECT_EQ(rational{test::store<bin>(ms{95.5} / 10_q)}, q(9));     // inside source
     EXPECT_EQ(bin::try_make(10.0).error(), error::overflow);          // floors to 10: outside
 
     using db = id<"[-24..12] 1/2 round_half_away">;
@@ -496,30 +496,30 @@ TEST(ConsistencyTest, predicates_round_before_the_range_check) {
 // `%` and rounding `/` with a literal take the native integer paths.
 namespace {
 struct with_point {
-    [[no_unique_address]] decltype(just<440>) Pitch;
+    [[no_unique_address]] decltype(440_q) Pitch;
     std::uint32_t                             Frames;
 };
 } // namespace
 
 TEST(ConsistencyTest, point_insides_store_nothing) {
-    static_assert(sizeof(5_ins) == 1);
+    static_assert(sizeof(5_q) == 1);
     static_assert(sizeof(with_point) == sizeof(std::uint32_t));
-    static_assert(std::is_same_v<decltype(5_ins)::raw_type, point_slot>);
-    static_assert(std::is_same_v<decltype(just<1, 3>)::raw_type, point_slot>);
-    static_assert(inside_assignable<id<"[0..9] 3">, decltype(3_ins)>);
-    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(1_ins)>);
+    static_assert(std::is_same_v<decltype(5_q)::raw_type, point_slot>);
+    static_assert(std::is_same_v<decltype("1/3"_q)::raw_type, point_slot>);
+    static_assert(inside_assignable<id<"[0..9] 3">, decltype(3_q)>);
+    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(1_q)>);
 
     using val = id<"[0..100] round_toward_zero">;
-    auto r    = val{17} % 5_ins; // divisor excludes 0: plain
+    auto r    = val{17} % 5_q; // divisor excludes 0: plain
     static_assert(!is_expected_v<decltype(r)>);
     static_assert(grid_of<decltype(r)> == grid{0, 4});
     EXPECT_EQ(rational{r}, q(2));
-    auto d = test::rdiv(val{17}, 5_ins);
+    auto d = test::rdiv(val{17}, 5_q);
     static_assert(!is_expected_v<decltype(d)>);
     EXPECT_EQ(rational{d}, q(3));
-    EXPECT_EQ(rational{-5_ins}, q(-5));
-    EXPECT_EQ((rational{just<1, 3>}), q(1, 3));
-    EXPECT_EQ((rational{val{17} * just<1, 2>}), q(17, 2));
+    EXPECT_EQ(rational{-5_q}, q(-5));
+    EXPECT_EQ((rational{"1/3"_q}), q(1, 3));
+    EXPECT_EQ((rational{val{17} * 0.5_q}), q(17, 2));
 }
 
 //---------------------------------------------------------------------------
@@ -622,10 +622,10 @@ TEST(ConsistencyTest, continuous_source_wraps_by_value) {
 
 // hull with a point keeps the lattice: max/min with a constant stay integer.
 TEST(ConsistencyTest, hull_with_a_point_keeps_the_lattice) {
-    const auto m = max(id<"[0..100]">{3}, just<0>);
+    const auto m = max(id<"[0..100]">{3}, 0_q);
     static_assert(integer_storage<std::remove_cvref_t<decltype(m)>>);
     EXPECT_EQ(rational{m}, q(3));
-    const auto two = max(just<5>, just<rational{1, 2}>);
+    const auto two = max(5_q, 0.5_q);
     static_assert(notch_of<std::remove_cvref_t<decltype(two)>> == rational{9, 2});
     EXPECT_EQ(rational{two}, q(5));
 }
@@ -653,8 +653,8 @@ TEST(ConsistencyTest, continuous_sides_are_assignable) {
 }
 
 TEST(ConsistencyTest, hash_covers_every_storage) {
-    EXPECT_EQ(std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>),
-              std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>));
+    EXPECT_EQ(std::hash<std::remove_cvref_t<decltype(5_q)>>{}(5_q),
+              std::hash<std::remove_cvref_t<decltype(5_q)>>{}(5_q));
     using C = id<"[0..1] <10>">;
     EXPECT_EQ(std::hash<C>{}(C{q(1, 3)}), std::hash<C>{}(C{q(1, 3)}));
 }

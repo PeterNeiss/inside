@@ -10,7 +10,7 @@ Everyday use, one task per page.
 | Page | Covers |
 |---|---|
 | [Grids](guide/grids.md) | writing a grid and its values, half-open ranges, the predefined formats |
-| [Spelling a type as text](guide/id.md) | `id<"[0..10) 1/4 clamp">`, the canonical text a type prints, `"42 [1..100)"_ins` |
+| [Spelling a type as text](guide/id.md) | `id<"[0..10) 1/4 clamp">`, the canonical text a type prints, `"42 [1..100)"_q` |
 | [Policies](guide/policies.md) | what happens when a value does not fit: checked, `clamp`, `wrap`, rounding, error codes |
 | [Arithmetic](guide/arithmetic.md) | result types, scalars, division, rounding once, `%`, sums |
 | [Conversions and text](guide/conversions.md) | native numbers in and out, casts, comparisons, printing, parsing |

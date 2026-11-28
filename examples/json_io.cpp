@@ -20,7 +20,7 @@ using namespace ins;
 namespace
 {
   inline constexpr auto USD  = base_unit<"USD" , "dollar">;
-  inline constexpr auto cent = unit<"¢", 0.01_ins * USD, {.ascii = "c"}>;
+  inline constexpr auto cent = unit<"¢", 0.01_q * USD, {.ascii = "c"}>;
   inline constexpr auto item = base_unit<"item", "count">;
 } // namespace
 
@@ -110,7 +110,7 @@ int main()
   const auto o{read_order(good)};
   if (!o)
     return 1;
-  const dollars total{o->price * o->quantity * (just<100> * percent - o->discount)}; // 50.9745 → 50.97
+  const dollars total{o->price * o->quantity * (100_q * percent - o->discount)}; // 50.9745 → 50.97
   std::cout << "read   " << good << "\n"
             << "write  " << write_order(*o) << "\n"
             << "total  " << total << "\n"

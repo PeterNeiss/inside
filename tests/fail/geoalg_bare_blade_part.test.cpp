@@ -1,6 +1,6 @@
 // EXPECT: a blade's part is a quantity
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// A multivector's blade part is a quantity: {3, just<4> * i}, not {3, 4}.
+// A multivector's blade part is a quantity: {3, 4_q * i}, not {3, 4}.
 #include <inside/units/geoalg.hpp>
 
 inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<1>>;

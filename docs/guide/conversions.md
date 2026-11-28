@@ -14,7 +14,7 @@ auto p = parse<id<"[0..1000]">>("42");     // text in: a std::expected
 ## Into an inside
 
 An inside is built from an integer, a `double`, a `float` or another
-inside (a constant such as `0.1_ins` is one). The store follows the type's [policy](policies.md): a value
+inside (a constant such as `0.1_q` is one). The store follows the type's [policy](policies.md): a value
 out of range or between notches is an error unless the policy clamps, wraps
 or rounds.
 
@@ -81,9 +81,9 @@ a[r] = 1;       // also std::vector, std::span, std::mdspan, a builtin array
   arithmetic behind it: `n + x`, `n += x`, `x << 2`, `x & 1` and `if (x)` do
   not compile, so the arithmetic stays on insides.
 - The index type is the proof of the bounds, so give a container the extent
-  its index reaches. A result is an index where its grid is: `a[r + 1_ins]`
+  its index reaches. A result is an index where its grid is: `a[r + 1_q]`
   compiles, and reaches 480. Store it into the index type first where that
-  matters, by its policy: `row{r + 1_ins, clamp}`.
+  matters, by its policy: `row{r + 1_q, clamp}`.
   [mdspan](../advanced/mdspan.md) builds extents from index types and
   checks an index type against an extent.
 
@@ -95,14 +95,14 @@ without narrowing either side:
 ```cpp
 id<"[0..100]"> a{42}, c{58};
 a == 42;          // true
-a < 50.5_ins;       // true
+a < 50.5_q;       // true
 a + c == 100;     // true
 // a < 50.5;      // does not compile: no comparison with a double
 ```
 
 An inside does not compare with a `double`, because 0.1 is not 1/10 in
 binary: an inside holding 1/10 would compare unequal to 0.1. Compare with
-`0.1_ins` or `just<1, 10>`.
+`0.1_q`.
 
 ## Printing
 
@@ -119,7 +119,7 @@ A format spec rounds once, from the exact value, by the type's rounding mode:
 
 ```cpp
 using hundredths = id<"[0..1'000'000] 1/100">;
-hundredths x{19.9_ins};
+hundredths x{19.9_q};
 std::println("{} {:.1f} {:>8}", x, x, x);   // 19.90 19.9    19.90
 std::println("{:#04x}", id<"[0..100]">{42});          // 0x2a
 ```

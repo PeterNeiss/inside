@@ -80,7 +80,7 @@ int main()
     auto n{rng::count(colors, channel{50, DN})};
     std::cout << "count of 50 DN: " << n << "\n";
 
-    auto bright{rng::count_if(colors, [](channel c) { return c > just<128> * DN; })};
+    auto bright{rng::count_if(colors, [](channel c) { return c > 128_q * DN; })};
     std::cout << "channels > 128 DN: " << bright << "\n";
 
     bool found{rng::binary_search(temps, celsius{15.5, deg_C})}; // temps is sorted
@@ -94,11 +94,11 @@ int main()
   std::cout << "\n--- predicates ---\n";
   {
     std::vector<percentage> shares = {{25, percent}, {50, percent}, {75, percent}, {100, percent}};
-    std::cout << "all > 0 %:    " << rng::all_of (shares, [](percentage p) { return p > just<0> * percent; })
+    std::cout << "all > 0 %:    " << rng::all_of (shares, [](percentage p) { return p > 0_q * percent; })
               << "\n";
-    std::cout << "any == 100 %: " << rng::any_of (shares, [](percentage p) { return p == just<100> * percent; })
+    std::cout << "any == 100 %: " << rng::any_of (shares, [](percentage p) { return p == 100_q * percent; })
               << "\n";
-    std::cout << "none > 100 %: " << rng::none_of(shares, [](percentage p) { return p > just<100> * percent; })
+    std::cout << "none > 100 %: " << rng::none_of(shares, [](percentage p) { return p > 100_q * percent; })
               << "\n";
   }
 
@@ -111,7 +111,7 @@ int main()
                    [](channel c) // darken by 50 DN: clamp stops at 0
                    {
                      auto d{c};
-                     d -= just<50> * DN;
+                     d -= 50_q * DN;
                      return d;
                    });
     show("original", src);
@@ -148,10 +148,10 @@ int main()
   {
     std::vector<altitude> data = {{-200, m}, {500, m}, {-50, m}, {3000, m}, {0, m}, {8000, m}};
     std::vector<altitude> positive;
-    rng::copy_if(data, std::back_inserter(positive), [](altitude a) { return a > just<0> * m; });
+    rng::copy_if(data, std::back_inserter(positive), [](altitude a) { return a > 0_q * m; });
     show("positive", positive);
 
-    auto [first, last] = rng::remove_if(data, [](altitude a) { return a < just<0> * m; }); // below sea level
+    auto [first, last] = rng::remove_if(data, [](altitude a) { return a < 0_q * m; }); // below sea level
     data.erase(first, last);
     show("above sea level", data);
   }
@@ -223,7 +223,7 @@ int main()
     show("rotate", seq);
 
     std::vector<altitude> mixed = {{-100, m}, {500, m}, {-30, m}, {2000, m}, {0, m}, {-400, m}, {100, m}};
-    auto pivot{std::partition(mixed.begin(), mixed.end(), [](altitude x) { return x >= just<0> * m; })};
+    auto pivot{std::partition(mixed.begin(), mixed.end(), [](altitude x) { return x >= 0_q * m; })};
     std::cout << "partition (>= 0 m): ";
     for (auto it = mixed.begin(); it != pivot; ++it)
       std::cout << *it << " ";

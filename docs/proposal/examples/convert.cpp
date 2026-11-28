@@ -19,7 +19,7 @@ int main() {
     auto near = level{6.5, clamp | round_half_away};       // 7: a tie goes away from zero
 
     using quarter = id<"[0..10] 1/4">;
-    quarter q = 2.75_ins;
+    quarter q = 2.75_q;
     auto num  = q.numerator();                               // 11: the value is 11/4
     auto i    = q.to<int>();                                 // unexpected(error::rounding_error)
     auto down = q.to<int, round_floor>();                    // 2: rounding named in the call

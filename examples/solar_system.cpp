@@ -23,7 +23,7 @@ int main()
   // 1. From Saturn's distance, a million legs of 1000.000000001 km, each a raw add of two 64-bit limbs;
   // the same sum in double loses the nanometre.
   const position_metres start{1'433'000'000'000, si::metre};
-  const leg_metres      step = just<1000> * si::kilo(si::metre) + si::nano(si::metre); // 1e6 m + 1 nm
+  const leg_metres      step = 1000_q * si::kilo(si::metre) + si::nano(si::metre); // 1e6 m + 1 nm
   // The accumulator's type cannot show that a run-time count of legs fits,
   // so it clamps at ±10^13 m (never here).
   using clamped_position = id<quantity_key<si::metre, id<key{grid_of<position_metres::rep>, clamp}>>>;
@@ -44,7 +44,7 @@ int main()
   const position_metres east{3'000'000'000'000, si::metre}, north{4'000'000'000'000, si::metre};
   const auto            d{math::hypot<per<1000>>(east, north)};
   std::cout << "hypot   " << d << "\n";
-  if (d != just<5'000'000'000'000> * si::metre)
+  if (d != 5'000'000'000'000_q * si::metre)
     return 1;
   return 0;
 }

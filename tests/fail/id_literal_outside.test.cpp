@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    auto x{"200 [0..99]"_ins};
+    auto x{"200 [0..99]"_q};
     (void)x;
 }

@@ -137,10 +137,10 @@ def number(s):
         n, d = m.group(1), m.group(2)
         v = n if d is None or d == '1' else f'{n}/{d}'
         return (neg + v).replace('--', '') if neg else v
-    m = re.fullmatch(r'(0[xX]1(?:\.0*)?[pP][+-]?[0-9]+)(_g|_r|_ins)?', s)  # a power of two
+    m = re.fullmatch(r'(0[xX]1(?:\.0*)?[pP][+-]?[0-9]+)(_g|_r|_q)?', s)  # a power of two
     if m:
         return neg + m.group(1)
-    m = re.fullmatch(r'(' + INT + r'(?:\.[0-9]*)?(?:[eE][+-]?[0-9]+)?)(_g|_r|_ins)?', s)
+    m = re.fullmatch(r'(' + INT + r'(?:\.[0-9]*)?(?:[eE][+-]?[0-9]+)?)(_g|_r|_q)?', s)
     if m:
         v = m.group(1)
         if m.group(2) is None and ('.' in v or 'e' in v.lower()) and not exact_double(v):

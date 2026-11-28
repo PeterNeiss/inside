@@ -77,11 +77,11 @@ id<"[0..500] 1/1000 [km]"> trip{12.5, km};                     // 12.5 km, to th
 auto m = trip.in(si::metre);                                   // 12500 m: the same raw, grid × 1000
 static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
 
-auto total = trip + just<800> * si::metre;                     // 13300 m: the sum runs in metres
+auto total = trip + 800_q * si::metre;                     // 13300 m: the sum runs in metres
 auto speed = total / id<"[1..600] [min]">{20, si::minute};
 auto kmh   = speed.in(km / si::hour);                          // 39.9 km/h, exactly
-id<"[0..1000] round_half_away|clamp"> laps = trip / (just<400> * si::metre); // 31: km / m is a number
-static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
+id<"[0..1000] round_half_away|clamp"> laps = trip / (400_q * si::metre); // 31: km / m is a number
+static_assert(!addable<decltype(trip), decltype(1_q * si::second)>); // another dimension
 ```
 
 **Quantity kinds separate quantities of one dimension.**
@@ -106,7 +106,7 @@ auto tall   = kind_cast<isq::height>(w);              // a width read as a heigh
 auto room = point<si::degree_Celsius>(id<"[-50..50] 1/10">{20});
 auto k    = room.point_for(si::absolute_zero).in(si::kelvin);      // 293.15 K, exactly
 auto f    = room.point_in(international::degree_Fahrenheit);       // 68 ℉, exactly
-auto warm = room + just<5> * si::kelvin;                           // 25 ℃: a point plus a difference
+auto warm = room + 5_q * si::kelvin;                               // 25 ℃: a point plus a difference
 auto rise = warm - room;                                           // 5 ℃, a quantity: a difference
 static_assert(!addable<decltype(room), decltype(room)>);           // points do not add
 ```
@@ -116,12 +116,12 @@ static_assert(!addable<decltype(room), decltype(room)>);           // points do 
 <!-- listing: own -->
 ```cpp
 inline constexpr auto euro = base_unit<"EUR", "currency">;
-inline constexpr auto           cent = unit<"ct", 0.01_ins * euro>;
+inline constexpr auto           cent = unit<"ct", 0.01_q * euro>;
 
 using price = id<"[0..100] 1/100 [EUR/kg]">;
 using mass  = id<"[0..10] 1/1000 [kg]">;
 
-constexpr auto cost  = price{3.49_ins, euro / si::kilogram} * mass{1.25_ins, si::kilogram}; // 4.3625 EUR, exactly
+constexpr auto cost  = price{3.49_q, euro / si::kilogram} * mass{1.25_q, si::kilogram};     // 4.3625 EUR, exactly
 constexpr auto cents = cost.in(cent);                                                       // 436.25 ct: the same raw
 static_assert(!addable<decltype(cost), mass>);                                              // money never adds to a mass
 ```
@@ -205,7 +205,7 @@ also reduce an angle in degrees or turns exactly, so `cos` of 120° is exactly
 `42` has no grid. A number never becomes a quantity, or a quantity a number,
 without its unit named where it happens. A quantity is made from a number and
 its unit, `quantity<si::metre, inside<{0, 100}>>{42, si::metre}`, or from an
-`inside` times a unit, `just<42> * si::metre`; its number is read in a unit,
+`inside` times a unit, `42_q * si::metre`; its number is read in a unit,
 `q.numerical_value_in(si::metre)`. `quantity<R, Rep>{42}` and
 `q.numerical_value()` are ill-formed. That is [@P3045R10]'s rule, without its
 exception for a dimensionless quantity in unit one: `{42, one}` names the unit
@@ -226,7 +226,7 @@ value. An entry is identified by its content, not by its address.
 
 A program defines its own units, kinds, origins and base dimensions
 (currency, information, pixels), each in one declaration whose name is a
-template argument: `unit<"ftm", 1.8288_ins * si::metre>`. A unit is defined by
+template argument: `unit<"ftm", 1.8288_q * si::metre>`. A unit is defined by
 the quantity it equals. From then on they behave like the catalog's: prefixes
 apply to a named unit, a kind under length is a length, and money never adds
 to a mass.
@@ -297,7 +297,7 @@ namespace std::units {
   };
   template<symbol_text Symbol, auto Definition, unit_options = {}>
     constexpr auto unit;                                      // a unit_t: m, N, °C, by the quantity it equals
-                                                              // (1.8288_ins * si::metre), a unit, or a kind
+                                                              // (1.8288_q * si::metre), a unit, or a kind
   template<symbol_text Symbol, symbol_text Dimension, unit_options = {}>
     constexpr auto base_unit;                                 // a unit_t: a new dimension, its kind, its unit
   inline constexpr unit_t<unit_value{}> one;                  // the unit 1
@@ -391,7 +391,7 @@ namespace std::units {
   template<symbol_text Name, auto Where>
     constexpr auto origin;                                    // an origin_t: absolute (a kind or a dimension),
                                                               // or at a point of another:
-                                                              // si::absolute_zero + 273.15_ins * si::kelvin
+                                                              // si::absolute_zero + 273.15_q * si::kelvin
   template<reference R, origin_ref O, insidable Rep>
   class quantity_point {
   public:

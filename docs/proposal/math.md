@@ -128,14 +128,14 @@ auto           at_run_time     = math::exp(x_t{1.5});
 <!-- listing: math_quantity -->
 ```cpp
 using down = id<"[-1..1] 1/16384 round_floor">;
-auto h = math::cos<down>(just<120> * si::degree); // exactly -1/2, even rounding down
+auto h = math::cos<down>(120_q * si::degree); // exactly -1/2, even rounding down
 
 using area_t = id<"[0..100] 1/1024 [m^2] round_half_away">;
 auto side = math::sqrt(area_t{2, square(si::metre)}); // 1.4140625 m: the unit's root
 static_assert(std::is_same_v<decltype(side)::rep, id<"[0..10] 1/1024 round_half_away">>);
 
 using rad_t = id<"[0..7] 1/1'000'000 round_half_away">;
-auto right = value_cast<si::radian, rad_t>(just<90> * si::degree); // 1.570796 rad: π/2, rounded once
+auto right = value_cast<si::radian, rad_t>(90_q * si::degree); // 1.570796 rad: π/2, rounded once
 ```
 
 # Design

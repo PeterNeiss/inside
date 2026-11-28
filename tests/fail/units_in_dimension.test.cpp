@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    auto t = (just<1> * si::metre).in(si::second);
+    auto t = (1_q * si::metre).in(si::second);
     (void)t;
 }

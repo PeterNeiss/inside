@@ -356,9 +356,9 @@ namespace ins
     constexpr bool part_is_zero(const P& p)
     {
       if constexpr (quantity_like<P>)
-        return ins::detail::value_of(p) == just<0>;
+        return ins::detail::value_of(p) == 0_q;
       else
-        return p == just<0>;
+        return p == 0_q;
     }
 
     template <class A, class B>
@@ -502,7 +502,7 @@ namespace ins
       if constexpr (from)
         return std::constructible_from<T, const std::tuple_element_t<*from, PX>&, const Pol&...>;
       else
-        return std::constructible_from<typename part_number<T>::type, decltype(just<0>), const Pol&...>;
+        return std::constructible_from<typename part_number<T>::type, decltype(0_q), const Pol&...>;
     }
     template <class T, class PX>
     consteval bool part_from_implicitly()
@@ -511,7 +511,7 @@ namespace ins
       if constexpr (from)
         return std::convertible_to<const std::tuple_element_t<*from, PX>&, T>;
       else
-        return std::convertible_to<decltype(just<0>), typename part_number<T>::type>;
+        return std::convertible_to<decltype(0_q), typename part_number<T>::type>;
     }
 
     // The blade atoms and polynomial variables of a unit, unscaled: e₁ e₂ of m e₁ e₂, x² of m x².
@@ -582,7 +582,7 @@ namespace ins
         return t;
       }();
       constexpr grid_number f{blade_factor(u) * F};
-      return as_part(make_quantity<reference_of(r)>(number_of_part(p) * just<f>));
+      return as_part(make_quantity<reference_of(r)>(number_of_part(p) * detail::point_v<f>));
     }
 
     // A pseudoscalar argument: a unit of a blade only.
@@ -624,7 +624,7 @@ namespace ins
             if constexpr (from)
               return T(std::get<*from>(px), pol...);
             else
-              return detail::part_of_number<T>(just<0>, pol...);
+              return detail::part_of_number<T>(0_q, pol...);
           }()...};
       }(std::make_index_sequence<sizeof...(Parts)>{});
     }
@@ -656,7 +656,7 @@ namespace ins
 
     constexpr multivector() = default;
 
-    // From its parts, in order: multivector<id<"[0..9]">, id<"[0..9] [i]">>{3, just<4> * i}. A blade's part is a
+    // From its parts, in order: multivector<id<"[0..9]">, id<"[0..9] [i]">>{3, 4_q * i}. A blade's part is a
     // quantity.
     template <class... A>
       requires(sizeof...(A) == sizeof...(Parts) && (std::constructible_from<Parts, A> && ...))
@@ -664,7 +664,7 @@ namespace ins
       : P{Parts(std::forward<A>(a))...} {}
     template <class... A>
       requires(sizeof...(A) == sizeof...(Parts)) && (detail::bare_number_for<Parts, A> || ...)
-    multivector(A&&...) = delete ("units: a blade's part is a quantity - write {3, just<4> * i}, not {3, 4}");
+    multivector(A&&...) = delete ("units: a blade's part is a quantity - write {3, 4_q * i}, not {3, 4}");
 
     // From any element whose blades are among these; the parts it lacks are 0.
     // Implicit when each part converts implicitly.
@@ -719,7 +719,7 @@ namespace ins
     return detail::mv_add(a, detail::mv_negate(b));
   }
   // Equality: a multivector with a multivector or a quantity, never with a plain number
-  // (only plain insides compare with numbers; a scalar part is a quantity: z * conj(z) == just<25> * one).
+  // (only plain insides compare with numbers; a scalar part is a quantity: z * conj(z) == 25_q * one).
   template <class A, class B>
     requires detail::mv_operands<A, B> && detail::mv_addable<A, B> && (!insidable<A>) && (!insidable<B>)
   [[nodiscard]] constexpr bool operator==(const A& a, const B& b)

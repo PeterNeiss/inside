@@ -25,9 +25,9 @@ int main()
   using kiloohms = id<"[1..100] 1/10 [kohm]">;                     // 0.1 kΩ steps, at least 1 kΩ
   using ohms     = id<"[1..1000] [ohm]">;                          // whole ohms
 
-  const kiloohms r1{just<47, 10> * kohm};
+  const kiloohms r1{4.7_q * kohm};
   const ohms     r2{330, si::ohm};
-  const kiloohms r3{just<12, 10> * kohm};
+  const kiloohms r3{1.2_q * kohm};
   const auto     r {r1 + r2 + r3};
   std::cout << "R      = " << r << '\n';
   if (to_string(r) != "6230 Ω")
@@ -74,7 +74,7 @@ int main()
   // The cutoff 1/(2πτ) is 1/s, cast to a frequency (not an activity, Bq).
   // pi keeps π in the unit, so it rounds once, with the true π, onto 0.01 Hz.
   using hundredths = id<"[0..100'000] 1/100 round_half_away">;
-  const auto f {just<1> / (just<2> * (pi * tau))};
+  const auto f {1_q / (2_q * (pi * tau))};
   const auto fc{value_cast<si::hertz, hundredths>(kind_cast<isq::frequency>(f))};
   std::cout << "f_c    = " << fc << '\n'; // 255.47 Hz
   if (to_string(fc) != "255.47 Hz")

@@ -826,7 +826,7 @@ namespace ins
     constexpr origin_def(std::string_view name, dimension d) : Name{named(name)}, Dim{d} {}
     template <const kind_def* K>
     constexpr origin_def(std::string_view name, kind_t<K>) : Name{named(name)}, Dim{K->Dim} {}
-    // One at a constant point of another origin: origin_def{"ice_point", si::absolute_zero + 273.15_ins * si::kelvin}
+    // One at a constant point of another origin: origin_def{"ice_point", si::absolute_zero + 273.15_q * si::kelvin}
     // (defined in units/detail/define.hpp).
     template <class P>
       requires requires(const P& p) { p.quantity_from_origin(); }
@@ -994,7 +994,7 @@ namespace ins
     constexpr unit_def(std::string_view sym, unit_t<U>, unit_options o = {});
     template <unit_value U, const kind_def* K>
     constexpr unit_def(std::string_view sym, unit_t<U>, kind_t<K>, unit_options o = {});
-    // A unit defined by the constant quantity it equals: unit_def{"ftm", 1.8288_ins * si::metre}
+    // A unit defined by the constant quantity it equals: unit_def{"ftm", 1.8288_q * si::metre}
     // (defined in units/detail/define.hpp).
     template <class Q>
       requires detail::is_quantity_v<Q>
@@ -1654,7 +1654,7 @@ namespace ins
       else
       {
         // The product's grid with v's policy: a conversion keeps clamp, wrap and the rounding mode.
-        const auto x{v * just<M.Ratio>};
+        const auto x{v * detail::point_v<M.Ratio>};
         if constexpr (policy_of<decltype(x)> == policy_of<V>)
           return x;
         else
@@ -1708,7 +1708,7 @@ namespace ins
 
     // Whether rescale<M>(v) forms: inside's v · M exists. A pi factor passes, for rescale's static_assert to explain.
     template <magnitude M, class V>
-    concept rescale_forms = !exact_factor_v<M> || M.is_one() || requires(const V& v) { v * just<M.Ratio>; };
+    concept rescale_forms = !exact_factor_v<M> || M.is_one() || requires(const V& v) { v * detail::point_v<M.Ratio>; };
 
     // Whether a number of V in unit From rescales to unit To.
     template <unit_value From, unit_value To, class V>

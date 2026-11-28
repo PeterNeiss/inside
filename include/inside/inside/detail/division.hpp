@@ -336,7 +336,7 @@ namespace ins::detail
       }
     }();
 
-    // x / just<c> (c != 0) off the native paths: the result keeps x's lattice scaled by 1/|c| (grid operator/),
+    // x / detail::point_v<c> (c != 0) off the native paths: the result keeps x's lattice scaled by 1/|c| (grid operator/),
     // so it is x's offset (op_result.hpp), or past 64 bits the exact quotient on that lattice.
     // Exact and in range by construction: it cannot fail.
     static constexpr bool point_divisor =

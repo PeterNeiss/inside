@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    id<"[0..10] [km]"> q = just<1500> * si::metre;
+    id<"[0..10] [km]"> q = 1500_q * si::metre;
     (void)q;
 }

@@ -28,9 +28,9 @@ int main()
   sequence_number seq   {65500, pkt};
   epoch_counter   epochs{0, epoch};
 
-  // 100_ins is the single-value id<"[100..100]">, and times pkt a single-value quantity:
+  // 100_q is the single-value id<"[100..100]">, and times pkt a single-value quantity:
   // added to another quantity it widens the grid, a constant that never turns into a run-time int.
-  constexpr auto window {100_ins * pkt};
+  constexpr auto window {100_q * pkt};
   auto           preview{window + seq};
   std::cout << "preview after +100 pkt: " << preview << "\n";
 
@@ -50,9 +50,9 @@ int main()
   for (int i = 0; i < 6; ++i)
   {
     s += window;
-    const auto [lap, slot] = divmod(s, 256_ins * pkt, round_toward_zero);
+    const auto [lap, slot] = divmod(s, 256_q * pkt, round_toward_zero);
     std::cout << "  seq=" << s << "  ->  lap " << lap << ", slot " << slot << "\n";
-    if (i == 5 && (lap != 2 || slot != 52_ins * pkt))
+    if (i == 5 && (lap != 2 || slot != 52_q * pkt))
       return 1;
   }
 

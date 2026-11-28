@@ -5,7 +5,7 @@
 
 int main() {
     using namespace ins;
-    const id<"[0..1] 1/1024"> x{just<1, 4>};
+    const id<"[0..1] 1/1024"> x{0.25_q};
     const double d = static_cast<double>(x);
     (void)d;
 }

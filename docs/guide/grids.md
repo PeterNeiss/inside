@@ -25,7 +25,7 @@ breaks it does not compile, and the message gives both numbers.
 With only the limits, `{Lower, Upper}`, the notch is derived: the coarsest
 step 1/k that keeps every integer and both limits on the grid. That is 1 for
 integer limits, 1/2 for `{0.5, 10}`, and 1/80 for
-`{just<3, 10>, just<13, 16>}`.
+`{0.3_q, 0.8125_q}`.
 
 Both limits are values of the grid: `{0, 100}` holds 0 and 100. Lower need not
 be a multiple of the notch: `{{0.5, 10.5}, 1}` holds 0.5, 1.5, …, 10.5.
@@ -38,19 +38,27 @@ Every number in a grid, and every constant in an expression, is exact:
 |---|---|
 | `42`, `0.5`, `0x1p-4` | an integer, or a floating-point literal that is exact in binary |
 | `per<D>` | the step 1/D |
-| `just<N, D>` | the exact ratio N/D, as an inside of one point; `just<N>` is N |
-| `5_ins`, `0.1_ins` | the integer 5, the exact decimal 1/10: an inside of one point |
+| `5_q`, `0.1_q`, `"2/3"_q` | the integer 5, the exact decimal 1/10, the ratio 2/3: an inside of one point |
+| `std::cw<V>` | a value the code computes while compiling (`std::cw<N>` in a template), as that point |
 
-The literals `_ins` and `_g` are also in `ins::literals`:
+The literals `_q` and `_g` are also in `ins::literals`:
 `using namespace ins::literals;` brings only them.
 
+`std::cw<V>` is the standard `std::constant_wrapper`. The operators,
+comparisons, compound assignments and constructors read it as the point V:
+`x * std::cw<N>`, `x <= std::cw<upper_of<T>>`, `T{std::cw<N>}`,
+`std::cw<v> * si::metre`. A function such as `max` or `mod` takes an inside,
+so pass it `2_q` or a point type. Two wrappers combine by std's own rules
+(`std::cw<1> / std::cw<3>` is `std::cw<0>`), and a wrapper of a double is
+rejected as the double is.
+
 `0.1` is not 1/10 in binary, so a grid or a constant that needs 1/10 says
-`0.1_ins`, `per<10>` or `just<1, 10>`. A value at run time can be a `double`:
+`0.1_q`, `per<10>` or `"1/10"_q`. A value at run time can be a `double`:
 `id<"[0..1] 1/10 round_half_away">{0.1}` rounds it to the nearest notch,
 1/10.
 
-A point such as `just<440>` or `5_ins` holds its value in the type and takes no
-storage. Use one as a constant in arithmetic: `x + 1_ins`, `x * just<3, 4>`.
+A point such as `440_q` or `5_q` holds its value in the type and takes no
+storage. Use one as a constant in arithmetic: `x + 1_q`, `x * 0.75_q`.
 
 ## Half-open ranges
 
@@ -77,7 +85,7 @@ denominator stays within a bound you name.
 
 ```cpp
 using thousandths = id<"[0..1] <1000>">;
-thousandths t{just<1, 3>};                   // exactly 1/3
+thousandths t{"1/3"_q};                   // exactly 1/3
 ```
 
 You rarely write one yourself. They come from exact division: `a / b` on

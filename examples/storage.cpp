@@ -45,7 +45,7 @@ int main()
   // Signed arithmetic stays exact and its result grid widens: no overflow.
   const auto climb{altitude{4500, m} - altitude{-200, m}};
   std::cout << "climb " << climb << "\n";
-  if (climb != just<4700> * m)
+  if (climb != 4700_q * m)
     return 1;
 
   // 2. Presets at native widths that still carry a range and a policy, here as the numbers of PCM samples.
@@ -55,9 +55,9 @@ int main()
   static_assert(sizeof(sample) == 2);
   sample mixed{0, LSB};
   mixed.with<clamp>() = sample{30000, LSB} + sample{20000, LSB};                  // a mix: 50000 saturates
-  const sample out{mul<sample>(unorm16{0.5_ins}, sample{10001, LSB}, round_half_away)}; // a gain, rounded once
+  const sample out{mul<sample>(unorm16{0.5_q}, sample{10001, LSB}, round_half_away)}; // a gain, rounded once
   std::cout << "mix " << mixed << ", gain " << out << "\n";
-  if (mixed != just<32767> * LSB || out != just<5001> * LSB)
+  if (mixed != 32767_q * LSB || out != 5001_q * LSB)
     return 1;
 
   // 3. A fixed wire layout: the field's type is the wire's, the value checked.

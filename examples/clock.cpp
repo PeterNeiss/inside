@@ -16,9 +16,9 @@ using namespace ins;
 namespace
 {
   // Calendar units of our own: a 30-day month (for clarity), a 12-month year, a 7-day week.
-  inline constexpr auto month = unit<"mo", just<30> * si::day>;
-  inline constexpr auto year  = unit<"yr", just<12> * month>;
-  inline constexpr auto week  = unit<"wk", just<7>  * si::day>;
+  inline constexpr auto month = unit<"mo", 30_q * si::day>;
+  inline constexpr auto year  = unit<"yr", 12_q * month>;
+  inline constexpr auto week  = unit<"wk", 7_q  * si::day>;
 } // namespace
 
 // A 24-hour clock: seconds → minutes → hours, wrapping at 24.
@@ -117,19 +117,19 @@ int main()
   // so the carry through sec → min → hour counts the next unit up.
   clock24 t(23, 59, 45);
   std::cout << "start:      " << t << "\n";
-  t.add_seconds(just<20> * si::second);
+  t.add_seconds(20_q * si::second);
   std::cout << "+20 s:      " << t << "\n";
-  t.add_minutes(just<90> * si::minute);
+  t.add_minutes(90_q * si::minute);
   std::cout << "+90 min:    " << t << "\n";
-  t.add_seconds(si::hour + just<30> * si::minute + just<30> * si::second); // 5430 s
+  t.add_seconds(si::hour + 30_q * si::minute + 30_q * si::second); // 5430 s
   std::cout << "+1 h 30 min 30 s: " << t << "\n";
   if (to_string(t.hours) != "3 h" || to_string(t.minutes) != "0 min" || to_string(t.seconds) != "35 s")
     return 1;
 
   // The same steps as one duration: the cascade agrees with it, and the clock converts both ways.
   {
-    const auto end{just<23> * si::hour + just<59> * si::minute + just<45> * si::second
-                   + just<20> * si::second + just<90> * si::minute + just<5430> * si::second}; // past midnight
+    const auto end{23_q * si::hour + 59_q * si::minute + 45_q * si::second
+                   + 20_q * si::second + 90_q * si::minute + 5430_q * si::second}; // past midnight
     if (t.seconds_since_midnight() != end % si::day)
       return 1;
     const clock24 back{clock24::from(t.seconds_since_midnight())};
@@ -140,17 +140,17 @@ int main()
 
   // 2. The calendar.
   date d;
-  d.day    = just<15> * si::day;
-  d.months = just<3> * month;
-  d.years  = just<2026> * year;
+  d.day    = 15_q * si::day;
+  d.months = 3_q * month;
+  d.years  = 2026_q * year;
   std::cout << "\nstart:      " << d << "\n";
-  d.add_days(just<20> * si::day);
+  d.add_days(20_q * si::day);
   std::cout << "+20 d:      " << d << "\n";
-  d.add_months(just<11> * month);
+  d.add_months(11_q * month);
   std::cout << "+11 mo:     " << d << "\n";
-  d.add_days(just<400> * si::day); // cascades through all three fields
+  d.add_days(400_q * si::day); // cascades through all three fields
   std::cout << "+400 d:     " << d << "\n";
-  if (d.years != just<2028> * year || d.months != just<4> * month || d.day != just<15> * si::day)
+  if (d.years != 2028_q * year || d.months != 4_q * month || d.day != 15_q * si::day)
     return 1;
 
   // Weeks and the day of the week by one divmod: a week's grid excludes 0, so it cannot fail.
@@ -158,15 +158,15 @@ int main()
   // The quotient counts whole weeks: a number, times the week a duration again.
   const auto [weeks, dow] = divmod(day_number{14003, si::day}, week);
   std::cout << "day 14003 is " << weeks * week << " + " << dow << " (0 d = the reference day's weekday)\n";
-  if (weeks * week != just<2000> * week || dow != just<3> * si::day)
+  if (weeks * week != 2000_q * week || dow != 3_q * si::day)
     return 1;
 
   // With 1970-01-01 (a Thursday, 4 days after a Sunday) as day 0: 2008-05-04, a Sunday.
   constexpr std::array<const char*, 7> names{
     "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-  const auto our{(just<4> * si::day + dow) % week};
+  const auto our{(4_q * si::day + dow) % week};
   std::cout << "1970-01-01 + 14003 d is a " << names[our.numerical_value_in(si::day)] << "\n";
-  if (our != just<0> * si::day)
+  if (our != 0_q * si::day)
     return 1;
   return 0;
 }

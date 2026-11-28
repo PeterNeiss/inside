@@ -18,7 +18,7 @@ namespace
 {
   inline constexpr auto level_kind = kind<"level", isq::dimensionless, {.distinct = true}>;
   inline constexpr auto dB         = unit<"dB", one, {.kind = level_kind}>;
-  inline constexpr auto turn       = unit<"tr", just<2> * pi * si::radian>; // 1 tr = 2π rad
+  inline constexpr auto turn       = unit<"tr", 2_q * pi * si::radian>; // 1 tr = 2π rad
   inline constexpr auto FS         = base_unit<"FS", "amplitude">;         // full scale: a sample's peak
   inline constexpr auto clip       = base_unit<"clip", "clipping">;        // one clipped frame
 } // namespace
@@ -30,7 +30,7 @@ using decibels    = id<"[-24..12] 1/2 [dB] round_half_away">;                   
 using linear_gain = id<"[0..4] 1/65536 round_half_away">;                       // a ratio: 10^(dB/20) ≈ [0.063, 3.98]
 
 // 10^(L / 20 dB): the ratio is exact (a 1/40 grid), and pow_base rounds once onto linear_gain.
-static linear_gain db_to_linear(decibels db) { return math::pow_base<10, linear_gain>(db / (just<20> * dB)); }
+static linear_gain db_to_linear(decibels db) { return math::pow_base<10, linear_gain>(db / (20_q * dB)); }
 
 int main()
 {
@@ -49,20 +49,20 @@ int main()
   using turns     = id<"[-1..1] 1/24 [tr]">;
   using amplitude = id<"[0..1] 1/1024 [FS] round_half_away">;
 
-  constexpr auto  tone{just<1> * si::hertz}; // one cycle over the 1 s buffer
+  constexpr auto  tone{1_q * si::hertz}; // one cycle over the 1 s buffer
   constexpr turns offsets[4] = {
     turns{0, turn},
-    just<1, 8> * turn,  // +π/4
-    just<-1, 6> * turn, // -π/3
-    just<-1, 4> * turn, // -π/2
+    0.125_q * turn,  // +π/4
+    "-1/6"_q * turn, // -π/3
+    -0.25_q * turn,  // -π/2
   };
-  constexpr amplitude amplitudes[4] = {0.9_ins * FS, 0.7_ins * FS, 0.6_ins * FS, 0.4_ins * FS};
+  constexpr amplitude amplitudes[4] = {0.9_q * FS, 0.7_q * FS, 0.6_q * FS, 0.4_q * FS};
 
   sample channels[4][N];
   for (frame i : values<frame>)
   {
-    const seconds t = (i / just<N>) * si::second; // exact: N is a nonzero point
-    const cycles  c = tone * t;                   // Hz · s is a plain number of cycles
+    const seconds t = (i / std::cw<N>) * si::second; // exact: N is a nonzero point
+    const cycles  c = tone * t;                      // Hz · s is a plain number of cycles
     for (int ch = 0; ch < 4; ++ch)
     {
       const auto a{c * turn + offsets[ch]}; // in turns, exact
@@ -101,7 +101,7 @@ int main()
   std::cout << "clipped_bus{add_all(1, -1, 1, 1 FS), clamp} = "
             << clipped_bus{add_all(channel{1, FS}, channel{-1, FS}, channel{1, FS}, channel{1, FS}), clamp} << "\n";
 
-  if (clip_events != just<10> * clip || db_to_linear(level[2]) != just<32846, (1 << 16)>)
+  if (clip_events != 10_q * clip || db_to_linear(level[2]) != "32846/65536"_q)
     return 1;
   return 0;
 }

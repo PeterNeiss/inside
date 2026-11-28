@@ -128,7 +128,7 @@
 // The core type ins::id<ins::key{G, P}>:
 // construction and try_make, compound assignment, ++/--, the conversions (rational, double, to<T>),
 // numerator()/denominator(), raw()/from_raw, the per-store overrides (with<F>(), on_error(ec))
-// and hooks (on_wrap, on_clamp, on_error), parse(first, last), just<…> and the _ins literal.
+// and hooks (on_wrap, on_clamp, on_error), parse(first, last), the _q literal and std::cw<V> operands.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which need this complete type.
 
 
@@ -306,7 +306,7 @@ namespace ins
                  "interval, or store with clamp or wrap";
         case error::rounding_error:
           return "inside: a checked store in a constant expression is not on the grid's notch - write the value "
-                 "exactly (3.49_ins, just<349, 100>), or store with a rounding policy";
+                 "exactly (3.49_q, \"1/3\"_q), or store with a rounding policy";
         default:
           return error_message(e);
       }
@@ -339,7 +339,7 @@ namespace ins
                         "the interval, or store with clamp or wrap">();
       if (code == error::rounding_error)
         constexpr_error<"inside: a checked store in a constant expression is not on the grid's notch - write the "
-                        "value exactly (3.49_ins, just<349, 100>), or store with a rounding policy">();
+                        "value exactly (3.49_q, \"1/3\"_q), or store with a rounding policy">();
       constexpr_error_of(code);
     }
 
@@ -2610,7 +2610,7 @@ namespace ins::detail
 } // namespace ins::detail
 
 // (detail::rational is the library's own: the raw of a bounded continuous inside and the fast path of exact
-// arithmetic. It is no part of the user API: an exact value is an inside (0.1_ins, just<1, 10>, a / b).)
+// arithmetic. It is no part of the user API: an exact value is an inside (0.1_q, 0.1_q, a / b).)
 
 
 // ======================================================================
@@ -2634,7 +2634,7 @@ namespace ins::detail
 
 namespace ins::detail
 {
-  // The number parser of the _ins and _r literals (inside/detail/core.hpp's _ins, _r below). It accepts:
+  // The number parser of the _q and _r literals (inside/detail/core.hpp's _q, _r below). It accepts:
   //   integer             5, 1'000
   //   decimal             1.25, .5
   //   decimal scientific  1.5e2, 2.5e-1
@@ -2686,7 +2686,7 @@ namespace ins::detail
     parse_fail Fail;
   };
 
-  // An unsigned number in the grammar of the _ins, _r and _g literals, scanned in one pass:
+  // An unsigned number in the grammar of the _q, _r and _g literals, scanned in one pass:
   // the radix and the exponent come back,
   // and each mantissa digit goes to on_digit(d, in_frac, base) (false stops the scan: the builder's overflow).
   // parse_number (64-bit), parse_exact (wide, wide_value.hpp), parse_grid_literal (the _g literal) and stand_in
@@ -2776,7 +2776,7 @@ namespace ins::detail
     return r;
   }
 
-  // An unsigned number in [first, last), in the grammar of the _ins and _r literals.
+  // An unsigned number in [first, last), in the grammar of the _q and _r literals.
   constexpr parsed_number parse_number(const char* first, const char* last)
   {
     auto fail = [](parse_fail f) { return parsed_number{rational{}, f}; };
@@ -3023,7 +3023,7 @@ namespace ins::detail
 
 namespace ins
 {
-  // The literals (_ins, _g) live in the inline namespace literals: using namespace ins::literals brings only them.
+  // The literals (_q, _g) live in the inline namespace literals: using namespace ins::literals brings only them.
   // (detail::operator""_r, an exact decimal as a detail::rational, is the library's own.)
 } // namespace ins
 
@@ -3538,7 +3538,7 @@ namespace ins::detail
     constexpr big_rational(T v) noexcept(std::numeric_limits<T>::digits <= 64) : Num{v} {}
     constexpr big_rational(big_int n, big_int d = big_int{1}) : Num{n}, Den{d} { normalize(); }
     constexpr big_rational(const rational& r) : Num{big_int::of_limb(r.Num, r.Den < 0)}, Den{abs_den(r.Den)} {}
-    // Anything else that converts to rational (an inside: just<-6, 5>) takes that one conversion,
+    // Anything else that converts to rational (an inside: -1.2_q) takes that one conversion,
     // so it can be a grid limit or notch.
     template <class T>
       requires(std::is_class_v<T> && !std::same_as<T, rational> && !std::same_as<T, grid_number>
@@ -3844,7 +3844,7 @@ namespace ins
     constexpr grid_number(const detail::rational& r)
       : grid_number(detail::big_rational{detail::big_int::of_limb(r.Num, r.Den < 0),
                                          detail::big_int{detail::abs_den(r.Den)}}) {}
-    // Anything else that converts to the 64-bit rational (an inside: just<-6, 5>) takes that one conversion,
+    // Anything else that converts to the 64-bit rational (an inside: -1.2_q) takes that one conversion,
     // so it can be a grid limit.
     template <class T>
       requires(std::is_class_v<T> && !std::same_as<T, detail::rational> && !std::same_as<T, grid_number>
@@ -4112,7 +4112,7 @@ namespace ins::detail
   // An unsigned number in [first, last) in the whole literal grammar
   // (scan_number: 0x and 0b prefixes, ' separators, a point, an e±n or p±n exponent), taken exactly, of any size:
   // the scan's failure (e_exponent_numerator_overflow: an exponent past max_exp), else none and the value in out.
-  // The _g and _ins literals (parse_grid_literal) and an id's text (detail/id_text.hpp) read numbers here.
+  // The _g and _q literals (parse_grid_literal) and an id's text (detail/id_text.hpp) read numbers here.
   consteval parse_fail scan_exact(const char* first, const char* last, grid_number& out, int max_exp = 10000)
   {
     // The value is m·B^e (B the radix), times 2^±n or 10^±n.
@@ -4158,21 +4158,21 @@ namespace ins::detail
   }
 
   // parse_grid_literal: the exact literal (scan_exact), of any size.
-  // The _g literal, and _ins (its point); _r parses the same grammar into the 64-bit rational.
+  // The _g literal, and _q (its point); _r parses the same grammar into the 64-bit rational.
   template <char... Chars>
   consteval grid_number parse_grid_literal()
   {
     if constexpr (octal_literal<Chars...>())
-      constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
+      constexpr_error<"_g/_q literal: a leading 0 makes an octal literal; write the number without it">();
     constexpr char text[] = {Chars...};
     grid_number    out;
     const parse_fail f{scan_exact(text, text + sizeof(text), out)};
     if (f == parse_fail::empty)
-      constexpr_error<"_g/_ins literal: expected digits">();
+      constexpr_error<"_g/_q literal: expected digits">();
     if (f == parse_fail::e_exponent_numerator_overflow)
-      constexpr_error<"_g/_ins literal: exponent too large">();
+      constexpr_error<"_g/_q literal: exponent too large">();
     if (f != parse_fail::none)
-      constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
+      constexpr_error<"_g/_q literal: digits, a point and an exponent only">();
     return out;
   }
 } // namespace ins::detail
@@ -4211,8 +4211,8 @@ namespace ins
   // The grid-building helpers.
   // per<D> is the step 1/D, the common notch (per<256> is Q·8; per<2^70>, with D a grid number, is a notch past
   // 64 bits).
-  // Any other exact ratio is the point just<N, D> (inside/detail/core.hpp):
-  // a limit like just<-6, 5> for -1.2, or another step like just<360, 4096>.
+  // Any other exact ratio is the point "N/D"_q (inside/detail/core.hpp):
+  // a limit like -1.2_q for -1.2, or another step like ("360/4096"_q).
   // (The _r literal, an exact decimal or hex value, 0.1_r exactly 1/10, is in inside/detail/number_text.hpp.)
   // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a negative notch however it is spelled.
   template <auto D>
@@ -4801,7 +4801,7 @@ namespace ins
 
     grid() = default;
     // Corner ctors accept any type convertible to `rational`:
-    // int/float/rational and any `inside` / `just<>` (via its implicit `operator rational()`),
+    // int/float/rational and any `inside` / `_q` point (via its implicit `operator rational()`),
     // so an inside can be a grid corner.
     // They stay *templates* (deducing the corner type) on purpose:
     // a braced `{lo, hi}` can't deduce to a template parameter,
@@ -4813,7 +4813,7 @@ namespace ins
       : grid{ins::interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived, gcd(1, Lower, Upper),
     // the coarsest step 1/k that keeps every integer and both limits on the lattice.
-    // Integer limits give 1; {0.5, 10} gives 1/2; {just<-6, 5>, just<3, 5>} gives 1/5.
+    // Integer limits give 1; {0.5, 10} gives 1/2; {-1.2_q, 0.6_q} gives 1/5.
     constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper)
       : grid{ins::interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
     constexpr grid(detail::grid_number_like auto lower)
@@ -4937,7 +4937,7 @@ namespace ins
 
     // True when `v` is an *exact* slot: in the interval AND on a notch
     // (notch-0 grids store verbatim, so any in-range value qualifies).
-    // Used to admit a single representable value (e.g. `0_ins`) regardless of whole-range mapping.
+    // Used to admit a single representable value (e.g. `0_q`) regardless of whole-range mapping.
     [[nodiscard]] constexpr bool representable(grid_number v) const noexcept
     {
       if (!includes(interval(), v))
@@ -5283,7 +5283,7 @@ namespace ins
   [[nodiscard]] consteval grid operator*(const G& lhs, const G& rhs)
   {
     // A point operand c (notch 0) scales the other lattice exactly: its notch becomes N·|c|,
-    // so `x * just<c>` keeps integer storage instead of turning continuous.
+    // so `x * detail::point_v<c>` keeps integer storage instead of turning continuous.
     // A continuous product bounds its denominators by the product of the operands' bounds.
     const interval    i{lhs.interval() * rhs.interval()};
     const grid_number n{detail::product_notch(lhs, rhs)};
@@ -5297,7 +5297,7 @@ namespace ins
   {
     const interval& r{rhs.interval()};
     // A nonzero point divisor c scales the other lattice exactly, as in operator*:
-    // its notch becomes N/|c|, so `x / just<c>` keeps integer storage instead of turning continuous.
+    // its notch becomes N/|c|, so `x / detail::point_v<c>` keeps integer storage instead of turning continuous.
     if (r.Lower == r.Upper && r.Lower != 0 && lhs.Notch != 0)
       return grid{*(lhs.interval() / r), lhs.Notch / abs(r.Lower)};
     // Any other quotient is continuous: x = p/a over y = r/b is p·b/(a·r),
@@ -5383,7 +5383,7 @@ namespace ins
 //             | "[" num "]"                            a point
 //   step     := num                                    the notch
 //             | "<" num ">"                            a continuous grid's max denominator
-//   num      := ["-"] number ["/" number]              number: as the _ins literal reads it (0.25, 1e9, 0x1p-4, 1'000)
+//   num      := ["-"] number ["/" number]              number: as the _q literal reads it (0.25, 1e9, 0x1p-4, 1'000)
 //   unit     := a unit's text (km/h, kg*m^2/s^2, [1/381*ft]) (units/detail/unit_key.hpp reads these three)
 //   kind     := none | any | [any] kinds (height, length*duration): the kind when not the unit's own
 //   origin   := a name (ice_point), or 0 for the zero of the dimension
@@ -6203,7 +6203,7 @@ namespace ins
 
   namespace detail
   {
-    // The text of a value literal, "42 [1..100)"_ins (inside/detail/core.hpp): a number, as id's text reads one,
+    // The text of a value literal, "42 [1..100)"_q (inside/detail/core.hpp): a number, as id's text reads one,
     // then the text of its type, or nothing for the point. A plain class, so the literal deduces nothing.
     // A number that does not read keeps the whole text in Key, with the mark, and NumberOk false.
     struct value_text
@@ -6258,7 +6258,7 @@ namespace ins
       grid_number            v;
       std::string_view       expected;
       (void)r.number(v, expected);
-      return diag_text{} << "inside: \"" << text << "\"_ins: expected " << expected << " at " << grid_number{r.At};
+      return diag_text{} << "inside: \"" << text << "\"_q: expected " << expected << " at " << grid_number{r.At};
     }
   } // namespace detail
 
@@ -6336,7 +6336,7 @@ namespace ins
   namespace detail
   {
     // The policy of an arithmetic result (and of the common type): the one both operands share,
-    // where a default-policy point (just<…>, 0_ins) is neutral, so (a + 0_ins) / 2_ins rounds as a / 2_ins does.
+    // where a default-policy point (0_q, std::cw<0>) is neutral, so (a + 0_q) / 2_q rounds as a / 2_q does.
     // Different policies give the default. A cursor's marker never carries over.
     template <insidable L, insidable R>
     inline constexpr policy_flag result_flags = []
@@ -7539,7 +7539,7 @@ namespace ins::detail
 
   // A single-point source (Lower == Upper) carries one value,
   // so its notch question is only whether that value lies on L's lattice:
-  // it admits 3_ins into {{0,9},3} and rejects 1_ins.
+  // it admits 3_q into {{0,9},3} and rejects 1_q.
   // (Range is the interval check's job, so clamp and wrap still take an out-of-range point.)
   // The raw Factor says nothing here: a point's notch is 0.
   template <typename L, typename R>
@@ -8626,6 +8626,59 @@ namespace ins::detail
 
 
 // ======================================================================
+//  inside/inside/detail/constant.hpp
+// ======================================================================
+
+
+
+
+// A value the code computes while compiling, std::cw<V> (std::constant_wrapper), is the point V:
+// std::cw<N> in a template, std::cw<upper_of<T>>, std::cw<grid_number{1} / 3>. (A literal is _q's: 3_q, "2/3"_q.)
+// The operators, comparisons, compound assignments and constructors read it as id<key{grid{V}}>.
+// Two wrappers combine by their own rules, as std defines them: std::cw<1> / std::cw<3> is std::cw<0>.
+namespace ins::detail
+{
+  template <class T>
+  inline constexpr bool is_constant_wrapper_v = false;
+  template <auto X, class T>
+  inline constexpr bool is_constant_wrapper_v<std::constant_wrapper<X, T>> = true;
+
+  template <class C>
+  using constant_type_t = typename std::remove_cvref_t<C>::value_type;
+
+  // A wrapper of an exact number: an integer (not a bool), a grid number or a rational.
+  template <class C>
+  concept constant_number = is_constant_wrapper_v<std::remove_cvref_t<C>>
+                        && !std::same_as<constant_type_t<C>, bool> && !std::floating_point<constant_type_t<C>>
+                        && requires { grid{std::remove_cvref_t<C>::value}; };
+
+  // A wrapper of a double is its binary value, not the decimal written (std::cw<0.1>):
+  // the raw-scalar overloads reject it, as they reject 0.1.
+  template <class C>
+  concept floating_constant =
+    is_constant_wrapper_v<std::remove_cvref_t<C>> && std::floating_point<constant_type_t<C>>;
+
+  // The point a wrapper names.
+  template <constant_number C>
+  using point_of_t = id<key{grid{std::remove_cvref_t<C>::value}}>;
+
+  // An operand as the operators read it: a wrapper's point, anything else itself.
+  template <class T>
+  constexpr decltype(auto) operand(const T& x)
+  {
+    if constexpr (constant_number<T>)
+      return point_of_t<T>{};
+    else
+      return (x);
+  }
+
+  // Exactly one operand a wrapper: two follow their own rules.
+  template <class L, class R>
+  concept constant_operands = constant_number<L> != constant_number<R>;
+} // namespace ins::detail
+
+
+// ======================================================================
 //  inside/inside/detail/policy_ref.hpp
 // ======================================================================
 
@@ -8667,7 +8720,7 @@ namespace ins::detail
   {
     using PA = plain_t<A>;
     // A store that may leave a point grid cannot wrap: the period, Upper − Lower + Notch, is 0.
-    // (A point type with wrap still comes out of arithmetic, x * 0_ins; storing the point itself needs no range
+    // (A point type with wrap still comes out of arithmetic, x * 0_q; storing the point itself needs no range
     // check.)
     static_assert(!point_grid<L> || clamp_action<PA>
                     || !(wrap_action<PA> || (uses_flag<L, P, wrap> && !uses_flag<L, P, clamp>)),
@@ -10769,11 +10822,11 @@ namespace ins
       }
 
       // A rational has no grid: as on the inside itself, a compound assignment takes an inside
-      // (0.5_ins, just<1, 2>).
+      // (0.5_q, "1/3"_q).
 #define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                    \
   template <std::same_as<rational> C>                                                                    \
   B& operator op(const C&) = delete ("an inside cannot be combined with a rational: write the constant " \
-                                     "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
+                                     "as 0.5_q or \"1/3\"_q (a grid), or store the rational into an "    \
                                      "inside first");
       INSIDE_NO_RATIONAL_ASSIGN(+=)
       INSIDE_NO_RATIONAL_ASSIGN(-=)
@@ -10861,7 +10914,7 @@ namespace ins::detail
   inline constexpr bool exact_path_fits =
     rational_storage<Result> && (!exact_fits<Op, Result, L, R> || wide_valued<L> || wide_valued<R>);
 
-  // x * just<c> and x / just<c> (c != 0): the result lattice is x's scaled by c or 1/c (grid operator* and
+  // x * detail::point_v<c> and x / detail::point_v<c> (c != 0): the result lattice is x's scaled by c or 1/c (grid operator* and
   // operator/), so the result's offset is x's offset, counted from the far end when the scale is negative.
   // No multiply or divide at all.
   template <insidable Point, insidable X, insidable Result>
@@ -10952,7 +11005,7 @@ namespace ins::detail
     template <policy_flag F = none, typename E = empty_ref>
     static constexpr result mul(L lhs, R rhs, call_policy<F, E> = {})
     {
-      if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (op_result.hpp)
+      if constexpr (point_scale<R, L, result>) // x * detail::point_v<c>: x's offset (op_result.hpp)
         return scale_by_point<result, R>(lhs);
       else if constexpr (point_scale<L, R, result>)
         return scale_by_point<result, L>(rhs);
@@ -11314,7 +11367,7 @@ namespace ins::detail
       }
     }();
 
-    // x / just<c> (c != 0) off the native paths: the result keeps x's lattice scaled by 1/|c| (grid operator/),
+    // x / detail::point_v<c> (c != 0) off the native paths: the result keeps x's lattice scaled by 1/|c| (grid operator/),
     // so it is x's offset (op_result.hpp), or past 64 bits the exact quotient on that lattice.
     // Exact and in range by construction: it cannot fail.
     static constexpr bool point_divisor =
@@ -12111,9 +12164,9 @@ namespace ins
   namespace detail
   {
     // Where an inside keeps its raw.
-    // A point (just<5>, 0.1_ins) holds its value in its type and stores nothing,
+    // A point (5_q, 0.1_q) holds its value in its type and stores nothing,
     // so its empty raw can sit in a public base:
-    // that makes a point inside a structural type, a template argument (unit<"ftm", 1.8288_ins * si::metre>).
+    // that makes a point inside a structural type, a template argument (unit<"ftm", 1.8288_q * si::metre>).
     // Every other inside keeps its raw private.
     template <class R>
     struct public_raw
@@ -12233,6 +12286,11 @@ namespace ins
     {
       store_value(value);
     }
+    // A value computed while compiling, std::cw<V>: stored as its point is, T{std::cw<N>} as T{point}, while
+    // compiling (the value is a constant). A one-shot flag may follow: T{std::cw<N>, clamp}.
+    template <detail::constant_number C, class... Pol>
+      requires(sizeof...(Pol) <= 1) && std::constructible_from<id, detail::point_of_t<C>, Pol...>
+    consteval id(C, Pol&&... pol) : id(detail::point_of_t<C>{}, std::forward<Pol>(pol)...) {}
 
     // One-shot policy: a flag or make_policy<F>(ec) for this store.
     // Its rounding mode replaces the type's and its clamp or wrap the type's range handling
@@ -12724,7 +12782,7 @@ namespace ins
         return detail::try_store<id, O>([&](id& r, auto&& ec_pol) { r = id{step_value(i), ec_pol}; });
     }
 #define INSIDE_WHY_from_index \
-  "inside: from_step(i) takes a notch index - an inside on the integers (step_t<T>, 3_ins) or a builtin integer"
+  "inside: from_step(i) takes a notch index - an inside on the integers (step_t<T>, 3_q) or a builtin integer"
     template <insidable I>
       requires(!detail::integer_lattice<I>)
     static id from_step(const I&) = delete (INSIDE_WHY_from_index);
@@ -12977,7 +13035,7 @@ namespace ins
       requires(point_delta_ok<R> || raw_add_ok<R> || compound_assignable<sum_t<R>>) && compound_proven<sum_t<R>>
     constexpr id& operator+=(const R& rhs)
     {
-      // A point rhs (just<v>, 1_ins, ++) whose value is a whole number of this grid's notches:
+      // A point rhs (1_q, std::cw<v>, ++) whose value is a whole number of this grid's notches:
       // the raw delta is a compile-time constant and the raw encoding cancels every Lower term
       // (raw(v+d) = raw(v) + d/Notch for index and value raws alike), so this compiles to one integer add.
       if constexpr (point_delta_ok<R>)
@@ -13050,12 +13108,12 @@ namespace ins
 
   public:
     // A rational has no grid, like an int or a double:
-    // a compound assign takes an inside (x += 0.5_ins, x += just<1, 2>), as the binary operators do
+    // a compound assign takes an inside (x += 0.5_q, x += "1/3"_q), as the binary operators do
     // (arithmetic.hpp deletes inside ⋈ rational the same way).
 #define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                         \
   template <std::same_as<detail::rational> A>                                                                 \
   id& operator op(const A&) = delete ("an inside cannot be combined with a rational: write the constant " \
-                                          "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
+                                          "as 0.5_q or \"1/3\"_q (a grid), or store the rational into an "    \
                                           "inside first");
     INSIDE_NO_RATIONAL_ASSIGN(+=)
     INSIDE_NO_RATIONAL_ASSIGN(-=)
@@ -13148,9 +13206,9 @@ namespace ins
     // (which has the raw-level integer fast path) instead of the rational round-trip
     // (~30× the instructions on an integer grid).
     // On a notch-1 grid that is ±1; on a cursor, one step.
-    // just itself is declared after the class, so the point inside is spelled directly.
+    // detail::point_v is declared after the class, so the point inside is spelled directly.
     // ++ and -- store like +=: on a checked grid without clamp or wrap the step may leave the interval,
-    // so they are deleted there (step with x.on_error(ec) += 1_ins, or iterate with a cursor).
+    // so they are deleted there (step with x.on_error(ec) += 1_q, or iterate with a cursor).
     // A cursor steps one past its last value to its end;
     // stepping past the end is a precondition, reported to the error handler.
   private:
@@ -13208,8 +13266,8 @@ namespace ins
       return t;
     }
 #define INSIDE_WHY_step_out                                                                                         \
-  "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_ins, x.on_error(f) " \
-  "+= 1_ins, or iterate with a cursor"
+  "inside: ++ and -- may step out of this grid - use a clamp or wrap type, x.on_error(ec) += 1_q, x.on_error(f) "   \
+  "+= 1_q, or iterate with a cursor"
     id& operator++()
       requires(G.Notch != 0 && !step_proven<up_step_t>)
     = delete (INSIDE_WHY_step_out);
@@ -13411,36 +13469,13 @@ namespace ins
     return detail::store_text_value<B, detail::none, true>(*w);
   }
 
-  // just<N, D>: the point grid holds the value, so no value constructor is needed,
-  // and grid numbers past 64 bits (_g) work too.
-  // just<N, D> is the point N/D for an integer D ≥ 1, a builtin or a grid number:
-  // just<1, 3>, just<-6, 5> for -1.2, just<1, 0x1p70_g>.
+  // The point V: its grid holds the value, so it stores nothing (a grid number past 64 bits works too).
+  // The library's own computed points; code spells a literal 0.25_q, "2/3"_q, and a computed value std::cw<V>.
   namespace detail
   {
-    template <auto den>
-    consteval bool integer_den()
-    {
-      if constexpr (std::integral<decltype(den)>)
-        return den >= 1;
-      else if constexpr (std::same_as<decltype(den), grid_number>)
-        return den >= 1 && grid_denominator(den) == grid_int{1};
-      else
-        return false;
-    }
-    template <auto value, auto den>
-    consteval auto just_point()
-    {
-      if constexpr (std::integral<decltype(den)> && den == 1)
-        return id<key{grid{value}}>::from_raw({}, unsafe);
-      else
-      {
-        static_assert(integer_den<den>(), "just<N, D>: D is an integer of at least 1");
-        return id<key{grid{grid_number{value} / grid_number{den}}}>::from_raw({}, unsafe);
-      }
-    }
+    template <auto V>
+    inline constexpr auto point_v = id<key{grid{V}}>::from_raw({}, unsafe);
   } // namespace detail
-  template <auto value, auto den = 1>
-  inline constexpr auto just = detail::just_point<value, den>();
 
   // step_t<T>, step_count_of<T>: a grid's counts as insides, for run time
   // (a grid number past 64 bits exists only at compile time).
@@ -13454,44 +13489,46 @@ namespace ins
 
   template <insidable T>
     requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
-  inline constexpr auto step_count_of = just<grid_number{grid_of<T>.step_count()}>;
+  inline constexpr auto step_count_of = detail::point_v<grid_number{grid_of<T>.step_count()}>;
 
-  // The _ins literal: a compile-time id<key{grid{V, V}}> from a numeric literal.
-  //   5_ins         id<"[5..5]">                 integer
-  //   1.25_ins      id<"[5/4]">        decimal
-  //   1.5e2_ins     id<"[150]">                  decimal scientific
-  //   0xff_ins      id<"[255]">                  hex integer
-  //   0b1010_ins    id<"[10]">                   binary integer
-  //   0x1p15_ins    id<"[32768]">                hex with a 2^N exponent (Q-format)
-  //   0x1p-15_ins   id<"[1/32768]">    1/2^15, a grid notch
-  //   0x1.8p3_ins   id<"[12]">                   hex float
-  //   1'000_ins     id<"[1000]">                 digit separator
+  // The _q literal: a compile-time point id<key{grid{V}}> from a numeric literal.
+  //   5_q           id<"[5]">          integer
+  //   1.25_q        id<"[5/4]">        decimal
+  //   1.5e2_q       id<"[150]">        decimal scientific
+  //   0xff_q        id<"[255]">        hex integer
+  //   0b1010_q      id<"[10]">         binary integer
+  //   0x1p15_q      id<"[32768]">      hex with a 2^N exponent (Q-format)
+  //   0x1p-15_q     id<"[1/32768]">    1/2^15, a grid notch
+  //   0x1.8p3_q     id<"[12]">         hex float
+  //   1'000_q       id<"[1000]">       digit separator
+  //   "2/3"_q       id<"[2/3]">        a fraction (the string form below)
   // The parse is exact (no double round-trip) and of any size, as _g reads it (inside/detail/grid_rational.hpp):
-  // 18446744073709551616_ins is the point 2^64. -1.5_ins parses as -(1.5_ins).
+  // 18446744073709551616_q is the point 2^64. -1.5_q parses as -(1.5_q).
+  // A value the code computes is std::cw<V> (inside/detail/constant.hpp).
   inline namespace literals
   {
     template <char... Chars>
-    constexpr auto operator""_ins()
+    constexpr auto operator""_q()
     {
-      return just<detail::parse_grid_literal<Chars...>()>;
+      return detail::point_v<detail::parse_grid_literal<Chars...>()>;
     }
 
-    // A value with its type: "42 [1..100)"_ins is 42 of type id<"[1..99]">, the number (as an id's text reads one:
-    // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{just<v>} stores it:
-    // "200 [0..99] clamp"_ins is 99, "0.3 [0..1] 1/4 round_half_away"_ins is 1/4, and a value the type cannot hold
-    // does not compile. Without a type, "42"_ins is the point 42_ins.
+    // A value with its type: "42 [1..100)"_q is 42 of type id<"[1..99]">, the number (as an id's text reads one:
+    // "-1/3", "0.25", "1e9", "0x1p-4") stored while compiling under the type's policy, as T{point} stores it:
+    // "200 [0..99] clamp"_q is 99, "0.3 [0..1] 1/4 round_half_away"_q is 1/4, and a value the type cannot hold
+    // does not compile. Without a type, "2/3"_q is the point 2/3, and "42"_q the point 42_q.
     // (A type with a unit is a quantity's: units/detail/quantity.hpp has that literal.)
     template <detail::value_text T>
       requires(detail::inside_key<T.Key>)
-    consteval auto operator""_ins()
+    consteval auto operator""_q()
     {
       static_assert(T.NumberOk, detail::value_text_error(T.Key));
       if constexpr (!T.Typed)
-        return just<T.Value>;
+        return detail::point_v<T.Value>;
       else if constexpr (!T.Key.ok())
         return id<T.Key>{}; // the type fails with where its text went wrong, and nothing else
       else
-        return id<T.Key>{just<T.Value>};
+        return id<T.Key>{detail::point_v<T.Value>};
     }
   } // namespace literals
 
@@ -13568,7 +13605,7 @@ namespace ins
     };
 
     // A point P that is one of X's slots, with X storing a builtin index:
-    // X's raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot (`t != end(t)`, `x <= 4_ins`).
+    // X's raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot (`t != end(t)`, `x <= 4_q`).
     template <insidable X, insidable P>
     inline constexpr bool point_is_slot =
       integer_index_storage<X> && !point_grid<X> && point_grid<P> && grid_of<X>.representable(lower_of<P>);
@@ -13602,16 +13639,26 @@ namespace ins
     }
   } // namespace detail
 
-  template <insidable L, insidable R>
+  namespace detail
+  {
+    // Two insides, or an inside and a std::cw<V>, its point (inside/detail/constant.hpp): x <= std::cw<upper_of<T>>.
+    template <class L, class R>
+    concept compared_insides =
+      (insidable<L> && insidable<R>) || (constant_operands<L, R> && (insidable<L> || insidable<R>));
+  } // namespace detail
+
+  template <class L, class R>
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs)
   {
-    return detail::compare(lhs, rhs, detail::three_way);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::three_way);
   }
 
-  template <insidable L, insidable R>
+  template <class L, class R>
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs)
   {
-    return detail::compare(lhs, rhs, detail::equal_to);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::equal_to);
   }
 
   namespace detail
@@ -13685,13 +13732,18 @@ namespace ins
 
   // No comparison with a floating-point value:
   // 0.1 is not 1/10 in binary, so an inside holding 1/10 would compare unequal to 0.1.
-  // Compare with a rational (0.1_r), a point (just<1, 10>) or an inside.
+  // Compare with a rational (0.1_r), a point (0.1_q) or an inside. (So with std::cw<0.1>.)
 #define INSIDE_WHY_float_compare                                                                        \
   "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
-  "just<1, 10> or an inside"
-  template <insidable B, std::floating_point A>
+  "0.1_q or an inside"
+  namespace detail
+  {
+    template <class A>
+    concept floating_scalar = bool(std::is_floating_point_v<A> || floating_constant<A>);
+  } // namespace detail
+  template <insidable B, detail::floating_scalar A>
   auto operator<=>(const B&, A) = delete (INSIDE_WHY_float_compare);
-  template <insidable B, std::floating_point A>
+  template <insidable B, detail::floating_scalar A>
   bool operator==(const B&, A) = delete (INSIDE_WHY_float_compare);
 #undef INSIDE_WHY_float_compare
 } // namespace ins
@@ -14775,7 +14827,7 @@ namespace ins
   template <insidable Lhs, insidable Rhs>
   [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b)
   {
-    return (a + b) * just<1, 2>;
+    return (a + b) * 0.5_q;
   }
 
   // expected-lift operators: fallible results (division, modulo, checked rational arithmetic, ins::math)
@@ -14792,18 +14844,47 @@ namespace ins
     template <class T>
     inline constexpr bool lift_operand_v = insidable<T>;
 
+    // An expected operand, or a std::cw<V> on exactly one side, which is its point (inside/detail/constant.hpp):
+    // x * std::cw<N>, std::cw<v> * si::metre, e * std::cw<2> with e an expected.
+    // (Without these an integer inside and a wrapper would both convert to builtins.)
     template <class L, class R>
-    concept expected_operands =
-      (expected_like<L> || expected_like<R>) && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>);
+    concept lift_operands = constant_operands<L, R>
+                         || ((expected_like<L> || expected_like<R>)
+                             && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>));
+
+    // An operand's value as the lift operators combine it: an expected's value, a wrapper's point.
+    template <class T>
+    struct operand_of
+    {
+      using type = unwrap_t<T>;
+    };
+    template <constant_number C>
+    struct operand_of<C>
+    {
+      using type = point_of_t<C>;
+    };
+    template <class T>
+    using operand_t = typename operand_of<std::remove_cvref_t<T>>::type;
   } // namespace detail
 
-#define INSIDE_LIFT_OP(op)                                                              \
-  template <class L, class R>                                                           \
-    requires detail::expected_operands<L, R>                                            \
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }         \
-  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)                  \
-  {                                                                                     \
-    return detail::lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); \
+  // A compound assignment takes a std::cw<V> as its point too: x += std::cw<1>.
+#define INSIDE_LIFT_OP(op)                                                         \
+  template <class L, class R>                                                      \
+    requires detail::lift_operands<L, R>                                           \
+          && requires(detail::operand_t<L> l, detail::operand_t<R> r) { l op r; }  \
+  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)             \
+  {                                                                                \
+    if constexpr (detail::expected_like<L> || detail::expected_like<R>)            \
+      return detail::lift([](auto const& l, auto const& r) { return l op r; },     \
+                          detail::operand(lhs), detail::operand(rhs));             \
+    else                                                                           \
+      return detail::operand(lhs) op detail::operand(rhs);                         \
+  }                                                                                \
+  template <class B, detail::constant_number C>                                    \
+    requires requires(B&& b) { std::forward<B>(b) op##= detail::point_of_t<C>{}; } \
+  constexpr decltype(auto) operator op##=(B&& b, C)                                \
+  {                                                                                \
+    return std::forward<B>(b) op##= detail::point_of_t<C>{};                       \
   }
 
   INSIDE_LIFT_OP(+)
@@ -14816,21 +14897,23 @@ namespace ins
   // Grid-less scalar operands are rejected.
   // A raw int/double carries no grid, so `inside op rawscalar` has no type-safe result;
   // rather than silently escape into rational/double, these guidance overloads make it ill-formed with a fix
-  // (give the literal a grid: `1_ins` / `just<1>`, or an inside over its range).
+  // (give the literal a grid: `1_q`, `std::cw<n>`, or an inside over its range).
   // Compound assignment with a raw scalar is rejected the same way; comparisons with raw scalars are unaffected.
   //
   // Deleted, with the fix as the reason: `requires { b + 1; }` is false,
   // as for every other operation that cannot compile.
   namespace detail
   {
+    // (And a std::cw of a double: its binary value, not the decimal written. One atomic constraint, so a
+    // diagnostic explains it in one line.)
     template <typename A>
-    concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
+    concept builtin_arithmetic = bool(std::is_arithmetic_v<A> || floating_constant<A>);
   } // namespace detail
 
-#define INSIDE_SCALAR_MSG                                                                \
-  "an inside cannot be combined with a raw scalar: give the scalar a grid — "            \
-  "`1_ins`, `just<1>`, or `id<\"[lo..hi]\">::try_make(n)` for a run-time value with a " \
-  "known range"
+#define INSIDE_SCALAR_MSG                                                                    \
+  "an inside cannot be combined with a raw scalar: give the scalar a grid — "                \
+  "`1_q`, `0.5_q`, `std::cw<n>` for a computed integer, or `id<\"[lo..hi]\">::try_make(n)` " \
+  "for a run-time value with a known range"
 #define INSIDE_NO_SCALAR(op)                                  \
   template <insidable B, detail::builtin_arithmetic A>        \
   void operator op(B const&, A) = delete (INSIDE_SCALAR_MSG); \
@@ -14915,9 +14998,9 @@ namespace ins
   // an expected<rational, error> without a grid.
   // Deleted, with the spelling that keeps the grid;
   // so are the compound assignments (inside/detail/core.hpp, policy_ref.hpp).
-#define INSIDE_RATIONAL_MSG                                                                    \
-  "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
-  "(a grid), or store the rational into an inside first"
+#define INSIDE_RATIONAL_MSG                                                                           \
+  "an inside cannot be combined with a rational: write the constant as 0.5_q or \"1/3\"_q (a grid), " \
+  "or store the rational into an inside first"
 #define INSIDE_NO_RATIONAL(op)                                         \
   template <insidable B, std::same_as<detail::rational> Q>             \
   void operator op(B const&, Q const&) = delete (INSIDE_RATIONAL_MSG); \
@@ -15229,7 +15312,7 @@ namespace ins
     requires(has_flag(policy_of<detail::step_number_t<B>>, detail::cursor_marker))
   [[nodiscard]] constexpr auto end(const B&) noexcept
   {
-    constexpr auto top{just<upper_of<detail::step_number_t<B>>>};
+    constexpr auto top{detail::point_v<upper_of<detail::step_number_t<B>>>};
     return detail::stepping<B>::make(top);
   }
 } // namespace ins
@@ -19892,55 +19975,55 @@ namespace ins::math
     }
     // The point within Eps of the constant: its simplest such fraction.
     template <auto Eps>
-    static constexpr auto within = just<detail::constants::convergent_within<Id, ::ins::grid_number{Eps}>()>;
+    static constexpr auto within = ins::detail::point_v<detail::constants::convergent_within<Id, ::ins::grid_number{Eps}>()>;
   };
 
   // x op c: c as the point x's resolution needs (see the top of the file).
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator*(const X& x, constant<Id>)
   {
-    return x * just<detail::constants::product_point<Id, X>>;
+    return x * ins::detail::point_v<detail::constants::product_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator*(constant<Id>, const X& x)
   {
-    return just<detail::constants::product_point<Id, X>> * x;
+    return ins::detail::point_v<detail::constants::product_point<Id, X>> * x;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator+(const X& x, constant<Id>)
   {
-    return x + just<detail::constants::sum_point<Id, X>>;
+    return x + ins::detail::point_v<detail::constants::sum_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator+(constant<Id>, const X& x)
   {
-    return just<detail::constants::sum_point<Id, X>> + x;
+    return ins::detail::point_v<detail::constants::sum_point<Id, X>> + x;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator-(const X& x, constant<Id>)
   {
-    return x - just<detail::constants::sum_point<Id, X>>;
+    return x - ins::detail::point_v<detail::constants::sum_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator-(constant<Id>, const X& x)
   {
-    return just<detail::constants::sum_point<Id, X>> - x;
+    return ins::detail::point_v<detail::constants::sum_point<Id, X>> - x;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator/(const X& x, constant<Id>)
   {
-    return x * just<detail::constants::quotient_point<Id, X>>;
+    return x * ins::detail::point_v<detail::constants::quotient_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr auto operator/(constant<Id>, const X& x)
   {
-    return just<detail::constants::dividend_point<Id>> / x;
+    return ins::detail::point_v<detail::constants::dividend_point<Id>> / x;
   }
   // Exact: no value of X equals the constant, and the point is closer to it than any value of X.
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr std::strong_ordering operator<=>(const X& x, constant<Id>)
   {
-    return x <=> just<detail::constants::separating_point<Id, X>>;
+    return x <=> ins::detail::point_v<detail::constants::separating_point<Id, X>>;
   }
   template <insidable X, detail::constant_id Id>
   [[nodiscard]] constexpr bool operator==(const X&, constant<Id>)
@@ -24998,7 +25081,7 @@ namespace ins::math
       if constexpr (E == 0)
       {
         (void)x;
-        return just<1>;
+        return 1_q;
       }
       else if constexpr (E == 1)
         return x;
@@ -25241,7 +25324,7 @@ namespace ins::math
 // with an inside as the only representation.
 //
 //   id<"[0..10] [m]"> d{7, si::metre};   // 7 m: a number and its unit
-//   auto k = just<5> * si::kilo(si::metre);                 // 5 km, a point grid
+//   auto k = 5_q * si::kilo(si::metre);                 // 5 km, a point grid
 //   auto s = k + d;                                         // 5007 m, exact
 //   auto v = d.in(si::milli(si::metre));                    // 7000 mm, the same raw
 //   d.numerical_value_in(si::metre);                        // 7: read in a named unit
@@ -26119,7 +26202,7 @@ namespace ins
     constexpr origin_def(std::string_view name, dimension d) : Name{named(name)}, Dim{d} {}
     template <const kind_def* K>
     constexpr origin_def(std::string_view name, kind_t<K>) : Name{named(name)}, Dim{K->Dim} {}
-    // One at a constant point of another origin: origin_def{"ice_point", si::absolute_zero + 273.15_ins * si::kelvin}
+    // One at a constant point of another origin: origin_def{"ice_point", si::absolute_zero + 273.15_q * si::kelvin}
     // (defined in units/detail/define.hpp).
     template <class P>
       requires requires(const P& p) { p.quantity_from_origin(); }
@@ -26287,7 +26370,7 @@ namespace ins
     constexpr unit_def(std::string_view sym, unit_t<U>, unit_options o = {});
     template <unit_value U, const kind_def* K>
     constexpr unit_def(std::string_view sym, unit_t<U>, kind_t<K>, unit_options o = {});
-    // A unit defined by the constant quantity it equals: unit_def{"ftm", 1.8288_ins * si::metre}
+    // A unit defined by the constant quantity it equals: unit_def{"ftm", 1.8288_q * si::metre}
     // (defined in units/detail/define.hpp).
     template <class Q>
       requires detail::is_quantity_v<Q>
@@ -26947,7 +27030,7 @@ namespace ins
       else
       {
         // The product's grid with v's policy: a conversion keeps clamp, wrap and the rounding mode.
-        const auto x{v * just<M.Ratio>};
+        const auto x{v * detail::point_v<M.Ratio>};
         if constexpr (policy_of<decltype(x)> == policy_of<V>)
           return x;
         else
@@ -27001,7 +27084,7 @@ namespace ins
 
     // Whether rescale<M>(v) forms: inside's v · M exists. A pi factor passes, for rescale's static_assert to explain.
     template <magnitude M, class V>
-    concept rescale_forms = !exact_factor_v<M> || M.is_one() || requires(const V& v) { v * just<M.Ratio>; };
+    concept rescale_forms = !exact_factor_v<M> || M.is_one() || requires(const V& v) { v * detail::point_v<M.Ratio>; };
 
     // Whether a number of V in unit From rescales to unit To.
     template <unit_value From, unit_value To, class V>
@@ -27117,7 +27200,7 @@ namespace ins::detail
 
   // The units, kinds and origins of the tags only (si::metre, isq::height, si::ice_point, defined_by<cent_def>, a
   // one-line unit<"ftm", …>), not of the definition objects: a type named while a definition object is initialized
-  // (unit_def cent_def{"ct", 0.01_ins * euro}) would read that object before its value exists. A tag's value is in
+  // (unit_def cent_def{"ct", 0.01_q * euro}) would read that object before its value exists. A tag's value is in
   // its type, and a tag exists only once its definition does. Every catalog definition has its tag.
   // Basis vectors and polynomial variables are units too here.
   // (skip: a namespace already read, the catalog's; nested: whether to read the namespaces within ns too.)
@@ -28244,7 +28327,8 @@ namespace ins
       ins::detail::numeric<std::remove_cvref_t<V>> || std::same_as<std::remove_cvref_t<V>, ins::grid_number>;
     // A bare number where a quantity is wanted: the deleted overloads' test.
     template <class Q, class X>
-    concept bare_number_for = quantity_like<Q> && !quantity_like<X> && number_value<X>;
+    concept bare_number_for =
+      quantity_like<Q> && !quantity_like<X> && (number_value<X> || ins::detail::constant_number<X>);
 
     // Q{v, u}: v a number in the unit of the tag u (a unit, or kind[unit]) that names a value of Q.
     // In Q's own unit any number Rep stores. In another unit an inside is rescaled exactly first;
@@ -28480,8 +28564,8 @@ namespace ins
   namespace detail
   {
     // Where a quantity keeps its number (and a point its quantity).
-    // A point number (just<5>, 1.8288_ins) holds no data, so it can sit in a public base:
-    // a quantity of one is then a structural type, a template argument (unit<"ftm", 1.8288_ins * si::metre>).
+    // A point number (5_q, 1.8288_q) holds no data, so it can sit in a public base:
+    // a quantity of one is then a structural type, a template argument (unit<"ftm", 1.8288_q * si::metre>).
     // Any other number stays private.
     template <class T>
     struct public_member
@@ -28556,6 +28640,10 @@ namespace ins
             && (!detail::runtime_store<Rep, detail::number_from_tag_t<id, V, Tag>>())
     consteval id(V&& v, Tag)
       : holder(Rep(detail::number_from_tag<id, Tag>(std::forward<V>(v)))) {}
+    // A value computed while compiling, std::cw<v>: Q{std::cw<v>, u} as Q{point, u}, while compiling.
+    template <ins::detail::constant_number C, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && std::constructible_from<id, ins::detail::point_of_t<C>, Tag, Pol...>
+    consteval id(C, Tag u, Pol&&... pol) : id(ins::detail::point_of_t<C>{}, u, std::forward<Pol>(pol)...) {}
     // A one-shot policy for this store, as for an inside:
     // a flag or make_policy<F>(ec) (Q{v, si::metre, clamp}, Q{q, round_floor}).
     template <class V, class Tag, class Pol>
@@ -28584,7 +28672,7 @@ namespace ins
     template <class V>
       requires detail::bare_number_for<id, V>
     id(V&&) = delete ("units: a number alone has no unit - write Q{42, si::metre}, or "
-                                  "just<42> * si::metre");
+                                  "42_q * si::metre");
     template <class V, class Pol>
       requires(ins::detail::flag_like<std::remove_cvref_t<Pol>> || ins::detail::policy_like<std::remove_cvref_t<Pol>>)
            && detail::bare_number_for<id, V>
@@ -28885,16 +28973,16 @@ namespace ins
     constexpr id(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
   };
 
-  // A value with its quantity type: "42 [1..100) [km/h]"_ins is 42 km/h of type id<"[1..99] [km/h]">, the number
-  // in the type's unit, stored while compiling as Q{just<v>, unit} stores it; "42 [km/h]"_ins is the point 42 km/h.
+  // A value with its quantity type: "42 [1..100) [km/h]"_q is 42 km/h of type id<"[1..99] [km/h]">, the number
+  // in the type's unit, stored while compiling as Q{point, unit} stores it; "42 [km/h]"_q is the point 42 km/h.
   // (Without a unit, the literal is an inside's: inside/detail/core.hpp.)
   inline namespace literals
   {
     template <detail::value_text T>
       requires detail::unit_key<T.Key>
-    consteval auto operator""_ins()
+    consteval auto operator""_q()
     {
-      return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
+      return id<T.Key>{ins::detail::point_v<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
     }
   } // namespace literals
 
@@ -28935,7 +29023,7 @@ namespace ins
   template <class N, class Tag>
     requires detail::is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
   void operator*(N, Tag)
-    = delete ("units: a raw number has no grid - write just<42> * unit, or Q{42, unit} into a quantity type Q");
+    = delete ("units: a raw number has no grid - write 42_q * unit, or Q{42, unit} into a quantity type Q");
   // number / unit: 5 / s.
   template <insidable V, unit_value U>
   [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>)
@@ -28966,7 +29054,7 @@ namespace ins
     using V = typename QR::rep;
     return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, M), V>>>(ins::detail::value_of(q));
   }
-  // A magnitude times a number: the number in the scaled unit one ([π]), so pi * just<2> * si::second is 2 in [π s].
+  // A magnitude times a number: the number in the scaled unit one ([π]), so pi * 2_q * si::second is 2 in [π s].
   template <magnitude M, insidable V>
   [[nodiscard]] constexpr auto operator*(mag_t<M>, const V& v)
   {
@@ -29110,96 +29198,96 @@ namespace ins
   // q * inverse(q) == one; a plain number takes no unit. −u is the quantity −1 u: i * i == -one.
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
-          && requires(const X& x, Tag t) { x == just<1> * t; }
+          && requires(const X& x, Tag t) { x == 1_q * t; }
   [[nodiscard]] constexpr bool operator==(const X& x, Tag t)
   {
-    return x == just<1> * t;
+    return x == 1_q * t;
   }
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
-          && requires(const X& x, Tag t) { x <=> just<1> * t; }
+          && requires(const X& x, Tag t) { x <=> 1_q * t; }
   [[nodiscard]] constexpr auto operator<=>(const X& x, Tag t)
   {
-    return x <=> just<1> * t;
+    return x <=> 1_q * t;
   }
   template <class Tag>
     requires detail::is_reference_tag_v<Tag>
   [[nodiscard]] constexpr auto operator-(Tag t)
   {
-    return just<-1> * t;
+    return -1_q * t;
   }
 
   // The same in arithmetic: x + u is x + 1 u, and so are x - u, u ± x, u ± v, x += u, x -= u, x % u, divmod(x, u)
   // and u * x for a quantity, a point or a multivector x (a number times a unit stays the way to make a quantity):
-  // jar += international::pound, divmod(t, si::hour), just<3> + x * x, e1 * v. An expected runs its own operators,
+  // jar += international::pound, divmod(t, si::hour), 3_q + x * x, e1 * v. An expected runs its own operators,
   // which apply these to its value.
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t) { x + just<1> * t; }
+          && requires(const X& x, Tag t) { x + 1_q * t; }
   [[nodiscard]] constexpr auto operator+(const X& x, Tag t)
   {
-    return x + just<1> * t;
+    return x + 1_q * t;
   }
   template <class Tag, class X>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(Tag t, const X& x) { just<1> * t + x; }
+          && requires(Tag t, const X& x) { 1_q * t + x; }
   [[nodiscard]] constexpr auto operator+(Tag t, const X& x)
   {
-    return just<1> * t + x;
+    return 1_q * t + x;
   }
   template <class A, class B>
     requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
-          && requires(A a, B b) { just<1> * a + just<1> * b; }
+          && requires(A a, B b) { 1_q * a + 1_q * b; }
   [[nodiscard]] constexpr auto operator+(A a, B b)
   {
-    return just<1> * a + just<1> * b;
+    return 1_q * a + 1_q * b;
   }
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t) { x - just<1> * t; }
+          && requires(const X& x, Tag t) { x - 1_q * t; }
   [[nodiscard]] constexpr auto operator-(const X& x, Tag t)
   {
-    return x - just<1> * t;
+    return x - 1_q * t;
   }
   template <class Tag, class X>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(Tag t, const X& x) { just<1> * t - x; }
+          && requires(Tag t, const X& x) { 1_q * t - x; }
   [[nodiscard]] constexpr auto operator-(Tag t, const X& x)
   {
-    return just<1> * t - x;
+    return 1_q * t - x;
   }
   template <class A, class B>
     requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
-          && requires(A a, B b) { just<1> * a - just<1> * b; }
+          && requires(A a, B b) { 1_q * a - 1_q * b; }
   [[nodiscard]] constexpr auto operator-(A a, B b)
   {
-    return just<1> * a - just<1> * b;
+    return 1_q * a - 1_q * b;
   }
   template <class X, class Tag>
-    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) += just<1> * t; }
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) += 1_q * t; }
   constexpr decltype(auto) operator+=(X&& x, Tag t) // an action ref too: q.on_wrap(f) += u
   {
-    return std::forward<X>(x) += just<1> * t;
+    return std::forward<X>(x) += 1_q * t;
   }
   template <class X, class Tag>
-    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) -= just<1> * t; }
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) -= 1_q * t; }
   constexpr decltype(auto) operator-=(X&& x, Tag t)
   {
-    return std::forward<X>(x) -= just<1> * t;
+    return std::forward<X>(x) -= 1_q * t;
   }
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t) { x % (just<1> * t); }
+          && requires(const X& x, Tag t) { x % (1_q * t); }
   [[nodiscard]] constexpr auto operator%(const X& x, Tag t)
   {
-    return x % (just<1> * t);
+    return x % (1_q * t);
   }
   template <class Tag, class X>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!insidable<X>)
-          && (!detail::is_expected_v<X>) && requires(Tag t, const X& x) { just<1> * t * x; }
+          && (!detail::is_expected_v<X>) && requires(Tag t, const X& x) { 1_q * t * x; }
   [[nodiscard]] constexpr auto operator*(Tag t, const X& x)
   {
-    return just<1> * t * x;
+    return 1_q * t * x;
   }
 
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
@@ -29346,19 +29434,19 @@ namespace ins
   // No raw scalars: q * 2 needs a grid for the 2.
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator*(const QA&, N) = delete ("units: a raw number has no grid - scale by just<2>, "
+  void operator*(const QA&, N) = delete ("units: a raw number has no grid - scale by 2_q, "
                                                            "not 2");
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator*(N, const QA&) = delete ("units: a raw number has no grid - scale by just<2>, "
+  void operator*(N, const QA&) = delete ("units: a raw number has no grid - scale by 2_q, "
                                                            "not 2");
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator/(const QA&, N) = delete ("units: a raw number has no grid - divide by just<2>, "
+  void operator/(const QA&, N) = delete ("units: a raw number has no grid - divide by 2_q, "
                                                            "not 2");
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator/(N, const QA&) = delete ("units: a raw number has no grid - divide by just<2>, "
+  void operator/(N, const QA&) = delete ("units: a raw number has no grid - divide by 2_q, "
                                                            "not 2");
 
   // pow<N>(q): q·q·…·q (N ≥ 1), exact, the grid of each product.
@@ -29728,10 +29816,10 @@ namespace ins
   // By a unit, one of itself: divmod(t, si::hour).
   template <class X, class Tag, class... Args>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t, Args&&... args) { divmod(x, just<1> * t, std::forward<Args>(args)...); }
+          && requires(const X& x, Tag t, Args&&... args) { divmod(x, 1_q * t, std::forward<Args>(args)...); }
   [[nodiscard]] constexpr auto divmod(const X& x, Tag t, Args&&... args)
   {
-    return divmod(x, just<1> * t, std::forward<Args>(args)...);
+    return divmod(x, 1_q * t, std::forward<Args>(args)...);
   }
 
   // add / sub / mod(a, b, args...) of two quantities of one kind, in their common unit as + takes it,
@@ -29917,7 +30005,7 @@ namespace ins
 
     // Whether shift<C> forms on V: inside's v + C exists.
     template <grid_number C, class V>
-    concept shift_forms = C == grid_number{0} || requires(const V& v) { v + just<C>; };
+    concept shift_forms = C == grid_number{0} || requires(const V& v) { v + detail::point_v<C>; };
 
     template <grid_number C, insidable V>
     constexpr auto shift(const V& v)
@@ -29925,7 +30013,7 @@ namespace ins
       if constexpr (C == grid_number{0})
         return v;
       else
-        return v + just<C>;
+        return v + detail::point_v<C>;
     }
 
     // The default origin of a unit's points: its named unit's (K, ℃, ℉).
@@ -29975,8 +30063,13 @@ namespace ins
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
            && detail::own_unit_v<Q, Tag> && std::constructible_from<Q, V, Tag, Pol...>
+           && (!ins::detail::constant_number<V>)
     constexpr id(V&& v, Tag u, Pol&&... pol)
       : holder(Q(std::forward<V>(v), u, std::forward<Pol>(pol)...)) {}
+    // A value computed while compiling, std::cw<v>: P{std::cw<v>, u} as P{point, u}, while compiling.
+    template <ins::detail::constant_number C, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && std::constructible_from<id, ins::detail::point_of_t<C>, Tag, Pol...>
+    consteval id(C, Tag u, Pol&&... pol) : id(ins::detail::point_of_t<C>{}, u, std::forward<Pol>(pol)...) {}
     // A number in another unit names no origin (20 in K from the ice point, or 20 K?).
     template <class V, class Tag, class... Pol>
       requires(sizeof...(Pol) <= 1) && detail::is_reference_tag_v<std::remove_cvref_t<Tag>>
@@ -30061,15 +30154,15 @@ namespace ins
     }
   };
 
-  // A point with its type: "21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins is 21.5 ℃, the number in the type's unit
-  // counted from its origin, stored while compiling as P{just<v>, unit} stores it.
+  // A point with its type: "21.5 [-40..125] 1/10 [deg_C] @ice_point"_q is 21.5 ℃, the number in the type's unit
+  // counted from its origin, stored while compiling as P{point, unit} stores it.
   inline namespace literals
   {
     template <detail::value_text T>
       requires detail::origin_key<T.Key>
-    consteval auto operator""_ins()
+    consteval auto operator""_q()
     {
-      return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
+      return id<T.Key>{ins::detail::point_v<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
     }
   } // namespace literals
 
@@ -30107,7 +30200,7 @@ namespace ins
     return v * U;
   }
 
-  // origin + quantity: si::absolute_zero + just<300> * si::kelvin.
+  // origin + quantity: si::absolute_zero + 300_q * si::kelvin.
   template <origin_ref O, quantity_like QR>
   [[nodiscard]] constexpr auto operator+(origin_t<O>, const QR& q)
   {
@@ -30204,13 +30297,13 @@ namespace ins
 
 // Units, kinds, origins and dimensions of your own: one declaration each.
 //
-//   inline constexpr auto fathom  = unit<"ftm", 1.8288_ins * si::metre>;
+//   inline constexpr auto fathom  = unit<"ftm", 1.8288_q * si::metre>;
 //   inline constexpr auto depth   = kind<"depth", isq::length>;
-//   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin,
+//   inline constexpr auto rankine = unit<"°R", "5/9"_q * si::kelvin,
 //                                        {.ascii = "deg_R", .origin = si::absolute_zero}>;
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
-//   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
-//   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>;
+//   inline constexpr auto ct      = unit<"ct", 0.01_q * EUR>;
+//   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_q * si::kelvin>;
 //   inline constexpr auto e1      = basis_vector<"e₁", geometric<+1>>;
 //
 // The name is a template argument and the definition a static member of a class template,
@@ -30220,7 +30313,7 @@ namespace ins
 // For short type names, name the definition object and take its unit with defined_by,
 // as the catalog does (units/systems.hpp). The definition types take the same arguments:
 //
-//   inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+//   inline constexpr unit_def fathom_def{"ftm", 1.8288_q * si::metre};
 //   inline constexpr auto     fathom = defined_by<fathom_def>;    // spelled (& fathom_def)
 //   inline constexpr kind_def count_def{"count", base_dimension<"count">};
 //   inline constexpr unit_def cts_def  {"cts", defined_by<count_def>};
@@ -30240,17 +30333,17 @@ namespace ins
 
   namespace detail
   {
-    // The unit a constant quantity is: 1.8288_ins * si::metre is mag<1.8288> * si::metre.
+    // The unit a constant quantity is: 1.8288_q * si::metre is mag<1.8288> * si::metre.
     template <class Q>
     consteval auto unit_of_constant()
     {
       static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
-                    "units: a unit is defined by a constant - 1.8288_ins * si::metre");
+                    "units: a unit is defined by a constant - 1.8288_q * si::metre");
       return mag<lower_of<typename Q::rep>> * unit_t<Q::unit>{};
     }
 
     // What a unit is defined by, as its key: a unit (si::joule / si::second),
-    // a kind (the base unit of that kind), or the quantity it equals (1.8288_ins * si::metre):
+    // a kind (the base unit of that kind), or the quantity it equals (1.8288_q * si::metre):
     // its number times its unit.
     template <auto Def>
     struct unit_definition
@@ -30278,14 +30371,14 @@ namespace ins
     using Q = std::remove_cvref_t<decltype(p.quantity_from_origin())>;
     static_assert(detail::has(P::origin), "units: an origin at o + q - the point counts from an origin");
     static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
-                  "units: an origin lies at a constant point - si::absolute_zero + 273.15_ins * si::kelvin");
+                  "units: an origin lies at a constant point - si::absolute_zero + 273.15_q * si::kelvin");
     static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
     Absolute = detail::absolute_of(P::origin);
     Offset   = detail::offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio;
   }
 
   // unit<"sym", definition, options>: a unit of your own.
-  // The definition is the quantity it equals (1.8288_ins * si::metre), another unit (si::joule / si::second),
+  // The definition is the quantity it equals (1.8288_q * si::metre), another unit (si::joule / si::second),
   // or a kind, whose base unit it then is.
   template <symbol_text Sym, auto Def, unit_options O = {}>
   inline constexpr auto unit =
@@ -30308,7 +30401,7 @@ namespace ins
 
   // origin<"name", where>: where points count from.
   // An absolute origin is named by a kind or a dimension; any other lies at a point of one:
-  // origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>.
+  // origin<"ice_point", si::absolute_zero + 273.15_q * si::kelvin>.
   template <symbol_text Name, auto Def>
   inline constexpr auto origin = detail::origin_tag<definition<origin_def, Name, Def>::value>;
 
@@ -30336,7 +30429,7 @@ namespace ins
 
   // pi: the number π as a unit, exactly.
   // A unit that is a multiple of π says so, and conversions between such units stay exact:
-  //   unit<"°", just<1, 180> * pi * si::radian>, unit<"tr", just<2> * pi * si::radian>.
+  //   unit<"°", "1/180"_q * pi * si::radian>, unit<"tr", 2_q * pi * si::radian>.
   inline constexpr auto pi = detail::mag_pi * one;
   // A quantity times or over pi: the same number, in a unit scaled by π (pi * (2 * si::second) is 2 [π s]);
   // value_cast rounds it once.
@@ -30647,7 +30740,7 @@ namespace ins
     inline constexpr auto       absolute_zero = defined_by<absolute_zero_def>;
     inline constexpr unit_def kelvin_def{"K", isq::thermodynamic_temperature, {.origin = si::absolute_zero}};
     inline constexpr auto     kelvin = defined_by<kelvin_def>;
-    inline constexpr origin_def ice_point_def{"ice_point", si::absolute_zero + just<27315, 100> * si::kelvin};
+    inline constexpr origin_def ice_point_def{"ice_point", si::absolute_zero + 273.15_q * si::kelvin};
     inline constexpr auto       ice_point = defined_by<ice_point_def>;
     inline constexpr unit_def mole_def{"mol", isq::amount_of_substance};
     inline constexpr auto     mole = defined_by<mole_def>;
@@ -30736,7 +30829,7 @@ namespace ins
   } // namespace si
 
   // The defining constants of the SI (2019) and standard gravity, as units:
-  // just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s) gives its number.
+  // 1_q * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s) gives its number.
   // h, e, k and N_A need grid numbers past 64 bits.
   namespace si2019
   {
@@ -30791,7 +30884,7 @@ namespace ins
     inline constexpr auto     knot = defined_by<knot_def>;
 
     inline constexpr origin_def zeroth_degree_Fahrenheit_def{"zeroth_degree_Fahrenheit",
-                                                             si::absolute_zero + just<45967, 180> * si::kelvin};
+                                                             si::absolute_zero + "45967/180"_q * si::kelvin};
     inline constexpr auto       zeroth_degree_Fahrenheit = defined_by<zeroth_degree_Fahrenheit_def>;
     inline constexpr unit_def degree_Fahrenheit_def{
       "℉", detail::mag<5_g / 9_g> * si::kelvin, {.ascii = "deg_F", .origin = international::zeroth_degree_Fahrenheit}};
@@ -30980,7 +31073,7 @@ namespace ins
   {
     template <reference R>
     inline constexpr auto one_of =
-      quantity_access::make<id<quantity_key<R, std::remove_cvref_t<decltype(just<1>)>>>>(just<1>);
+      quantity_access::make<id<quantity_key<R, std::remove_cvref_t<decltype(1_q)>>>>(1_q);
   } // namespace detail
 
   namespace constants
@@ -31390,9 +31483,9 @@ namespace ins
     constexpr bool part_is_zero(const P& p)
     {
       if constexpr (quantity_like<P>)
-        return ins::detail::value_of(p) == just<0>;
+        return ins::detail::value_of(p) == 0_q;
       else
-        return p == just<0>;
+        return p == 0_q;
     }
 
     template <class A, class B>
@@ -31536,7 +31629,7 @@ namespace ins
       if constexpr (from)
         return std::constructible_from<T, const std::tuple_element_t<*from, PX>&, const Pol&...>;
       else
-        return std::constructible_from<typename part_number<T>::type, decltype(just<0>), const Pol&...>;
+        return std::constructible_from<typename part_number<T>::type, decltype(0_q), const Pol&...>;
     }
     template <class T, class PX>
     consteval bool part_from_implicitly()
@@ -31545,7 +31638,7 @@ namespace ins
       if constexpr (from)
         return std::convertible_to<const std::tuple_element_t<*from, PX>&, T>;
       else
-        return std::convertible_to<decltype(just<0>), typename part_number<T>::type>;
+        return std::convertible_to<decltype(0_q), typename part_number<T>::type>;
     }
 
     // The blade atoms and polynomial variables of a unit, unscaled: e₁ e₂ of m e₁ e₂, x² of m x².
@@ -31616,7 +31709,7 @@ namespace ins
         return t;
       }();
       constexpr grid_number f{blade_factor(u) * F};
-      return as_part(make_quantity<reference_of(r)>(number_of_part(p) * just<f>));
+      return as_part(make_quantity<reference_of(r)>(number_of_part(p) * detail::point_v<f>));
     }
 
     // A pseudoscalar argument: a unit of a blade only.
@@ -31658,7 +31751,7 @@ namespace ins
             if constexpr (from)
               return T(std::get<*from>(px), pol...);
             else
-              return detail::part_of_number<T>(just<0>, pol...);
+              return detail::part_of_number<T>(0_q, pol...);
           }()...};
       }(std::make_index_sequence<sizeof...(Parts)>{});
     }
@@ -31690,7 +31783,7 @@ namespace ins
 
     constexpr multivector() = default;
 
-    // From its parts, in order: multivector<id<"[0..9]">, id<"[0..9] [i]">>{3, just<4> * i}. A blade's part is a
+    // From its parts, in order: multivector<id<"[0..9]">, id<"[0..9] [i]">>{3, 4_q * i}. A blade's part is a
     // quantity.
     template <class... A>
       requires(sizeof...(A) == sizeof...(Parts) && (std::constructible_from<Parts, A> && ...))
@@ -31698,7 +31791,7 @@ namespace ins
       : P{Parts(std::forward<A>(a))...} {}
     template <class... A>
       requires(sizeof...(A) == sizeof...(Parts)) && (detail::bare_number_for<Parts, A> || ...)
-    multivector(A&&...) = delete ("units: a blade's part is a quantity - write {3, just<4> * i}, not {3, 4}");
+    multivector(A&&...) = delete ("units: a blade's part is a quantity - write {3, 4_q * i}, not {3, 4}");
 
     // From any element whose blades are among these; the parts it lacks are 0.
     // Implicit when each part converts implicitly.
@@ -31753,7 +31846,7 @@ namespace ins
     return detail::mv_add(a, detail::mv_negate(b));
   }
   // Equality: a multivector with a multivector or a quantity, never with a plain number
-  // (only plain insides compare with numbers; a scalar part is a quantity: z * conj(z) == just<25> * one).
+  // (only plain insides compare with numbers; a scalar part is a quantity: z * conj(z) == 25_q * one).
   template <class A, class B>
     requires detail::mv_operands<A, B> && detail::mv_addable<A, B> && (!insidable<A>) && (!insidable<B>)
   [[nodiscard]] constexpr bool operator==(const A& a, const B& b)
@@ -35299,7 +35392,7 @@ namespace ins::detail::gaexp
       {
         if constexpr (F::src[P].Kind == part_source::zero)
         {
-          std::get<P>(st.Out) = num_t<std::tuple_element_t<P, CP>>(just<0>);
+          std::get<P>(st.Out) = num_t<std::tuple_element_t<P, CP>>(0_q);
           st.Done[P]          = true;
         }
       });
@@ -35311,16 +35404,16 @@ namespace ins::detail::gaexp
     const auto exact_parts = [&]
     {
       all_zero = true;
-      for_index<N>([&]<std::size_t J>() { all_zero = all_zero && ynum<F, J>(px) == just<0>; });
+      for_index<N>([&]<std::size_t J>() { all_zero = all_zero && ynum<F, J>(px) == 0_q; });
       for_index<NC>(
         [&]<std::size_t P>()
         {
           using O = num_t<std::tuple_element_t<P, CP>>;
           if constexpr (F::src[P].Kind == part_source::blade)
           {
-            if (ynum<F, F::src[P].Blade>(px) == just<0>)
+            if (ynum<F, F::src[P].Blade>(px) == 0_q)
             {
-              std::get<P>(st.Out) = O(just<0>);
+              std::get<P>(st.Out) = O(0_q);
               st.Done[P]          = true;
             }
           }
@@ -35334,7 +35427,7 @@ namespace ins::detail::gaexp
                 std::get<P>(st.Out) = ::ins::math::detail::entry::exp_fn::eval<O>(a);
               }
               else
-                std::get<P>(st.Out) = O(just<1>);
+                std::get<P>(st.Out) = O(1_q);
               st.Done[P] = true;
             }
           }
@@ -36133,7 +36226,7 @@ namespace ins::detail::gaexp
                           cq.Part   = F::src[Q].Blade;
                           cq.Sign   = F::osign[Q];
                           if constexpr (F::src[Q].Kind == part_source::zero)
-                            return std::expected<O, error>{O(just<0>)};
+                            return std::expected<O, error>{O(0_q)};
                           else if constexpr (!Named || closed_part_fits<Domain, CoDomain, Q, Fn>())
                             return std::expected<O, error>{eng::evaluate<O, eng::start_bits<O>>(cq)};
                           else
@@ -36556,7 +36649,7 @@ namespace ins
         if constexpr (k == 0)
           return multivector<>{};
         else
-          return detail::times_power<X, -1>(detail::as_part(just<k> * q));
+          return detail::times_power<X, -1>(detail::as_part(detail::point_v<k> * q));
       });
   }
 
@@ -36577,7 +36670,7 @@ namespace ins
         else
         {
           constexpr int sign{k + 1 > 0 ? 1 : -1};
-          return detail::times_power<X, 1>(detail::as_part(just<sign, sign * (k + 1)> * q));
+          return detail::times_power<X, 1>(detail::as_part(detail::point_v<grid_number{sign} / (sign * (k + 1))> * q));
         }
       });
   }

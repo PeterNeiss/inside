@@ -176,7 +176,7 @@ void products_stored_back() {
         for (const std::int64_t b : raws)
             expect_same<q1616, F>(q1616::from_raw(a, unsafe) * q1616::from_raw(b, unsafe), "q1616*q1616");
     for (const auto a : values<half>)
-        for (const auto b : {half{just<1, 2>}, half{just<3, 2>}, half{just<101, 2>}, half{just<201, 2>}})
+        for (const auto b : {half{0.5_q}, half{1.5_q}, half{50.5_q}, half{100.5_q}})
             expect_same<half, F>(a * b, "half*half");
 }
 
@@ -484,7 +484,7 @@ void div_onto_dividend_notch(const char* what) {
     if constexpr (notch_of<B> != 0)
         divisors.assign(values<B>.begin(), values<B>.end());
     else // a continuous divisor: a few values
-        divisors = {B{just<1>}, B{just<13, 12>}, B{just<7, 3>}, B{just<11, 4>}, B{just<4>}};
+        divisors = {B{1_q}, B{"13/12"_q}, B{"7/3"_q}, B{2.75_q}, B{4_q}};
     for (const A a : values<A>)
         for (const B b : divisors) {
             if (b == 0)

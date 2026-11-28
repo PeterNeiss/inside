@@ -242,19 +242,19 @@ TEST(DivRoundTest, modulo_and_divmod_without_a_rounding_mode_truncate) {
     using digit        = id<"[0..9]">;
     using signed_digit = id<"[-9..9]">;
 
-    static_assert(std::same_as<decltype(digit{7} % 2_ins), id<"[0..1]">>);
-    static_assert(digit{7} % 2_ins == 1);
-    static_assert(signed_digit{-7} % 2_ins == -1);
-    static_assert(mod(signed_digit{-7}, 2_ins, round_floor) == 1);
-    static_assert(digit{7} / 2_ins == 3.5_ins); // `/` is unchanged: exact
+    static_assert(std::same_as<decltype(digit{7} % 2_q), id<"[0..1]">>);
+    static_assert(digit{7} % 2_q == 1);
+    static_assert(signed_digit{-7} % 2_q == -1);
+    static_assert(mod(signed_digit{-7}, 2_q, round_floor) == 1);
+    static_assert(digit{7} / 2_q == 3.5_q); // `/` is unchanged: exact
 
-    const auto [q, r] = divmod(signed_digit{-7}, 2_ins);
+    const auto [q, r] = divmod(signed_digit{-7}, 2_q);
     ASSERT_TRUE(q == -3);
     ASSERT_TRUE(r == -1);
-    ASSERT_TRUE(q * 2_ins + r == -7);
+    ASSERT_TRUE(q * 2_q + r == -7);
 
     digit d{8};
-    d %= 3_ins;
+    d %= 3_q;
     ASSERT_TRUE(d == 2);
 }
 } // namespace div_round_tests
@@ -505,7 +505,7 @@ TEST(DivisionTest, integer_quotient_past_int64) {
     EXPECT_EQ(to_string(*div(full{i64_min}, id<"[-1..1]">{-1}, round_toward_zero)), "9223372036854775808");
     const auto qr = divmod(full{i64_min}, full{-1}, round_ceil);
     EXPECT_EQ(to_string(qr->Quotient), "9223372036854775808");
-    EXPECT_EQ(qr->Remainder, 0_ins);
+    EXPECT_EQ(qr->Remainder, 0_q);
 }
 
 // The Q-format path's 32-bit work type wrapped on its minimum over −Notch.
@@ -609,19 +609,19 @@ TEST(DivisionTest, q_format_division_keeps_the_notch) {
     static_assert(!(rational_storage<R>));
 }
 
-// Point-operand divide — `x / just<c>` scales x's lattice by 1/|c| the same way:
+// Point-operand divide — `x / std::cw<c>` scales x's lattice by 1/|c| the same way:
 // integer storage, a plain result, and sums of it stay plain.
 TEST(DivisionTest, divide_by_point_keeps_integer_storage) {
     using U  = id<"[-100..100]">;
-    using R5 = decltype(U{} / 5_ins);
+    using R5 = decltype(U{} / 5_q);
     static_assert(!rational_storage<R5>);
     static_assert(notch_of<R5> == rational{1, 5} && lower_of<R5> == -20 && upper_of<R5> == 20);
-    using RN = decltype(U{} / just<-3, 2>);
+    using RN = decltype(U{} / -1.5_q);
     static_assert(notch_of<RN> == rational{2, 3} && lower_of<RN> == rational{-200, 3});
     using tenth = id<"[-50..150] 1/10">;
-    using F     = decltype(tenth{} * 9_ins / 5_ins + 32_ins); // plain: no expected anywhere
+    using F     = decltype(tenth{} * 9_q / 5_q + 32_q); // plain: no expected anywhere
     static_assert(notch_of<F> == rational{9, 50} && lower_of<F> == -58 && upper_of<F> == 302);
-    static_assert(tenth{100.1_ins} * 9_ins / 5_ins + 32_ins == 212.18_ins);
+    static_assert(tenth{100.1_q} * 9_q / 5_q + 32_q == 212.18_q);
     // A range divisor stays continuous.
     static_assert(rational_storage<decltype(U{} / id<"[1..7]">{})>);
 }
@@ -629,10 +629,10 @@ TEST(DivisionTest, divide_by_point_keeps_integer_storage) {
 TEST(DivisionTest, divide_by_point_matches_exact_quotient) {
     for (int v : {-100, -7, 0, 1, 99, 100}) {
         const auto x = test::store<id<"[-100..100]">>(v);
-        EXPECT_EQ(exact{x / just<3>}, exact{v} / exact{3});
-        EXPECT_EQ(exact{x / just<-4>}, exact{v} / exact{-4});
-        EXPECT_EQ((exact{x / just<-3, 2>}), (exact{v} * exact{rational{-2, 3}}));
-        EXPECT_EQ(rational{x / just<3> * just<3>}, rational{v});
+        EXPECT_EQ(exact{x / 3_q}, exact{v} / exact{3});
+        EXPECT_EQ(exact{x / -4_q}, exact{v} / exact{-4});
+        EXPECT_EQ((exact{x / -1.5_q}), (exact{v} * exact{rational{-2, 3}}));
+        EXPECT_EQ(rational{x / 3_q * 3_q}, rational{v});
     }
 }
 

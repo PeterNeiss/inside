@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    auto r = (just<90> * si::degree).in(si::radian);
+    auto r = (90_q * si::degree).in(si::radian);
     (void)r;
 }

@@ -7,13 +7,13 @@ An inside type can be spelled as text, and prints the same way:
 clamps, and diagnostics print it as `ins::id<ins::key{"[0..10) 1/4 clamp"}>`.
 Every spelling of a grid and policy is one type, and the operators' results
 read the same way: `decltype(id<"[1..9]">{} + id<"[1..9]">{})` is
-`id<"[2..18]">`. A string `_ins` literal is a value with its type:
-`"42 [1..100)"_ins` ([spelling a type as text](docs/guide/id.md)).
+`id<"[2..18]">`. A string `_q` literal is a value with its type:
+`"42 [1..100)"_q` ([spelling a type as text](docs/guide/id.md)).
 A quantity's type adds its unit: `id<"[0..300] [km/h] clamp">` is a quantity
 in km/h, read by the unit's symbol among the units visible where it is named,
 with a kind that is not the unit's own after it in braces
 (`id<"[0..9] [m]{height}">`, `[m*s]{any duration*length}`), and
-`"42 [1..100) [km/h]"_ins` a quantity value. Every quantity is an `id`.
+`"42 [1..100) [km/h]"_q` a quantity value. Every quantity is an `id`.
 
 Shorter type names for insides and quantities: a grid holds its limits as
 members of their own, a zero grid number is all zero bits (so a mangled name
@@ -23,6 +23,19 @@ alone. A quantity in metres prints in 232 characters instead of 404.
 
 ### Upgrading from 0.11.0
 
+- One literal, `_q`, for every constant: `3_q`, `0.25_q`, `0x1p-15_q`,
+  `"2/3"_q` (exactly the point 2/3), `"42 [1..100)"_q` (a value with its
+  type). `_ins` is gone; rename it. `just<N, D>` is gone too: a literal ratio
+  is `"N/D"_q` or a decimal (`just<1, 3>` is `"1/3"_q`, `just<27315, 100>` is
+  `273.15_q`), and a value the code computes is the standard
+  `std::cw<V>` (`std::constant_wrapper`): `x * std::cw<N>` in a template,
+  `x <= std::cw<upper_of<T>>`, `T{std::cw<N>}`, `std::cw<v> * si::metre`.
+  The operators, comparisons, compound assignments and constructors read a
+  `std::cw<V>` as the point V; functions (`max`, `mod`, the math functions)
+  take an inside, so pass them `2_q` or a point type. Two wrappers combine by
+  std's own rules (`std::cw<1> / std::cw<3>` is `std::cw<0>`), and a
+  wrapper of a double is rejected as the double is (`std::cw<0.1>` is not
+  1/10 - write `0.1_q`).
 - Every type is `id<key K>`: `inside<G, P>`, `quantity<R, Rep>`,
   `quantity_point<R, O, Rep>` and `basic_quantity` are gone. Write the text
   (`id<"[0..100] clamp">`, `id<"[0..300] [km/h]">`,
@@ -40,8 +53,8 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   `template struct id<…>`. `grid_of<T>` and `policy_of<T>` read the grid and
   the policy as before. Hooks (`on_wrap`, `on_clamp`, `on_error`) get the
   quantity as its own type.
-- A string `_ins` literal with an origin is a point:
-  `"21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins`.
+- A string `_q` literal with an origin is a point:
+  `"21.5 [-40..125] 1/10 [deg_C] @ice_point"_q`.
 - A quantity's unit needs a text that reads back to it where the type is
   formed, or the quantity does not compile: give a unit of your own a symbol
   the catalog does not read, and a prefixed unit of your own a tag
@@ -136,6 +149,19 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   inside expressions unchanged, `inside.hpp` +0.1 %, `arithmetic.test.cpp`
   +0.4 %. Run time: the instruction counts of the perf workload are
   unchanged.
+- `_q` and `std::cw<V>` in place of `_ins` and `just` (GCC 16, `perf stat`
+  instructions): `inside.hpp` and `units.hpp` +0.2 %, 200 inside expressions
+  +1.3 % (half the literals' parse, half the operators' test for a wrapper),
+  200 quantity expressions +0.8 %, `units.test.cpp` +0.8 %,
+  `arithmetic.test.cpp` +2.8 %. The 12 injected errors of `examples/` print
+  0.3 % more. Run time: unchanged.
+
+### Fixed
+
+- An integer inside times a `std::cw<V>` was a builtin number
+  (`id<"[0..9]">{} * std::cw<5>` was an `unsigned long`), and a comparison
+  with one compared builtins: both operands converted. They are inside
+  operations now.
 
 ## 0.11.0 — 2026-11-21
 

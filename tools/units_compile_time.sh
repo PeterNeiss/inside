@@ -35,8 +35,8 @@ printf '#include <inside/units.hpp>\nint main() {}\n' > "$DIR/include.cpp"
   echo '    int s = 0;'
   for ((i = 1; i <= N; ++i)); do
     case $((i % 5)) in
-      0) echo "    s += sink(quantity<si::kilo(si::metre), inside<{0, $i}>>{1, si::kilo(si::metre)} + just<$i> * si::metre);" ;;
-      1) echo "    s += sink((just<$i> * si::newton) * (quantity<si::metre, inside<{0, $i}>>{1, si::metre}));" ;;
+      0) echo "    s += sink(quantity<si::kilo(si::metre), inside<{0, $i}>>{1, si::kilo(si::metre)} + std::cw<$i> * si::metre);" ;;
+      1) echo "    s += sink((std::cw<$i> * si::newton) * (quantity<si::metre, inside<{0, $i}>>{1, si::metre}));" ;;
       2) echo "    s += sink(quantity<si::metre / si::second, inside<{0, $i}>>{1, si::metre / si::second}.in(si::kilo(si::metre) / si::hour));" ;;
       3) echo "    s += sink(quantity<isq::height[si::metre], inside<{0, $i}>>{1, isq::height[si::metre]} + quantity<isq::width[si::metre], inside<{0, $i}>>{1, isq::width[si::metre]});" ;;
       4) echo "    s += sink(point<si::degree_Celsius>(inside<{-$i, $i}>{0}).point_for(si::absolute_zero));" ;;
@@ -57,11 +57,11 @@ printf '#include <inside/units.hpp>\nint main() {}\n' > "$DIR/include.cpp"
   echo '    int s = 0;'
   for ((i = 1; i <= N; ++i)); do
     case $((i % 5)) in
-      0) echo "    s += sink(inside<{0, $i}>{1} * just<1000> + just<$i>);" ;;
-      1) echo "    s += sink(just<$i> * inside<{0, $i}>{1});" ;;
-      2) echo "    s += sink(inside<{0, $i}>{1} * just<18, 5>);" ;;
+      0) echo "    s += sink(inside<{0, $i}>{1} * 1000_q + std::cw<$i>);" ;;
+      1) echo "    s += sink(std::cw<$i> * inside<{0, $i}>{1});" ;;
+      2) echo "    s += sink(inside<{0, $i}>{1} * 3.6_q);" ;;
       3) echo "    s += sink(inside<{0, $i}>{1} + inside<{0, $i}>{1});" ;;
-      4) echo "    s += sink(inside<{-$i, $i}>{0} + just<27315, 100>);" ;;
+      4) echo "    s += sink(inside<{-$i, $i}>{0} + 273.15_q);" ;;
     esac
   done
   echo '    return s == 0;'

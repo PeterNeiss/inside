@@ -7,6 +7,6 @@ inline constexpr auto eps = ins::basis_vector<"eps", ins::geometric<0>>;
 
 int main() {
     using namespace ins;
-    auto q = just<1> / (just<1> * eps);
+    auto q = 1_q / (1_q * eps);
     (void)q;
 }

@@ -30,7 +30,7 @@ divisor as `unexpected(error::division_by_zero)`, as `/` does.
 
 The carry is an inside, so it adds straight into another inside, and a hook
 reads it as a number with `carry.to<long long>()`. Its grid holds every carry
-the source can produce, exactly: for `125_ins` into a period of 60, `[2, 2]`;
+the source can produce, exactly: for `125_q` into a period of 60, `[2, 2]`;
 for an `int`, that type's limits divided by the period; for a `double`, its
 whole range divided by the period (an inside past 64 bits). No carry
 saturates.
@@ -39,7 +39,7 @@ saturates.
 using ring = id<"[0..64] 1/16 wrap|round_half_away">;
 ring p{0};
 int  wraps = 0;
-p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
+p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_q;
 // p == 1.4375 (65.5 − 1025/16: the period is the span plus one notch), wraps == 1
 ```
 
@@ -66,7 +66,7 @@ acc.on_clamp([&](auto&, auto over) { /* over == 850 */ }) += big;   // acc == 10
 
 The right-hand side of a hook's `+=` is an inside or a quantity. A raw
 `double` is rejected, as for plain compound assignment: give it a grid
-(`0.5_ins`, `just<1, 2>`, or an inside over its range).
+(`0.5_q`, or an inside over its range).
 
 ### Hooks on quantities
 
@@ -78,7 +78,7 @@ periods), the overshoot (a quantity in the same unit) or the error:
 ```cpp
 id<"[0..60) [s] wrap"> s{50, si::second};
 id<"[0..60) [min] wrap"> m{0, si::minute};
-s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::minute;
+s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += 2_q * si::minute;
 // s == 50 s (170 s fold to 50 s), m == 2 min
 ```
 

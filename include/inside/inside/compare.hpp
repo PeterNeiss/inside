@@ -56,7 +56,7 @@ namespace ins
     };
 
     // A point P that is one of X's slots, with X storing a builtin index:
-    // X's raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot (`t != end(t)`, `x <= 4_ins`).
+    // X's raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot (`t != end(t)`, `x <= 4_q`).
     template <insidable X, insidable P>
     inline constexpr bool point_is_slot =
       integer_index_storage<X> && !point_grid<X> && point_grid<P> && grid_of<X>.representable(lower_of<P>);
@@ -90,16 +90,26 @@ namespace ins
     }
   } // namespace detail
 
-  template <insidable L, insidable R>
+  namespace detail
+  {
+    // Two insides, or an inside and a std::cw<V>, its point (inside/detail/constant.hpp): x <= std::cw<upper_of<T>>.
+    template <class L, class R>
+    concept compared_insides =
+      (insidable<L> && insidable<R>) || (constant_operands<L, R> && (insidable<L> || insidable<R>));
+  } // namespace detail
+
+  template <class L, class R>
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs)
   {
-    return detail::compare(lhs, rhs, detail::three_way);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::three_way);
   }
 
-  template <insidable L, insidable R>
+  template <class L, class R>
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs)
   {
-    return detail::compare(lhs, rhs, detail::equal_to);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::equal_to);
   }
 
   namespace detail
@@ -173,13 +183,18 @@ namespace ins
 
   // No comparison with a floating-point value:
   // 0.1 is not 1/10 in binary, so an inside holding 1/10 would compare unequal to 0.1.
-  // Compare with a rational (0.1_r), a point (just<1, 10>) or an inside.
+  // Compare with a rational (0.1_r), a point (0.1_q) or an inside. (So with std::cw<0.1>.)
 #define INSIDE_WHY_float_compare                                                                        \
   "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
-  "just<1, 10> or an inside"
-  template <insidable B, std::floating_point A>
+  "0.1_q or an inside"
+  namespace detail
+  {
+    template <class A>
+    concept floating_scalar = bool(std::is_floating_point_v<A> || floating_constant<A>);
+  } // namespace detail
+  template <insidable B, detail::floating_scalar A>
   auto operator<=>(const B&, A) = delete (INSIDE_WHY_float_compare);
-  template <insidable B, std::floating_point A>
+  template <insidable B, detail::floating_scalar A>
   bool operator==(const B&, A) = delete (INSIDE_WHY_float_compare);
 #undef INSIDE_WHY_float_compare
 } // namespace ins

@@ -30,12 +30,12 @@ namespace
 class magazine
 {
 public:
-  static constexpr auto capacity = just<30> * rd;
+  static constexpr auto capacity = 30_q * rd;
   using rounds_t = id<"[0..30] [rd] wrap">; // 31 states; wraps at empty
 
   rounds_t rounds{capacity}; // starts full
 
-  bool empty() const { return rounds == just<0> * rd; }
+  bool empty() const { return rounds == 0_q * rd; }
 };
 
 class rifle
@@ -73,7 +73,7 @@ void player::pull_trigger()
 {
   ++weapon.pulled_trigger;
 
-  if (weapon.mag.empty() && reserve == just<0> * rd)
+  if (weapon.mag.empty() && reserve == 0_q * rd)
   {
     ++dry_clicks;
     return;
@@ -89,7 +89,7 @@ void player::pull_trigger()
       magazine::rounds_t shortfall{0, rd};
       reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::rounds_t{-over}; }) -= magazine::capacity;
       ++weapon.reloads;
-      if (shortfall > just<0> * rd)
+      if (shortfall > 0_q * rd)
         m = magazine::capacity - shortfall;
     }) -= rd;
 }
@@ -135,8 +135,8 @@ int main()
     p.pull_trigger();
   status("after 40 more (reserve dries up):   ");
 
-  if (to_string(p.weapon.rounds_dropped) != "10 rd" || p.weapon.reloads != just<2> * reload
-      || p.dry_clicks != just<10> * pull
+  if (to_string(p.weapon.rounds_dropped) != "10 rd" || p.weapon.reloads != 2_q * reload
+      || p.dry_clicks != 10_q * pull
       || !p.weapon.mag.empty())
     return 1;
   return 0;

@@ -67,8 +67,8 @@ int main()
   using degrees    = id<"[0..360] [deg]">;
   using millionths = id<"[0..7] 1/1'000'000 round_half_away">;
   const auto bearing{value_cast<si::radian, millionths>(degrees{30, si::degree})};
-  const auto east   {just<1.5> * km * math::sin(bearing)};
-  const auto north  {just<1.5> * km * math::cos(bearing)};
+  const auto east   {1.5_q * km * math::sin(bearing)};
+  const auto north  {1.5_q * km * math::cos(bearing)};
   std::cout << "bearing: " << bearing << ", east " << east.in(si::metre) << ", north " << north.in(si::metre)
             << '\n'; // 0.523599 rad, east 750.0000 m, north 1299.0375 m
   if (to_string(bearing) != "0.523599 rad" || to_string(east.in(si::metre)) != "750.0000 m")

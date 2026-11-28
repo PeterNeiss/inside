@@ -14,7 +14,7 @@ using namespace ins;
 
 namespace
 {
-  inline constexpr auto slot = unit<"slot", just<1, 32768> * pi * si::radian>; // 65536 slots are a full turn
+  inline constexpr auto slot = unit<"slot", "1/32768"_q * pi * si::radian>; // 65536 slots are a full turn
 } // namespace
 
 int main()
@@ -35,10 +35,10 @@ int main()
       phase.on_wrap([&](auto&, auto) { ++cycles; }) += increment;
     }
     std::cout << "  completed cycles: " << cycles << "\n";
-    if (cycles != 1 || phase != just<0> * slot)
+    if (cycles != 1 || phase != 0_q * slot)
       return 1;
     // 1/8 turn is 45°: sin and cos both round to 11585/16384.
-    if (math::sin<per<(1 << 14)>>(increment) != just<11585, (1 << 14)>
+    if (math::sin<per<(1 << 14)>>(increment) != "11585/16384"_q
         || math::cos<per<(1 << 14)>>(phase_slots{65536 / 4, slot}) != 0)
       return 1;
   }
@@ -57,7 +57,7 @@ int main()
       std::cout << "  " << i << "   " << increment << "    " << phase << "    "
                 << math::sin<per<(1 << 14)>>(phase) << "\n";
       phase     += increment;           // wraps at a full turn
-      increment += increment / just<4>; // ×1.25
+      increment += increment / 4_q;     // ×1.25
     }
   }
   return 0;

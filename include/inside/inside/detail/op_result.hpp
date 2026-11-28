@@ -48,7 +48,7 @@ namespace ins::detail
   inline constexpr bool exact_path_fits =
     rational_storage<Result> && (!exact_fits<Op, Result, L, R> || wide_valued<L> || wide_valued<R>);
 
-  // x * just<c> and x / just<c> (c != 0): the result lattice is x's scaled by c or 1/c (grid operator* and
+  // x * detail::point_v<c> and x / detail::point_v<c> (c != 0): the result lattice is x's scaled by c or 1/c (grid operator* and
   // operator/), so the result's offset is x's offset, counted from the far end when the scale is negative.
   // No multiply or divide at all.
   template <insidable Point, insidable X, insidable Result>

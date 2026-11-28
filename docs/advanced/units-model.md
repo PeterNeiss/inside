@@ -9,7 +9,7 @@ header costs to compile. [Units](../guide/units.md) has the everyday view.
 | Concept | What it is | Spelled |
 |---|---|---|
 | dimension | base dimensions to integer powers: length, mass, time… or your own | `dimension_of(si::newton.value)` |
-| magnitude | an exact rational × π^k, relative to the coherent unit (m, kg, s, EUR…) | `just<1000> * si::metre`, `pi` |
+| magnitude | an exact rational × π^k, relative to the coherent unit (m, kg, s, EUR…) | `1000_q * si::metre`, `pi` |
 | unit | named units to integer powers, with prefixes and a magnitude | `si::kilo(si::metre) / si::hour` |
 | kind | a kind of quantity in the ISQ tree: `height` → `altitude` → `length` | `isq::height` |
 | reference | a unit and a kind | `isq::height[si::metre]`, or a bare unit |
@@ -31,7 +31,7 @@ onto Q's grid in the unit named, so `minutes{90, si::second, round_floor}` is
 1 min and a run-time number takes a channel as any store does
 (`minutes::try_make(n, si::second)`). `Q{42}` and `q.numerical_value()` name no unit and do not compile. A
 raw scalar has no grid either, so `42 * si::metre` and `q * 2` do not compile,
-and the message says to write `just<42>`.
+and the message says to write `42_q`.
 
 An operation that cannot happen is a constraint failure: `requires { a + b; }`
 is false for a length and a duration, for Hz and Bq, for `q * 2`, for
@@ -73,7 +73,7 @@ supported. The trigonometric functions round once across π too: `sin`,
 ([Math](../guide/math.md#quantities)).
 
 π can scale a quantity too: `pi * q` multiplies the **unit**, not the
-number. `pi * just<2> * si::second` is the number 2 in the unit [π·s], so
+number. `pi * 2_q * si::second` is the number 2 in the unit [π·s], so
 π is never approximated, and a later `value_cast<si::hour, Out>(…)` rounds
 once, with the true π. That is how to write π·a·√(a/μ) or 1/(2πRC):
 `x * math::pi` approximates π to `x`'s resolution, and the grid numbers would
@@ -166,18 +166,18 @@ argument, so a declaration is its own identity: the same declaration in two
 places is the same unit.
 
 ```cpp
-inline constexpr auto fathom    = unit<"ftm", 1.8288_ins * si::metre>;
+inline constexpr auto fathom    = unit<"ftm", 1.8288_q * si::metre>;
 inline constexpr auto depth     = kind<"depth", isq::length>;
 inline constexpr auto sea_level = origin<"sea_level", isq::length>;
 ```
 
 | Declaration | Defined by |
 |---|---|
-| `unit<"sym", q, options>` | the quantity it equals (`1.8288_ins * si::metre`), another unit (`si::joule / si::second`), or a kind, whose base unit it then is (`unit<"EUR", money>`) |
+| `unit<"sym", q, options>` | the quantity it equals (`1.8288_q * si::metre`), another unit (`si::joule / si::second`), or a kind, whose base unit it then is (`unit<"EUR", money>`) |
 | `kind<"name", parent, options>` | a kind (a child of it), a product of kinds (`isq::length / isq::duration`), or a dimension (a base quantity) |
 | `base_dimension<"name">` | a dimension of your own |
 | `base_unit<"sym", "dimension", options>` | a new dimension, its kind and this unit in one |
-| `origin<"name", where>` | a kind or a dimension (an absolute origin), or a point of another origin (`si::absolute_zero + 273.15_ins * si::kelvin`) |
+| `origin<"name", where>` | a kind or a dimension (an absolute origin), or a point of another origin (`si::absolute_zero + 273.15_q * si::kelvin`) |
 | `basis_vector<"sym", square, options>` | a basis vector of a geometric algebra |
 
 A unit's options, each optional, as designated initializers in this order:
@@ -194,15 +194,15 @@ siblings (activity and frequency are both 1/s), and `.recipe` for a child with
 a recipe of its own (velocity: displacement / duration, under speed).
 
 ```cpp
-inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "deg_R", .origin = si::absolute_zero}>;
+inline constexpr auto rankine = unit<"°R", "5/9"_q * si::kelvin, {.ascii = "deg_R", .origin = si::absolute_zero}>;
 inline constexpr auto rpm     = unit<"rpm", one / si::minute, {.kind = isq::frequency}>;
-inline constexpr auto turn    = unit<"tr", just<2> * pi * si::radian, {.space_before = false}>;
+inline constexpr auto turn    = unit<"tr", 2_q * pi * si::radian, {.space_before = false}>;
 inline constexpr auto level   = kind<"level", isq::dimensionless, {.distinct = true}>;   // dB: no plain number
 inline constexpr auto decibel = unit<"dB", one, {.kind = level}>;
 ```
 
 `pi` is the number π as a unit, exactly: a unit that is a multiple of π says
-so (`just<1, 180> * pi * si::radian` is the degree), and `pi * q` is the
+so (`"1/180"_q * pi * si::radian` is the degree), and `pi * q` is the
 quantity `q` in a unit scaled by π.
 
 ### Named definitions: short symbols
@@ -217,7 +217,7 @@ same way; `unit_def`, `kind_def`, `origin_def` and `basis_vector_def` take the
 arguments of `unit<…>`, `kind<…>`, `origin<…>` and `basis_vector<…>`:
 
 ```cpp
-inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+inline constexpr unit_def fathom_def{"ftm", 1.8288_q * si::metre};
 inline constexpr auto     fathom = defined_by<fathom_def>;
 ```
 
@@ -312,7 +312,7 @@ through `+ - * / %` as an `expected` inside does; the first error wins.
 |---|---|
 | `isq` | about 85 kinds: base quantities, space and time, mechanics, thermodynamics, electromagnetism, light and radiation; `time` and `work` are aliases |
 | `si` | the base units, the 22 named derived units, the prefixes quecto … quetta, the accepted non-SI units min, h, d, au, °, ′, ″, a, ha, L, t; the eV and the Da; the origins `absolute_zero` and `ice_point` |
-| `si2019` | the defining constants as units (Δν_Cs, c, K_cd, h, e, k, N_A) and g₀: `just<1> * si2019::speed_of_light_in_vacuum` is c exactly |
+| `si2019` | the defining constants as units (Δν_Cs, c, K_cd, h, e, k, N_A) and g₀: `1_q * si2019::speed_of_light_in_vacuum` is c exactly |
 | `international` | yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉ |
 | `ins` | `percent` (%) and `per_mille` (‰): dimensionless; `one`, the unit of a number |
 

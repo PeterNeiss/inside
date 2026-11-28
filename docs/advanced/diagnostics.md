@@ -10,7 +10,7 @@ operation without an error at all.
 ## Decoding an inside
 
 An inside prints as the text that spells it ([spelling a type as
-text](../guide/id.md)). The point `3_ins`, the sum of two digits, and a
+text](../guide/id.md)). The point `3_q`, the sum of two digits, and a
 heading:
 
 ```text
@@ -98,7 +98,7 @@ Declare it as a named definition, as the catalog does, and it prints by name
 ([units of your own](../guide/units.md#units-of-your-own)):
 
 ```cpp
-inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+inline constexpr unit_def fathom_def{"ftm", 1.8288_q * si::metre};
 inline constexpr auto     fathom = defined_by<fathom_def>;   // unit_atom{(& fathom_def), 0, 1}
 ```
 
@@ -120,7 +120,7 @@ error: static assertion failed: inside_assignable: rhs interval lies entirely ou
 
 ```cpp
 auto square(id<"[0..9]"> x) { return x * x; }
-square(42_ins);                              // 42_ins is the point [42]: rejected
+square(42_q);                              // 42_q is the point [42]: rejected
 ```
 
 `id<"[0..9]">` holds 0 … 9, so 42 does not fit, though both are integers.
@@ -179,7 +179,7 @@ Read it as "this run-time number needs a channel": `T::try_make(n)`,
 `T{n, clamp}`, `x.on_error(ec) = n`. Unlike a deleted overload, the
 constructor exists, so `std::is_constructible_v<T, int>` is `true`; a generic
 `emplace_back(5)` constructs at run time and does not compile (write
-`emplace_back(5_ins)`). A constant that does not fit fails with the text:
+`emplace_back(5_q)`). A constant that does not fit fails with the text:
 
 ```text
 error: uncaught exception of type 'ins::detail::inside_error'; 'what()': 'inside: a checked
@@ -196,11 +196,11 @@ instead (`= delete("…")`):
 
 | Code | Message |
 |---|---|
-| `just<1> * si::metre + just<1> * si::second` | `units: adding or comparing quantities of different dimensions` |
-| `42 * si::metre` | `units: a raw number has no grid - write just<42> * unit, or Q{42, unit} into a quantity type Q` |
-| `id<"[0..100] [m]">{42}` | `units: a number alone has no unit - write Q{42, si::metre}, or just<42> * si::metre` |
+| `1_q * si::metre + 1_q * si::second` | `units: adding or comparing quantities of different dimensions` |
+| `42 * si::metre` | `units: a raw number has no grid - write 42_q * unit, or Q{42, unit} into a quantity type Q` |
+| `id<"[0..100] [m]">{42}` | `units: a number alone has no unit - write Q{42, si::metre}, or 42_q * si::metre` |
 | `q.numerical_value()` | `units: a number alone has no unit - read q.numerical_value_in(si::metre)` |
-| `q * 2` | `units: a raw number has no grid - scale by just<2>, not 2` |
+| `q * 2` | `units: a raw number has no grid - scale by 2_q, not 2` |
 | `length.in(si::second)` | `units: in() - the unit has another dimension` |
 | `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <inside/units/math.hpp>, Rep declared with a rounding mode` |
 | `id<"[0..7]"> x = angle;` | `units: an angle (a distinct kind) or a pi-scaled ratio is no plain number - read numerical_value_in(si::radian), or value_cast it first` |
@@ -225,7 +225,7 @@ static_assert(!can_divide<id<"[0..9]">, id<"[0]">>);            // the point 0
 
 template <class A, class B>
 constexpr bool can_add = requires(A a, B b) { a + b; };
-static_assert(!can_add<decltype(just<1> * si::metre), decltype(just<1> * si::second)>);
+static_assert(!can_add<decltype(1_q * si::metre), decltype(1_q * si::second)>);
 ```
 
 An impossible operator is a deleted overload whose message names the reason

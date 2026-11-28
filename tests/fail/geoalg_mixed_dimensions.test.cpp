@@ -11,7 +11,7 @@ inline constexpr auto e3 = ins::basis_vector<"e3", ins::geometric<1>>;
 
 int main() {
     using namespace ins;
-    auto v = just<1> * si::metre * e1 + just<1> * si::metre * e2;
-    auto w = v + just<1> * si::second * e3;
+    auto v = 1_q * si::metre * e1 + 1_q * si::metre * e2;
+    auto w = v + 1_q * si::second * e3;
     (void)w;
 }
