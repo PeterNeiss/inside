@@ -98,7 +98,7 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   | `id<"[0..1] <1000>">` | 136 → 103 → 111 | 148 → 133 → 34 |
   | `id<"[0..100] [m]">` | 373 → 206 → 107 | 404 → 232 → 33 |
   | `id<"[0..100] [km/h]">` | 377 → 350 → 124 | 429 → 448 → 36 |
-  | `id<"[-50..50] [deg_C] @ice_point">` | 469 → 260 → 178 | 508 → 276 → 46 |
+  | `id<"[-50..50] [deg_C] @ice_point">` | 469 → 260 → 196 | 508 → 276 → 49 |
 
   A mangled name holds about 5 characters per character of the text, so a
   long text (flag words) mangles longer than the grid numbers did. The 12
@@ -109,7 +109,10 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   +20 %. A quantity's type reads its text back where it is formed (a lookup
   of each symbol, the catalog's tables first), and the catalog's kinds and
   origins have tables of their own. Run time: the instruction counts of the
-  perf workload are unchanged. The tests and examples form 4018 types; their
+  perf workload are unchanged. The templates on quantities take the types
+  alone (no defaulted reference and number parameters): `operator+` on two
+  km/h quantities mangles in 136 characters (594 with them), and the 12
+  injected errors print 10 % less. The tests and examples form 4018 types; their
   longest text is 1033 characters, of the 2048 a key holds.
 - Type names (`tools/symbol_lengths.sh`, GCC 16, characters):
 
