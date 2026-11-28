@@ -18,7 +18,7 @@ namespace
   inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;
 
   // 2. A temperature unit whose points count from absolute zero; the options name its ASCII symbol and origin.
-  inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "`R", .origin = si::absolute_zero}>;
+  inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "deg_R", .origin = si::absolute_zero}>;
 
   // 3. Currency: a base dimension, its base quantity and two units, as named definitions:
   //    diagnostics and symbols spell them money_def, euro_def and cent_def, not their content.
@@ -63,13 +63,13 @@ int main()
   static_assert(sounding.kind == depth);
 
   // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.
-  using rankine_point = id<"[0..1000] 1/100 [`R] @absolute_zero">;
+  using rankine_point = id<"[0..1000] 1/100 [deg_R] @absolute_zero">;
   const rankine_point freezing{just<49167, 100>, rankine};
   std::cout << "freezing   " << freezing << " = " << freezing.point_in(si::degree_Celsius) << " = "
             << freezing.point_in(international::degree_Fahrenheit) << '\n';
   if (!(freezing == point<si::degree_Celsius>(just<0>))
       || to_string(freezing.point_in(international::degree_Fahrenheit)) != "32.00 ℉"
-      || to_string(freezing, text_encoding::ascii) != "491.67 `R")
+      || to_string(freezing, text_encoding::ascii) != "491.67 deg_R")
     return 1;
 
   // 3. 1.25 kg of coffee at 3.99 EUR/kg is 4.9875 EUR exactly; with a 50 ct tip the sum runs in cents.

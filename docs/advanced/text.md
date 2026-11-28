@@ -125,18 +125,22 @@ parse<minutes>("90", si::second); // a unit named in code
 h→min ×60, ‰→% ×1/10, ℉→℃ ×5/9 and a shift), so the value in Q's unit is
 computed with no rounding, and Q's number type then stores it (by its
 policy and the flags `F`; `parse_exact` only where it is on the grid). A
-factor of π (° into rad) is not exact. The units are the catalog's and
-every unit of your own declared at namespace scope before the call, in any
+factor of π (° into rad) is not exact. A symbol reads as in a type's text
+([which unit a symbol names](../guide/id.md#which-unit-a-symbol-names)): the
+catalog's tables first (its constants too, `c_0`, `g_0`), then every unit
+tag of your own declared at namespace scope before the call, in any
 namespace (unnamed ones too), found by reflection. Each call site gets the
 set it sees as a template argument, so two translation units that see
 different units get different specializations.
 
-**The unit's text.** A symbol with an optional SI prefix (`k`, `µ`, ASCII
-`u`) and exponent (`²`, `⁻¹`, `^2`, `^-1`); factors joined by a space, `·`
-or `*`; one `/` before a symbol or a parenthesized product (`J/(kg K)`),
-or `1/s`; a scaled unit as printed (`[1/381·ft]`). An exact symbol wins
-over a prefix reading (`min` is the minute, `mm` the millimetre); at most
-6 symbols and exponents up to 9.
+**The unit's text.** Whole symbols: a unit's own, the catalog's prefixed
+units in wide use (`km`, `ms`, `µs`, ASCII `us`, `kHz`, …) and prefixed
+units of your own that a tag names; no prefix is read into another symbol
+(`5 Mm` and `5 rd` are unknown units). A symbol two of your own units share
+with different definitions is unknown too. Each with an exponent (`²`, `⁻¹`,
+`^2`, `^-1`); factors joined by a space, `·` or `*`; one `/` before a symbol
+or a parenthesized product (`J/(kg K)`), or `1/s`; a scaled unit as printed
+(`[1/381·ft]`); at most 6 symbols and exponents up to 9.
 
 **Kinds and origins.** A single unit's kind must add to Q's: `"5 Hz"` is no
 activity in Bq, `"15 %"` no level in dB. A compound unit names no kind, so

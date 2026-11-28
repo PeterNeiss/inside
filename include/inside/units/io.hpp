@@ -28,46 +28,47 @@ namespace ins
   //   parse<Q, F>(number, unit)   the two apart: a JSON key price[USD/item], a CSV header
   //   parse<Q, F>(number, u)      a bare number in a unit named in code (u a unit tag)
   //   parse_exact<Q>(…)           the same, accepting only a value Q holds exactly
-  // The unit may be any unit visible at the call that converts exactly to Q's (a rational factor): the catalog's
-  // and your own, with SI prefixes, products, quotients and powers ("km/h", "kg m²/s²"). The number is multiplied
+  // The unit may be any unit visible at the call that converts exactly to Q's (a rational factor), read as a type's
+  // text reads it: whole symbols (the catalog's units and its prefixed ones in wide use, km, ms, kHz, …, and your
+  // own tags; the catalog first), products, quotients and powers ("km/h", "kg m²/s²"). The number is multiplied
   // by that factor exactly (a point also shifted between origins), then stored by Q's number type and the flags F.
   // A single unit's kind must add to Q's (Hz is no Bq); a compound unit's kind is Q's.
   // Errors: missing_unit, unknown_unit, incompatible_unit, then the number's and the store's own.
-  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view text)
   {
     const auto t{detail::split_quantity_text(text)};
     return detail::parse_quantity_text<Q, F, false, Units>(t.Number, t.Unit);
   }
-  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, policy_flag F = detail::none, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, std::string_view unit)
   {
     return detail::parse_quantity_text<Q, F, false, Units>(number, unit);
   }
   template <class Q, policy_flag F = detail::none, class Tag>
-    requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
+    requires detail::quantity_or_point<Q> && detail::is_reference_tag_v<Tag>
          && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view number, Tag)
   {
     return detail::parse_quantity_in<Q, F, false, reference_of(Tag{}).unit()>(number);
   }
-  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view text)
   {
     const auto t{detail::split_quantity_text(text)};
     return detail::parse_quantity_text<Q, detail::none, true, Units>(t.Number, t.Unit);
   }
-  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, std::string_view unit)
   {
     return detail::parse_quantity_text<Q, detail::none, true, Units>(number, unit);
   }
   template <class Q, class Tag>
-    requires(quantity_like<Q> || detail::is_quantity_point_v<Q>) && detail::is_reference_tag_v<Tag>
+    requires detail::quantity_or_point<Q> && detail::is_reference_tag_v<Tag>
          && (detail::text_unit_converts<Q, reference_of(Tag{}).unit()>())
   [[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view number, Tag)
   {
@@ -78,8 +79,8 @@ namespace ins
   // token carries it (90°). e holds the value or the error; the stream stays good on a parse error, and only
   // running out of input sets failbit (e: invalid_format without a number, missing_unit without a unit).
   // (No >> into a plain quantity: every way to read one reports through an expected.)
-  template <class Q, detail::unit_set Units = detail::visible_units<Q>()>
-    requires quantity_like<Q> || detail::is_quantity_point_v<Q>
+  template <class Q, detail::unit_set Units = detail::readable_units<Q>()>
+    requires detail::quantity_or_point<Q>
   std::istream& operator>>(std::istream& stream, std::expected<Q, error>& e)
   {
     std::string number;
@@ -110,19 +111,11 @@ namespace ins
 
   namespace detail
   {
+    // A prefix's symbol (unit_grammar.hpp's table), "?" for a power of ten no prefix has.
     constexpr std::string_view prefix_symbol(int p, text_encoding e)
     {
-      // 10^-2 … 10^2, then 10^-30 … 10^30 in steps of 3.
-      constexpr std::string_view near_one[]  = {"c", "d", "", "da", "h"};
-      constexpr std::string_view thousands[] = {"q", "r", "y", "z", "a", "f", "p", "n", "µ", "m", "",
-                                                "k", "M", "G", "T", "P", "E", "Z", "Y", "R", "Q"};
-      if (p == -6 && e == text_encoding::ascii)
-        return "u";
-      if (p >= -2 && p <= 2)
-        return near_one[p + 2];
-      if (p >= -30 && p <= 30 && p % 3 == 0)
-        return thousands[(p + 30) / 3];
-      return "?";
+      const std::string_view s{prefix_text(p, e == text_encoding::ascii)};
+      return p != 0 && s.empty() ? "?" : s;
     }
 
     inline void append_exponent(std::string& s, int e, text_encoding enc)
@@ -135,15 +128,14 @@ namespace ins
         s += std::to_string(e);
         return;
       }
-      static constexpr std::string_view sup[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"};
       if (e < 0)
       {
-        s += "⁻";
+        s += text_superscripts[10];
         e = -e;
       }
       const std::string digits{std::to_string(e)};
       for (char c : digits)
-        s += sup[c - '0'];
+        s += text_superscripts[c - '0'];
     }
 
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
@@ -190,7 +182,7 @@ namespace ins
     }
     if (!u.Scale.is_one())
     {
-      // "1/1250", "π", "2π", "π⁻¹" (ASCII "pi^-1").
+      // The ratio as a number prints ("0.0008", "1/3"), then "π", "2π", "π⁻¹" (ASCII "pi^-1").
       std::string scale{u.Scale.Pi != 0 && u.Scale.Ratio == grid_number{1} ? "" : ins::to_string(u.Scale.Ratio)};
       if (u.Scale.Pi != 0)
       {
@@ -208,17 +200,20 @@ namespace ins
   }
 
   // "5 km", "90°", "3" (unit one).
-  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  template <quantity_like QR>
   std::string to_string(const QR& q, text_encoding enc = text_encoding::utf8)
   {
+    constexpr ins::reference R{QR::reference};
     std::string       s  {ins::to_string(ins::detail::value_of(q))};
     const std::string sym{unit_symbol(R.unit(), enc)};
     if (sym.empty())
       return s;
-    return s + (detail::space_before(R.unit()) ? " " : "") + sym;
+    const bool space{enc == text_encoding::ascii ? detail::space_before_ascii(R.unit())
+                                                 : detail::space_before(R.unit())};
+    return s + (space ? " " : "") + sym;
   }
 
-  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  template <quantity_like QR>
   std::ostream& operator<<(std::ostream& os, const QR& q)
   {
     return os << ins::to_string(q);
@@ -273,20 +268,18 @@ namespace ins
 
 // std::format: the spec formats the number as for its inside ({:.2f}, {:>8}), then the unit symbol follows
 // ("5 km", "90°").
-template <class Q>
-  requires ins::detail::is_quantity_v<Q>
+template <ins::quantity_like Q>
 struct std::formatter<Q> : std::formatter<typename Q::rep>
 {
   template <typename Ctx>
   auto format(const Q& q, Ctx& ctx) const
   {
-    namespace u = ins;
     constexpr ins::reference R{Q::reference};
     auto              out{std::formatter<typename Q::rep>::format(ins::detail::value_of(q), ctx)};
-    const std::string sym{u::unit_symbol(R.unit())};
+    const std::string sym{ins::unit_symbol(R.unit())};
     if (sym.empty())
       return out;
-    if constexpr (u::detail::space_before(R.unit()))
+    if constexpr (ins::detail::space_before(R.unit()))
       *out++ = ' ';
     return std::ranges::copy(sym, out).out;
   }

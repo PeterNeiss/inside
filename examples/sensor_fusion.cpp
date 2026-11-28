@@ -36,7 +36,7 @@ int main()
   // The 1/160 notch holds every reading·weight product (outdoor 1/16, indoor 1/80, ground 1/32) exactly,
   // so the running sum is lossless.
   const auto ref{point<deg_C>(just<0>)};
-  using weighted_celsius = id<"[-200..200] 1/160 [`C] round_half_away">;
+  using weighted_celsius = id<"[-200..200] 1/160 [deg_C] round_half_away">;
   using weight_total     = id<"[0..8] 1/8 round_half_away">;
   weighted_celsius weighted_sum{0, deg_C};
   weight_total     weight_sum  {0};
@@ -65,7 +65,7 @@ int main()
 
   // The fused value, whole ℃: its clamp and rounding policy saturates and rounds the quotient in one step.
   // The weight grid holds 0, so div is an expected: no accepted reading is reported, not a crash.
-  using fused_celsius = id<"[-40..60] [`C] clamp|round_half_away">;
+  using fused_celsius = id<"[-40..60] [deg_C] clamp|round_half_away">;
   const auto fused{ref + div<fused_celsius>(weighted_sum, weight_sum).value_or(fused_celsius{0, deg_C})};
 
   std::cout << "\nweighted sum: " << weighted_sum << ",  total weight: " << weight_sum << "\n";

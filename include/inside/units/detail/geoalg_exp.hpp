@@ -351,15 +351,10 @@ namespace ins::detail::gaexp
   {
     using type = N;
   };
-  template <reference R, class V, class N>
-  struct with_number<quantity_parts<R, V>, N>
+  template <quantity_like P, class N>
+  struct with_number<P, N>
   {
-    using type = id<quantity_key<R, N>>;
-  };
-  template <key K, class N>
-    requires unit_key<K>
-  struct with_number<id<K>, N> : with_number<basic_of_t<id<K>>, N>
-  {
+    using type = with_rep_t<P, N>;
   };
   template <class F, std::size_t Q>
   using twin_part =
@@ -1520,8 +1515,7 @@ namespace ins::detail::gaexp
                   "math::exp: a deduced output takes the argument's notch - its parts need one, or name it: "
                   "exp<per<K>>(x)");
     static constexpr policy_flag flags = ::ins::math::detail::spec_flags(
-      ::ins::detail::with_default_rounding(policy_of<num_t<std::tuple_element_t<0, typename D::DP>>>
-                                           & ~::ins::detail::cursor_marker),
+      ::ins::detail::with_default_rounding(::ins::detail::value_policy<num_t<std::tuple_element_t<0, typename D::DP>>>),
       S);
     static consteval grid_number limit(double m)
     {

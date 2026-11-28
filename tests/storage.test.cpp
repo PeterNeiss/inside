@@ -492,13 +492,6 @@ using namespace ins;
 using namespace ins::formats;
 
 namespace {
-// A cursor's own policy: policy_of drops the cursor marker.
-template <class>
-struct policy_param;
-template <key K>
-struct policy_param<id<K>> {
-    static constexpr policy_flag value = detail::key_policy<K>;
-};
 using cur = cursor<id<"[0..60] round_floor">, 5>;
 using pt  = decltype(point<si::degree_Celsius>(id<"[-50..50]">{0}));
 template <class T>
@@ -512,14 +505,14 @@ template struct ins::id<"[0..1] 1/4 clamp|round_half_away">;
 template struct ins::id<"[-1..1] <8> wrap">;
 template struct ins::id<"[0..0x1p70] 1/4">;
 template struct ins::id<"[7]">;
-template struct ins::id<key{grid_of<cur>, policy_param<cur>::value}>;
+template struct ins::id<detail::key_v<cur>>; // a cursor's number
 
 // Quantities and a point.
 template struct ins::id<"[0..100] [m]">;
 template struct ins::id<"[0..100] 1/4 [%] round_half_away">;
 template struct ins::id<ins::quantity_key<si::second, cur>>;
-template struct ins::id<"[-50..50] [`C] @ice_point">;
-static_assert(std::is_same_v<pt, ins::id<"[-50..50] [`C] @ice_point">>);
+template struct ins::id<"[-50..50] [deg_C] @ice_point">;
+static_assert(std::is_same_v<pt, ins::id<"[-50..50] [deg_C] @ice_point">>);
 
 TEST(ExplicitInstantiationTest, every_member_compiles_or_is_constrained) {
     // The instantiations above are the test; a continuous grid has no ++.

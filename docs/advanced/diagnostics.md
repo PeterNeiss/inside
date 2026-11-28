@@ -32,7 +32,7 @@ and the text above are one type.
 | `[3]` | a point: one value, held in the type (`[3..3]` is a grid of step 1 with one value) |
 | `0x1p70`, `0x3fffffffffffffffff` | a number past 64 bits, in hexadecimal, as m·2^e where shorter |
 | `clamp`, `wrap`, `round_half_away`, `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`, `unsafe` | the policy, joined by `\|`; no word is `checked`, the default |
-| `cursor` | a `cursor<T, Step>` |
+| `cursor` | the number of a `cursor<T, Step>` (the library's mark: a text of your own cannot spell it) |
 | `bits_N` | policy bits no flag names: a type the library rejects |
 
 ## Decoding a quantity
@@ -46,12 +46,12 @@ after `@`
 ins::id<ins::key{"[0..100] [km/h]"}>
 ins::id<ins::key{"[0..100] [m]{height}"}>
 ins::id<ins::key{"[1..81] [m*s]{any duration*length}"}>
-ins::id<ins::key{"[-40..125] [`C] @ice_point"}>
+ins::id<ins::key{"[-40..125] [deg_C] @ice_point"}>
 ```
 
 | Text | Means |
 |---|---|
-| `[km/h]` | the unit: symbols with powers, `*` and `/`, in ASCII (`us` for µs, `` `C `` for ℃, `ohm` for Ω); a scaled unit in brackets (`[[1/381*ft]]`); `[1]` the unit one |
+| `[km/h]` | the unit: symbols with powers, `*` and `/`, in ASCII (`us` for µs, `deg_C` for ℃, `ohm` for Ω); a scaled unit in brackets (`[[1/381*ft]]`); `[1]` the unit one |
 | `{height}` | exactly that kind (`isq::height[si::metre]`); no braces for the unit's own kind, any of it |
 | `{any duration*length}` | the kinds a product or quotient is made of, `any` when any kind of each will do |
 | `{none}`, `{any}` | no kind; any kind of the dimension |
@@ -93,7 +93,7 @@ reference{ref_form{ref_parts{(& isq::velocity_def),
 
 A unit or kind of your own declared in one line is spelled by its content
 instead: `(& definition<unit_def, symbol_text{"ftm", 3}, …>::value)`, with
-what it is defined by, and `(& kind_holder<symbol_text{"depth", 5}, …>::value)`.
+what it is defined by, and `(& definition<kind_def, symbol_text{"depth", 5}, …>::value)`.
 Declare it as a named definition, as the catalog does, and it prints by name
 ([units of your own](../guide/units.md#units-of-your-own)):
 

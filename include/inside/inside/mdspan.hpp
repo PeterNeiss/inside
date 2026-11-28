@@ -71,7 +71,7 @@ namespace ins
     {
       static_assert(
         (index_inside<Is> && ...),
-        "extents_of<I...>: each I is an index type - an inside on non-negative integers (inside<{0, 479}>)");
+        "extents_of<I...>: each I is an index type - an inside on non-negative integers (id<\"[0..479]\">)");
       using type = std::extents<std::size_t, extent_of_index<Is>...>;
     };
 
@@ -412,7 +412,7 @@ namespace ins
     }
     template <insidable N, std::size_t Count>
       requires notched<N> || point_grid<N>
-    using n_fold_sum_t = id<key{n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker}>;
+    using n_fold_sum_t = id<key{n_fold_grid(grid_of<N>, Count), value_policy<N>}>;
     // The same for an element (an inside or a quantity): its kind on that number.
     template <class E, std::size_t Count>
     using n_fold_t = typename element_traits<E>::template rebind<n_fold_sum_t<element_number_t<E>, Count>>;

@@ -94,13 +94,39 @@ namespace ins::detail
     return c;
   }
 
-  // A name of a kind or an origin: letters, digits and _ (a key's text spells it).
-  constexpr bool identifier_name(std::string_view s)
+  // The units a quantity's text reads at run time (parse<Q>, >>), as a key's text reads them: the catalog's tables,
+  // then every other unit tag visible here, each a group; basis vectors are left out. (Context only makes the call
+  // depend on the template, so it runs where parse<Q> is used.)
+  template <class Context>
+  consteval unit_set readable_units()
   {
-    for (char c : s)
-      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
-        return false;
-    return !s.empty();
+    const catalog_list           c{catalog_table<Context>()};
+    std::vector<const unit_def*> units;
+    std::vector<std::int8_t>     prefixes;
+    std::vector<std::size_t>     ends;
+    const auto                   add = [&](const unit_def* u, std::int8_t p)
+    {
+      if (!has_basis(u->Dim))
+      {
+        units.push_back(u);
+        prefixes.push_back(p);
+      }
+    };
+    for (std::size_t t = 0; t < c.Size; ++t)
+    {
+      for (std::size_t i = 0; i < c.Sets[t].Units.Size; ++i)
+        add(c.Sets[t].Units.Units[i], c.Sets[t].Units.Prefixes[i]);
+      ends.push_back(units.size());
+    }
+    tag_vectors others;
+    collect_tags(^^::, others, c.Size != 0 ? ^^ins : std::meta::info{});
+    for (const unit_atom& a : others.Units)
+      add(a.U, a.Prefix);
+    ends.push_back(units.size());
+    const auto u{std::define_static_array(units)};
+    const auto p{std::define_static_array(prefixes)};
+    const auto e{std::define_static_array(ends)};
+    return {u.data(), p.data(), e.data(), e.size(), u.size()};
   }
 
   // ---- Reading ----
@@ -140,27 +166,8 @@ namespace ins::detail
       return Others;
     }
 
-    // Whether w is the symbol of the prefixed unit a: the prefix's symbol (µ, μ or u for micro) and the unit's ASCII
-    // symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its own is only
-    // printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
-    static consteval bool symbol_is(const unit_atom& a, std::string_view w)
-    {
-      const auto rest = [&](std::string_view s)
-      {
-        if (s == a.U->ascii())
-          return true;
-        bool plain{true};
-        for (char c : a.U->Utf8)
-          plain = plain && static_cast<unsigned char>(c) < 0x80;
-        return !plain && s == a.U->Utf8;
-      };
-      if (a.Prefix == 0)
-        return rest(w);
-      for (const text_prefix& p : text_prefixes)
-        if (p.Pow == a.Prefix && w.starts_with(p.Sym) && rest(w.substr(p.Sym.size())))
-          return true;
-      return false;
-    }
+    // Whether w is the symbol of the prefixed unit a (unit_grammar.hpp: names_unit).
+    static consteval bool symbol_is(const unit_atom& a, std::string_view w) { return names_unit(a.U, a.Prefix, w); }
     // The one unit of units[0, n) a symbol names (several units equal by content are one).
     template <class Units>
     static consteval bool match_in(const Units& units, std::size_t n, std::string_view w, unit_atom& a,
@@ -417,38 +424,13 @@ namespace ins::detail
   // A unit's canonical text: its symbols (the ASCII one where it has one, with an ASCII prefix: us, not µs) in the
   // unit's order, those with a positive exponent first, then '/' and the others; a unit with a basis vector all in
   // its order (e1*e2); a scale in brackets; 1 for the unit one.
-  // False for a symbol no text reads (a space, '*', '/', '^', a bracket or a parenthesis in it), or a prefix that
-  // has no symbol.
+  // False for an empty symbol, or a prefix that has no symbol (a unit's definition rejects a symbol no text reads).
   consteval bool write_unit_text(text_out& t, const unit_value& u)
   {
-    const auto readable = [](std::string_view s)
-    {
-      for (char c : s)
-        if (c == ' ' || c == '*' || c == '/' || c == '^' || c == '[' || c == ']' || c == '(' || c == ')')
-          return false;
-      return !s.empty();
-    };
-    const auto ascii = [](std::string_view s)
-    {
-      for (char c : s)
-        if (static_cast<unsigned char>(c) >= 0x80)
-          return false;
-      return true;
-    };
     const auto prefix = [&](int p, std::string_view& sym)
     {
-      if (p == 0)
-      {
-        sym = {};
-        return true;
-      }
-      for (const text_prefix& x : text_prefixes)
-        if (x.Pow == p && ascii(x.Sym))
-        {
-          sym = x.Sym;
-          return true;
-        }
-      return false;
+      sym = prefix_text(p, true);
+      return p == 0 || !sym.empty();
     };
     const std::int8_t n{u.size()};
     int               num{0};
@@ -456,7 +438,7 @@ namespace ins::detail
     for (std::int8_t i = 0; i < n; ++i)
     {
       std::string_view p;
-      if (!readable(u.Atoms[i].U->ascii()) || !prefix(u.Atoms[i].Prefix, p))
+      if (u.Atoms[i].U->ascii().empty() || !prefix(u.Atoms[i].Prefix, p))
         return false;
       num += u.Atoms[i].Exp > 0;
       blades = blades || is_basis_atom(u.Atoms[i]);
@@ -534,7 +516,7 @@ namespace ins::detail
 
   // A reference's kind when it is not its unit's own: none, any, [any] a name, or [any] a recipe
   // (those with a positive exponent first, then '/' and the others, in the recipe's order: by name).
-  // Nothing for the unit's own kind. False for a kind whose name is no identifier.
+  // Nothing for the unit's own kind. (A kind's definition makes its name an identifier.)
   consteval bool write_kind_text(text_out& t, const reference& r)
   {
     if (r == reference_of(r.unit()))
@@ -549,18 +531,12 @@ namespace ins::detail
       t.put("any ");
     if (has(r.kind()))
     {
-      if (!identifier_name(r.kind()->Name))
-        return false;
       t.put(r.kind()->Name);
       return true;
     }
     int pos{0};
     for (std::int8_t i = 0; i < f.Size; ++i)
-    {
-      if (!identifier_name(f.F[i].Kind->Name))
-        return false;
       pos += f.F[i].Exp > 0;
-    }
     bool first{true};
     for (const int sign : {1, -1})
       for (std::int8_t i = 0; i < f.Size; ++i)
@@ -584,17 +560,10 @@ namespace ins::detail
     return true;
   }
 
-  // A point's origin: its name, or 0 for the zero of the dimension. False for a name that is no identifier.
+  // A point's origin: its name (its definition makes it an identifier), or 0 for the zero of the dimension.
   consteval bool write_origin_text(text_out& t, origin_ref o)
   {
-    if (!has(o))
-    {
-      t.put('0');
-      return true;
-    }
-    if (!identifier_name(o->Name))
-      return false;
-    t.put(o->Name);
+    t.put(has(o) ? o->Name : "0");
     return true;
   }
 
@@ -702,18 +671,19 @@ namespace ins::detail
   inline constexpr quantity_read quantity_of_name =
     read_quantity<quantity_name_context<T>>(T.Unit.view(), T.Kind.view(), T.Origin.view());
 
-  // A key's quantity texts, as a quantity_name.
-  consteval quantity_name quantity_name_of(const id_spec& s)
+  // A key's quantity texts, as a quantity_name (without the origin: a point's quantity).
+  consteval quantity_name quantity_name_of(const id_spec& s, bool origin = true)
   {
     quantity_name n;
     const auto    copy = [](unit_name& out, std::string_view text)
     {
-      for (std::size_t i = 0; i < text.size() && i + 1 < sizeof out.Text; ++i)
-        out.Text[i] = text[i];
+      text_out t{out.Text, sizeof out.Text};
+      t.put(text);
     };
     copy(n.Unit, s.Unit);
     copy(n.Kind, s.Kind);
-    copy(n.Origin, s.Origin);
+    if (origin)
+      copy(n.Origin, s.Origin);
     return n;
   }
   consteval quantity_read checked_quantity(const quantity_read& q)

@@ -62,7 +62,8 @@ namespace ins::detail
     constexpr void room(std::size_t n) const
     {
       if (Size + n >= Cap)
-        constexpr_error<"inside: an id's text passes 2048 characters (detail::key_capacity)">();
+        constexpr_error<"inside: an id's text passes 2048 characters (detail::key_capacity), or a quantity's unit, "
+                        "kind or origin its 255">();
     }
     constexpr void put(char c)
     {
@@ -600,7 +601,8 @@ namespace ins::detail
         std::size_t i{0};
         while (i < std::size(id_flags) && id_flags[i].Word != w)
           ++i;
-        if (i == std::size(id_flags))
+        // (cursor is the library's mark: it spells a cursor's number, which cursor<T, Step> makes.)
+        if (i == std::size(id_flags) || (check && id_flags[i].Bits == policy_flag{cursor_marker}))
           return stop(at, id_flag_list);
         const id_flag& found{id_flags[i]};
         if (check && found.Mode && ++modes > 1)

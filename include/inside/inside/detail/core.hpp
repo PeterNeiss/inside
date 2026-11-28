@@ -50,9 +50,9 @@ namespace ins
 
     // What *t yields for a cursor on G: G without its end point and no cursor, a value of T,
     // which assigns into T.
-    template <grid G, policy_flag P>
+    template <class T>
     using cursor_value_t =
-      id<key{grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker}>;
+      id<key{grid{interval{grid_of<T>.Lower, grid_of<T>.Upper - grid_of<T>.Notch}, grid_of<T>.Notch}, value_policy<T>}>;
 
     // (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
 
@@ -756,7 +756,7 @@ namespace ins
     template <std::integral T>
     static constexpr auto as_step_inside(T n)
     {
-      return id<key{grid{interval_of<T>, grid_number{1}}}>{n};
+      return detail::lifted_t<T>{n};
     }
 
   public:
@@ -1316,7 +1316,7 @@ namespace ins
       requires(has_flag(P, detail::cursor_marker))
     {
       // Past the end is a precondition: the policy reports it to the handler.
-      using value_t = detail::cursor_value_t<G, P>;
+      using value_t = detail::cursor_value_t<id>;
       value_t v;
       detail::assignment<value_t, id>::assign(v, *this, make_policy<policy_of<value_t>>());
       return v;
@@ -1582,7 +1582,7 @@ template <ins::key K>
   requires(ins::detail::inside_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
 struct std::indirectly_readable_traits<ins::id<K>>
 {
-  using value_type = ins::detail::cursor_value_t<ins::detail::key_grid<K>, ins::detail::key_policy<K>>;
+  using value_type = ins::detail::cursor_value_t<ins::id<K>>;
 };
 
 #endif // INSIDE_INSIDE_DETAIL_CORE_HPP

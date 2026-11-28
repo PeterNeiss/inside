@@ -50,7 +50,7 @@ int main()
   }
 
   // Readings are points on the ℃ scale: they sort and search, and two of them subtract to a difference.
-  using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;
+  using celsius = id<"[-40..60] 0.5 [deg_C] @ice_point round_half_away">;
   std::cout << "\n--- sort ---\n";
   std::vector<celsius> temps = {{21.5, deg_C}, {-5.0, deg_C}, {37.0, deg_C}, {0.0, deg_C},
                                 {15.5, deg_C}, {-20.0, deg_C}, {42.0, deg_C}, {8.5, deg_C}};

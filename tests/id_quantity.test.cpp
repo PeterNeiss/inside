@@ -21,13 +21,7 @@ using I                   = id<key{grid{0, 100}}>;
 
 // The text a type's key holds.
 template <class T>
-struct text_of_t;
-template <key K>
-struct text_of_t<id<K>> {
-    static constexpr std::string_view value = K.text();
-};
-template <class T>
-constexpr std::string_view text_of = text_of_t<T>::value;
+constexpr std::string_view text_of = detail::key_v<T>.text();
 
 TEST(IdQuantityTest, a_unit_with_a_text_names_the_type) {
     static_assert(std::is_same_v<id<quantity_key<si::metre, I>>, id<"[0..100] [m]">>);
@@ -85,6 +79,9 @@ TEST(IdQuantityTest, every_spelling_of_a_unit_is_one_type) {
     static_assert(text_of<id<"[0..100] [km h⁻¹]">> == "[0..100] [km/h]");
     static_assert(text_of<id<"[0..100] [km·h⁻¹]">> == "[0..100] [km/h]");
     static_assert(text_of<id<"[0..100] [µs]">> == "[0..100] [us]");
+    static_assert(text_of<id<"[0..60] [′]">> == "[0..60] [arcmin]");
+    static_assert(text_of<id<"[0..60] [″]">> == "[0..60] [arcsec]");
+    static_assert(text_of<id<"[0..100] [℃]">> == "[0..100] [deg_C]");
     static_assert(text_of<id<"[0..100] [kg·m²/s²]">> == "[0..100] [kg*m^2/s^2]");
     static_assert(text_of<id<"[0..100] [1/s]">> == "[0..100] [s^-1]");
     static_assert(text_of<id<"[0..100] [[1/381 ft]]">> == "[0..100] [[1/381*ft]]");
@@ -151,8 +148,8 @@ TEST(IdQuantityTest, kinds_and_origins_in_the_text) {
     static_assert(text_of<id<"[0..9] [J]{none}">> == "[0..9] [J]{none}");
     static_assert(id<"[0..9] [J]{none}">::reference == reference{&kind_def::none, false, {}, si::joule.value});
     // A point's origin.
-    static_assert(key{"[-40..125] [`C] @ice_point"}.text() == "[-40..125] [`C] @ice_point");
-    static_assert(key{"[-40..125] [℃]  @ ice_point clamp"}.text() == "[-40..125] [`C] @ice_point clamp");
+    static_assert(key{"[-40..125] [deg_C] @ice_point"}.text() == "[-40..125] [deg_C] @ice_point");
+    static_assert(key{"[-40..125] [℃]  @ ice_point clamp"}.text() == "[-40..125] [deg_C] @ice_point clamp");
     static_assert(key{"[0..400] [K] @absolute_zero"}.text() == "[0..400] [K] @absolute_zero");
     static_assert(key{"[0..9] [m] @0"}.text() == "[0..9] [m] @0");
     // What does not read.
@@ -164,25 +161,25 @@ TEST(IdQuantityTest, kinds_and_origins_in_the_text) {
 
 // A point is an id too: its origin after the unit, @0 for the implicit zero of the dimension.
 TEST(IdQuantityTest, points_are_ids) {
-    using C = id<"[-40..125] [`C] @ice_point">;
+    using C = id<"[-40..125] [deg_C] @ice_point">;
     static_assert(point_like<C> && !quantity_like<C> && !insidable<C>);
     static_assert(std::is_same_v<id<point_key<si::degree_Celsius, si::ice_point.value, id<key{grid{-40, 125}}>>>, C>);
     static_assert(std::is_same_v<decltype(point<si::degree_Celsius>(id<key{grid{-40, 125}}>{20})), C>);
-    static_assert(std::is_same_v<C::quantity_type, id<"[-40..125] [`C]">>);
+    static_assert(std::is_same_v<C::quantity_type, id<"[-40..125] [deg_C]">>);
     static_assert(text_of<decltype(si::absolute_zero + just<300> * si::kelvin)> == "[300] [K] @absolute_zero");
     static_assert(text_of<decltype(point<si::metre>(id<key{grid{0, 9}}>{3}))> == "[0..9] [m] @0");
     // Shifts, differences and comparisons keep their types as texts.
     constexpr C t{20, si::degree_Celsius};
-    static_assert(text_of<decltype(t - t)> == "[-165..165] [`C]");
-    static_assert(text_of<decltype(t + just<5> * si::kelvin)> == "[-35..130] [`C] @ice_point");
+    static_assert(text_of<decltype(t - t)> == "[-165..165] [deg_C]");
+    static_assert(text_of<decltype(t + just<5> * si::kelvin)> == "[-35..130] [deg_C] @ice_point");
     static_assert(t.point_in(si::kelvin) == si::absolute_zero + just<29315, 100> * si::kelvin);
     EXPECT_EQ(to_string(t), "20 ℃");
 }
 
-// "21.5 [-40..125] 1/10 [`C] @ice_point"_ins: a point with its type.
+// "21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins: a point with its type.
 TEST(IdQuantityTest, a_literal_with_an_origin) {
-    constexpr auto p{"21.5 [-40..125] 1/10 [`C] @ice_point"_ins};
-    static_assert(std::is_same_v<std::remove_const_t<decltype(p)>, id<"[-40..125] 1/10 [`C] @ice_point">>);
+    constexpr auto p{"21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins};
+    static_assert(std::is_same_v<std::remove_const_t<decltype(p)>, id<"[-40..125] 1/10 [deg_C] @ice_point">>);
     static_assert(p == point<si::degree_Celsius>(just<43, 2>));
     EXPECT_EQ(to_string(p), "21.5 ℃");
 }

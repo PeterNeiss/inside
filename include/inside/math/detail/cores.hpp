@@ -850,7 +850,7 @@ namespace ins::math::detail::engine
 
   // Policy of a deduced output: the input's (no cursor), rounding to nearest unless the input names a mode.
   template <insidable In>
-  inline constexpr policy_flag result_policy = with_default_rounding(policy_of<In> & ~cursor_marker);
+  inline constexpr policy_flag result_policy = with_default_rounding(ins::detail::value_policy<In>);
 
   // A deduced output on notch N.
   template <insidable In, grid_number N, grid_number Lo, grid_number Hi>

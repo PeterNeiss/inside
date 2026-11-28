@@ -177,6 +177,7 @@ TEST(IdTextTest, the_canonical_text_reads_back) {
     static_assert(round_trips(grid{0, 9}, round_floor | unsafe));
     static_assert(round_trips(grid{0, 9}, wrap | round_half_even));
     static_assert(round_trips(grid{0, 9}, detail::cursor_marker));
+    static_assert(!key{"[0..9] cursor"}.ok()); // the library's mark, not a word to write
 }
 
 // Where a text stops making sense, and what it expected there.

@@ -63,9 +63,9 @@ namespace ins::detail
 
   struct text_atom
   {
-    std::string_view Utf8;
-    std::string_view Ascii;
-    grid_number      Ratio{1};        // its magnitude, against the coherent unit of its dimension
+    const unit_def*  U{};
+    std::int8_t      Prefix{0};
+    grid_number      Ratio{1};        // its magnitude (without the prefix), against the coherent unit of its dimension
     std::int8_t      Pi{0};
     bool             KindOk{false};   // as a whole text: a quantity in it adds to one of the target's kind
     bool             OriginOk{false}; // a point: its origin (or the dimension's zero) shares the target's absolute one
@@ -87,7 +87,7 @@ namespace ins::detail
       };
       add(dimension_of(R.unit()));
       for (std::size_t a = 0; a < S.Size; ++a)
-        add(S.Data[a]->Dim);
+        add(S.Units[a]->Dim);
       return b;
     }
     static constexpr std::size_t B     = basis_of().size();
@@ -110,7 +110,7 @@ namespace ins::detail
       std::array<std::int8_t, S.Size * B> e{};
       for (std::size_t a = 0; a < S.Size; ++a)
       {
-        const auto x{exponents_of(S.Data[a]->Dim)};
+        const auto x{exponents_of(S.Units[a]->Dim)};
         std::ranges::copy(x, e.begin() + static_cast<std::ptrdiff_t>(a * B));
       }
       return e;
@@ -123,9 +123,9 @@ namespace ins::detail
                                                         ? (grid_number{0} - offset_of(O)) / target_mag.Ratio
                                                         : grid_number{0};
 
-    static consteval text_atom atom_of(const unit_def* u)
+    static consteval text_atom atom_of(const unit_def* u, std::int8_t p)
     {
-      text_atom t{u->Utf8, u->ascii(), u->Mag.Ratio, u->Mag.Pi, false, false, grid_number{0}};
+      text_atom t{u, p, u->Mag.Ratio, u->Mag.Pi, false, false, grid_number{0}};
       if (u->Dim == dimension_of(R.unit()))
         t.KindOk = common_kind(reference_of(unit_value{*u}), R).Ok;
       if constexpr (Point)
@@ -140,7 +140,7 @@ namespace ins::detail
     {
       std::array<text_atom, S.Size> t{};
       for (std::size_t a = 0; a < S.Size; ++a)
-        t[a] = atom_of(S.Data[a]);
+        t[a] = atom_of(S.Units[a], S.Prefixes[a]);
       return t;
     }
     static constexpr std::array<text_atom, S.Size> atoms = atoms_of();
@@ -171,31 +171,25 @@ namespace ins::detail
       std::size_t Atom{std::string_view::npos};
       std::int8_t Prefix{0};
     };
-    // The unit a symbol names exactly; none when no unit, or more than one, has it.
+    // The unit a symbol names, a whole one (units/detail/unit_key.hpp's rule): the first group's one unit that has
+    // it; none when no unit has it, or when two of one group do.
     static constexpr symbol_match match_exact(std::string_view w)
     {
-      symbol_match m;
-      for (std::size_t a = 0; a < S.Size; ++a)
-        if (atoms[a].Utf8 == w || atoms[a].Ascii == w)
-        {
-          if (m.Atom != std::string_view::npos)
-            return {};
-          m.Atom = a;
-        }
-      return m;
-    }
-    // A symbol exactly, else a prefix and a symbol (min is the minute, mm the millimetre).
-    static constexpr symbol_match match_symbol(std::string_view w)
-    {
-      if (const symbol_match m{match_exact(w)}; m.Atom != std::string_view::npos)
-        return m;
-      for (const text_prefix& p : text_prefixes)
-        if (w.size() > p.Sym.size() && w.starts_with(p.Sym))
-          if (symbol_match m{match_exact(w.substr(p.Sym.size()))}; m.Atom != std::string_view::npos)
+      std::size_t begin{0};
+      for (std::size_t g = 0; g < S.Groups; ++g)
+      {
+        symbol_match m;
+        for (std::size_t a = begin; a < S.Ends[g]; ++a)
+          if (names_unit(atoms[a].U, atoms[a].Prefix, w))
           {
-            m.Prefix = p.Pow;
-            return m;
+            if (m.Atom != std::string_view::npos)
+              return {};
+            m = {a, atoms[a].Prefix};
           }
+        if (m.Atom != std::string_view::npos)
+          return m;
+        begin = S.Ends[g];
+      }
       return {};
     }
 
@@ -238,7 +232,7 @@ namespace ins::detail
     {
       if (const symbol_match m{match_exact(t)}; m.Atom != std::string_view::npos)
       {
-        u.Terms[u.Size++] = {m.Atom, 0, 1};
+        u.Terms[u.Size++] = {m.Atom, m.Prefix, 1};
         return true;
       }
       std::size_t i{0};
@@ -248,7 +242,7 @@ namespace ins::detail
         const std::size_t end{symbol_end(t, i)};
         if (end == i || u.Size == max_unit_atoms)
           return false;
-        const symbol_match m{match_symbol(t.substr(i, end - i))};
+        const symbol_match m{match_exact(t.substr(i, end - i))};
         if (m.Atom == std::string_view::npos)
           return false;
         i = end;

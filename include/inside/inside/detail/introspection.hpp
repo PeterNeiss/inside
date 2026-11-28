@@ -36,18 +36,20 @@ namespace ins
   // (callers never name the rational return type).
   namespace detail
   {
-    template <typename B>
-    struct inside_params;
+    // The key of an id type: an inside's, a quantity's, a point's.
+    template <class T>
+    struct key_of_id;
     template <key K>
-      requires(inside_key<K>)
-    struct inside_params<id<K>>
+    struct key_of_id<id<K>>
     {
-      static constexpr grid grid_v = key_grid<K>;
+      static constexpr key value = K;
     };
+    template <class T>
+    inline constexpr key key_v = key_of_id<std::remove_cvref_t<T>>::value;
   } // namespace detail
 
   template <insidable B>
-  inline constexpr grid grid_of = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
+  inline constexpr grid grid_of = detail::key_grid<detail::key_v<B>>;
 
   namespace detail
   {
@@ -64,6 +66,16 @@ namespace ins
   // or of a named flag; none for anything else, such as an action.
   template <typename X>
   inline constexpr policy_flag policy_of = detail::policy_of_impl<std::remove_cvref_t<X>>;
+
+  namespace detail
+  {
+    // B's grid under the flags F: the type a store under one-shot flags is checked against.
+    template <insidable B, policy_flag F>
+    using with_flags_t = id<key{grid_of<B>, F}>;
+    // B's policy without a cursor's mark: the policy its values and its results carry.
+    template <class B>
+    inline constexpr policy_flag value_policy = policy_of<B> & ~cursor_marker;
+  } // namespace detail
 
   namespace detail
   {

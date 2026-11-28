@@ -5,7 +5,7 @@
 #   inside<{0, 360, bounds::half_open}, wrap>            -> id<"[0..360) wrap">
 #   inside<{{0, 1}, per<4>}, clamp | round_half_away>     -> id<"[0..1] 1/4 clamp|round_half_away">
 #   quantity<si::kilo(si::metre) / si::hour, I>           -> id<"[0..100] [km/h]">  (I a local alias it can read)
-#   quantity_point<si::degree_Celsius, si::ice_point, I>  -> id<"[-40..125] [`C] @ice_point">
+#   quantity_point<si::degree_Celsius, si::ice_point, I>  -> id<"[-40..125] [deg_C] @ice_point">
 #
 # Each spelling is written as its author wrote it (the open limit stays open): every spelling of a grid is one
 # type, and the key prints the canonical text. A spelling with a part it cannot read (a template parameter, a

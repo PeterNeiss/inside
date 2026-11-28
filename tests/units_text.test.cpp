@@ -30,7 +30,7 @@ using radians  = id<"[0..7] 1/1000 [rad] round_half_away">;
 using degrees  = id<"[0..360] [deg]">;
 using kelvins  = id<"[0..100] 1/10 [K]">;
 using rounding = id<"[0..100] 1/100 [m] round_half_away">;
-using celsius  = id<"[-300..300] <180> [`C] @ice_point">;
+using celsius  = id<"[-300..300] <180> [deg_C] @ice_point">;
 
 inline constexpr auto level_kind = kind<"level", isq::dimensionless, {.distinct = true}>;
 inline constexpr auto dB         = unit<"dB", one, {.kind = level_kind}>;
@@ -39,6 +39,9 @@ using levels                     = id<"[-100..100] 1/10 [dB]">;
 // Seen by this translation unit only (units_text_other.cpp does not see it).
 inline constexpr auto cent = unit<"¢", 0.01_ins * units_text_other::USD, {.ascii = "c"}>;
 inline constexpr auto ftm  = unit<"ftm", 1.8288_ins * si::metre>;
+// Two units of one's own with one symbol and different definitions: the symbol names neither.
+inline constexpr auto dup_two   = unit<"dup", just<2> * si::metre>;
+inline constexpr auto dup_three = unit<"dup", just<3> * si::metre>;
 
 template <class Q, class Tag>
 concept can_parse_in = requires(Tag u) { parse<Q>("1", u); };
@@ -72,7 +75,7 @@ TEST(UnitsTextTest, to_string_reads_back) {
         19.99_ins, units_text_other::USD / units_text_other::item});
     check(id<"[0..1000] [us]">{250, si::micro(si::second)});
     check(celsius{21.5, si::degree_Celsius});
-    check(id<"[0..600] [`F] @zeroth_degree_Fahrenheit">{350, international::degree_Fahrenheit});
+    check(id<"[0..600] [deg_F] @zeroth_degree_Fahrenheit">{350, international::degree_Fahrenheit});
     // The common unit of a sum: a scaled unit, [1/381 ft].
     check(international::foot + si::metre);
     // Unit one prints no unit, and reads a bare number.
@@ -134,6 +137,17 @@ TEST(UnitsTextTest, errors_name_the_cause) {
     EXPECT_EQ(parse<metres>("200 km").error(), error::overflow);
 }
 
+// A unit reads as a type's text reads it: whole symbols (the catalog's prefixed units in wide use, tags of one's
+// own), the catalog first, its constants too; no prefix is read into a symbol.
+TEST(UnitsTextTest, whole_symbols_as_a_types_text) {
+    EXPECT_EQ(to_string(*parse<metres>("12.5 km")), "12500.000 m");
+    EXPECT_EQ(parse<metres>("5 Mm").error(), error::unknown_unit);  // no megametre in the catalog
+    EXPECT_EQ(parse<id<"[0..10] [d]">>("5 rd").error(), error::unknown_unit); // no ronto-day
+    EXPECT_EQ(parse<metres>("1 dup").error(), error::unknown_unit); // two units have it
+    EXPECT_EQ(to_string(*parse<id<"[0..1'000'000'000] [m/s]">>("1 c_0")), "299792458 m/s");
+    EXPECT_EQ(to_string(*parse<id<"[0..100] 1/100000 [m/s^2]">>("1 g_0")), "9.80665 m/s²");
+}
+
 TEST(UnitsTextTest, the_number_type_stores) {
     EXPECT_EQ(parse<metres>("1.0005 m").error(), error::rounding_error); // no rounding mode
     EXPECT_EQ(to_string(*parse<rounding>("1.005 m")), "1.01 m");          // rounded once, by the type
@@ -144,10 +158,22 @@ TEST(UnitsTextTest, the_number_type_stores) {
 
 TEST(UnitsTextTest, points_shift_exactly) {
     EXPECT_EQ(to_string(*parse<celsius>("21.5 ℃")), "21.5 ℃");
-    EXPECT_EQ(to_string(*parse<celsius>("21.5 `C")), "21.5 ℃");
+    EXPECT_EQ(to_string(*parse<celsius>("21.5 deg_C")), "21.5 ℃");
     EXPECT_EQ(to_string(*parse<celsius>("350 ℉")), "530/3 ℃");
     EXPECT_EQ(to_string(*parse<celsius>("300 K")), "26.85 ℃");
     EXPECT_EQ(to_string(*parse<celsius>("300000 mK")), "26.85 ℃");
+}
+
+// The arcminute and the arcsecond have ASCII names of their own (' is a digit separator), and a word takes a space.
+TEST(UnitsTextTest, arcminutes_read_back) {
+    using arcminutes = id<"[0..60] [arcmin]">;
+    const arcminutes m{30, si::arcminute};
+    EXPECT_EQ(to_string(m), "30′");
+    EXPECT_EQ(to_string(m, text_encoding::ascii), "30 arcmin");
+    EXPECT_EQ(to_string(*parse<arcminutes>("30 arcmin")), "30′");
+    EXPECT_EQ(to_string(*parse<arcminutes>("30′")), "30′");
+    EXPECT_EQ(to_string(id<"[0..360] [deg]">{90, si::degree}, text_encoding::ascii), "90 deg");
+    EXPECT_EQ(to_string(*parse<id<"[0..60] [arcsec]">>("15 arcsec")), "15″");
 }
 
 TEST(UnitsTextTest, a_stream_reads_into_an_expected) {

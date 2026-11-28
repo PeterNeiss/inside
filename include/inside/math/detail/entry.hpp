@@ -50,7 +50,7 @@ namespace ins::math::detail::entry
         return x;
       else
         return id<key{grid{grid_of<In>.interval(), grid_of<In>.value_unit()},
-                      policy_of<In> & ~::ins::detail::cursor_marker}>{x};
+                      ::ins::detail::value_policy<In>}>{x};
     }
 
     template <insidable Out>
