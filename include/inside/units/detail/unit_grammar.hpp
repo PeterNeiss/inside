@@ -131,7 +131,7 @@ namespace ins::detail
   {
     if (p != 0)
       for (const text_prefix& x : text_prefixes)
-        if (x.Pow == p && (!ascii || x.Sym != "µ" && x.Sym != "μ"))
+        if (x.Pow == p && (!ascii || (x.Sym != "µ" && x.Sym != "μ")))
           return x.Sym;
     return {};
   }
