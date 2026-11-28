@@ -17,7 +17,7 @@ using namespace ins;
 namespace
 {
   inline constexpr auto USD  = base_unit<"USD", "dollar">;
-  inline constexpr auto cent = unit<"¢", 0.01_ins * USD, {.ascii = "c"}>;
+  inline constexpr auto cent = unit<"¢", 0.01_q * USD, {.ascii = "c"}>;
 } // namespace
 
 int main()
@@ -38,7 +38,7 @@ int main()
 
   // 8 % sales tax: the exact product, rounded once to the cent by dollars' round_half_away
   // (USD·% is USD/100).
-  const auto    rate{just<8> * percent};
+  const auto    rate{8_q * percent};
   const dollars tax {mul<dollars>(subtotal, rate)};
   std::cout << "tax (" << rate << "): " << tax << "\n";
 
@@ -53,7 +53,7 @@ int main()
   const dollars refund          {std::min(requested_refund, total)};
   std::cout << "refund (req " << requested_refund << ", cap " << total << "): " << refund << "\n";
 
-  const auto with_tip{total + just<50> * cent}; // a tip in cents adds to dollars exactly, in cents
+  const auto with_tip{total + 50_q * cent}; // a tip in cents adds to dollars exactly, in cents
   std::cout << "with tip: " << with_tip << "\n";
 
   if (to_string(subtotal) != "45.07 USD" || to_string(tax) != "3.61 USD" || to_string(total.in(cent)) != "4868 ¢"

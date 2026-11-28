@@ -37,11 +37,11 @@ inline constexpr auto dB         = unit<"dB", one, {.kind = level_kind}>;
 using levels                     = id<"[-100..100] 1/10 [dB]">;
 
 // Seen by this translation unit only (units_text_other.cpp does not see it).
-inline constexpr auto cent = unit<"¢", 0.01_ins * units_text_other::USD, {.ascii = "c"}>;
-inline constexpr auto ftm  = unit<"ftm", 1.8288_ins * si::metre>;
+inline constexpr auto cent = unit<"¢", 0.01_q * units_text_other::USD, {.ascii = "c"}>;
+inline constexpr auto ftm  = unit<"ftm", 1.8288_q * si::metre>;
 // Two units of one's own with one symbol and different definitions: the symbol names neither.
-inline constexpr auto dup_two   = unit<"dup", just<2> * si::metre>;
-inline constexpr auto dup_three = unit<"dup", just<3> * si::metre>;
+inline constexpr auto dup_two   = unit<"dup", 2_q * si::metre>;
+inline constexpr auto dup_three = unit<"dup", 3_q * si::metre>;
 
 template <class Q, class Tag>
 concept can_parse_in = requires(Tag u) { parse<Q>("1", u); };
@@ -64,7 +64,7 @@ TEST(UnitsTextTest, to_string_reads_back) {
         EXPECT_TRUE(*a == q) << to_string(q, text_encoding::ascii);
     };
     check(metres{12.5, si::metre});
-    check(speeds{12.34_ins, si::metre / si::second});
+    check(speeds{12.34_q, si::metre / si::second});
     check(areas{2.5, square(si::metre)});
     check(energies{5, si::joule});
     check(percents{12.5, percent});
@@ -72,7 +72,7 @@ TEST(UnitsTextTest, to_string_reads_back) {
     check(levels{-3.5, dB});
     check(id<"[0..300] [km/h]">{120, si::kilo(si::metre) / si::hour});
     check(id<quantity_key<units_text_other::USD / units_text_other::item, id<"[0..100] 1/100">>>{
-        19.99_ins, units_text_other::USD / units_text_other::item});
+        19.99_q, units_text_other::USD / units_text_other::item});
     check(id<"[0..1000] [us]">{250, si::micro(si::second)});
     check(celsius{21.5, si::degree_Celsius});
     check(id<"[0..600] [deg_F] @zeroth_degree_Fahrenheit">{350, international::degree_Fahrenheit});
@@ -204,7 +204,7 @@ TEST(UnitsTextTest, a_stream_reads_into_an_expected) {
 }
 
 TEST(UnitsTextTest, constant_expressions) {
-    static_assert(*parse<metres>("1.5 km") == just<1500> * si::metre);
+    static_assert(*parse<metres>("1.5 km") == 1500_q * si::metre);
     static_assert(parse<metres>("1.5 s").error() == error::incompatible_unit);
 }
 

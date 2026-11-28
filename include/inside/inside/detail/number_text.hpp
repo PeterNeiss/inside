@@ -14,7 +14,7 @@
 
 namespace ins::detail
 {
-  // The number parser of the _ins and _r literals (inside/detail/core.hpp's _ins, _r below). It accepts:
+  // The number parser of the _q and _r literals (inside/detail/core.hpp's _q, _r below). It accepts:
   //   integer             5, 1'000
   //   decimal             1.25, .5
   //   decimal scientific  1.5e2, 2.5e-1
@@ -66,7 +66,7 @@ namespace ins::detail
     parse_fail Fail;
   };
 
-  // An unsigned number in the grammar of the _ins, _r and _g literals, scanned in one pass:
+  // An unsigned number in the grammar of the _q, _r and _g literals, scanned in one pass:
   // the radix and the exponent come back,
   // and each mantissa digit goes to on_digit(d, in_frac, base) (false stops the scan: the builder's overflow).
   // parse_number (64-bit), parse_exact (wide, wide_value.hpp), parse_grid_literal (the _g literal) and stand_in
@@ -156,7 +156,7 @@ namespace ins::detail
     return r;
   }
 
-  // An unsigned number in [first, last), in the grammar of the _ins and _r literals.
+  // An unsigned number in [first, last), in the grammar of the _q and _r literals.
   constexpr parsed_number parse_number(const char* first, const char* last)
   {
     auto fail = [](parse_fail f) { return parsed_number{rational{}, f}; };
@@ -403,7 +403,7 @@ namespace ins::detail
 
 namespace ins
 {
-  // The literals (_ins, _g) live in the inline namespace literals: using namespace ins::literals brings only them.
+  // The literals (_q, _g) live in the inline namespace literals: using namespace ins::literals brings only them.
   // (detail::operator""_r, an exact decimal as a detail::rational, is the library's own.)
 } // namespace ins
 

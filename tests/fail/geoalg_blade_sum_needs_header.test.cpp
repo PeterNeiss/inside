@@ -8,6 +8,6 @@ inline constexpr auto e1 = ins::basis_vector<"e1", ins::geometric<1>>;
 
 int main() {
     using namespace ins;
-    auto z = just<3> + just<4> * e1;
+    auto z = 3_q + 4_q * e1;
     (void)z;
 }

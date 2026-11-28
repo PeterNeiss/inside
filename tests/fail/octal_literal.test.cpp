@@ -6,6 +6,6 @@
 
 int main() {
     using namespace ins;
-    auto x = 010_ins;
+    auto x = 010_q;
     (void)x;
 }

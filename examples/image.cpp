@@ -50,7 +50,7 @@ void blur(const image& in, const smooth_image& out)
                             const auto [dr, dc] = d;
                             return in[row{i + dr}, col{j + dc}]; // past an edge: the edge
                           })};
-    out[i, j] = sum<window>(around) / 9_ins;
+    out[i, j] = sum<window>(around) / 9_q;
   }
 }
 
@@ -80,9 +80,9 @@ int main()
   const auto corner{blurred[row{0}, col{0}]};
   const auto total {sum(img)}; // exact, on [0, 64·255]
   static_assert(upper_of<decltype(total)::rep> == 64 * 255);
-  const auto mean{total / 64_ins};
+  const auto mean{total / 64_q};
   std::cout << "corner " << corner << ", centre " << blurred[row{3}, col{3}] << ", mean " << mean << "\n";
-  if (corner != just<119> * DN || blurred[row{3}, col{3}] != just<200> * DN || to_string(mean) != "61.328125 DN")
+  if (corner != 119_q * DN || blurred[row{3}, col{3}] != 200_q * DN || to_string(mean) != "61.328125 DN")
     return 1;
 
   // 2. Interior pixels need no clamp: 1 … 6 plus or minus 1 is on 0 … 7, proven by the grids.
@@ -92,12 +92,12 @@ int main()
   pixel edge{0, DN};
   for (auto [r, c] : std::views::cartesian_product(values<inner_index>, values<inner_index>))
   {
-    const auto step{math::abs(img[r, image_index{c + 1_ins}] - img[r, image_index{c - 1_ins}])};
+    const auto step{math::abs(img[r, image_index{c + 1_q}] - img[r, image_index{c - 1_q}])};
     if (step > edge)
       edge = step;
   }
   std::cout << "largest step " << edge << "\n";
-  if (edge != just<190> * DN)
+  if (edge != 190_q * DN)
     return 1;
 
   // 3. A heat map: 4×6 raw codes in 0.1 K steps from 200 K, as a sensor sends them, read as kelvin.
@@ -112,7 +112,7 @@ int main()
   };
   const kelvin_view heat{codes.data()};
   const auto        heat_total{sum(heat)};
-  std::cout << "heat: " << heat[0, 0] << " to " << heat[3, 5] << ", mean " << (heat_total / 24_ins) << "\n";
+  std::cout << "heat: " << heat[0, 0] << " to " << heat[3, 5] << ", mean " << (heat_total / 24_q) << "\n";
 
   // The hottest cell, by comparing quantities;
   // the indices of the extents 4 × 6 are id<"[0..3]">, <{0, 5}>.

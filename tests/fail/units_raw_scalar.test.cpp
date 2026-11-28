@@ -1,6 +1,6 @@
 // EXPECT: a raw number has no grid
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// A raw scalar has no grid: 42 * m names just<42> instead.
+// A raw scalar has no grid: 42 * m names 42_q instead.
 #include <inside/units.hpp>
 
 int main() {

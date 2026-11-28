@@ -274,7 +274,7 @@ namespace ins
     inline constexpr auto       absolute_zero = defined_by<absolute_zero_def>;
     inline constexpr unit_def kelvin_def{"K", isq::thermodynamic_temperature, {.origin = si::absolute_zero}};
     inline constexpr auto     kelvin = defined_by<kelvin_def>;
-    inline constexpr origin_def ice_point_def{"ice_point", si::absolute_zero + just<27315, 100> * si::kelvin};
+    inline constexpr origin_def ice_point_def{"ice_point", si::absolute_zero + 273.15_q * si::kelvin};
     inline constexpr auto       ice_point = defined_by<ice_point_def>;
     inline constexpr unit_def mole_def{"mol", isq::amount_of_substance};
     inline constexpr auto     mole = defined_by<mole_def>;
@@ -363,7 +363,7 @@ namespace ins
   } // namespace si
 
   // The defining constants of the SI (2019) and standard gravity, as units:
-  // just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s) gives its number.
+  // 1_q * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s) gives its number.
   // h, e, k and N_A need grid numbers past 64 bits.
   namespace si2019
   {
@@ -418,7 +418,7 @@ namespace ins
     inline constexpr auto     knot = defined_by<knot_def>;
 
     inline constexpr origin_def zeroth_degree_Fahrenheit_def{"zeroth_degree_Fahrenheit",
-                                                             si::absolute_zero + just<45967, 180> * si::kelvin};
+                                                             si::absolute_zero + "45967/180"_q * si::kelvin};
     inline constexpr auto       zeroth_degree_Fahrenheit = defined_by<zeroth_degree_Fahrenheit_def>;
     inline constexpr unit_def degree_Fahrenheit_def{
       "℉", detail::mag<5_g / 9_g> * si::kelvin, {.ascii = "deg_F", .origin = international::zeroth_degree_Fahrenheit}};

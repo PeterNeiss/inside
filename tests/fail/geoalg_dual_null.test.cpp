@@ -10,6 +10,6 @@ inline constexpr auto p1 = ins::basis_vector<"p1", ins::geometric<1>>;
 
 int main() {
     using namespace ins;
-    auto d = dual(just<1> * p1, p0 * p1);
+    auto d = dual(1_q * p1, p0 * p1);
     (void)d;
 }

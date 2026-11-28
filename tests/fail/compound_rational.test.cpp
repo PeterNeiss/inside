@@ -1,7 +1,7 @@
 // EXPECT: cannot be combined with a rational
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A rational has no grid, like an int or a double: a compound assign takes an
-// inside (0.5_ins, just<1, 2>), as the binary operators do.
+// inside (0.5_q, "1/3"_q), as the binary operators do.
 #include <inside/inside.hpp>
 
 using namespace ins;

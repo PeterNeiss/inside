@@ -593,7 +593,7 @@ namespace ins::detail::gaexp
                           cq.Part   = F::src[Q].Blade;
                           cq.Sign   = F::osign[Q];
                           if constexpr (F::src[Q].Kind == part_source::zero)
-                            return std::expected<O, error>{O(just<0>)};
+                            return std::expected<O, error>{O(0_q)};
                           else if constexpr (!Named || closed_part_fits<Domain, CoDomain, Q, Fn>())
                             return std::expected<O, error>{eng::evaluate<O, eng::start_bits<O>>(cq)};
                           else

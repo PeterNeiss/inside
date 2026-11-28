@@ -167,9 +167,9 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { metres{k, clamp}; });
     static_assert(requires { m.with<clamp>() = k; });
     static_assert(requires { m.with<clamp>() += k; });
-    static_assert(requires { m.with<clamp>() *= just<2>; });
+    static_assert(requires { m.with<clamp>() *= 2_q; });
     static_assert(requires { m.on_error(ec) = k; });
-    static_assert(requires { m.on_clamp([](auto&, auto) {}) *= just<2>; });
+    static_assert(requires { m.on_clamp([](auto&, auto) {}) *= 2_q; });
     static_assert(requires { metres::try_make(5, si::metre); });
     static_assert(requires(ratio r) { r.to<int, round_floor>(); });
     static_assert(requires(ratio r) { r.to<int>(); });
@@ -178,7 +178,7 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(!has_as<metres>); // a length is no number
 
     // Free functions.
-    static_assert(requires { exact_cast<metres>(just<5> * si::metre); });
+    static_assert(requires { exact_cast<metres>(5_q * si::metre); });
     static_assert(requires { exact_cast<metres>(k); });
     static_assert(requires { min(m, k); });
     static_assert(requires { max(m, k); });
@@ -190,20 +190,20 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { add_all(m, k, m); });
     static_assert(requires { mul_all(m, m); });
     static_assert(requires(std::vector<metres> v) { sum<id<"[0..1000] [m]">>(v); });
-    static_assert(requires { mul<metres>(m, just<2>); });
-    static_assert(requires { div<metres>(m, just<2>); });
+    static_assert(requires { mul<metres>(m, 2_q); });
+    static_assert(requires { div<metres>(m, 2_q); });
     static_assert(requires { divmod(m, k); });
     static_assert(requires { add(m, k); });
     static_assert(requires { sub(k, m, round_floor); });
     static_assert(requires { mod(k, m); });
     static_assert(requires(seconds s) { mul(m, s); });
-    static_assert(requires { mul(m, just<2>); });
-    static_assert(requires { mul(just<2>, m); });
+    static_assert(requires { mul(m, 2_q); });
+    static_assert(requires { mul(2_q, m); });
     static_assert(requires(seconds s) { div(m, s, round_floor); });
     static_assert(requires(seconds s) { div(m, s, ec); });
-    static_assert(requires { div(m, just<2>, round_floor); });
-    static_assert(requires(seconds s) { div(just<2>, s, round_floor); });
-    static_assert(requires { lerp(m, k, just<1, 2>); });
+    static_assert(requires { div(m, 2_q, round_floor); });
+    static_assert(requires(seconds s) { div(2_q, s, round_floor); });
+    static_assert(requires { lerp(m, k, 0.5_q); });
     static_assert(requires { parse<metres>("5"); });
     static_assert(requires { parse_exact<metres>("5"); });
     static_assert(requires { to_string(m); });
@@ -233,23 +233,23 @@ TEST(UnitsParityTest, the_new_forms_work) {
     EXPECT_TRUE(+num{7} == num{7});
 
     m.with<clamp>() = k; // 1 km is 1000 m: clamped to 100 m
-    EXPECT_TRUE(m == just<100> * si::metre);
-    m.with<clamp>() *= just<0>;
-    EXPECT_TRUE(m == just<0> * si::metre);
-    m.with<wrap>() += just<105> * si::metre; // the period is 101
-    EXPECT_TRUE(m == just<4> * si::metre);
+    EXPECT_TRUE(m == 100_q * si::metre);
+    m.with<clamp>() *= 0_q;
+    EXPECT_TRUE(m == 0_q * si::metre);
+    m.with<wrap>() += 105_q * si::metre; // the period is 101
+    EXPECT_TRUE(m == 4_q * si::metre);
 
     error ec{};
     m.on_error(ec) = k;
     EXPECT_EQ(ec, error::overflow);
-    EXPECT_TRUE(m == just<4> * si::metre);
+    EXPECT_TRUE(m == 4_q * si::metre);
 
-    EXPECT_TRUE(exact_cast<metres>(just<7> * si::metre) == just<7> * si::metre);
+    EXPECT_TRUE(exact_cast<metres>(7_q * si::metre) == 7_q * si::metre);
     EXPECT_EQ(exact_cast<metres>(k).error(), error::overflow);
 
-    EXPECT_TRUE(min(m, k) == just<4> * si::metre);
+    EXPECT_TRUE(min(m, k) == 4_q * si::metre);
     EXPECT_TRUE(max(m, k) == k);
-    EXPECT_TRUE(midpoint(m, k) == just<502> * si::metre);
+    EXPECT_TRUE(midpoint(m, k) == 502_q * si::metre);
 
     const ratio r{25, percent}; // 25 %: the number 1/4
     EXPECT_EQ(r.to<double>(), 0.25);
@@ -260,7 +260,7 @@ TEST(UnitsParityTest, the_new_forms_work) {
     std::mt19937_64 rng{7};
     for (int i = 0; i < 100; ++i) {
         const auto u = uniform<metres>(rng);
-        EXPECT_TRUE(u >= just<0> * si::metre && u <= just<100> * si::metre);
+        EXPECT_TRUE(u >= 0_q * si::metre && u <= 100_q * si::metre);
     }
 }
 
@@ -275,15 +275,15 @@ TEST(UnitsParityTest, per_call_arithmetic) {
     using per_s = id<"[1..10] [s]">;
     const per_s s{3, si::second};
 
-    EXPECT_TRUE(add(m, k) == just<1040> * si::metre);
-    EXPECT_TRUE(sub(k, m) == just<960> * si::metre);
-    EXPECT_TRUE(mod(k, m) == just<0> * si::metre);
-    EXPECT_TRUE(mul(m, s) == just<120> * si::metre * si::second);
-    EXPECT_TRUE(mul(just<2>, m) == just<80> * si::metre);
-    EXPECT_TRUE(div(m, s, round_floor) == just<13> * si::metre / si::second);
-    EXPECT_TRUE(div(m, s, round_ceil) == just<14> * si::metre / si::second);
-    EXPECT_TRUE(div(m, id<"[1..10]">{3}, round_floor) == just<13> * si::metre);
-    EXPECT_TRUE(div(just<30>, s, round_floor) == just<10> / si::second);
+    EXPECT_TRUE(add(m, k) == 1040_q * si::metre);
+    EXPECT_TRUE(sub(k, m) == 960_q * si::metre);
+    EXPECT_TRUE(mod(k, m) == 0_q * si::metre);
+    EXPECT_TRUE(mul(m, s) == 120_q * si::metre * si::second);
+    EXPECT_TRUE(mul(2_q, m) == 80_q * si::metre);
+    EXPECT_TRUE(div(m, s, round_floor) == 13_q * si::metre / si::second);
+    EXPECT_TRUE(div(m, s, round_ceil) == 14_q * si::metre / si::second);
+    EXPECT_TRUE(div(m, id<"[1..10]">{3}, round_floor) == 13_q * si::metre);
+    EXPECT_TRUE(div(30_q, s, round_floor) == 10_q / si::second);
 
     error      ec{};
     const auto z = div(m, id<"[0..10] [s]">{0, si::second}, ec);
@@ -301,22 +301,22 @@ TEST(UnitsParityTest, cursors_and_values_over_quantities) {
     for (cursor<s_t, rational{1, 2}> t; t != end(t); ++t)
         seen.push_back(*t);
     ASSERT_EQ(seen.size(), 5u);
-    EXPECT_TRUE(seen.front() == just<0> * si::second);
-    EXPECT_TRUE(seen.back() == just<2> * si::second);
-    EXPECT_TRUE((seen[1] == just<1, 2> * si::second));
+    EXPECT_TRUE(seen.front() == 0_q * si::second);
+    EXPECT_TRUE(seen.back() == 2_q * si::second);
+    EXPECT_TRUE((seen[1] == 0.5_q * si::second));
 
     static_assert(std::ranges::random_access_range<decltype(values<s_t>)>);
     static_assert(std::ranges::borrowed_range<decltype(values<s_t>)>);
     static_assert(std::same_as<std::ranges::range_value_t<decltype(values<s_t>)>, s_t>);
     EXPECT_EQ(values<s_t>.size(), 9u);
-    EXPECT_TRUE(values<s_t>.back() == just<2> * si::second);
+    EXPECT_TRUE(values<s_t>.back() == 2_q * si::second);
     EXPECT_EQ(std::ranges::find(values<s_t>, s_t{rational{3, 4}, si::second}) - values<s_t>.begin(), 3);
 
     // A quantity's ++ steps one notch of its number, as an inside's does.
     id<"[0..2] 1/4 [s] round_half_away|clamp"> q{
         0, si::second}; // (++ names its range handling)
     ++q;
-    EXPECT_TRUE((q == just<1, 4> * si::second));
+    EXPECT_TRUE((q == 0.25_q * si::second));
 }
 
 // std::hash and std::numeric_limits of a quantity: its number's, the limits
@@ -329,9 +329,9 @@ TEST(UnitsParityTest, hash_and_numeric_limits) {
     using lim = std::numeric_limits<metres>;
     static_assert(lim::is_specialized && lim::is_integer && lim::is_exact && !lim::is_signed);
     static_assert(std::same_as<decltype(lim::max()), metres>);
-    EXPECT_TRUE(lim::max() == just<100> * si::metre);
-    EXPECT_TRUE(lim::lowest() == just<0> * si::metre);
-    EXPECT_TRUE(lim::epsilon() == just<0> * si::metre);
+    EXPECT_TRUE(lim::max() == 100_q * si::metre);
+    EXPECT_TRUE(lim::lowest() == 0_q * si::metre);
+    EXPECT_TRUE(lim::epsilon() == 0_q * si::metre);
     EXPECT_EQ(lim::digits, std::numeric_limits<num>::digits);
 }
 
@@ -343,16 +343,16 @@ TEST(UnitsParityTest, clamp_overshoot_is_a_quantity) {
     m.on_clamp([&](metres& self, auto over) {
         static_assert(quantity_like<decltype(over)>);
         static_assert(decltype(over)::reference == metres::reference);
-        exact = &self == &m && over == just<900> * si::metre; // 1 km is 1000 m: 900 m past 100 m
+        exact = &self == &m && over == 900_q * si::metre; // 1 km is 1000 m: 900 m past 100 m
     })           = km{1, si::kilo(si::metre)};
     EXPECT_TRUE(exact);
-    EXPECT_TRUE(m == just<100> * si::metre);
+    EXPECT_TRUE(m == 100_q * si::metre);
 
     using turn = id<"[0..59] [s] wrap">;
     turn t{0, si::second};
     t.on_wrap([&](auto&, auto carry) {
         static_assert(!quantity_like<decltype(carry)>);
         exact = carry == 2;
-    }) = just<125> * si::second;
+    }) = 125_q * si::second;
     EXPECT_TRUE(exact);
 }

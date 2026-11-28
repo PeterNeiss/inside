@@ -40,7 +40,7 @@ int main()
     std::printf("  std::sin(double)       %.16f\n  sin(fmod(x, 2*pi))     %.16f\n", std::sin(xd),
                 std::sin(std::fmod(xd, 2 * 3.141592653589793)));
 
-    constexpr auto scale{just<(std::int64_t{1} << 52)>}; // s · 2^52 is a whole number, exactly
+    constexpr auto scale{std::cw<(std::int64_t{1} << 52)>}; // s · 2^52 is a whole number, exactly
     if (s * scale != r.sin_slot || c * scale != r.cos_slot)
       return 1;
   }

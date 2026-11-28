@@ -34,7 +34,7 @@ namespace ins::detail
   {
     using PA = plain_t<A>;
     // A store that may leave a point grid cannot wrap: the period, Upper − Lower + Notch, is 0.
-    // (A point type with wrap still comes out of arithmetic, x * 0_ins; storing the point itself needs no range
+    // (A point type with wrap still comes out of arithmetic, x * 0_q; storing the point itself needs no range
     // check.)
     static_assert(!point_grid<L> || clamp_action<PA>
                     || !(wrap_action<PA> || (uses_flag<L, P, wrap> && !uses_flag<L, P, clamp>)),

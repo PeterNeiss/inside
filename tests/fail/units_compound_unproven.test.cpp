@@ -7,5 +7,5 @@ using namespace ins;
 
 int main() {
     id<"[0..100] [m]"> d{50, si::metre};
-    d += just<1> * si::metre;
+    d += 1_q * si::metre;
 }

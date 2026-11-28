@@ -25,7 +25,7 @@
 //             | "[" num "]"                            a point
 //   step     := num                                    the notch
 //             | "<" num ">"                            a continuous grid's max denominator
-//   num      := ["-"] number ["/" number]              number: as the _ins literal reads it (0.25, 1e9, 0x1p-4, 1'000)
+//   num      := ["-"] number ["/" number]              number: as the _q literal reads it (0.25, 1e9, 0x1p-4, 1'000)
 //   unit     := a unit's text (km/h, kg*m^2/s^2, [1/381*ft]) (units/detail/unit_key.hpp reads these three)
 //   kind     := none | any | [any] kinds (height, length*duration): the kind when not the unit's own
 //   origin   := a name (ice_point), or 0 for the zero of the dimension

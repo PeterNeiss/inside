@@ -23,9 +23,9 @@ namespace
   inline constexpr auto j = unit<"j", e3 * e1>; // -e₁e₃: the unit tracks the sign
   inline constexpr auto k = unit<"k", e2 * e3>;
 
-  inline constexpr auto one_i = just<1> * i;
-  inline constexpr auto one_j = just<1> * j;
-  inline constexpr auto one_k = just<1> * k;
+  inline constexpr auto one_i = 1_q * i;
+  inline constexpr auto one_j = 1_q * j;
+  inline constexpr auto one_k = 1_q * k;
 } // namespace
 
 int main()
@@ -37,8 +37,8 @@ int main()
   static_assert(one_j * one_k == one_i && one_k * one_i == one_j);
 
   // 2. p q ≠ q p, and |pq|² = |p|²|q|² (Euler's four-square identity), exactly.
-  const auto p{just<1>    + just<2>    * i + just<3>    * j + just<4>    * k};
-  const auto q{just<1, 2> + just<1, 2> * i + just<1, 2> * j + just<1, 2> * k};
+  const auto p{1_q    + 2_q    * i + 3_q    * j + 4_q    * k};
+  const auto q{0.5_q + 0.5_q * i + 0.5_q * j + 0.5_q * k};
   std::cout << "p = " << p << ", q = " << q << '\n';
   std::cout << "p q = " << p * q << ", q p = " << q * p << '\n';
   std::cout << "|p q|² = " << squared_norm(p * q) << " = |p|² |q|² = " << squared_norm(p) << " · "
@@ -49,7 +49,7 @@ int main()
 
   // 3. q turns a vector in metres a third of a turn about (1, 1, 1): e₁ → e₃ → e₂ → e₁, exactly.
   // q v q⁻¹ has a grade-3 part, 0 for a rotor; sandwich(q, v) keeps v's grade.
-  const auto v   {si::metre * e1 + just<2> * si::metre * e2 + just<3> * si::metre * e3};
+  const auto v   {si::metre * e1 + 2_q * si::metre * e2 + 3_q * si::metre * e3};
   const auto r   {sandwich(q, v)};
   const auto full{q * v * inverse(q)};
   std::cout << "q⁻¹ = " << inverse(q) << '\n';
@@ -69,7 +69,7 @@ int main()
   using rotor_part  = id<"[-1..1] 1/65536 round_half_away">;
   using rotor       = multivector<rotor_part, id<"[-1..1] 1/65536 [i] round_half_away">,
                                   id<"[-1..1] 1/65536 [j] round_half_away">, id<"[-1..1] 1/65536 [k] round_half_away">>;
-  const coefficient c{just<6045997880780726, 10000000000000000>};
+  const coefficient c{0.6045997880780726_q};
   const rotor       from_angle = math::exp<rotor>(c * i + c * j + c * k);
   std::cout << "exp(π/3 · (i + j + k)/√3) = " << from_angle << '\n';
   if (!(from_angle == q))

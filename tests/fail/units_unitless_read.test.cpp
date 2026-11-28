@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    const auto d = just<42> * si::metre;
+    const auto d = 42_q * si::metre;
     (void)d.numerical_value();
 }

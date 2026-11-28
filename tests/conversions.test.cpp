@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Out of an inside: to<T>, the conversion predicates and casts,
-// numerator/denominator, points (just<…>) and their stores.
+// numerator/denominator, points (5_q, "2/3"_q, std::cw<V>) and their stores.
 
 #include <inside/inside.hpp>
 #include <inside/inside/casts.hpp>
@@ -257,7 +257,7 @@ using namespace ins::formats;
 using namespace ins::detail;
 
 //---------------------------------------------------------------------------
-// Regression: a single-point source inside (e.g. `0_ins`, any `just<N>`) must
+// Regression: a single-point source inside (e.g. `0_q`, any `std::cw<N>`) must
 // assign into ANY grid that can exactly represent the value — including grids
 // with a non-unit notch, where the whole-range notch mapping is inexact. Before
 // the fix, `inside_assignable`'s notch clause rejected these even though the one
@@ -268,29 +268,29 @@ using namespace ins::detail;
 TEST(ConstantTest, point_inside_assignment_onto_non_unit_notch_grids) {
     // values {0,3,6,9}
     static_assert([] {
-        id<"[0..9] 3"> b = 0_ins;
+        id<"[0..9] 3"> b = 0_q;
         return b == 0;
     }());
     static_assert([] {
-        id<"[0..9] 3"> b = 3_ins;
+        id<"[0..9] 3"> b = 3_q;
         return b == 3;
     }());
     static_assert([] {
-        id<"[0..9] 3"> b = 9_ins;
+        id<"[0..9] 3"> b = 9_q;
         return b == 9;
     }());
     // values {0,2,..,10}
     static_assert([] {
-        id<"[0..10] 2"> b = 0_ins;
+        id<"[0..10] 2"> b = 0_q;
         return b == 0;
     }());
     static_assert([] {
-        id<"[0..10] 2"> b = 4_ins;
+        id<"[0..10] 2"> b = 4_q;
         return b == 4;
     }());
     // offset grid (non-zero Lower), values {3,6,9}
     static_assert([] {
-        id<"[3..9] 3"> b = 6_ins;
+        id<"[3..9] 3"> b = 6_q;
         return b == 6;
     }());
 
@@ -300,7 +300,7 @@ TEST(ConstantTest, point_inside_assignment_onto_non_unit_notch_grids) {
         return b == 0;
     }());
     static_assert([] {
-        id<"[0..9] 3"> b = 0_ins;
+        id<"[0..9] 3"> b = 0_q;
         return b == 0;
     }());
 }
@@ -308,97 +308,101 @@ TEST(ConstantTest, point_inside_assignment_onto_non_unit_notch_grids) {
 // point-inside assignment rejected when not representable
 TEST(ConstantTest, point_inside_assignment_rejected_when_not_representable) {
     // not on a notch
-    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(1_ins)>);
-    static_assert(!inside_assignable<id<"[0..10] 2">, decltype(3_ins)>);
+    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(1_q)>);
+    static_assert(!inside_assignable<id<"[0..10] 2">, decltype(3_q)>);
     // out of range (valid grids: Lower divisible by notch)
-    static_assert(!inside_assignable<id<"[3..9] 3">, decltype(0_ins)>);
-    static_assert(!inside_assignable<id<"[6..12]">, decltype(0_ins)>);
+    static_assert(!inside_assignable<id<"[3..9] 3">, decltype(0_q)>);
+    static_assert(!inside_assignable<id<"[6..12]">, decltype(0_q)>);
 
     // still admitted where representable
-    static_assert(inside_assignable<id<"[0..9] 3">, decltype(0_ins)>);
-    static_assert(inside_assignable<id<"[3..9] 3">, decltype(6_ins)>);
+    static_assert(inside_assignable<id<"[0..9] 3">, decltype(0_q)>);
+    static_assert(inside_assignable<id<"[3..9] 3">, decltype(6_q)>);
 }
 
 //---------------------------------------------------------------------------
-// just<0> / just<1> — exact point constants.
+// 0_q / 1_q — exact point constants.
 //---------------------------------------------------------------------------
-// just<0> / just<1> assign across storage kinds
+// 0_q / 1_q assign across storage kinds
 TEST(ConstantTest, just_0_and_just_1_assign_across_storage_kinds) {
     static_assert([] {
-        id<"[0..200]"> b = just<0>;
+        id<"[0..200]"> b = 0_q;
         return b == 0;
     }());
     static_assert([] {
-        id<"[0..200]"> b = just<1>;
+        id<"[0..200]"> b = 1_q;
         return b == 1;
     }());
     static_assert([] {
-        id<"[-40..60]"> b = just<0>;
+        id<"[-40..60]"> b = 0_q;
         return b == 0;
     }()); // signed value storage
     static_assert([] {
-        id<"[-40..60]"> b = just<1>;
+        id<"[-40..60]"> b = 1_q;
         return b == 1;
     }());
     static_assert([] {
-        id<"[0..9] 3"> b = just<0>;
+        id<"[0..9] 3"> b = 0_q;
         return b == 0;
     }()); // non-unit notch
     // Q8.8: value 1 is raw 256.
     static_assert([] {
-        id<"[0..1] 0x1p-8"> b = just<1>;
+        id<"[0..1] 0x1p-8"> b = 1_q;
         return static_cast<std::int64_t>(b.raw()) == 256;
     }());
 
     // assignment operator (not just construction)
     static_assert([] {
         id<"[0..200]"> b = 5;
-        b                  = just<0>;
+        b                  = 0_q;
         return b == 0;
     }());
     static_assert([] {
         id<"[0..200]"> b = 5;
-        b                  = just<1>;
+        b                  = 1_q;
         return b == 1;
     }());
 }
 
-// just<0> / just<1> rejected where not representable
+// 0_q / 1_q rejected where not representable
 TEST(ConstantTest, just_0_and_just_1_rejected_where_not_representable) {
-    static_assert(!inside_assignable<id<"[5..10]">, decltype(just<0>)>);       // 0 out of range
-    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(just<1>)>);      // 1 not on notch
+    static_assert(!inside_assignable<id<"[5..10]">, decltype(0_q)>);       // 0 out of range
+    static_assert(!inside_assignable<id<"[0..9] 3">, decltype(1_q)>);      // 1 not on notch
 }
 
-// just<0> / just<1> in comparison and arithmetic
+// 0_q / 1_q in comparison and arithmetic
 TEST(ConstantTest, just_0_and_just_1_in_comparison_and_arithmetic) {
     using B = id<"[0..200]">;
 
     // comparison (both orders — C++20 rewritten/reversed candidates)
-    static_assert(B{0} == just<0>);
-    static_assert(just<0> == B{0});
-    static_assert(B{1} == just<1>);
-    static_assert(B{5} > just<0>);
-    static_assert(just<0> < B{5});
-    static_assert(B{0} < just<1>);
+    static_assert(B{0} == 0_q);
+    static_assert(0_q == B{0});
+    static_assert(B{1} == 1_q);
+    static_assert(B{5} > 0_q);
+    static_assert(0_q < B{5});
+    static_assert(B{0} < 1_q);
 
     // arithmetic (forwards through the ordinary inside operators)
-    static_assert((B{5} + just<1>) == 6);
-    static_assert((just<1> + B{5}) == 6);
-    static_assert((B{5} - just<0>) == 5);
-    static_assert((B{5} - just<1>) == 4);
+    static_assert((B{5} + 1_q) == 6);
+    static_assert((1_q + B{5}) == 6);
+    static_assert((B{5} - 0_q) == 5);
+    static_assert((B{5} - 1_q) == 4);
 
     // a runtime check too, for good measure
     B b = 41;
-    b   = test::store<B>(b + just<1>); // (b + 1 may leave B: a checked store)
+    b   = test::store<B>(b + 1_q); // (b + 1 may leave B: a checked store)
     ASSERT_EQ(b, 42);
 }
 
-// just<N, D> is the point N/D.
-TEST(ConstantTest, just_numerator_denominator) {
-    static_assert(rational{just<1, 3>} == rational(1, 3));
-    static_assert(rational{just<-6, 5>} == rational(-6, 5));
-    static_assert(std::is_same_v<decltype(just<4, 2>), decltype(just<2>)>);
-    static_assert(std::is_same_v<decltype(just<7>), decltype(just<7, 1>)>);
+// "N/D"_q is the point N/D, a decimal its exact value.
+TEST(ConstantTest, fraction_literals) {
+    static_assert(rational{"1/3"_q} == rational(1, 3));
+    static_assert(rational{-1.2_q} == rational(-6, 5));
+    static_assert(rational{"-6/5"_q} == rational(-6, 5));
+    static_assert(std::is_same_v<decltype("4/2"_q), decltype(2_q)>);
+    static_assert(std::is_same_v<decltype(0.25_q), id<"[1/4]">>);
+    static_assert(std::is_same_v<decltype("2/3"_q), id<"[2/3]">>);
+    static_assert(std::is_same_v<decltype("-1/3"_q), id<"[-1/3]">>);
+    static_assert(std::is_same_v<decltype(0x1p-15_q), id<"[1/32768]">>);
     static_assert(lower_of<id<"[-1/10..1/10] 1/1000">> == rational(-1, 10));
 }
 } // namespace constant_tests
@@ -441,7 +445,7 @@ TEST(ConversionTest, no_comparison_with_floating_point) {
     using thirds = id<"[0..1] 1/3">;
     static_assert(!compares_with<C, double> && !compares_with<thirds, float> && !compares_with<C, long double>);
     static_assert(compares_with<C, int> && compares_with<C, rational>);
-    static_assert(C{rational{1, 2}} == 0.5_r && thirds{rational{1, 3}} == just<1, 3>);
+    static_assert(C{rational{1, 2}} == 0.5_r && thirds{rational{1, 3}} == "1/3"_q);
 }
 
 // to<T, round_toward_zero>() truncates first, then range-checks: 127.5 →
@@ -479,8 +483,8 @@ TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
     static_assert(can_abs<digit, small> && can_abs<id<"[1..10]">, small>);
     EXPECT_EQ((math::abs<id<"[1..10]">>(small{0}).error()), error::overflow);
     static_assert(can_pown<5, digit> && can_pown<0, id<"[-2..2] <1000>">>);
-    EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
-    EXPECT_EQ((digit{small{-3}, clamp}), 0_ins);
+    EXPECT_EQ(math::pown<3>(small{-2}), -8_q);
+    EXPECT_EQ((digit{small{-3}, clamp}), 0_q);
 }
 
 // conversion_rounds divided loudly (a compile error for a quotient past 64
@@ -529,7 +533,7 @@ TEST(ConversionTest, numerator_past_int64) {
     using Z      = id<key{grid{{-I64_MAX, -I64_MAX + 1}, rational{1, 2}}}>;
     const Z    z = rational{UINT64_MAX - 2, -2};
     const auto m = z.numerator();
-    EXPECT_TRUE(m == -just<grid_number{big_int{UINT64_MAX - 2}}>);
+    EXPECT_TRUE(m == -std::cw<grid_number{big_int{UINT64_MAX - 2}}>);
     // Numerators and denominators get the tightest integer grids.
     static_assert(grid_of<decltype(std::declval<id<"[0..10] 1/4">>().numerator())> == grid{0, 40});
     static_assert(grid_of<decltype(std::declval<id<"[0..1] <1000>">>().numerator())> ==
@@ -767,7 +771,7 @@ TEST(ConversionsArmTest, rounds_on_a_point_and_past_the_64_bit_steps) {
 TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
     using T = id<"[-12000000000000000000..12000000000000000000] 3/2">;
     static_assert(detail::rational_readable<T>);
-    const T t = T::from_step(15333333333333333333_ins);                              // 10999999999999999999.5
+    const T t = T::from_step(15333333333333333333_q);                                // 10999999999999999999.5
     EXPECT_DEATH((void)rational{t}, "ins: inside: value past the 64-bit rationals"); // a precondition
 }
 } // namespace reached_arms_tests
@@ -800,10 +804,10 @@ using detail::rational;
 // are ±infinity, below its least subnormal 0; zero is 0.
 TEST(ConversionsArmTest, floats_of_values_past_the_range) {
     using Big = id<key{grid{{0, grid_number{detail::grid_int{1} << 20000}}, grid_number{detail::grid_int{1} << 19990}}}>;
-    EXPECT_EQ(Big::from_step(1024_ins).to<long double>(), std::numeric_limits<long double>::infinity());
-    EXPECT_EQ(Big::from_step(1024_ins).to<float>(), std::numeric_limits<float>::infinity());
+    EXPECT_EQ(Big::from_step(1024_q).to<long double>(), std::numeric_limits<long double>::infinity());
+    EXPECT_EQ(Big::from_step(1024_q).to<float>(), std::numeric_limits<float>::infinity());
     using F = id<"[0..340282366920938463463374607431768211456]">; // to 2^128
-    EXPECT_EQ(F{just<340282366920938463463374607431768211456_g>}.to<float>(), std::numeric_limits<float>::infinity());
+    EXPECT_EQ(F{340282366920938463463374607431768211456_q}.to<float>(), std::numeric_limits<float>::infinity());
     using T = id<key{grid{{0, 1}, max_denominator{grid_number{detail::grid_int{1} << 20000}}}}>;
     EXPECT_EQ((*parse_exact<T>("0")).to<long double>(), 0.0L);
     EXPECT_EQ((*parse_exact<T>("0x1p-19999")).to<long double>(), 0.0L);
@@ -948,8 +952,8 @@ TEST(ConversionTest, int64_full_range) {
     EXPECT_EQ(lo.to<std::int64_t>(), std::numeric_limits<std::int64_t>::min());
     const auto neg = -lo;
     static_assert(upper_of<decltype(neg)> == 9223372036854775808_g);
-    EXPECT_TRUE(neg == just<9223372036854775808_g>);
-    EXPECT_TRUE(math::abs(lo) == just<9223372036854775808_g>);
+    EXPECT_TRUE(neg == 9223372036854775808_q);
+    EXPECT_TRUE(math::abs(lo) == 9223372036854775808_q);
     EXPECT_EQ(math::abs(lo).to<std::uint64_t>(), std::uint64_t{1} << 63);
     EXPECT_EQ(to_string(lo), "-9223372036854775808");
 }
@@ -1019,8 +1023,8 @@ TEST(IntegerFastPathTest, to_integer_rounds_as_the_reference) {
     check_to_int<round_half_even>();
     // Without permission to round, a fraction is an error; an integer is not.
     using q = id<"[-8..8] 1/16">;
-    EXPECT_EQ((q{just<3, 16>}.to<int>().error()), error::rounding_error);
-    EXPECT_EQ(*q{just<-3>}.to<int>(), -3);
+    EXPECT_EQ((q{0.1875_q}.to<int>().error()), error::rounding_error);
+    EXPECT_EQ(*q{-3_q}.to<int>(), -3);
     // An integer grid past the target: only the range is checked.
     using wide = id<"[-1000..1000]">;
     EXPECT_EQ(*wide{255}.to<std::uint8_t>(), 255);

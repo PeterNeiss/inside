@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Through operator rational() an inside plus a rational would become rational
 // arithmetic, an expected<rational, error> without a grid; it is deleted, with
-// the spelling that keeps the grid (just<1, 2>, 0.5_ins).
+// the spelling that keeps the grid (0.5_q, "1/3"_q).
 #include <inside/inside.hpp>
 
 using namespace ins;

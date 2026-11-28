@@ -46,8 +46,8 @@ TEST(InsideArithmeticTest, inside_add) {
     using u8 = id<"[10..255]">;
     constexpr u8 a{16};
     constexpr u8 b{220};
-    static_assert(a + just<1> == 17);
-    static_assert(b + just<1> == 221);
+    static_assert(a + 1_q == 17);
+    static_assert(b + 1_q == 221);
 
     static_assert(a + b == 236);
 
@@ -124,7 +124,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         SCOPED_TRACE("a rounding mode at the call selects the integer-storage division");
         using ui = id<"[0..100] round_toward_zero">;
         constexpr ui a{51}, b{8};
-        static_assert(*(a / b) == just<51, 8>); // the operator is exact, whatever the operands round
+        static_assert(*(a / b) == 6.375_q); // the operator is exact, whatever the operands round
         constexpr auto e = div(a, b, round_toward_zero);
         static_assert(!(std::is_same_v<typename decltype(e)::value_type::raw_type, rational>));
         static_assert(*e == 6);
@@ -234,7 +234,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         using fine = id<key{grid{{0, 1}, rational{1, std::uint64_t{1} << 40}}}>;
         using fpos = id<key{grid{{1, 2}, rational{1, std::uint64_t{1} << 40}}}>;
         static_assert(!is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
-        EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == (just<1, 3>));
+        EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == ("1/3"_q));
     }
 }
 
@@ -332,17 +332,17 @@ TEST(InsideArithmeticTest, free_div_reports_a_zero_divisor) {
     ASSERT_EQ(q_def.error(), error::division_by_zero);
 }
 
-// unary -_ins composes through the literal parser
+// unary -_q composes through the literal parser
 TEST(InsideArithmeticTest, unary_ins_composes_through_the_literal_parser) {
-    // `-1.5_ins` parses as `-(1.5_ins)`. Verifies that `inside::operator-()` returns
+    // `-1.5_q` parses as `-(1.5_q)`. Verifies that `inside::operator-()` returns
     // a point on the negated grid for rational-storage point bounds.
-    static_assert(rational{-1.5_ins} == -1.5_r);
-    static_assert(rational{-5_ins} == rational{-5});
-    static_assert(rational{-0x1p-8_ins} == -0x1p-8_r);
+    static_assert(rational{-1.5_q} == -1.5_r);
+    static_assert(rational{-5_q} == rational{-5});
+    static_assert(rational{-0x1p-8_q} == -0x1p-8_r);
 
-    // Compose: `5_ins + (-1.5_ins)` — point + point. The result may be wrapped
+    // Compose: `5_q + (-1.5_q)` — point + point. The result may be wrapped
     // in expected by the grid arithmetic; either way the value is 3.5.
-    static_assert((5_ins + -1.5_ins) == 3.5_r);
+    static_assert((5_q + -1.5_q) == 3.5_r);
 }
 
 // constexpr arithmetic
@@ -370,24 +370,24 @@ TEST(InsideArithmeticTest, scalars_need_a_grid_to_join_inside_arithmetic) {
     using bin_t = id<"[0..9]">;
     bin_t b{5};
 
-    // A literal given a grid (`_ins` / `just<N>`) widens like any other inside, so
+    // A literal given a grid (`_q` / `std::cw<N>`) widens like any other inside, so
     // the result stays in the bounded world — no escape to rational/double.
-    static_assert(insidable<decltype(b + 1_ins)>);
-    static_assert(insidable<decltype(2_ins * b)>);
-    ASSERT_EQ(b + 1_ins, 6);
-    ASSERT_EQ(b - 1_ins, 4);
-    ASSERT_EQ(b * 2_ins, 10);
-    ASSERT_TRUE(just<1> + b == 6);
-    ASSERT_EQ(2_ins * b, 10);
+    static_assert(insidable<decltype(b + 1_q)>);
+    static_assert(insidable<decltype(2_q * b)>);
+    ASSERT_EQ(b + 1_q, 6);
+    ASSERT_EQ(b - 1_q, 4);
+    ASSERT_EQ(b * 2_q, 10);
+    ASSERT_TRUE(1_q + b == 6);
+    ASSERT_EQ(2_q * b, 10);
 
     // Raw `int` / `double` operands are intentionally ill-formed (see the
     // static_assert guidance in arithmetic.hpp): expressions like `b + 1`,
     // `1 + b`, `b * 2.5` AND compound forms like `b += 1` do NOT compile — the
-    // programmer must give the scalar a grid (`1_ins` / `just<1>`). Only comparisons
+    // programmer must give the scalar a grid (`1_q`). Only comparisons
     // (`b == 5`) against a raw scalar stay ergonomic.
     ASSERT_EQ(b, 5);
     error ec{}; // (b + 1 may leave b's grid: a reported store)
-    b.on_error(ec) += 1_ins;
+    b.on_error(ec) += 1_q;
     ASSERT_EQ(b, 6);
 }
 
@@ -397,23 +397,23 @@ TEST(InsideArithmeticTest, exact_scalar_math_stays_in_inside_space) {
     rn a{0.5_r}; // 0.5
 
     // The old mixed-mode `inside op rational` overloads are gone: a scalar joins
-    // inside arithmetic by wearing a grid (`_ins` / `just<>`), and the result stays
+    // inside arithmetic by wearing a grid (`_q` / `std::cw<V>`), and the result stays
     // an inside — no escape into rational.
-    static_assert(insidable<decltype(a + 0.5_ins)>);
-    static_assert(insidable<decltype(a * 2_ins)>);
+    static_assert(insidable<decltype(a + 0.5_q)>);
+    static_assert(insidable<decltype(a * 2_q)>);
 
     // Exact values come back out through the integer-pair accessors, not a
     // rational: 0.5 + 0.5 == 1, 0.5 - 0.25 == 1/4, 0.5 * 2 == 1.
-    auto sum = a + 0.5_ins;
+    auto sum = a + 0.5_q;
     ASSERT_EQ(sum.numerator(), 1);
     ASSERT_EQ(sum.denominator(), 1);
 
-    auto diff = a - 0.25_ins;
+    auto diff = a - 0.25_q;
     ASSERT_EQ(diff.numerator(), 1);
     ASSERT_EQ(diff.denominator(), 4);
 
-    ASSERT_EQ((a * 2_ins), 1);
-    ASSERT_EQ((2_ins * a), 1);
+    ASSERT_EQ((a * 2_q), 1);
+    ASSERT_EQ((2_q * a), 1);
 }
 
 // ins::sum - bulk reduction with one deferred check
@@ -476,7 +476,7 @@ TEST(InsideArithmeticTest, ins_sum_bulk_reduction_with_one_deferred_check) {
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the
-// DESIGNED ban — `1_ins` / `just<V>` / `id<key{grid{lo,hi}}>::try_make(n)` are the API. Since
+// DESIGNED ban — `1_q` / `std::cw<V>` / `id<key{grid{lo,hi}}>::try_make(n)` are the API. Since
 // 2026-10-31 the guidance overloads are deleted (their reason is the fix), so
 // probes answer false like for every operation that cannot compile. An
 // accidentally-introduced real widening overload would make a probe true.
@@ -498,11 +498,11 @@ TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
     // The sanctioned spellings stay open: literals widen, compound narrows,
     // comparisons are free.
     pct  b{5};
-    auto w = b + 1_ins;
+    auto w = b + 1_q;
     static_assert(!std::same_as<decltype(w), pct>); // widened grid
     ASSERT_EQ(w, 6);
     error ec{}; // (b + 1 may leave b's grid: a reported store)
-    b.on_error(ec) += 1_ins;
+    b.on_error(ec) += 1_q;
     ASSERT_EQ(b, 6);
     ASSERT_TRUE(b < 10);
 }
@@ -678,7 +678,7 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     // value check across a negative Lower, at compile time (constexpr path).
     using signed_whole = id<"[-50..50]">;
     using eighths      = id<"[-2..2] 1/8">;
-    static_assert(rational{signed_whole{-7} + eighths{-0.625_ins}} == rational{std::uint64_t{61}, std::int64_t{-8}});
+    static_assert(rational{signed_whole{-7} + eighths{-0.625_q}} == rational{std::uint64_t{61}, std::int64_t{-8}});
 }
 
 // regression: cross-grid assign onto rational storage keeps the value
@@ -765,7 +765,7 @@ TEST(CrossGridTest, continuous_plus_notched_is_continuous) {
     EXPECT_EQ((rational{C{rational{3, 10}} + I{5}}), (rational{53, 10}));
     EXPECT_EQ((rational{I{5} - C{rational{3, 10}}}), (rational{47, 10}));
     // a point still shifts the lattice
-    static_assert(notch_of<decltype(I{} + just<rational{1, 2}>)> == 1);
+    static_assert(notch_of<decltype(I{} + std::cw<rational{1, 2}>)> == 1);
 }
 } // namespace cross_grid_tests
 
@@ -816,7 +816,7 @@ TEST(SignedTest, signed_construction_and_arithmetic) {
     ASSERT_EQ(acc, 70);
 
     s32 acc2{50};
-    acc2.on_error(ec) += -75_ins;
+    acc2.on_error(ec) += -75_q;
     ASSERT_EQ(acc2, -25);
     ASSERT_EQ(ec, error{});
 }
@@ -1077,8 +1077,8 @@ TEST(ResultGridsTest, quantities_take_the_numbers_tight_types) {
     // In the common unit, metres: lerp between [0, 100] m and [0, 1000] m.
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(lerp(a, b, t))>::rep, id<"[0..1000] 1/4">>);
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(min(a, b))>::rep, id<"[0..100]">>);
-    EXPECT_TRUE((lerp(a, b, t) == just<2575, 10> * si::metre));
-    EXPECT_TRUE(min(a, b) == just<10> * si::metre);
+    EXPECT_TRUE((lerp(a, b, t) == 257.5_q * si::metre));
+    EXPECT_TRUE(min(a, b) == 10_q * si::metre);
 }
 } // namespace result_grids_tests
 
@@ -1135,16 +1135,16 @@ TEST(ExpectedArithmeticTest, expected_inside_plus_point_propagates_error) {
     auto failing = []() -> std::expected<b_t, error> { return std::unexpected{error::division_by_zero}; };
     static_assert(!adds_to<std::expected<b_t, error>, rational> && !adds_to<b_t, rational> && !adds_to<rational, b_t>);
 
-    auto r = some() + 0.25_ins;
+    auto r = some() + 0.25_q;
     ASSERT_TRUE(r.has_value());
     ASSERT_EQ(*r, 0.75_r);
 
-    ASSERT_FALSE((failing() + 0.25_ins).has_value());
-    ASSERT_FALSE((0.25_ins + failing()).has_value());
-    ASSERT_FALSE((failing() - 0.25_ins).has_value());
-    ASSERT_FALSE((failing() * 0.25_ins).has_value());
-    ASSERT_FALSE((failing() / 0.25_ins).has_value());
-    ASSERT_EQ((failing() * 0.25_ins).error(), error::division_by_zero);
+    ASSERT_FALSE((failing() + 0.25_q).has_value());
+    ASSERT_FALSE((0.25_q + failing()).has_value());
+    ASSERT_FALSE((failing() - 0.25_q).has_value());
+    ASSERT_FALSE((failing() * 0.25_q).has_value());
+    ASSERT_FALSE((failing() / 0.25_q).has_value());
+    ASSERT_EQ((failing() * 0.25_q).error(), error::division_by_zero);
 }
 
 // expected<rational> value_or
@@ -1397,13 +1397,13 @@ TEST(BoundedRationalTest, quotient_of_notched_grids_is_bounded_and_plain) {
     static_assert(grid_of<quot>.MaxDenominator == 7);
     static_assert(rational_storage<quot>);
     static_assert(!is_expected_v<quot>);
-    static_assert(!is_expected_v<decltype(quot{} * 9_ins / 5_ins + 32_ins)>);
+    static_assert(!is_expected_v<decltype(quot{} * 9_q / 5_q + 32_q)>);
     static_assert(!is_expected_v<decltype(quot{} + quot{} - quot{} * quot{})>);
     static_assert(!is_expected_v<decltype(quot{} / den{})>);
 
     const auto q = num{50} / den{3};
     EXPECT_EQ(rational{q}, (rational{50, 3}));
-    EXPECT_EQ(rational{q * 9_ins / 5_ins + 32_ins}, 62);
+    EXPECT_EQ(rational{q * 9_q / 5_q + 32_q}, 62);
     EXPECT_EQ(rational{q + q - q * q}, (rational{-2200, 9}));
     EXPECT_EQ(rational{q / den{7}}, (rational{50, 21}));
 }
@@ -1499,7 +1499,7 @@ TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {
     const auto        a = math::abs(q);
     static_assert(grid_of<std::remove_cvref_t<decltype(a)>>.MaxDenominator == 7);
     EXPECT_TRUE(a == rational(50, 3));
-    const auto c = math::copysign(q, 1_ins);
+    const auto c = math::copysign(q, 1_q);
     static_assert(grid_of<std::remove_cvref_t<decltype(c)>>.MaxDenominator == 7);
     EXPECT_TRUE(c == rational(50, 3));
     const auto r = math::fmod(q, id<"[1..4]">{3}); // −50/3 + 5·3 = −5/3
@@ -1739,7 +1739,7 @@ TEST(ArithmeticTest, increment_moves_one_notch) {
     rl x{rational{3, 2}};
     ++x;
     EXPECT_EQ(rational{x}, (rational{385, 256}));
-    x += 1_ins;
+    x += 1_q;
     EXPECT_EQ(rational{x}, (rational{641, 256}));
     --x;
     EXPECT_EQ(rational{x}, (rational{5, 2}));
@@ -1761,12 +1761,12 @@ TEST(ArithmeticTest, expected_lift_propagates_a_right_hand_side_error) {
 }
 
 //---------------------------------------------------------------------------
-// Point-operand multiply — `x * just<c>` scales x's lattice (notch N·|c|), so the
+// Point-operand multiply — `x * std::cw<c>` scales x's lattice (notch N·|c|), so the
 // product keeps integer storage and its offset is x's offset (mirrored for c < 0).
 //---------------------------------------------------------------------------
 TEST(ArithmeticTest, multiply_by_point_keeps_integer_storage) {
     using U  = id<"[0..200]">;
-    using R3 = decltype(U{} * just<3>);
+    using R3 = decltype(U{} * 3_q);
     static_assert(!rational_storage<R3>);
     static_assert(notch_of<R3> == 3 && lower_of<R3> == 0 && upper_of<R3> == 600);
     using RH = decltype(midpoint(U{}, U{}));
@@ -1777,10 +1777,10 @@ TEST(ArithmeticTest, multiply_by_point_keeps_integer_storage) {
 TEST(ArithmeticTest, multiply_by_point_matches_exact_product) {
     for (int v : {-100, -7, 0, 1, 99, 100}) {
         const auto x = test::store<id<"[-100..100]">>(v);
-        EXPECT_EQ(rational{x * just<3>}, rational{3 * v});
-        EXPECT_EQ(rational{just<3> * x}, rational{3 * v});
-        EXPECT_EQ(rational{x * just<-2>}, rational{-2 * v});
-        EXPECT_EQ((exact{x * just<-1, 4>}), (exact{v} * exact{rational{-1, 4}}));
+        EXPECT_EQ(rational{x * 3_q}, rational{3 * v});
+        EXPECT_EQ(rational{3_q * x}, rational{3 * v});
+        EXPECT_EQ(rational{x * -2_q}, rational{-2 * v});
+        EXPECT_EQ((exact{x * -0.25_q}), (exact{v} * exact{rational{-1, 4}}));
     }
     id<"[0..200]"> a{3}, b{4};
     EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
@@ -1806,7 +1806,7 @@ TEST(ArithmeticTest, continuous_sum_is_exact) {
         sixths{rational{1, 2}}, sixths{rational{1, 3}}, sixths{rational{1, 6}}, sixths{rational{-5, 6}}};
     using sixths_total = id<"[-4..4] <6>">;
     EXPECT_EQ(rational{*ins::sum<sixths_total>(h)}, (rational{1, 6}));
-    const std::array<std::remove_cvref_t<decltype(just<1, 3>)>, 5> p{}; // a point grid: 5 copies of 1/3
+    const std::array<std::remove_cvref_t<decltype("1/3"_q)>, 5> p{}; // a point grid: 5 copies of 1/3
     using thirds_total = id<"[0..2] <3>">;
     EXPECT_EQ(rational{*ins::sum<thirds_total>(p)}, (rational{5, 3}));
 }
@@ -1853,3 +1853,52 @@ TEST(ArithmeticArmTest, sum_reduces_an_unreduced_raw) {
     EXPECT_EQ(rational{*ins::sum<total>(v)}, (rational{1, 2}));
 }
 } // namespace reached_arms_tests
+
+// std::cw<V>, a value the code computes while compiling, is the point V in every operator: arithmetic, comparison,
+// compound assignment and construction. Without these an integer inside and the wrapper both converted to builtins
+// (x * std::cw<5> was an unsigned long). Two wrappers follow std's rules, and a wrapper of a double is rejected.
+namespace constant_wrapper_tests {
+using namespace ins;
+using X = id<"[0..9]">;
+
+template <int N>
+constexpr X make() { return X{std::cw<N>}; }
+template <int N>
+constexpr X make_clamped() { return X{std::cw<N>, clamp}; }
+template <class T>
+constexpr bool takes_a_double_wrapper = requires(T x) { x * std::cw<0.5>; } || requires(T x) { x == std::cw<0.5>; }
+                                     || requires(T x) { x < std::cw<0.5>; } || requires(T x) { x += std::cw<0.5>; };
+
+TEST(ConstantWrapperTest, is_the_point_it_names) {
+    constexpr X x{3};
+    static_assert(std::is_same_v<decltype(x * std::cw<5>), id<"[0..45] 5">>);
+    static_assert(std::is_same_v<decltype(std::cw<5> * x), id<"[0..45] 5">>);
+    static_assert(x + std::cw<grid_number{1} / 3> == "10/3"_q && std::cw<grid_number{1} / 3> * x == 1);
+    static_assert(x < std::cw<5> && x == std::cw<3> && std::cw<3> == x && std::cw<9> > x && x != std::cw<4>);
+    static_assert((x <=> std::cw<3>) == 0);
+    static_assert(x <= std::cw<upper_of<X>>);
+    static_assert(make<4>() == 4 && make_clamped<40>() == 9);
+    constexpr X six = std::cw<6>;
+    static_assert(six == 6);
+    static_assert(!std::is_constructible_v<X, std::constant_wrapper<10>>);
+    static_assert(std::is_same_v<decltype(std::cw<1> / std::cw<3>), std::constant_wrapper<0>>);
+    static_assert(!takes_a_double_wrapper<X>);
+}
+
+TEST(ConstantWrapperTest, compound_assignment_and_expected) {
+    id<"[0..9] clamp"> y{3};
+    y += std::cw<1>;
+    y *= std::cw<4>;
+    EXPECT_EQ(y, 9);
+    X z{1};
+    z = std::cw<7>;
+    EXPECT_EQ(z, 7);
+    error ec{};
+    z.on_error(ec) += std::cw<5>;
+    EXPECT_EQ(ec, error::overflow);
+    const std::expected<X, error> e{X{2}};
+    const auto r = e * std::cw<2>;
+    static_assert(std::is_same_v<decltype(r), const std::expected<id<"[0..18] 2">, error>>);
+    EXPECT_EQ(*r, 4);
+}
+} // namespace constant_wrapper_tests

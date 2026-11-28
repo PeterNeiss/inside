@@ -35,7 +35,7 @@ int main()
   // The accumulators, counted from the reference point 0 ℃.
   // The 1/160 notch holds every reading·weight product (outdoor 1/16, indoor 1/80, ground 1/32) exactly,
   // so the running sum is lossless.
-  const auto ref{point<deg_C>(just<0>)};
+  const auto ref{point<deg_C>(0_q)};
   using weighted_celsius = id<"[-200..200] 1/160 [deg_C] round_half_away">;
   using weight_total     = id<"[0..8] 1/8 round_half_away">;
   weighted_celsius weighted_sum{0, deg_C};

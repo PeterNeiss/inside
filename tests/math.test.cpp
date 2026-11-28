@@ -218,7 +218,7 @@ TEST(MathExactTest, niven_angles_in_degrees) {
 // none. The output rounds by exactly Mode.
 TEST(MathExactTest, mode_on_the_deduced_call) {
     using x_t = id<"[1..16] 1/64">; // no rounding policy
-    static_assert(math::sqrt<round_floor>(x_t{2}) == 1.40625_ins && math::sqrt<round_ceil>(x_t{2}) == 1.421875_ins);
+    static_assert(math::sqrt<round_floor>(x_t{2}) == 1.40625_q && math::sqrt<round_ceil>(x_t{2}) == 1.421875_q);
     static_assert(math::exp<round_floor>(x_t{1.5}) < math::exp<round_ceil>(x_t{1.5}));
     static_assert(detail::rounding_of(policy_of<decltype(math::sqrt<round_toward_zero>(x_t{2}))>) ==
                   detail::round_mode::trunc);
@@ -425,7 +425,7 @@ TEST(MathIntegerTest, result_grids) {
     using n20 = id<"[0..20]">;
     static_assert(grid_of<decltype(math::factorial(n20{}))> == grid{1, 2432902008176640000});
     static_assert(grid_of<decltype(math::factorial(id<"[3..5]">{}))> == grid{6, 120});
-    static_assert(grid_of<decltype(math::factorial(just<5>))> == grid{120});
+    static_assert(grid_of<decltype(math::factorial(5_q))> == grid{120});
     static_assert(sizeof(math::factorial(n20{})) == 8);
 
     // falling: 0 where k can pass n; P(10, 5) at the top.
@@ -445,20 +445,20 @@ TEST(MathIntegerTest, result_grids) {
     static_assert(grid_of<decltype(math::gcd(id<"[-30..30]">{}, id<"[-30..30]">{}))> == grid{0, 30});
     static_assert(grid_of<decltype(math::gcd(id<"[0..100] 2">{}, id<"[0..100] 4">{}))> == grid{{0, 100}, 2});
     static_assert(grid_of<decltype(math::gcd(id<"[1..30]">{}, id<"[1..30]">{}))> == grid{1, 30});
-    static_assert(grid_of<decltype(math::gcd(just<12>, just<18>))> == grid{6});
+    static_assert(grid_of<decltype(math::gcd(12_q, 18_q))> == grid{6});
     static_assert(grid_of<decltype(math::lcm(id<"[1..30]">{}, id<"[1..30]">{}))> == grid{1, 900});
     static_assert(grid_of<decltype(math::lcm(id<"[0..5]">{}, id<"[1..5]">{}))> == grid{0, 25});
     static_assert(grid_of<decltype(math::lcm(id<"[2..30] 2">{}, id<"[3..30] 3">{}))> == grid{{6, 900}, 6});
-    static_assert(grid_of<decltype(math::lcm(just<4>, just<6>))> == grid{12});
+    static_assert(grid_of<decltype(math::lcm(4_q, 6_q))> == grid{12});
 }
 
 TEST(MathIntegerTest, compile_time) {
-    static_assert(math::factorial(just<10>) == 3628800);
-    static_assert(math::binomial(just<49>, just<6>) == 13983816);
-    static_assert(math::falling_factorial(just<8>, just<3>) == 336);
-    static_assert(math::rising_factorial(just<5>, just<3>) == 210);
-    static_assert(math::multinomial(1_ins, 4_ins, 4_ins, 2_ins) == 34650); // MISSISSIPPI
-    static_assert(math::gcd(just<-12>, just<18>) == 6 && math::lcm(just<-4>, just<6>) == 12);
+    static_assert(math::factorial(10_q) == 3628800);
+    static_assert(math::binomial(49_q, 6_q) == 13983816);
+    static_assert(math::falling_factorial(8_q, 3_q) == 336);
+    static_assert(math::rising_factorial(5_q, 3_q) == 210);
+    static_assert(math::multinomial(1_q, 4_q, 4_q, 2_q) == 34650); // MISSISSIPPI
+    static_assert(math::gcd(-12_q, 18_q) == 6 && math::lcm(-4_q, 6_q) == 12);
     static_assert(math::binomial(id<"[0..60]">{60}, id<"[0..60]">{30}) == 118264581564861424);
 }
 
@@ -540,7 +540,7 @@ TEST(MathIntegerTest, past_64_bits) {
     // P(30, 25) = 30!/5!
     EXPECT_TRUE(math::falling_factorial(test::store<id<"[0..30]">>(at_run_time(30)),
                                         test::store<id<"[0..30]">>(at_run_time(25))) ==
-                math::factorial(test::store<id<"[0..30]">>(30)) / just<120>);
+                math::factorial(test::store<id<"[0..30]">>(30)) / 120_q);
 
     // gcd and lcm of wide values: 2^150·3 and 2^120·9 share 2^120·3.
     using wide         = id<key{grid{0, g(big_int{1} << 160)}}>;
@@ -549,10 +549,10 @@ TEST(MathIntegerTest, past_64_bits) {
     const wide     wa  = a;
     const wide     wb  = b;
     const auto     gab = math::gcd(wa, wb);
-    EXPECT_TRUE(gab == just<g((big_int{1} << 120) * big_int{3})>);
-    EXPECT_TRUE(math::lcm(wa, wb) == just<g((big_int{1} << 150) * big_int{9})>);
+    EXPECT_TRUE(gab == std::cw<g((big_int{1} << 120) * big_int{3})>);
+    EXPECT_TRUE(math::lcm(wa, wb) == std::cw<g((big_int{1} << 150) * big_int{9})>);
     // An odd exponent and a power of two are coprime (RSA's e and φ, smaller).
-    EXPECT_TRUE(math::gcd(id<"[0..65537]">{65537}, wide{just<g(big_int{1} << 130)>}) == 1);
+    EXPECT_TRUE(math::gcd(id<"[0..65537]">{65537}, wide{std::cw<g(big_int{1} << 130)>}) == 1);
 }
 
 TEST(MathIntegerTest, into_forms) {
@@ -591,8 +591,8 @@ TEST(MathIntegerTest, fractional_lattices) {
             EXPECT_EQ(rational{math::gcd(x, y)}, (rational{std::gcd(a, b), 6})) << i << " " << j;
             EXPECT_EQ(rational{math::lcm(x, y)}, (rational{std::lcm(a, b), 6})) << i << " " << j;
         }
-    EXPECT_EQ(rational{math::gcd(just<3, 2>, just<4, 3>)}, (rational{1, 6}));
-    EXPECT_EQ(rational{math::lcm(just<3, 2>, just<4, 3>)}, 12);
+    EXPECT_EQ(rational{math::gcd(1.5_q, "4/3"_q)}, (rational{1, 6}));
+    EXPECT_EQ(rational{math::lcm(1.5_q, "4/3"_q)}, 12);
 }
 } // namespace math_integer_tests
 
@@ -789,7 +789,7 @@ TEST(MathTest, abs_and_copysign_past_int64) {
     using Neg                       = id<"[-1..0]">;
     static_assert(math::abs(uint64{U64_MAX}) == U64_MAX);
     static_assert(math::copysign(uint64{U64_MAX}, Pos{1}) == U64_MAX);
-    static_assert(math::copysign(uint64{U64_MAX}, Neg{-1}) == just<-18446744073709551615_g>);
+    static_assert(math::copysign(uint64{U64_MAX}, Neg{-1}) == -18446744073709551615_q);
     static_assert(math::copysign(int64{I64_MIN}, Pos{1}) == std::uint64_t{1} << 63);
     static_assert(math::copysign(int64{I64_MIN}, Neg{-1}) == I64_MIN);
     EXPECT_EQ(math::abs(uint64{test::at_run_time((std::uint64_t{1} << 63) + 5)}), (std::uint64_t{1} << 63) + 5);
@@ -807,13 +807,13 @@ TEST(MathTest, pow_base_with_a_builtin_base_past_int64) {
     static_assert(math::pow_base<9223372036854775809ull, O>(X{-1}) == 0);
     static_assert(math::pow_base<18446744073709551615ull, O>(X{rational{-1, 64}}) ==
                   math::pow_base<18446744073709551615_g, O>(X{rational{-1, 64}}));
-    static_assert(math::pow_base<9223372036854775809ull>(Y{2}) == just<85070591730234615884290395931651604481_g>);
+    static_assert(math::pow_base<9223372036854775809ull>(Y{2}) == 85070591730234615884290395931651604481_q);
     EXPECT_EQ((math::pow_base<9223372036854775809ull, O>(test::store<X>(test::at_run_time(-1)))), 0);
     []<class W>(std::type_identity<W>) {
         if constexpr (std::integral<W>) { // __int128 under the GNU dialects
             constexpr W base = W{1} << 100;
             static_assert(math::pow_base<base>(Y{2}) ==
-                          just<1606938044258990275541962092341162602522202993782792835301376_g>);
+                          1606938044258990275541962092341162602522202993782792835301376_q);
             static_assert(math::pow_base<base, O>(X{-1}) == 0);
         }
     }(std::type_identity<__int128>{});
@@ -932,14 +932,14 @@ using detail::rational;
 // (3/2 and 5/6 on 1/6: gcd 1/6, lcm 15/2) and past 64 bits.
 TEST(MathArmTest, integer_functions_past_int64_and_on_fractions) {
     using N = id<"[0..18446744073709551615]">;
-    EXPECT_TRUE(math::binomial(N{just<18446744073709551615_g>}, id<"[0..1]">{1}) == just<18446744073709551615_g>);
+    EXPECT_TRUE(math::binomial(N{18446744073709551615_q}, id<"[0..1]">{1}) == 18446744073709551615_q);
     using A = id<"[0..10] 1/4">;
     using B = id<"[0..10] 1/6">;
     EXPECT_EQ(rational{math::gcd(A{rational{3, 2}}, B{rational{5, 6}})}, (rational{1, 6}));
     EXPECT_EQ(rational{math::lcm(A{rational{3, 2}}, B{rational{5, 6}})}, (rational{15, 2}));
     using W = id<"[0..1180591620717411303424]">; // 2^70
-    EXPECT_TRUE(math::gcd(W{just<1180591620717411303424_g>}, W{12}) == 4);
-    EXPECT_TRUE(math::lcm(W{just<36893488147419103232_g>}, W{6}) == just<110680464442257309696_g>); // 3·2^65
+    EXPECT_TRUE(math::gcd(W{1180591620717411303424_q}, W{12}) == 4);
+    EXPECT_TRUE(math::lcm(W{36893488147419103232_q}, W{6}) == 110680464442257309696_q); // 3·2^65
 }
 } // namespace reached_arms_tests
 
@@ -959,7 +959,7 @@ TEST(MathArmTest, fallible_function_into_an_unanchored_output) {
     using Ow = id<key{grid{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_half_away | clamp}>; // to 2^70 + 1/2
     EXPECT_EQ(detail::rational{*math::pow<Ou>(B{2}, X{2})}, (detail::rational{9, 2}));
     EXPECT_EQ(math::pow<Ou>(B{0}, X{-1}).error(), error::division_by_zero);
-    EXPECT_TRUE((*math::pow<Ow>(B{2}, X{2}) == just<9, 2>));
+    EXPECT_TRUE((*math::pow<Ow>(B{2}, X{2}) == 4.5_q));
     EXPECT_EQ(math::pow<Ow>(B{0}, X{-1}).error(), error::division_by_zero);
 }
 } // namespace reached_arms_tests
@@ -974,7 +974,7 @@ using detail::rational;
 TEST(MathArmTest, wrap_and_wide_outputs) {
     EXPECT_TRUE((math::pow<id<"[0..7] wrap|round_half_away">>(id<"[1..4]">{3}, id<"[0..3]">{2}) == 1));
     using Ow = id<key{grid{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_half_away}>; // to 2^70 + 1/2
-    EXPECT_TRUE((math::sqrt<Ow>(id<"[0..100]">{50}) == just<15, 2>));                    // √50 ≈ 7.07
+    EXPECT_TRUE((math::sqrt<Ow>(id<"[0..100]">{50}) == 7.5_q));                          // √50 ≈ 7.07
     using Wn = id<key{grid{{0, 2}, 1_g / 1180591620717411303424_g}, round_half_away}>;   // notch 2^-70
     static_assert(detail::wide_index_storage<Wn>);
     EXPECT_TRUE((math::sqrt<Wn>(id<"[0..4]">{4}) == 2));
@@ -992,12 +992,12 @@ TEST(MathArmTest, pown_past_the_fraction_cap) {
 // multinomial past 2^64, gcd and lcm on a wide fractional lattice.
 TEST(MathArmTest, integer_functions_past_64_bits) {
     using E = id<"[0..2361183241434822606848] 2">;
-    EXPECT_TRUE((math::gcd(E{just<1180591620717411303424_g>}, E{12}) == 4));
-    EXPECT_TRUE((math::multinomial(id<"[0..40]">{40}, id<"[0..40]">{40}) == just<107507208733336176461620_g>));
+    EXPECT_TRUE((math::gcd(E{1180591620717411303424_q}, E{12}) == 4));
+    EXPECT_TRUE((math::multinomial(id<"[0..40]">{40}, id<"[0..40]">{40}) == 107507208733336176461620_q));
     using A = id<"[0..1180591620717411303424] 1/2">;
-    const A a{just<1180591620717411303425_g / 2>}, b{rational{3, 2}}; // (2^70 + 1)/2, 3/2
-    EXPECT_TRUE((math::gcd(a, b) == just<1, 2>));
-    EXPECT_TRUE((math::lcm(a, b) == just<3541774862152233910275_g / 2>));
+    const A a{590295810358705651712.5_q}, b{rational{3, 2}}; // (2^70 + 1)/2, 3/2
+    EXPECT_TRUE((math::gcd(a, b) == 0.5_q));
+    EXPECT_TRUE((math::lcm(a, b) == 1770887431076116955137.5_q));
 }
 
 // ⌊x⌋ on [3.25, 3.75] and ⌈x⌉ on [0.25, 0.75] have one value each: the
@@ -1034,11 +1034,11 @@ TEST(MathIntegerTest, counts_past_64_bits) {
     constexpr N   n0{1180591620717411303424_g};
     volatile bool yes = true; // n at run time
     const N       n   = yes ? n0 : N{};
-    EXPECT_TRUE(math::binomial(n, K2{2}) == just<696898287454081973172400900209902591410176_g>);
+    EXPECT_TRUE(math::binomial(n, K2{2}) == 696898287454081973172400900209902591410176_q);
     EXPECT_TRUE(math::binomial(n, K2{1}) == n);
     EXPECT_TRUE(math::binomial(n, K2{0}) == 1);
-    EXPECT_TRUE(math::falling_factorial(n, K2{2}) == just<1393796574908163946344801800419805182820352_g>);
-    EXPECT_TRUE(math::rising_factorial(n, K2{2}) == just<1393796574908163946347162983661240005427200_g>);
+    EXPECT_TRUE(math::falling_factorial(n, K2{2}) == 1393796574908163946344801800419805182820352_q);
+    EXPECT_TRUE(math::rising_factorial(n, K2{2}) == 1393796574908163946347162983661240005427200_q);
     EXPECT_TRUE(math::multinomial(N{1180591620717411303423_g}, id<"[0..1]">{1}) == n);
     // k past n: 0, and k = 0 of a huge n: 1.
     EXPECT_TRUE(math::falling_factorial(id<"[0..3]">{2}, N{1180591620717411303424_g}) == 0);
@@ -1061,7 +1061,7 @@ TEST(MathTest, pow_base_past_64_bits) {
     const X       x1  = yes ? X{1} : X{};
     const X       x70 = yes ? X{detail::rational{1, 70}} : X{};
     EXPECT_TRUE((math::pow_base<1180591620717411303424_g, Out>(x70) == 2)); // (2^70)^(1/70)
-    EXPECT_TRUE((math::pow_base<1180591620717411303424_g>(x1) == just<1180591620717411303424_g>));
+    EXPECT_TRUE((math::pow_base<1180591620717411303424_g>(x1) == 1180591620717411303424_q));
     EXPECT_TRUE((math::pow_base<2_g, Out>(x1) == 2)); // within int64: the int64 path
 }
 } // namespace big_base_tests
@@ -1078,27 +1078,27 @@ constexpr grid_number two_200 = 160693804425899027554196209234116260252220299378
 
 TEST(MathConstantsTest, stored_correctly_rounded_at_any_precision) {
     using F = id<key{grid{{0, 8}, per<two_200>}, round_half_away}>;
-    static_assert(F{math::pi} == just<5048344754617993871973410141242436836214643421488662971535368_g / two_200>);
-    static_assert(F{math::two_pi} == just<10096689509235987743946820282484873672429286842977325943070736_g / two_200>);
-    static_assert(F{math::half_pi} == just<2524172377308996935986705070621218418107321710744331485767684_g / two_200>);
-    static_assert(F{math::inv_pi} == just<511504265972482371356817160047419747232591328621101924753663_g / two_200>);
+    static_assert(F{math::pi} == std::cw<5048344754617993871973410141242436836214643421488662971535368_g / two_200>);
+    static_assert(F{math::two_pi} == std::cw<10096689509235987743946820282484873672429286842977325943070736_g / two_200>);
+    static_assert(F{math::half_pi} == std::cw<2524172377308996935986705070621218418107321710744331485767684_g / two_200>);
+    static_assert(F{math::inv_pi} == std::cw<511504265972482371356817160047419747232591328621101924753663_g / two_200>);
     static_assert(F{math::inv_sqrtpi} ==
-                  just<906617705977525684037987767013953819926238329207982090688314_g / two_200>);
-    static_assert(F{math::e} == just<4368110485168730244370696643561179479687259917244808728041128_g / two_200>);
-    static_assert(F{math::log2e} == just<2318321547468254865173387471183990171487108758923299108729110_g / two_200>);
-    static_assert(F{math::log10e} == just<697884325382082936699607079697809990657056068469105515102493_g / two_200>);
-    static_assert(F{math::ln2} == just<1113844574712631719546256151097547306333272293549090750737802_g / two_200>);
-    static_assert(F{math::ln10} == just<3700111586075757022815855548858213034251116522195805159045647_g / two_200>);
-    static_assert(F{math::sqrt2} == just<2272553576084360916141657902949647315979581976043234410928602_g / two_200>);
-    static_assert(F{math::sqrt3} == just<2783298337271936389241949975737560737185386000295576744728775_g / two_200>);
+                  std::cw<906617705977525684037987767013953819926238329207982090688314_g / two_200>);
+    static_assert(F{math::e} == std::cw<4368110485168730244370696643561179479687259917244808728041128_g / two_200>);
+    static_assert(F{math::log2e} == std::cw<2318321547468254865173387471183990171487108758923299108729110_g / two_200>);
+    static_assert(F{math::log10e} == std::cw<697884325382082936699607079697809990657056068469105515102493_g / two_200>);
+    static_assert(F{math::ln2} == std::cw<1113844574712631719546256151097547306333272293549090750737802_g / two_200>);
+    static_assert(F{math::ln10} == std::cw<3700111586075757022815855548858213034251116522195805159045647_g / two_200>);
+    static_assert(F{math::sqrt2} == std::cw<2272553576084360916141657902949647315979581976043234410928602_g / two_200>);
+    static_assert(F{math::sqrt3} == std::cw<2783298337271936389241949975737560737185386000295576744728775_g / two_200>);
     static_assert(F{math::inv_sqrt2} ==
-                  just<1136276788042180458070828951474823657989790988021617205464301_g / two_200>);
+                  std::cw<1136276788042180458070828951474823657989790988021617205464301_g / two_200>);
     static_assert(F{math::inv_sqrt3} ==
-                  just<927766112423978796413983325245853579061795333431858914909592_g / two_200>);
-    static_assert(F{math::phi} == just<2600080373426329101162150938423269861479326810487021552947704_g / two_200>);
-    static_assert(F{math::egamma} == just<927549811672521911724738044671514915956439037055195146098956_g / two_200>);
-    static_assert(F{math::catalan} == just<1471899960515664295034366106857992861643864167491633818861717_g / two_200>);
-    static_assert(F{math::zeta3} == just<1931630969051296909380253966584984193389744056520922139483601_g / two_200>);
+                  std::cw<927766112423978796413983325245853579061795333431858914909592_g / two_200>);
+    static_assert(F{math::phi} == std::cw<2600080373426329101162150938423269861479326810487021552947704_g / two_200>);
+    static_assert(F{math::egamma} == std::cw<927549811672521911724738044671514915956439037055195146098956_g / two_200>);
+    static_assert(F{math::catalan} == std::cw<1471899960515664295034366106857992861643864167491633818861717_g / two_200>);
+    static_assert(F{math::zeta3} == std::cw<1931630969051296909380253966584984193389744056520922139483601_g / two_200>);
     // Every rounding mode, on a coarse grid: π·2^20 = 3294198.99…
     static_assert(id<"[0..4] 1/1048576 round_floor">{math::pi} == rational{3294198, 1 << 20});
     static_assert(id<"[0..4] 1/1048576 round_ceil">{math::pi} == rational{3294199, 1 << 20});
@@ -1132,7 +1132,7 @@ TEST(MathConstantsTest, compared_exactly) {
         (C{rational{355, 113}} > math::pi && C{rational{22, 7}} > math::pi && C{rational{311, 99}} < math::pi));
     using Q = id<"[0..4] 1/1024">; // π·1024 = 3216.99…
     EXPECT_TRUE((Q{rational{3217, 1024}} > math::pi && Q{rational{3216, 1024}} < math::pi));
-    EXPECT_TRUE((just<3> < math::pi && just<22, 7> > math::pi));
+    EXPECT_TRUE((3_q < math::pi && "22/7"_q > math::pi));
     EXPECT_TRUE((id<"[0..2]">{1} > math::egamma));
 }
 } // namespace constant_tests
@@ -1208,11 +1208,11 @@ TEST(MathCallFormTest, two_argument_and_leading_argument_forms) {
     // An exact function on a coarser notch rounds, by the input's mode, else to nearest.
     using q_t = id<"[-4..4] 1/4">; // no rounding policy
     static_assert(std::same_as<decltype(math::abs<per<2>>(q_t{1})), id<"[0..4] 1/2 round_half_away">>);
-    EXPECT_EQ(math::abs<per<2>>(q_t{-1.25}), 1.5_ins);
+    EXPECT_EQ(math::abs<per<2>>(q_t{-1.25}), 1.5_q);
     EXPECT_EQ((math::abs<per<2>, round_floor>(q_t{-1.25})), 1);
     // A notch named, a continuous input deduces too.
     using c_t = id<"[0..1] <1000> round_half_away">;
-    EXPECT_EQ(math::sqrt<per<1024>>(c_t{rational{1, 4}}), 0.5_ins);
+    EXPECT_EQ(math::sqrt<per<1024>>(c_t{rational{1, 4}}), 0.5_q);
 }
 
 // f<T>(x) names the output for any type T: tan<T> is no rounding mode.

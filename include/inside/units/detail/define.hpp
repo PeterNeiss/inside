@@ -15,13 +15,13 @@
 
 // Units, kinds, origins and dimensions of your own: one declaration each.
 //
-//   inline constexpr auto fathom  = unit<"ftm", 1.8288_ins * si::metre>;
+//   inline constexpr auto fathom  = unit<"ftm", 1.8288_q * si::metre>;
 //   inline constexpr auto depth   = kind<"depth", isq::length>;
-//   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin,
+//   inline constexpr auto rankine = unit<"°R", "5/9"_q * si::kelvin,
 //                                        {.ascii = "deg_R", .origin = si::absolute_zero}>;
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
-//   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
-//   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>;
+//   inline constexpr auto ct      = unit<"ct", 0.01_q * EUR>;
+//   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_q * si::kelvin>;
 //   inline constexpr auto e1      = basis_vector<"e₁", geometric<+1>>;
 //
 // The name is a template argument and the definition a static member of a class template,
@@ -31,7 +31,7 @@
 // For short type names, name the definition object and take its unit with defined_by,
 // as the catalog does (units/systems.hpp). The definition types take the same arguments:
 //
-//   inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+//   inline constexpr unit_def fathom_def{"ftm", 1.8288_q * si::metre};
 //   inline constexpr auto     fathom = defined_by<fathom_def>;    // spelled (& fathom_def)
 //   inline constexpr kind_def count_def{"count", base_dimension<"count">};
 //   inline constexpr unit_def cts_def  {"cts", defined_by<count_def>};
@@ -51,17 +51,17 @@ namespace ins
 
   namespace detail
   {
-    // The unit a constant quantity is: 1.8288_ins * si::metre is mag<1.8288> * si::metre.
+    // The unit a constant quantity is: 1.8288_q * si::metre is mag<1.8288> * si::metre.
     template <class Q>
     consteval auto unit_of_constant()
     {
       static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
-                    "units: a unit is defined by a constant - 1.8288_ins * si::metre");
+                    "units: a unit is defined by a constant - 1.8288_q * si::metre");
       return mag<lower_of<typename Q::rep>> * unit_t<Q::unit>{};
     }
 
     // What a unit is defined by, as its key: a unit (si::joule / si::second),
-    // a kind (the base unit of that kind), or the quantity it equals (1.8288_ins * si::metre):
+    // a kind (the base unit of that kind), or the quantity it equals (1.8288_q * si::metre):
     // its number times its unit.
     template <auto Def>
     struct unit_definition
@@ -89,14 +89,14 @@ namespace ins
     using Q = std::remove_cvref_t<decltype(p.quantity_from_origin())>;
     static_assert(detail::has(P::origin), "units: an origin at o + q - the point counts from an origin");
     static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
-                  "units: an origin lies at a constant point - si::absolute_zero + 273.15_ins * si::kelvin");
+                  "units: an origin lies at a constant point - si::absolute_zero + 273.15_q * si::kelvin");
     static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
     Absolute = detail::absolute_of(P::origin);
     Offset   = detail::offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio;
   }
 
   // unit<"sym", definition, options>: a unit of your own.
-  // The definition is the quantity it equals (1.8288_ins * si::metre), another unit (si::joule / si::second),
+  // The definition is the quantity it equals (1.8288_q * si::metre), another unit (si::joule / si::second),
   // or a kind, whose base unit it then is.
   template <symbol_text Sym, auto Def, unit_options O = {}>
   inline constexpr auto unit =
@@ -119,7 +119,7 @@ namespace ins
 
   // origin<"name", where>: where points count from.
   // An absolute origin is named by a kind or a dimension; any other lies at a point of one:
-  // origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>.
+  // origin<"ice_point", si::absolute_zero + 273.15_q * si::kelvin>.
   template <symbol_text Name, auto Def>
   inline constexpr auto origin = detail::origin_tag<definition<origin_def, Name, Def>::value>;
 
@@ -147,7 +147,7 @@ namespace ins
 
   // pi: the number π as a unit, exactly.
   // A unit that is a multiple of π says so, and conversions between such units stay exact:
-  //   unit<"°", just<1, 180> * pi * si::radian>, unit<"tr", just<2> * pi * si::radian>.
+  //   unit<"°", "1/180"_q * pi * si::radian>, unit<"tr", 2_q * pi * si::radian>.
   inline constexpr auto pi = detail::mag_pi * one;
   // A quantity times or over pi: the same number, in a unit scaled by π (pi * (2 * si::second) is 2 [π s]);
   // value_cast rounds it once.

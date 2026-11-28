@@ -194,7 +194,7 @@ namespace ins
         if constexpr (k == 0)
           return multivector<>{};
         else
-          return detail::times_power<X, -1>(detail::as_part(just<k> * q));
+          return detail::times_power<X, -1>(detail::as_part(detail::point_v<k> * q));
       });
   }
 
@@ -215,7 +215,7 @@ namespace ins
         else
         {
           constexpr int sign{k + 1 > 0 ? 1 : -1};
-          return detail::times_power<X, 1>(detail::as_part(just<sign, sign * (k + 1)> * q));
+          return detail::times_power<X, 1>(detail::as_part(detail::point_v<grid_number{sign} / (sign * (k + 1))> * q));
         }
       });
   }

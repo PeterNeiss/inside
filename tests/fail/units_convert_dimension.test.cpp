@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    id<"[0..10] [m]"> q = just<1> * si::second;
+    id<"[0..10] [m]"> q = 1_q * si::second;
     (void)q;
 }

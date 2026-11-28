@@ -166,13 +166,13 @@ TEST(PolicyActionsTest, on_wrap_action_receives_inside_and_carry) {
 // on_wrap carry is an inside for an inside RHS
 TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     // A insidable RHS routes the wrap through inside arithmetic, so the carry is a
-    // id<key{excess-grid}>. `carry + just<0>` is inside+inside (compiles only for an inside;
+    // id<key{excess-grid}>. `carry + 0_q` is inside+inside (compiles only for an inside;
     // an int64 carry would hit the grid-less-scalar guidance overload).
     using w10 = id<"[0..9] wrap">; // wraps at 10
     w10            x{8};
     id<"[0..5]"> add{4}; // inside RHS
     std::int64_t   carry_val = -99;
-    x.on_wrap([&](auto&, auto carry) { carry_val = to<std::int64_t>(carry + just<0>); }) += add;
+    x.on_wrap([&](auto&, auto carry) { carry_val = to<std::int64_t>(carry + 0_q); }) += add;
     ASSERT_EQ(x, 2);         // 8 + 4 = 12 -> 12 mod 10
     ASSERT_EQ(carry_val, 1); // floor(12 / 10)
 
@@ -182,8 +182,8 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     pos                      p{2.5};
     id<"[0..2] 1/2"> fadd{1.5};
     std::int64_t             fcarry = -99;
-    p.on_wrap([&](auto&, auto carry) { fcarry = to<std::int64_t>(carry + just<0>); }) += fadd;
-    ASSERT_TRUE((p == just<1, 2>)); // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
+    p.on_wrap([&](auto&, auto carry) { fcarry = to<std::int64_t>(carry + 0_q); }) += fadd;
+    ASSERT_TRUE((p == 0.5_q));      // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
     ASSERT_EQ(fcarry, 1);           // floor(4.0 / 3.5)
 }
 
@@ -237,7 +237,7 @@ TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
     b.on_clamp([&](auto&, auto o) {
         cl   = true;
         over = to<std::int64_t>(o);
-    }) += 200_ins; // 50+200=250 overshoots [0,100]
+    }) += 200_q; // 50+200=250 overshoots [0,100]
     ASSERT_TRUE(cl);
     ASSERT_EQ(over, 150);
     ASSERT_EQ(b, 100);
@@ -365,7 +365,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
     };
     run(125);
     run(std::uint8_t{125});
-    run(125_ins);
+    run(125_q);
     {
         // A double: a constant (a run-time one needs a report channel).
         sec seconds{0};
@@ -406,7 +406,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
     };
     run(150, 50);
     run(std::uint8_t{200}, 100);
-    run(150_ins, 50);
+    run(150_q, 50);
     // A double or a rational: a constant (a run-time one needs a report channel).
     for (const auto store :
          {+[](pct& x, std::int64_t& got) {
@@ -432,10 +432,10 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
     using q4 = id<"[0..10] 1/4">;
     q4   f{0};
     bool exact                                                      = false;
-    f.on_clamp([&](auto&, auto over) { exact = over == 2.25_ins; }) = 12.25;
+    f.on_clamp([&](auto&, auto over) { exact = over == 2.25_q; }) = 12.25;
     EXPECT_EQ(f, 10);
     EXPECT_TRUE(exact);
-    f.on_clamp([&](auto&, auto over) { exact = over == -0.5_ins; }) = -0.5;
+    f.on_clamp([&](auto&, auto over) { exact = over == -0.5_q; }) = -0.5;
     EXPECT_EQ(f, 0);
     EXPECT_TRUE(exact);
 }
@@ -467,11 +467,11 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_exact) {
     w.on_clamp([&](auto&, auto over) { exact = over == id<"[-0x1p71..0]">{-0x1p70}; }) = -0x1p71;
     EXPECT_TRUE(exact);
 
-    x.on_clamp([&](auto&, auto over) { exact = over == just<upper_of<decltype(over)>>; }) =
+    x.on_clamp([&](auto&, auto over) { exact = over == std::cw<upper_of<decltype(over)>>; }) =
         std::numeric_limits<double>::infinity();
     EXPECT_TRUE(exact);
     EXPECT_EQ(x, 100);
-    x.on_clamp([&](auto&, auto over) { exact = over == just<lower_of<decltype(over)>>; }) =
+    x.on_clamp([&](auto&, auto over) { exact = over == std::cw<lower_of<decltype(over)>>; }) =
         -std::numeric_limits<double>::infinity();
     EXPECT_TRUE(exact);
     EXPECT_EQ(x, 0);
@@ -996,7 +996,7 @@ TEST(PolicyTest, wrap_offset_from_a_negative_lower) {
     using R = id<key{grid{0, 1ll << 62}}>;
     L x{1ll << 61};
     x += R{1ll << 62};
-    EXPECT_EQ(x, -1_ins);
+    EXPECT_EQ(x, -1_q);
     L y{-(1ll << 62)};
     y -= R{1ll << 62};
     EXPECT_EQ(to_string(y), "-2305843009213693951");
@@ -1013,10 +1013,10 @@ TEST(PolicyTest, wrap_folds_past_the_64_bit_rational) {
     using halves_ceil              = id<"[0.5..10.5] 1 wrap|round_ceil">;
     using digit                    = id<"[0..9] wrap">;
     using fine                     = id<key{grid{{0, 1}, per<(1ll << 62)>}, wrap}>;
-    EXPECT_EQ(*quarter_wrap::try_make(full{i64_min}), 2.5_ins);
-    EXPECT_EQ(*halves_ceil::try_make(full{i64_min}), 3.5_ins);
-    EXPECT_EQ(*digit::try_make(-0x1p63), 2_ins);
-    EXPECT_EQ(*digit::try_make(1e30), 6_ins); // the double's exact value, mod 10
+    EXPECT_EQ(*quarter_wrap::try_make(full{i64_min}), 2.5_q);
+    EXPECT_EQ(*halves_ceil::try_make(full{i64_min}), 3.5_q);
+    EXPECT_EQ(*digit::try_make(-0x1p63), 2_q);
+    EXPECT_EQ(*digit::try_make(1e30), 6_q); // the double's exact value, mod 10
     EXPECT_EQ(to_string(*full::try_make<wrap>(1e30)), "5076964154930102272");
     EXPECT_EQ(*fine::try_make(rational{4}), (rational{(1ull << 62) - 3, 1ll << 62})); // 4 mod (1 + 2^-62)
     EXPECT_EQ(digit::try_make(1.5).error(), error::rounding_error);                   // no rounding flag
@@ -1028,7 +1028,7 @@ TEST(PolicyTest, named_policy_in_a_constructor) {
     using halves = id<"[0.5..10.5] 1">; // Lower off the notch's multiples
     using digit  = id<"[0..9]">;
     static_assert(digit{12, clamp} == 9 && digit{12, wrap} == 2);
-    static_assert(halves{7, round_floor} == 6.5_ins);
+    static_assert(halves{7, round_floor} == 6.5_q);
     error      ec{};
     const auto pol = make_policy<checked>(ec);
     digit      y{12, pol};
@@ -1100,7 +1100,7 @@ TEST(PolicyTest, on_clamp_hears_of_infinities) {
     bool             top   = false;
     x.on_clamp([&](auto&, auto o) { // an inside: ±∞ reports the end of its grid
         ++fired;
-        top = o == just<upper_of<decltype(o)>>;
+        top = o == std::cw<upper_of<decltype(o)>>;
     })                     = std::numeric_limits<double>::infinity();
     EXPECT_EQ(x, 100);
     EXPECT_EQ(fired, 1);
@@ -1253,7 +1253,7 @@ TEST(PolicyTest, on_error_compound_subtract_that_does_not_fail) {
     using c100 = id<"[0..100]">;
     c100 acc{50};
     bool fired = false;
-    acc.on_error([&](auto&, error, const char*) { fired = true; }) -= 10_ins; // 40, in range
+    acc.on_error([&](auto&, error, const char*) { fired = true; }) -= 10_q; // 40, in range
     ASSERT_FALSE(fired);
     ASSERT_EQ(acc, 40);
 }
@@ -1302,7 +1302,7 @@ TEST(PolicyTest, unsafe_stores_without_a_range_check) {
     // The += must not throw, even with an out-of-range value. Storage holds
     // the raw value as-is (UB on read, but that's the `unsafe` contract).
     L b{50};
-    // A delta inside with Lower==0 keeps the raw-add fast path (a singleton `200_ins`
+    // A delta inside with Lower==0 keeps the raw-add fast path (a singleton `200_q`
     // would widen to a disjoint grid that only clamp/wrap can absorb).
     ASSERT_NO_THROW((void)((b += id<"[0..200]">{200})));
     // No assertion on the value — `unsafe` doesn't promise meaningful behaviour
@@ -1397,14 +1397,14 @@ TEST(PolicyActionsTest, wrap_carry_past_int64_is_exact) {
     using quarter = id<"[0..10] 1/4 wrap">; // period 10.25
     using W       = id<"[0..1180591620717411303424]">;
     // An inside source past 64 bits: ⌊2^70 / 10⌋ and ⌊2^70 / 10.25⌋.
-    EXPECT_TRUE((carry_is<digit>(W{1180591620717411303424_g}, just<118059162071741130342_g>)));
-    EXPECT_TRUE((carry_is<quarter>(W{1180591620717411303424_g}, just<115179670313893785699_g>)));
+    EXPECT_TRUE((carry_is<digit>(W{1180591620717411303424_g}, 118059162071741130342_q)));
+    EXPECT_TRUE((carry_is<quarter>(W{1180591620717411303424_g}, 115179670313893785699_q)));
     // A uint64 source: (2^64 − 1) / 10, past int64.
     EXPECT_TRUE(
-        (carry_is<digit>(test::at_run_time(std::numeric_limits<std::uint64_t>::max()), just<1844674407370955161_g>)));
+        (carry_is<digit>(test::at_run_time(std::numeric_limits<std::uint64_t>::max()), 1844674407370955161_q)));
     // A double source: the carry grid spans the double's range.
-    EXPECT_TRUE((carry_is<digit, 0x1p100>(just<126765060022822940149670320537_g>)));
-    EXPECT_TRUE((carry_is<digit, -0x1p100>(just<-126765060022822940149670320538_g>)));
+    EXPECT_TRUE((carry_is<digit, 0x1p100>(126765060022822940149670320537_q)));
+    EXPECT_TRUE((carry_is<digit, -0x1p100>(-126765060022822940149670320538_q)));
     // A rational source, and an inside one into a fractional destination.
     EXPECT_TRUE((carry_is<quarter, rational{229, 4}>(5)));
     EXPECT_TRUE((carry_is<quarter>(id<"[0..20] 1/4">{15}, 1)));

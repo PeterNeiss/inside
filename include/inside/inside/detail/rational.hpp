@@ -872,6 +872,6 @@ namespace ins::detail
 } // namespace ins::detail
 
 // (detail::rational is the library's own: the raw of a bounded continuous inside and the fast path of exact
-// arithmetic. It is no part of the user API: an exact value is an inside (0.1_ins, just<1, 10>, a / b).)
+// arithmetic. It is no part of the user API: an exact value is an inside (0.1_q, 0.1_q, a / b).)
 
 #endif // INSIDE_INSIDE_DETAIL_RATIONAL_HPP

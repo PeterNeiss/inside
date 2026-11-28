@@ -1655,7 +1655,7 @@ static void bench_algorithms() {
     });
     tf.run("inside u255 (8-bit storage)", [&] {
         std::transform(tb.begin(), tb.end(), tbo.begin(), [](u255 v) {
-            v += 1_ins;
+            v += 1_q;
             return v;
         });
         doNotOptimizeAway(tbo[0].raw());

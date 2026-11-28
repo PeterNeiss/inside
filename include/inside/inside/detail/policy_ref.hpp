@@ -290,11 +290,11 @@ namespace ins
       }
 
       // A rational has no grid: as on the inside itself, a compound assignment takes an inside
-      // (0.5_ins, just<1, 2>).
+      // (0.5_q, "1/3"_q).
 #define INSIDE_NO_RATIONAL_ASSIGN(op)                                                                    \
   template <std::same_as<rational> C>                                                                    \
   B& operator op(const C&) = delete ("an inside cannot be combined with a rational: write the constant " \
-                                     "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
+                                     "as 0.5_q or \"1/3\"_q (a grid), or store the rational into an "    \
                                      "inside first");
       INSIDE_NO_RATIONAL_ASSIGN(+=)
       INSIDE_NO_RATIONAL_ASSIGN(-=)

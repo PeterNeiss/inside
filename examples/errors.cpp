@@ -46,7 +46,7 @@ int main()
     [](auto& self, error code, std::string_view msg)
     {
       std::cout << "on_error: [" << error_message(code) << "] " << msg << " -> recover to 0 %" << "\n";
-      self = just<0> * percent; // the alternative value
+      self = 0_q * percent; // the alternative value
     }) = n_percent;
   std::cout << "          (r=" << r << ")" << "\n";
 
@@ -108,12 +108,12 @@ int main()
     [](auto& self, auto carry)
     {
       std::cout << "on_wrap:  carry=" << carry << " (wrapped to " << self << ")" << "\n";
-    }) = just<75> * si::second;
+    }) = 75_q * si::second;
 
   // A hook on a compound op: the sum cannot fail, but storing it back past 100 % fires on_clamp.
   clamped_percentage combo{50, percent};
   combo.on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; })
-    += just<200> * percent;
+    += 200_q * percent;
   std::cout << "          (combo=" << combo << ")" << "\n";
   return 0;
 }

@@ -63,7 +63,7 @@ namespace ins::detail
 
   // The units, kinds and origins of the tags only (si::metre, isq::height, si::ice_point, defined_by<cent_def>, a
   // one-line unit<"ftm", …>), not of the definition objects: a type named while a definition object is initialized
-  // (unit_def cent_def{"ct", 0.01_ins * euro}) would read that object before its value exists. A tag's value is in
+  // (unit_def cent_def{"ct", 0.01_q * euro}) would read that object before its value exists. A tag's value is in
   // its type, and a tag exists only once its definition does. Every catalog definition has its tag.
   // Basis vectors and polynomial variables are units too here.
   // (skip: a namespace already read, the catalog's; nested: whether to read the namespaces within ns too.)

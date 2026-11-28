@@ -21,7 +21,7 @@ int main()
   std::cout << "(x, y) -> (r, theta) -> (x, y)\n";
   for (auto [x, y] : {std::pair{coordinate{1, m}         , coordinate{0, m}         },
                                {coordinate{-1, m}        , coordinate{1, m}         },
-                               {coordinate{just<3, 5>, m}, coordinate{just<4, 5>, m}},
+                               {coordinate{0.6_q, m}, coordinate{0.8_q, m}},
                                {coordinate{0.5, m}       , coordinate{-0.5, m}      }})
   {
     const auto r    {math::hypot(x, y)};
@@ -32,7 +32,7 @@ int main()
     const coordinate ry{mul<coordinate>(r, math::sin(theta), clamp)};
     std::cout << "  (" << x << ", " << y << ") -> (" << r << ", " << theta << ") -> (" << rx << ", " << ry
               << ")\n";
-    if (math::abs(rx - x) > just<2, (1 << 14)> * m || math::abs(ry - y) > just<2, (1 << 14)> * m)
+    if (math::abs(rx - x) > "2/16384"_q * m || math::abs(ry - y) > "2/16384"_q * m)
       return 1;
   }
 
@@ -48,7 +48,7 @@ int main()
     const auto range{math::hypot(e, n)};
     const auto to   {math::atan2<bearing>(e, n)};
     std::cout << "  (" << e << ", " << n << ")" << "\t" << range << "\t" << to << "\n";
-    if (range != just<50> * si::metre) // 3-4-5 triangles: exact
+    if (range != 50_q * si::metre) // 3-4-5 triangles: exact
       return 1;
   }
   const auto south_west{math::atan2<bearing>(metres{-30, si::metre}, metres{-40, si::metre})};
@@ -60,7 +60,7 @@ int main()
   std::cout << "\nr      asin(r)    acos(r)\n";
   for (const ratio r : {ratio{-1, one}, ratio{-0.5, one}, ratio{0, one}, ratio{0.5, one}, ratio{1, one}})
     std::cout << "  " << r << "\t" << math::asin(r) << "\t" << math::acos(r) << "\n";
-  if (math::asin(ratio{0, one}) != just<0> * si::radian || math::acos(ratio{1, one}) != just<0> * si::radian)
+  if (math::asin(ratio{0, one}) != 0_q * si::radian || math::acos(ratio{1, one}) != 0_q * si::radian)
     return 1;
   return 0;
 }

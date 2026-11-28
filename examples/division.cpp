@@ -18,7 +18,7 @@ int main()
   // a / b is the exact rational quotient; b's grid holds 0, so it is an expected.
   const auto exact{a / b};
   std::cout << "7 / 3 (exact)          = " << *exact << "\n";
-  if (*exact != just<7, 3>)
+  if (*exact != "7/3"_q)
     return 1;
 
   // Integer division, per call: div truncates like C++ `/`, or rounds the way its flag says.
@@ -52,7 +52,7 @@ int main()
   const auto plain{number{42} / positive{4}};
   static_assert(insidable<decltype(plain)>);
   std::cout << "42 / 4 (zero-free)     = " << plain << "\n";
-  if (plain != just<21, 2>)
+  if (plain != 10.5_q)
     return 1;
 
   // The quotient's denominators are at most 1·max|positive| = 10,

@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    const id<"[0..7]"> x = just<1> * si::radian;
+    const id<"[0..7]"> x = 1_q * si::radian;
     (void)x;
 }

@@ -3,7 +3,7 @@
 // with an inside as the only representation.
 //
 //   id<"[0..10] [m]"> d{7, si::metre};   // 7 m: a number and its unit
-//   auto k = just<5> * si::kilo(si::metre);                 // 5 km, a point grid
+//   auto k = 5_q * si::kilo(si::metre);                 // 5 km, a point grid
 //   auto s = k + d;                                         // 5007 m, exact
 //   auto v = d.in(si::milli(si::metre));                    // 7000 mm, the same raw
 //   d.numerical_value_in(si::metre);                        // 7: read in a named unit

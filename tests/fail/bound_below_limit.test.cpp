@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    id<key{grid{interval{0, just<1, 3>}, max_denominator{2}}}> x{0};
+    id<key{grid{interval{0, "1/3"_q}, max_denominator{2}}}> x{0};
     (void)x;
 }

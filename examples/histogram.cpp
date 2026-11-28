@@ -62,7 +62,7 @@ int main()
     const milliseconds lat{*stored};
     // floor(lat / 10 ms), by bin's round_floor (9.55 floors to 9);
     // clamp folds 100 ms, quotient 10, into bin 9.
-    const auto b{div<bin>(lat, just<10> * ms)};
+    const auto b{div<bin>(lat, 10_q * ms)};
     ++bins[b]; // the counter saturates on ++, so the bar caps at 9
   }
 
@@ -71,8 +71,8 @@ int main()
   std::cout << "bin          count\n";
   for (bin b : values<bin>)
   {
-    const auto lo{b * (just<10> * ms)}; // {0,9}×{10,10} ms → {0,90} ms
-    bin_label  hi{lo + just<9> * ms};   // {9,99} ms: fits bin_label statically
+    const auto lo{b * (10_q * ms)}; // {0,9}×{10,10} ms → {0,90} ms
+    bin_label  hi{lo + 9_q * ms};   // {9,99} ms: fits bin_label statically
     std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
   }
 
@@ -80,7 +80,7 @@ int main()
   std::cout << "lossy (off-notch): " << lossy << "\n";
   std::cout << "bin capacity (numeric_limits<bar_height>::max()): " << std::numeric_limits<bar_height>::max()
             << "\n";
-  if (rejected != just<2> * smp || lossy != just<7> * smp || bins[9] != smp)
+  if (rejected != 2_q * smp || lossy != 7_q * smp || bins[9] != smp)
     return 1;
   return 0;
 }

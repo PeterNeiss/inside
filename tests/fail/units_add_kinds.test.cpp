@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    auto s = just<1> * si::hertz + just<1> * si::becquerel;
+    auto s = 1_q * si::hertz + 1_q * si::becquerel;
     (void)s;
 }

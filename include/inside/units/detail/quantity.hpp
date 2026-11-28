@@ -220,7 +220,8 @@ namespace ins
       ins::detail::numeric<std::remove_cvref_t<V>> || std::same_as<std::remove_cvref_t<V>, ins::grid_number>;
     // A bare number where a quantity is wanted: the deleted overloads' test.
     template <class Q, class X>
-    concept bare_number_for = quantity_like<Q> && !quantity_like<X> && number_value<X>;
+    concept bare_number_for =
+      quantity_like<Q> && !quantity_like<X> && (number_value<X> || ins::detail::constant_number<X>);
 
     // Q{v, u}: v a number in the unit of the tag u (a unit, or kind[unit]) that names a value of Q.
     // In Q's own unit any number Rep stores. In another unit an inside is rescaled exactly first;
@@ -456,8 +457,8 @@ namespace ins
   namespace detail
   {
     // Where a quantity keeps its number (and a point its quantity).
-    // A point number (just<5>, 1.8288_ins) holds no data, so it can sit in a public base:
-    // a quantity of one is then a structural type, a template argument (unit<"ftm", 1.8288_ins * si::metre>).
+    // A point number (5_q, 1.8288_q) holds no data, so it can sit in a public base:
+    // a quantity of one is then a structural type, a template argument (unit<"ftm", 1.8288_q * si::metre>).
     // Any other number stays private.
     template <class T>
     struct public_member
@@ -532,6 +533,10 @@ namespace ins
             && (!detail::runtime_store<Rep, detail::number_from_tag_t<id, V, Tag>>())
     consteval id(V&& v, Tag)
       : holder(Rep(detail::number_from_tag<id, Tag>(std::forward<V>(v)))) {}
+    // A value computed while compiling, std::cw<v>: Q{std::cw<v>, u} as Q{point, u}, while compiling.
+    template <ins::detail::constant_number C, class Tag, class... Pol>
+      requires(sizeof...(Pol) <= 1) && std::constructible_from<id, ins::detail::point_of_t<C>, Tag, Pol...>
+    consteval id(C, Tag u, Pol&&... pol) : id(ins::detail::point_of_t<C>{}, u, std::forward<Pol>(pol)...) {}
     // A one-shot policy for this store, as for an inside:
     // a flag or make_policy<F>(ec) (Q{v, si::metre, clamp}, Q{q, round_floor}).
     template <class V, class Tag, class Pol>
@@ -560,7 +565,7 @@ namespace ins
     template <class V>
       requires detail::bare_number_for<id, V>
     id(V&&) = delete ("units: a number alone has no unit - write Q{42, si::metre}, or "
-                                  "just<42> * si::metre");
+                                  "42_q * si::metre");
     template <class V, class Pol>
       requires(ins::detail::flag_like<std::remove_cvref_t<Pol>> || ins::detail::policy_like<std::remove_cvref_t<Pol>>)
            && detail::bare_number_for<id, V>
@@ -861,16 +866,16 @@ namespace ins
     constexpr id(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
   };
 
-  // A value with its quantity type: "42 [1..100) [km/h]"_ins is 42 km/h of type id<"[1..99] [km/h]">, the number
-  // in the type's unit, stored while compiling as Q{just<v>, unit} stores it; "42 [km/h]"_ins is the point 42 km/h.
+  // A value with its quantity type: "42 [1..100) [km/h]"_q is 42 km/h of type id<"[1..99] [km/h]">, the number
+  // in the type's unit, stored while compiling as Q{point, unit} stores it; "42 [km/h]"_q is the point 42 km/h.
   // (Without a unit, the literal is an inside's: inside/detail/core.hpp.)
   inline namespace literals
   {
     template <detail::value_text T>
       requires detail::unit_key<T.Key>
-    consteval auto operator""_ins()
+    consteval auto operator""_q()
     {
-      return id<T.Key>{just<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
+      return id<T.Key>{ins::detail::point_v<T.Value>, reference_t<detail::key_reference<T.Key>>{}};
     }
   } // namespace literals
 
@@ -911,7 +916,7 @@ namespace ins
   template <class N, class Tag>
     requires detail::is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
   void operator*(N, Tag)
-    = delete ("units: a raw number has no grid - write just<42> * unit, or Q{42, unit} into a quantity type Q");
+    = delete ("units: a raw number has no grid - write 42_q * unit, or Q{42, unit} into a quantity type Q");
   // number / unit: 5 / s.
   template <insidable V, unit_value U>
   [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>)
@@ -942,7 +947,7 @@ namespace ins
     using V = typename QR::rep;
     return detail::quantity_access::make<id<quantity_key<detail::scaled_reference(R, M), V>>>(ins::detail::value_of(q));
   }
-  // A magnitude times a number: the number in the scaled unit one ([π]), so pi * just<2> * si::second is 2 in [π s].
+  // A magnitude times a number: the number in the scaled unit one ([π]), so pi * 2_q * si::second is 2 in [π s].
   template <magnitude M, insidable V>
   [[nodiscard]] constexpr auto operator*(mag_t<M>, const V& v)
   {
@@ -1086,96 +1091,96 @@ namespace ins
   // q * inverse(q) == one; a plain number takes no unit. −u is the quantity −1 u: i * i == -one.
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
-          && requires(const X& x, Tag t) { x == just<1> * t; }
+          && requires(const X& x, Tag t) { x == 1_q * t; }
   [[nodiscard]] constexpr bool operator==(const X& x, Tag t)
   {
-    return x == just<1> * t;
+    return x == 1_q * t;
   }
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>)
-          && requires(const X& x, Tag t) { x <=> just<1> * t; }
+          && requires(const X& x, Tag t) { x <=> 1_q * t; }
   [[nodiscard]] constexpr auto operator<=>(const X& x, Tag t)
   {
-    return x <=> just<1> * t;
+    return x <=> 1_q * t;
   }
   template <class Tag>
     requires detail::is_reference_tag_v<Tag>
   [[nodiscard]] constexpr auto operator-(Tag t)
   {
-    return just<-1> * t;
+    return -1_q * t;
   }
 
   // The same in arithmetic: x + u is x + 1 u, and so are x - u, u ± x, u ± v, x += u, x -= u, x % u, divmod(x, u)
   // and u * x for a quantity, a point or a multivector x (a number times a unit stays the way to make a quantity):
-  // jar += international::pound, divmod(t, si::hour), just<3> + x * x, e1 * v. An expected runs its own operators,
+  // jar += international::pound, divmod(t, si::hour), 3_q + x * x, e1 * v. An expected runs its own operators,
   // which apply these to its value.
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t) { x + just<1> * t; }
+          && requires(const X& x, Tag t) { x + 1_q * t; }
   [[nodiscard]] constexpr auto operator+(const X& x, Tag t)
   {
-    return x + just<1> * t;
+    return x + 1_q * t;
   }
   template <class Tag, class X>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(Tag t, const X& x) { just<1> * t + x; }
+          && requires(Tag t, const X& x) { 1_q * t + x; }
   [[nodiscard]] constexpr auto operator+(Tag t, const X& x)
   {
-    return just<1> * t + x;
+    return 1_q * t + x;
   }
   template <class A, class B>
     requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
-          && requires(A a, B b) { just<1> * a + just<1> * b; }
+          && requires(A a, B b) { 1_q * a + 1_q * b; }
   [[nodiscard]] constexpr auto operator+(A a, B b)
   {
-    return just<1> * a + just<1> * b;
+    return 1_q * a + 1_q * b;
   }
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t) { x - just<1> * t; }
+          && requires(const X& x, Tag t) { x - 1_q * t; }
   [[nodiscard]] constexpr auto operator-(const X& x, Tag t)
   {
-    return x - just<1> * t;
+    return x - 1_q * t;
   }
   template <class Tag, class X>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(Tag t, const X& x) { just<1> * t - x; }
+          && requires(Tag t, const X& x) { 1_q * t - x; }
   [[nodiscard]] constexpr auto operator-(Tag t, const X& x)
   {
-    return just<1> * t - x;
+    return 1_q * t - x;
   }
   template <class A, class B>
     requires detail::is_reference_tag_v<A> && detail::is_reference_tag_v<B>
-          && requires(A a, B b) { just<1> * a - just<1> * b; }
+          && requires(A a, B b) { 1_q * a - 1_q * b; }
   [[nodiscard]] constexpr auto operator-(A a, B b)
   {
-    return just<1> * a - just<1> * b;
+    return 1_q * a - 1_q * b;
   }
   template <class X, class Tag>
-    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) += just<1> * t; }
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) += 1_q * t; }
   constexpr decltype(auto) operator+=(X&& x, Tag t) // an action ref too: q.on_wrap(f) += u
   {
-    return std::forward<X>(x) += just<1> * t;
+    return std::forward<X>(x) += 1_q * t;
   }
   template <class X, class Tag>
-    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) -= just<1> * t; }
+    requires detail::is_reference_tag_v<Tag> && requires(X&& x, Tag t) { std::forward<X>(x) -= 1_q * t; }
   constexpr decltype(auto) operator-=(X&& x, Tag t)
   {
-    return std::forward<X>(x) -= just<1> * t;
+    return std::forward<X>(x) -= 1_q * t;
   }
   template <class X, class Tag>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t) { x % (just<1> * t); }
+          && requires(const X& x, Tag t) { x % (1_q * t); }
   [[nodiscard]] constexpr auto operator%(const X& x, Tag t)
   {
-    return x % (just<1> * t);
+    return x % (1_q * t);
   }
   template <class Tag, class X>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!insidable<X>)
-          && (!detail::is_expected_v<X>) && requires(Tag t, const X& x) { just<1> * t * x; }
+          && (!detail::is_expected_v<X>) && requires(Tag t, const X& x) { 1_q * t * x; }
   [[nodiscard]] constexpr auto operator*(Tag t, const X& x)
   {
-    return just<1> * t * x;
+    return 1_q * t * x;
   }
 
   // min, max and midpoint of two quantities of one kind, in their common unit as + takes it;
@@ -1322,19 +1327,19 @@ namespace ins
   // No raw scalars: q * 2 needs a grid for the 2.
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator*(const QA&, N) = delete ("units: a raw number has no grid - scale by just<2>, "
+  void operator*(const QA&, N) = delete ("units: a raw number has no grid - scale by 2_q, "
                                                            "not 2");
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator*(N, const QA&) = delete ("units: a raw number has no grid - scale by just<2>, "
+  void operator*(N, const QA&) = delete ("units: a raw number has no grid - scale by 2_q, "
                                                            "not 2");
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator/(const QA&, N) = delete ("units: a raw number has no grid - divide by just<2>, "
+  void operator/(const QA&, N) = delete ("units: a raw number has no grid - divide by 2_q, "
                                                            "not 2");
   template <quantity_like QA, class N>
     requires std::is_arithmetic_v<N>
-  void operator/(N, const QA&) = delete ("units: a raw number has no grid - divide by just<2>, "
+  void operator/(N, const QA&) = delete ("units: a raw number has no grid - divide by 2_q, "
                                                            "not 2");
 
   // pow<N>(q): q·q·…·q (N ≥ 1), exact, the grid of each product.
@@ -1704,10 +1709,10 @@ namespace ins
   // By a unit, one of itself: divmod(t, si::hour).
   template <class X, class Tag, class... Args>
     requires detail::is_reference_tag_v<Tag> && (!detail::is_reference_tag_v<X>) && (!detail::is_expected_v<X>)
-          && requires(const X& x, Tag t, Args&&... args) { divmod(x, just<1> * t, std::forward<Args>(args)...); }
+          && requires(const X& x, Tag t, Args&&... args) { divmod(x, 1_q * t, std::forward<Args>(args)...); }
   [[nodiscard]] constexpr auto divmod(const X& x, Tag t, Args&&... args)
   {
-    return divmod(x, just<1> * t, std::forward<Args>(args)...);
+    return divmod(x, 1_q * t, std::forward<Args>(args)...);
   }
 
   // add / sub / mod(a, b, args...) of two quantities of one kind, in their common unit as + takes it,

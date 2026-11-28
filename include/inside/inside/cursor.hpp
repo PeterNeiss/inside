@@ -44,7 +44,7 @@ namespace ins
     requires(has_flag(policy_of<detail::step_number_t<B>>, detail::cursor_marker))
   [[nodiscard]] constexpr auto end(const B&) noexcept
   {
-    constexpr auto top{just<upper_of<detail::step_number_t<B>>>};
+    constexpr auto top{detail::point_v<upper_of<detail::step_number_t<B>>>};
     return detail::stepping<B>::make(top);
   }
 } // namespace ins

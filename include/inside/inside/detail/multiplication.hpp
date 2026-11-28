@@ -26,7 +26,7 @@ namespace ins::detail
     template <policy_flag F = none, typename E = empty_ref>
     static constexpr result mul(L lhs, R rhs, call_policy<F, E> = {})
     {
-      if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (op_result.hpp)
+      if constexpr (point_scale<R, L, result>) // x * detail::point_v<c>: x's offset (op_result.hpp)
         return scale_by_point<result, R>(lhs);
       else if constexpr (point_scale<L, R, result>)
         return scale_by_point<result, L>(rhs);

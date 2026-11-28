@@ -11,9 +11,9 @@ int main() {
     using count   = id<"[0..10]">;            // checked (the default)
 
     degrees heading = 350;
-    heading += 20_ins;                        // 370 wraps to 10
+    heading += 20_q;                        // 370 wraps to 10
     level   volume  = 9;
-    volume += 5_ins;                          // 14 clamps to 10
+    volume += 5_q;                          // 14 clamps to 10
 
     auto n = count::try_make(14);             // unexpected(error::overflow)
     // count m = 14;                          // ill-formed: 14 is outside [0, 10]

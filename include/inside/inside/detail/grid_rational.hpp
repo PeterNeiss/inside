@@ -81,7 +81,7 @@ namespace ins
     constexpr grid_number(const detail::rational& r)
       : grid_number(detail::big_rational{detail::big_int::of_limb(r.Num, r.Den < 0),
                                          detail::big_int{detail::abs_den(r.Den)}}) {}
-    // Anything else that converts to the 64-bit rational (an inside: just<-6, 5>) takes that one conversion,
+    // Anything else that converts to the 64-bit rational (an inside: -1.2_q) takes that one conversion,
     // so it can be a grid limit.
     template <class T>
       requires(std::is_class_v<T> && !std::same_as<T, detail::rational> && !std::same_as<T, grid_number>
@@ -349,7 +349,7 @@ namespace ins::detail
   // An unsigned number in [first, last) in the whole literal grammar
   // (scan_number: 0x and 0b prefixes, ' separators, a point, an e±n or p±n exponent), taken exactly, of any size:
   // the scan's failure (e_exponent_numerator_overflow: an exponent past max_exp), else none and the value in out.
-  // The _g and _ins literals (parse_grid_literal) and an id's text (detail/id_text.hpp) read numbers here.
+  // The _g and _q literals (parse_grid_literal) and an id's text (detail/id_text.hpp) read numbers here.
   consteval parse_fail scan_exact(const char* first, const char* last, grid_number& out, int max_exp = 10000)
   {
     // The value is m·B^e (B the radix), times 2^±n or 10^±n.
@@ -395,21 +395,21 @@ namespace ins::detail
   }
 
   // parse_grid_literal: the exact literal (scan_exact), of any size.
-  // The _g literal, and _ins (its point); _r parses the same grammar into the 64-bit rational.
+  // The _g literal, and _q (its point); _r parses the same grammar into the 64-bit rational.
   template <char... Chars>
   consteval grid_number parse_grid_literal()
   {
     if constexpr (octal_literal<Chars...>())
-      constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
+      constexpr_error<"_g/_q literal: a leading 0 makes an octal literal; write the number without it">();
     constexpr char text[] = {Chars...};
     grid_number    out;
     const parse_fail f{scan_exact(text, text + sizeof(text), out)};
     if (f == parse_fail::empty)
-      constexpr_error<"_g/_ins literal: expected digits">();
+      constexpr_error<"_g/_q literal: expected digits">();
     if (f == parse_fail::e_exponent_numerator_overflow)
-      constexpr_error<"_g/_ins literal: exponent too large">();
+      constexpr_error<"_g/_q literal: exponent too large">();
     if (f != parse_fail::none)
-      constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
+      constexpr_error<"_g/_q literal: digits, a point and an exponent only">();
     return out;
   }
 } // namespace ins::detail
@@ -448,8 +448,8 @@ namespace ins
   // The grid-building helpers.
   // per<D> is the step 1/D, the common notch (per<256> is Q·8; per<2^70>, with D a grid number, is a notch past
   // 64 bits).
-  // Any other exact ratio is the point just<N, D> (inside/detail/core.hpp):
-  // a limit like just<-6, 5> for -1.2, or another step like just<360, 4096>.
+  // Any other exact ratio is the point "N/D"_q (inside/detail/core.hpp):
+  // a limit like -1.2_q for -1.2, or another step like ("360/4096"_q).
   // (The _r literal, an exact decimal or hex value, 0.1_r exactly 1/10, is in inside/detail/number_text.hpp.)
   // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a negative notch however it is spelled.
   template <auto D>

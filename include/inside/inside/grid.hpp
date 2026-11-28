@@ -74,7 +74,7 @@ namespace ins
 
     grid() = default;
     // Corner ctors accept any type convertible to `rational`:
-    // int/float/rational and any `inside` / `just<>` (via its implicit `operator rational()`),
+    // int/float/rational and any `inside` / `_q` point (via its implicit `operator rational()`),
     // so an inside can be a grid corner.
     // They stay *templates* (deducing the corner type) on purpose:
     // a braced `{lo, hi}` can't deduce to a template parameter,
@@ -86,7 +86,7 @@ namespace ins
       : grid{ins::interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived, gcd(1, Lower, Upper),
     // the coarsest step 1/k that keeps every integer and both limits on the lattice.
-    // Integer limits give 1; {0.5, 10} gives 1/2; {just<-6, 5>, just<3, 5>} gives 1/5.
+    // Integer limits give 1; {0.5, 10} gives 1/2; {-1.2_q, 0.6_q} gives 1/5.
     constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper)
       : grid{ins::interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
     constexpr grid(detail::grid_number_like auto lower)
@@ -210,7 +210,7 @@ namespace ins
 
     // True when `v` is an *exact* slot: in the interval AND on a notch
     // (notch-0 grids store verbatim, so any in-range value qualifies).
-    // Used to admit a single representable value (e.g. `0_ins`) regardless of whole-range mapping.
+    // Used to admit a single representable value (e.g. `0_q`) regardless of whole-range mapping.
     [[nodiscard]] constexpr bool representable(grid_number v) const noexcept
     {
       if (!includes(interval(), v))
@@ -556,7 +556,7 @@ namespace ins
   [[nodiscard]] consteval grid operator*(const G& lhs, const G& rhs)
   {
     // A point operand c (notch 0) scales the other lattice exactly: its notch becomes N·|c|,
-    // so `x * just<c>` keeps integer storage instead of turning continuous.
+    // so `x * detail::point_v<c>` keeps integer storage instead of turning continuous.
     // A continuous product bounds its denominators by the product of the operands' bounds.
     const interval    i{lhs.interval() * rhs.interval()};
     const grid_number n{detail::product_notch(lhs, rhs)};
@@ -570,7 +570,7 @@ namespace ins
   {
     const interval& r{rhs.interval()};
     // A nonzero point divisor c scales the other lattice exactly, as in operator*:
-    // its notch becomes N/|c|, so `x / just<c>` keeps integer storage instead of turning continuous.
+    // its notch becomes N/|c|, so `x / detail::point_v<c>` keeps integer storage instead of turning continuous.
     if (r.Lower == r.Upper && r.Lower != 0 && lhs.Notch != 0)
       return grid{*(lhs.interval() / r), lhs.Notch / abs(r.Lower)};
     // Any other quotient is continuous: x = p/a over y = r/b is p·b/(a·r),

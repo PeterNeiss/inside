@@ -14,11 +14,11 @@ int main() {
     auto room = point<si::degree_Celsius>(id<"[-50..50] 1/10">{20});
     auto k    = room.point_for(si::absolute_zero).in(si::kelvin);      // 293.15 K, exactly
     auto f    = room.point_in(international::degree_Fahrenheit);       // 68 ℉, exactly
-    auto warm = room + just<5> * si::kelvin;                           // 25 ℃: a point plus a difference
+    auto warm = room + 5_q * si::kelvin;                               // 25 ℃: a point plus a difference
     auto rise = warm - room;                                           // 5 ℃, a quantity: a difference
     static_assert(!addable<decltype(room), decltype(room)>);           // points do not add
     // [/listing]
-    if (k.quantity_from_zero().numerical_value_in(si::kelvin) != 293.15_ins)
+    if (k.quantity_from_zero().numerical_value_in(si::kelvin) != 293.15_q)
         return 1;
     if (f.quantity_from_origin().numerical_value_in(international::degree_Fahrenheit) != 68 ||
         rise.numerical_value_in(si::kelvin) != 5)

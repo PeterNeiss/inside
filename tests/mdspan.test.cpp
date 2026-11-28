@@ -93,7 +93,7 @@ TEST(MdspanTest, an_index_converts_to_the_integers_that_hold_it) {
     // result is one where its grid is.
     static_assert(std::is_convertible_v<id<"[3..11] clamp">, int> &&
                   std::is_convertible_v<id<"[0..9] unsafe">, int>);
-    static_assert(std::is_convertible_v<decltype(row{} + 1_ins), std::size_t>);
+    static_assert(std::is_convertible_v<decltype(row{} + 1_q), std::size_t>);
     static_assert(std::is_convertible_v<decltype(row{} * row{}), std::size_t>);
     // No index: a grid with a negative value, a fraction, or past int64; a
     // cursor, whose end is one past the last index.
@@ -144,9 +144,9 @@ TEST(MdspanTest, compound_assignment_takes_builtin_integers) {
     EXPECT_TRUE(w == 359);
     w *= 2;
     EXPECT_TRUE(w == 358);
-    F f = 0.5_ins;
+    F f = 0.5_q;
     f += 1;
-    EXPECT_TRUE(f == 1.5_ins);
+    EXPECT_TRUE(f == 1.5_q);
     f *= 100;
     EXPECT_TRUE(f == 10);
     T     t = 5;
@@ -245,7 +245,7 @@ TEST(MdspanTest, indexing_std_mdspan) {
     EXPECT_TRUE((img[row{1}, wcol{at_run_time(-1)}]) == 90);
     EXPECT_TRUE((img[row{1}, wcol{at_run_time(7)}]) == 70);
     const crow r = 0;
-    EXPECT_TRUE((img[crow{r - 1_ins}, col{2}]) == 20);
+    EXPECT_TRUE((img[crow{r - 1_q}, col{2}]) == 20);
     // An interior index plus an offset is proven within: no policy needed.
     using inner             = id<"[1..2]">;
     const inner           i = test::store<inner>(at_run_time(2));

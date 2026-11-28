@@ -5,6 +5,6 @@
 
 int main() {
     using namespace ins;
-    auto q = kind_cast<isq::dimensionless>(just<1> * si::radian);
+    auto q = kind_cast<isq::dimensionless>(1_q * si::radian);
     (void)q;
 }

@@ -102,8 +102,8 @@ auto add_percent(percent a, percent b) {
   return a + b;                         // inside<{0, 200}>, by type
 }
 inside<{0, 10}> volume{v, clamp};       // saturates at 10
-auto total = 0.1_ins + 0.2_ins;         // exactly 3/10
-auto third = div(just<100>, just<3>, round_floor);  // 33: the rounding is named
+auto total = 0.1_q + 0.2_q;             // exactly 3/10
+auto third = div(100_q, 3_q, round_floor);  // 33: the rounding is named
 ```
 :::
 
@@ -125,7 +125,7 @@ auto    neg  = -a;                  // id<"[-100..0]">: no -INT_MIN
 static_assert(std::is_same_v<decltype(sum), id<"[0..200]">>);
 static_assert(sizeof(percent) == 1);
 
-percent c{sum - just<100>, clamp};  // -100..100 into 0..100: the store names what happens
+percent c{sum - 100_q, clamp};  // -100..100 into 0..100: the store names what happens
 auto    bad = percent::try_make(sum); // expected<percent, error>
 ```
 
@@ -135,12 +135,12 @@ auto    bad = percent::try_make(sum); // expected<percent, error>
 ```cpp
 using cents = id<"[0..1'000'000] 1/100 round_half_away">;
 
-cents price = 0.1_ins, tax = 0.2_ins;   // exactly 1/10 and 2/10
+cents price = 0.1_q, tax = 0.2_q;       // exactly 1/10 and 2/10
 auto  total = price + tax;              // exactly 3/10 — no 0.30000000000000004
 static_assert(notch_of<decltype(total)> == per<100>);
 
-cents share = total / 3_ins;            // 1/10 exactly
-cents third = cents{1} / 3_ins;         // 1/3 rounds to nearest: 0.33
+cents share = total / 3_q;            // 1/10 exactly
+cents third = cents{1} / 3_q;         // 1/3 rounds to nearest: 0.33
 ```
 
 **The policy decides what a narrowing store does.**
@@ -152,9 +152,9 @@ using level   = id<"[0..10] clamp">;      // saturating
 using count   = id<"[0..10]">;            // checked (the default)
 
 degrees heading = 350;
-heading += 20_ins;                        // 370 wraps to 10
+heading += 20_q;                        // 370 wraps to 10
 level   volume  = 9;
-volume += 5_ins;                          // 14 clamps to 10
+volume += 5_q;                          // 14 clamps to 10
 
 auto n = count::try_make(14);             // unexpected(error::overflow)
 // count m = 14;                          // ill-formed: 14 is outside [0, 10]
@@ -167,7 +167,7 @@ auto n = count::try_make(14);             // unexpected(error::overflow)
 using centre = id<"[0.5..255.5] 1">;         // 0.5, 1.5, ..., 255.5
 static_assert(sizeof(centre) == 1);          // 256 points: one byte
 
-centre x = 2.5_ins, y = 0.5_ins;
+centre x = 2.5_q, y = 0.5_q;
 auto   s = x + y;                            // id<"[1..511]">: whole numbers again
 auto   p = x * y;                            // 0.25, 0.75, ...: Lower 1/4, notch 1/2
 static_assert(std::is_same_v<decltype(s), id<"[1..511]">>);
@@ -206,7 +206,7 @@ auto fit  = exact_cast<level>(sensor{7});              // expected<level, error>
 auto near = level{6.5, clamp | round_half_away};       // 7: a tie goes away from zero
 
 using quarter = id<"[0..10] 1/4">;
-quarter q = 2.75_ins;
+quarter q = 2.75_q;
 auto num  = q.numerator();                               // 11: the value is 11/4
 auto i    = q.to<int>();                                 // unexpected(error::rounding_error)
 auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
@@ -232,7 +232,7 @@ using seconds = id<"[0..59] wrap">;
 using minutes = id<"[0..59] clamp">; // m += carry names what happens past 59
 seconds s = 50;
 minutes m = 0;
-s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2
+s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_q; // 125 s: s == 5, m == 2
 ```
 
 **Generic code sees a numeric type.**
@@ -362,8 +362,7 @@ point, counted from the lattice's anchor.
 ## No bare scalars
 
 `a + 1` is ill-formed, with a diagnostic that names the fix. `1` has no grid,
-so the result grid cannot be computed. Constants are written `just<1>` or
-`1_ins`, which are point grids. An arithmetic value enters an `inside` only
+so the result grid cannot be computed. Constants are written `1_q`, which are point grids. An arithmetic value enters an `inside` only
 through a store, which the grids prove or the store's channel checks.
 
 Compound assignment is the one exception: `x += n`, `x -= n` and `x *= n` take
@@ -517,7 +516,7 @@ unordered containers.
   not compile. This works without exceptions and freestanding.
 - **Mixed arithmetic with builtin numbers.** `a + 1` would need a grid for `1`,
   and every literal would widen the result to its type's range. Constants are
-  points instead (`just<1>`), and only compound assignment takes a builtin
+  points instead (`1_q`), and only compound assignment takes a builtin
   integer, because its result has a type.
 - **Grid numbers of 64 bits.** Release v0.5.0 had them. Result grids then
   stop existing (`10¹⁸ · 10¹⁸`), and a valid expression becomes ill-formed.
@@ -714,14 +713,14 @@ namespace std {
     using step_t = inside<grid_of<B>.step_count() == 0 ? grid{0}
                                                         : grid{0, grid_of<B>.step_count(), 1}>;
   template<insidable B> requires(notch_of<B> != 0 || lower_of<B> == upper_of<B>)
-    constexpr auto step_count_of = just<grid_of<B>.step_count()>;  // the largest step
+    constexpr inside<grid{grid_of<B>.step_count()}> step_count_of{};  // the largest step, a point
 
-  // constants
-  template<auto N, auto D = 1>
-    constexpr inside<grid{grid_number(N) / grid_number(D)}> just{};  // the point N/D, exactly
-  template<char... Cs> constexpr auto operator""_ins();   // a point grid; suffix to be renamed
+  // constants: a literal is a point grid, exactly
+  template<char... Cs> constexpr auto operator""_q();       // 3_q, 0.25_q, 0x1p-15_q; suffix to be renamed
+  template<value-text T> consteval auto operator""_q();     // "2/3"_q a point, "42 [1..100)"_q a typed value
 
-  // operators (L, R are inside types, or expected<inside, error>)
+  // operators (L, R are inside types, or expected<inside, error>; a std::constant_wrapper<V>, std::cw<N>,
+  // is the point V, so a value computed while compiling needs no spelling of its own)
   template<class L, class R> constexpr auto operator+(const L&, const R&);  // the widened result grid
   template<class L, class R> constexpr auto operator-(const L&, const R&);
   template<class L, class R> constexpr auto operator*(const L&, const R&);
@@ -896,7 +895,7 @@ time. The repository's `docs/resources.md` compares their features.
 
 1. **Naming.** `inside`, `grid`, `notch`, `per` and the policy names are the
    implementation's. The committee may prefer others (`bounded`, `ranged`). A
-   standard literal suffix cannot begin with `_`, so `_ins` and `_g` need new
+   standard literal suffix cannot begin with `_`, so `_q` and `_g` need new
    names.
 2. **Failure of a checked store.** Proposed: no run-time failure path of its
    own. A store the grids cannot prove names its channel (a flag, an

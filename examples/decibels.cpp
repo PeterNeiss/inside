@@ -27,7 +27,7 @@ using linear_gain = id<"[0x1p-8..4] 1/65536 round_half_away">;                  
 // The ratio is exact; pow_base rounds once (as in audio_mixer.cpp).
 static constexpr linear_gain db_to_linear(decibels db)
 {
-  return math::pow_base<10, linear_gain>(db / (just<20> * dB));
+  return math::pow_base<10, linear_gain>(db / (20_q * dB));
 }
 
 // linear → dB: log10 rounds once onto 1/40, the same as 20·log10 onto 0.5 dB; the × 20 dB is exact.
@@ -35,7 +35,7 @@ static constexpr linear_gain db_to_linear(decibels db)
 // clamp states that it lands there.
 static constexpr decibels linear_to_db(linear_gain amp)
 {
-  return decibels{math::log10<per<40>>(amp) * (just<20> * dB), clamp};
+  return decibels{math::log10<per<40>>(amp) * (20_q * dB), clamp};
 }
 
 int main()
@@ -64,8 +64,8 @@ int main()
   }
 
   // Levels add; −6 dB is close to half the amplitude.
-  if (decibels{-6, dB} + just<3> * dB != decibels{-3, dB}
-      || db_to_linear(decibels{-6, dB}) != just<32846, (1 << 16)>)
+  if (decibels{-6, dB} + 3_q * dB != decibels{-3, dB}
+      || db_to_linear(decibels{-6, dB}) != "32846/65536"_q)
     return 1;
   return 0;
 }

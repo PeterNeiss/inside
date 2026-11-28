@@ -63,9 +63,9 @@ TEST(IdTextTest, intervals_spell_the_grids_inside_spells) {
     static_assert(spells("[-10..-5]", grid{-10, -5}));
     static_assert(spells("[3..3]", grid{3, 3}));                       // notch 1, one value
     static_assert(spells("[5]", grid{5}));                             // a point
-    static_assert(spells("[-1/2]", grid{just<-1, 2>}));
-    static_assert(spells("[0..1/2]", grid{0, just<1, 2>}));            // the notch derived: 1/2
-    static_assert(spells("[2/5..7/10)", grid{{just<2, 5>, just<3, 5>}, just<1, 10>}));
+    static_assert(spells("[-1/2]", grid{-0.5_q}));
+    static_assert(spells("[0..1/2]", grid{0, 0.5_q}));            // the notch derived: 1/2
+    static_assert(spells("[2/5..7/10)", grid{{0.4_q, 0.6_q}, 0.1_q}));
 }
 
 TEST(IdTextTest, steps_and_bounds) {
@@ -74,7 +74,7 @@ TEST(IdTextTest, steps_and_bounds) {
     static_assert(spells("(0..1) 1/16", grid{{0, 1}, per<16>, bounds::open}));
     static_assert(spells("[0..100] 5", grid{{0, 100}, 5}));
     static_assert(spells("[1/2..21/2] 1", grid{{0.5, 10.5}, 1}));    // unanchored
-    static_assert(spells("[5/3..17/3] 2/3", grid{{just<5, 3>, just<17, 3>}, just<2, 3>}));
+    static_assert(spells("[5/3..17/3] 2/3", grid{{"5/3"_q, "17/3"_q}, "2/3"_q}));
     static_assert(spells("[0..1] <1000>", grid{{0, 1}, max_denominator{1000}}));
     static_assert(spells("[-1..1] <7>", grid{{-1, 1}, max_denominator{7}}));
 }
@@ -82,8 +82,8 @@ TEST(IdTextTest, steps_and_bounds) {
 TEST(IdTextTest, numbers_read_as_the_ins_literal_reads_them) {
     static_assert(spells("[0..1e9]", grid{0, 1'000'000'000}));
     static_assert(spells("[0..1'000]", grid{0, 1000}));
-    static_assert(spells("[0..0.25]", grid{0, just<1, 4>}));
-    static_assert(spells("[0..2.5e-1]", grid{0, just<1, 4>}));
+    static_assert(spells("[0..0.25]", grid{0, 0.25_q}));
+    static_assert(spells("[0..2.5e-1]", grid{0, 0.25_q}));
     static_assert(spells("[0..0x10]", grid{0, 16}));
     static_assert(spells("[0..1] 0x1p-4", grid{{0, 1}, per<16>}));
     static_assert(spells("[0..18446744073709551615]", grid{0, grid_number{18446744073709551615ull}}));
@@ -149,12 +149,12 @@ TEST(IdTextTest, the_canonical_text_reads_back) {
     static_assert(round_trips(grid{{0, 1}, per<100>}));
     static_assert(round_trips(grid{{-8, 8}, per<16384>}));
     static_assert(round_trips(grid{{0, 30}, 3}));
-    static_assert(round_trips(grid{{0, 3}, just<3, 2>}));
+    static_assert(round_trips(grid{{0, 3}, 1.5_q}));
     static_assert(round_trips(grid{0.5, 10}));
     static_assert(round_trips(grid{{0.5, 10.5}, 1}));
-    static_assert(round_trips(grid{{just<1, 3>, just<7, 3>}, 1}));
+    static_assert(round_trips(grid{{"1/3"_q, "7/3"_q}, 1}));
     static_assert(round_trips(grid{{0, 1}, max_denominator{1000}}));
-    static_assert(round_trips(grid{just<1, 2>}));
+    static_assert(round_trips(grid{0.5_q}));
     static_assert(round_trips(grid{3, 3}));
     static_assert(round_trips(grid{0, 360, bounds::half_open}, wrap));
     static_assert(round_trips(grid{0, two_70}));
@@ -221,8 +221,8 @@ TEST(IdTypeTest, every_spelling_is_one_type) {
     static_assert(std::is_same_v<id<"[0..1] 1/100 clamp|round_half_away">,
                                  id<key{grid{{0, 1}, per<100>}, round_half_away | clamp}>>);
     static_assert(std::is_same_v<id<"[0..1] <1000>">, id<key{grid{{0, 1}, max_denominator{1000}}}>>);
-    static_assert(std::is_same_v<id<"[5]">, decltype(5_ins)>);
-    static_assert(!std::is_same_v<id<"[3..3]">, decltype(3_ins)>);        // notch 1 vs a point
+    static_assert(std::is_same_v<id<"[5]">, decltype(5_q)>);
+    static_assert(!std::is_same_v<id<"[3..3]">, decltype(3_q)>);        // notch 1 vs a point
     static_assert(grid_of<id<"[0..10) 1/4">> == grid{{0, 10}, per<4>, bounds::half_open});
     static_assert(policy_of<id<"[0..9] clamp|round_floor">> == (clamp | round_floor));
 }
@@ -265,33 +265,33 @@ struct reading {
 };
 TEST(IdTypeTest, ids_as_members_and_deduced) {
     constexpr reading r{};
-    static_assert(r.raw == 2048 && r.quarters == just<5, 2> && reading::nine == 9);
+    static_assert(r.raw == 2048 && r.quarters == 2.5_q && reading::nine == 9);
     static_assert(policy_param(id<"[0..9] wrap">{}) == wrap);
 }
-// "42 [1..100)"_ins: a value with its type, stored while compiling under the type's policy.
+// "42 [1..100)"_q: a value with its type, stored while compiling under the type's policy.
 TEST(IdLiteralTest, a_value_with_its_type) {
-    constexpr auto a{"42 [1..100)"_ins};
+    constexpr auto a{"42 [1..100)"_q};
     static_assert(std::is_same_v<std::remove_const_t<decltype(a)>, id<"[1..99]">> && a == 42);
-    constexpr auto q{"0.25 [0..1) 1/4"_ins};
-    static_assert(std::is_same_v<std::remove_const_t<decltype(q)>, id<"[0..1) 1/4">> && q == just<1, 4>);
-    static_assert("-1/2 [-1..1] 1/2"_ins == just<-1, 2>);
-    static_assert("1e3 [0..1e6]"_ins == 1000);
-    static_assert("0x1p70 [0..0x1p80]"_ins == just<1180591620717411303424_g>);
-    static_assert("  7   [0..9]  wrap "_ins == 7);
-    static_assert(std::is_same_v<decltype("7 [0..9] wrap"_ins), id<"[0..9] wrap">>);
+    constexpr auto q{"0.25 [0..1) 1/4"_q};
+    static_assert(std::is_same_v<std::remove_const_t<decltype(q)>, id<"[0..1) 1/4">> && q == 0.25_q);
+    static_assert("-1/2 [-1..1] 1/2"_q == -0.5_q);
+    static_assert("1e3 [0..1e6]"_q == 1000);
+    static_assert("0x1p70 [0..0x1p80]"_q == 1180591620717411303424_q);
+    static_assert("  7   [0..9]  wrap "_q == 7);
+    static_assert(std::is_same_v<decltype("7 [0..9] wrap"_q), id<"[0..9] wrap">>);
     // The type's policy stores it: clamp saturates, a rounding mode rounds.
-    static_assert("200 [0..99] clamp"_ins == 99);
-    static_assert("0.3 [0..1] 1/4 round_half_away"_ins == just<1, 4>);
-    static_assert("0.4 [0..1] 1/4 round_half_away"_ins == just<1, 2>);
+    static_assert("200 [0..99] clamp"_q == 99);
+    static_assert("0.3 [0..1] 1/4 round_half_away"_q == 0.25_q);
+    static_assert("0.4 [0..1] 1/4 round_half_away"_q == 0.5_q);
     // Without a type: the point, as the numeric literal.
-    static_assert(std::is_same_v<decltype("42"_ins), decltype(42_ins)> && "42"_ins == 42_ins);
-    static_assert(std::is_same_v<decltype("2.5"_ins), decltype(2.5_ins)>);
-    static_assert(std::is_same_v<decltype("1/3"_ins), std::remove_const_t<decltype(just<1, 3>)>>);
-    EXPECT_EQ("42 [1..100)"_ins, 42);
+    static_assert(std::is_same_v<decltype("42"_q), decltype(42_q)> && "42"_q == 42_q);
+    static_assert(std::is_same_v<decltype("2.5"_q), decltype(2.5_q)>);
+    static_assert(std::is_same_v<decltype("1/3"_q), std::remove_const_t<decltype("1/3"_q)>>);
+    EXPECT_EQ("42 [1..100)"_q, 42);
 }
 
 struct calibrated {
-    decltype("0 [0..4095]"_ins) raw{"2048 [0..4095]"_ins};
+    decltype("0 [0..4095]"_q) raw{"2048 [0..4095]"_q};
 };
 TEST(IdLiteralTest, a_literal_initializes_a_member) {
     constexpr calibrated c{};

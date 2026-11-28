@@ -1,6 +1,6 @@
 // EXPECT: cannot be combined with a raw scalar
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Grid-less scalars are rejected with a fix-it (write `a + 1_ins`), not a wall
+// Grid-less scalars are rejected with a fix-it (write `a + 1_q`), not a wall
 // of overload-resolution noise — the deleted overload's reason names it.
 #include <inside/inside.hpp>
 

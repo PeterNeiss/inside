@@ -33,7 +33,7 @@ int main()
 
   const adc_counts    raw        {2048, cts};
   const offset_counts offset     {12  , cts};
-  const cts_per_volt  calibration{just<1240909, 1000> * (cts / volt)};
+  const cts_per_volt  calibration{1240.909_q * (cts / volt)};
   const auto          volts      {(raw - offset) / calibration};
   const auto          mv         {value_cast<millivolts>(volts)};
 
@@ -47,8 +47,8 @@ int main()
   using low_volts  = id<"[0..1] 1/1000 [V]">;
   using high_volts = id<"[2..5] 1/1000 [V]">;
 
-  const low_volts  v1{just<1, 2> * volt};
-  const high_volts v2{just<5, 2> * volt};
+  const low_volts  v1{0.5_q * volt};
+  const high_volts v2{2.5_q * volt};
 
   const adc_counts c1{632 , cts};
   const adc_counts c2{3114, cts};

@@ -44,7 +44,7 @@ int main()
     return 1;
   const auto     ratio   {*checked_ratio};
   const auto     ln      {math::log<per<1'000'000>>(ratio)}; // rounded once onto 1e-6
-  const km_per_s v_e     {just<31, 10> * km_s};
+  const km_per_s v_e     {3.1_q * km_s};
   const auto     dv_stage{v_e * ln};
   std::cout << "dv stage  = " << dv_stage.in(si::metre / si::second) << '\n';
   if (to_string(dv_stage) != "5.2041963 km/s")
@@ -60,7 +60,7 @@ int main()
   const radius_km   earth   {6371, isq::radius[km]};
   const auto        r       {altitude + earth};
   static_assert(r.kind == isq::length);
-  constexpr auto mu    {just<3'986'004'418, 10'000> * (cubic(km) / square(si::second))};
+  constexpr auto mu    {398600.4418_q * (cubic(km) / square(si::second))};
   const auto     v_park{math::sqrt<per<1'000'000>>(mu / r)};
   std::cout << "v parking = " << v_park << '\n';
   if (to_string(v_park) != "7.797393 km/s")
@@ -68,8 +68,8 @@ int main()
 
   // 4. Trans-lunar injection: a = (r + 384400 km)/2 exactly, and vis-viva v² = 2μ/r − μ/a at perigee.
   // The grids prove v² positive, so its sqrt is a plain value (sqrt takes no grid that reaches below 0).
-  const auto a     {(r + just<384'400> * km) / just<2>};
-  const auto v_peri{math::sqrt<per<1'000'000>>(just<2> * mu / r - mu / a)};
+  const auto a     {(r + 384'400_q * km) / 2_q};
+  const auto v_peri{math::sqrt<per<1'000'000>>(2_q * mu / r - mu / a)};
   const auto dv_tli{v_peri - v_park};
   std::cout << "v perigee = " << v_peri << ", TLI needs " << dv_tli << '\n';
   if (to_string(v_peri) != "10.934330 km/s" || to_string(dv_tli) != "3.136937 km/s" || !(dv_stage > dv_tli))

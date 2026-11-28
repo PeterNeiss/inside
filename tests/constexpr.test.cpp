@@ -460,21 +460,21 @@ TEST(ConstexprTest, constexpr_ispolicy_useserrorref) {
 }
 
 //---------------------------------------------------------------------------
-// just / _ins literal
+// just / _q literal
 //---------------------------------------------------------------------------
-// constexpr: just<N> and _ins literal
+// constexpr: std::cw<N> and _q literal
 TEST(ConstexprTest, constexpr_just_n_and_ins_literal) {
-    static_assert(just<1> == 1);
-    static_assert(just<42> == 42);
+    static_assert(1_q == 1);
+    static_assert(42_q == 42);
 
-    constexpr auto five = 5_ins;
+    constexpr auto five = 5_q;
     static_assert(lower_of<decltype(five)> == 5);
     static_assert(upper_of<decltype(five)> == 5);
     static_assert(five == 5);
 
     // Composes with inside — grid widens via add
     using pct = id<"[0..100]">;
-    static_assert(10_ins + pct{40} == 50);
+    static_assert(10_q + pct{40} == 50);
 }
 
 //---------------------------------------------------------------------------

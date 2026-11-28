@@ -12,7 +12,7 @@ inline constexpr auto e4 = ins::basis_vector<"e4", ins::geometric<1>>;
 
 int main() {
     using namespace ins;
-    auto x = just<1> + just<1> * e1 * e2 + just<1> * e3 * e4;
+    auto x = 1_q + 1_q * e1 * e2 + 1_q * e3 * e4;
     auto y = inverse(x);
     (void)y;
 }

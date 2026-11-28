@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Quantities spelled as text: id<"[0..100] [km/h]">, the unit read by its symbol among the units visible where the
-// type is named, the canonical text of the unit, the types the operators give, and "42 [1..100) [km/h]"_ins.
+// type is named, the canonical text of the unit, the types the operators give, and "42 [1..100) [km/h]"_q.
 
 #include <inside/inside.hpp>
 #include <inside/units.hpp>
@@ -103,7 +103,7 @@ TEST(IdQuantityTest, results_read_as_ids_where_their_reference_is_a_unit) {
     static_assert(std::is_same_v<decltype(metres{} + metres{}), id<"[2..18] [m]">>);
     static_assert(std::is_same_v<decltype(metres{} - metres{}), id<"[-8..8] [m]">>);
     static_assert(std::is_same_v<decltype(-metres{}), id<"[-9..-1] [m]">>);
-    static_assert(std::is_same_v<decltype(metres{} * just<2>), id<"[2..18] 2 [m]">>);            // the even ones
+    static_assert(std::is_same_v<decltype(metres{} * 2_q), id<"[2..18] 2 [m]">>);            // the even ones
     // A sum in two units takes their common unit.
     static_assert(std::is_same_v<decltype(id<"[0..1] [km]">{} + id<"[0..1] [m]">{}), id<"[0..1001] [m]">>);
     static_assert(std::is_same_v<decltype(id<"[0..1] [km]">{}.in(si::metre)), id<"[0..1000] 1000 [m]">>);
@@ -122,9 +122,9 @@ TEST(IdQuantityTest, members_and_hooks_take_the_type_itself) {
     m.on_wrap([&](metres& q, auto) {
         carries += 1;
         static_assert(std::is_same_v<decltype(q), metres&>);
-    }) += just<3> * si::metre;
+    }) += 3_q * si::metre;
     EXPECT_EQ(carries, 1);
-    EXPECT_EQ(m, just<1> * si::metre);
+    EXPECT_EQ(m, 1_q * si::metre);
     const auto old{m++};
     static_assert(std::is_same_v<std::remove_const_t<decltype(old)>, metres>);
 }
@@ -166,34 +166,34 @@ TEST(IdQuantityTest, points_are_ids) {
     static_assert(std::is_same_v<id<point_key<si::degree_Celsius, si::ice_point.value, id<key{grid{-40, 125}}>>>, C>);
     static_assert(std::is_same_v<decltype(point<si::degree_Celsius>(id<key{grid{-40, 125}}>{20})), C>);
     static_assert(std::is_same_v<C::quantity_type, id<"[-40..125] [deg_C]">>);
-    static_assert(text_of<decltype(si::absolute_zero + just<300> * si::kelvin)> == "[300] [K] @absolute_zero");
+    static_assert(text_of<decltype(si::absolute_zero + 300_q * si::kelvin)> == "[300] [K] @absolute_zero");
     static_assert(text_of<decltype(point<si::metre>(id<key{grid{0, 9}}>{3}))> == "[0..9] [m] @0");
     // Shifts, differences and comparisons keep their types as texts.
     constexpr C t{20, si::degree_Celsius};
     static_assert(text_of<decltype(t - t)> == "[-165..165] [deg_C]");
-    static_assert(text_of<decltype(t + just<5> * si::kelvin)> == "[-35..130] [deg_C] @ice_point");
-    static_assert(t.point_in(si::kelvin) == si::absolute_zero + just<29315, 100> * si::kelvin);
+    static_assert(text_of<decltype(t + 5_q * si::kelvin)> == "[-35..130] [deg_C] @ice_point");
+    static_assert(t.point_in(si::kelvin) == si::absolute_zero + 293.15_q * si::kelvin);
     EXPECT_EQ(to_string(t), "20 ℃");
 }
 
-// "21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins: a point with its type.
+// "21.5 [-40..125] 1/10 [deg_C] @ice_point"_q: a point with its type.
 TEST(IdQuantityTest, a_literal_with_an_origin) {
-    constexpr auto p{"21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins};
+    constexpr auto p{"21.5 [-40..125] 1/10 [deg_C] @ice_point"_q};
     static_assert(std::is_same_v<std::remove_const_t<decltype(p)>, id<"[-40..125] 1/10 [deg_C] @ice_point">>);
-    static_assert(p == point<si::degree_Celsius>(just<43, 2>));
+    static_assert(p == point<si::degree_Celsius>(21.5_q));
     EXPECT_EQ(to_string(p), "21.5 ℃");
 }
 
-// "42 [1..100) [km/h]"_ins: a value with its quantity type, the number in the type's unit.
+// "42 [1..100) [km/h]"_q: a value with its quantity type, the number in the type's unit.
 TEST(IdQuantityTest, a_literal_with_a_unit) {
-    constexpr auto v{"42 [1..100) [km/h]"_ins};
+    constexpr auto v{"42 [1..100) [km/h]"_q};
     static_assert(std::is_same_v<std::remove_const_t<decltype(v)>, id<"[1..99] [km/h]">>);
     static_assert(v == id<quantity_key<km / si::hour, id<key{grid{1, 99}}>>>{42, km / si::hour});
-    constexpr auto p{"42 [km/h]"_ins}; // a unit alone: the point
+    constexpr auto p{"42 [km/h]"_q}; // a unit alone: the point
     static_assert(std::is_same_v<std::remove_const_t<decltype(p)>, id<"[42] [km/h]">>);
-    static_assert("200 [0..99] [m] clamp"_ins == just<99> * si::metre);
-    static_assert("0.5 [0..1] 1/4 [s]"_ins == just<1, 2> * si::second);
-    static_assert("7 [0..4095] [cts]"_ins == just<7> * cts);
-    EXPECT_EQ(to_string("42 [1..100) [km/h]"_ins), "42 km/h");
+    static_assert("200 [0..99] [m] clamp"_q == 99_q * si::metre);
+    static_assert("0.5 [0..1] 1/4 [s]"_q == 0.5_q * si::second);
+    static_assert("7 [0..4095] [cts]"_q == 7_q * cts);
+    EXPECT_EQ(to_string("42 [1..100) [km/h]"_q), "42 km/h");
 }
 } // namespace id_quantity_tests

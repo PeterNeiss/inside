@@ -113,7 +113,7 @@ namespace ins
   {
     template <reference R>
     inline constexpr auto one_of =
-      quantity_access::make<id<quantity_key<R, std::remove_cvref_t<decltype(just<1>)>>>>(just<1>);
+      quantity_access::make<id<quantity_key<R, std::remove_cvref_t<decltype(1_q)>>>>(1_q);
   } // namespace detail
 
   namespace constants

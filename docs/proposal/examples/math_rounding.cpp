@@ -22,7 +22,7 @@ int main() {
     auto           at_run_time     = math::exp(x_t{1.5});
     // at_compile_time == at_run_time, on every platform, with or without an FPU
     // [/listing]
-    if (lo != 1.4140625_ins || hi != 1.4150390625_ins || at_compile_time != at_run_time || e > at_run_time)
+    if (lo != 1.4140625_q || hi != 1.4150390625_q || at_compile_time != at_run_time || e > at_run_time)
         return 1;
     return 0;
 }
