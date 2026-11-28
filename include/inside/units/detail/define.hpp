@@ -18,7 +18,7 @@
 //   inline constexpr auto fathom  = unit<"ftm", 1.8288_ins * si::metre>;
 //   inline constexpr auto depth   = kind<"depth", isq::length>;
 //   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin,
-//                                        {.ascii = "`R", .origin = si::absolute_zero}>;
+//                                        {.ascii = "deg_R", .origin = si::absolute_zero}>;
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
 //   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
 //   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>;

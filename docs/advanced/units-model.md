@@ -194,7 +194,7 @@ siblings (activity and frequency are both 1/s), and `.recipe` for a child with
 a recipe of its own (velocity: displacement / duration, under speed).
 
 ```cpp
-inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "`R", .origin = si::absolute_zero}>;
+inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "deg_R", .origin = si::absolute_zero}>;
 inline constexpr auto rpm     = unit<"rpm", one / si::minute, {.kind = isq::frequency}>;
 inline constexpr auto turn    = unit<"tr", just<2> * pi * si::radian, {.space_before = false}>;
 inline constexpr auto level   = kind<"level", isq::dimensionless, {.distinct = true}>;   // dB: no plain number

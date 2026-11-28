@@ -26498,10 +26498,15 @@ namespace ins
     {
       return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
     }
-    // Whether a quantity's text puts a space before the unit (not before °).
+    // Whether a quantity's text puts a space before the unit (not before °), and in ASCII (before deg, a word of
+    // its own: 90 deg, 30 arcmin).
     consteval bool space_before(const unit_value& u)
     {
       return !(is_single_named(u) && !u.Atoms[0].U->SpaceBefore);
+    }
+    consteval bool space_before_ascii(const unit_value& u)
+    {
+      return space_before(u) || u.Atoms[0].U->ascii() != u.Atoms[0].U->Utf8;
     }
   } // namespace detail
 
@@ -29848,7 +29853,7 @@ public:
 // ======================================================================
 //  inside/units/detail/point.hpp
 // ======================================================================
-// Points, id<"[-40..125] [`C] @ice_point">: quantities counted from an origin, their exact shifts and comparisons.
+// Points, id<"[-40..125] [deg_C] @ice_point">: quantities counted from an origin, their exact shifts and comparisons.
 // Internal: include <inside/units.hpp> or <inside/units/core.hpp>.
 
 
@@ -29859,7 +29864,7 @@ namespace ins
   // A point: id<K> for a key with an origin, a quantity of the key's reference counted from it
   // (@ice_point; @0, origin_def::none, the implicit zero of the dimension).
   // A change of origin shifts the grid by the exact offset, a change of unit rescales it.
-  //   auto t = point<si::degree_Celsius>(id<"[-40..60]">{20});   // 20 ℃, id<"[-40..60] [`C] @ice_point">
+  //   auto t = point<si::degree_Celsius>(id<"[-40..60]">{20});   // 20 ℃, id<"[-40..60] [deg_C] @ice_point">
   //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
   //   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
   template <key K>
@@ -29879,7 +29884,7 @@ namespace ins
   concept point_like = detail::is_quantity_point_v<std::remove_cvref_t<T>>;
 
   // The key of a point of a quantity on R from origin O, its number Rep, for a type computed from them:
-  // id<point_key<si::degree_Celsius, si::ice_point, id<"[-40..125]">>> is id<"[-40..125] [`C] @ice_point">.
+  // id<point_key<si::degree_Celsius, si::ice_point, id<"[-40..125]">>> is id<"[-40..125] [deg_C] @ice_point">.
   template <reference R, origin_ref O, insidable Rep>
   inline constexpr key point_key = detail::quantity_key_of<R, Rep, O, true>();
 
@@ -30067,7 +30072,7 @@ namespace ins
     }
   };
 
-  // A point with its type: "21.5 [-40..125] 1/10 [`C] @ice_point"_ins is 21.5 ℃, the number in the type's unit
+  // A point with its type: "21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins is 21.5 ℃, the number in the type's unit
   // counted from its origin, stored while compiling as P{just<v>, unit} stores it.
   inline namespace literals
   {
@@ -30206,7 +30211,7 @@ namespace ins
 //   inline constexpr auto fathom  = unit<"ftm", 1.8288_ins * si::metre>;
 //   inline constexpr auto depth   = kind<"depth", isq::length>;
 //   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin,
-//                                        {.ascii = "`R", .origin = si::absolute_zero}>;
+//                                        {.ascii = "deg_R", .origin = si::absolute_zero}>;
 //   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
 //   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
 //   inline constexpr auto ice     = origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>;
@@ -30699,7 +30704,7 @@ namespace ins
     inline constexpr auto     tesla = defined_by<tesla_def>;
     inline constexpr unit_def henry_def{"H", si::weber / si::ampere};
     inline constexpr auto     henry = defined_by<henry_def>;
-    inline constexpr unit_def degree_Celsius_def{"℃", si::kelvin, {.ascii = "`C", .origin = si::ice_point}};
+    inline constexpr unit_def degree_Celsius_def{"℃", si::kelvin, {.ascii = "deg_C", .origin = si::ice_point}};
     inline constexpr auto     degree_Celsius = defined_by<degree_Celsius_def>;
     inline constexpr unit_def lumen_def{"lm", si::candela * si::steradian, {.kind = isq::luminous_flux}};
     inline constexpr auto     lumen = defined_by<lumen_def>;
@@ -30727,10 +30732,10 @@ namespace ins
                                          {.ascii = "deg", .space_before = false}};
     inline constexpr auto     degree = defined_by<degree_def>;
     inline constexpr unit_def arcminute_def{"′", detail::mag<1_g / 60_g> * si::degree,
-                                            {.ascii = "'", .space_before = false}};
+                                            {.ascii = "arcmin", .space_before = false}};
     inline constexpr auto     arcminute = defined_by<arcminute_def>;
     inline constexpr unit_def arcsecond_def{"″", detail::mag<1_g / 60_g> * si::arcminute,
-                                            {.ascii = "''", .space_before = false}};
+                                            {.ascii = "arcsec", .space_before = false}};
     inline constexpr auto     arcsecond = defined_by<arcsecond_def>;
     inline constexpr unit_def are_def{"a", square(si::deca(si::metre))};
     inline constexpr auto     are = defined_by<are_def>;
@@ -30807,7 +30812,7 @@ namespace ins
                                                              si::absolute_zero + just<45967, 180> * si::kelvin};
     inline constexpr auto       zeroth_degree_Fahrenheit = defined_by<zeroth_degree_Fahrenheit_def>;
     inline constexpr unit_def degree_Fahrenheit_def{
-      "℉", detail::mag<5_g / 9_g> * si::kelvin, {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit}};
+      "℉", detail::mag<5_g / 9_g> * si::kelvin, {.ascii = "deg_F", .origin = international::zeroth_degree_Fahrenheit}};
     inline constexpr auto     degree_Fahrenheit = defined_by<degree_Fahrenheit_def>;
   } // namespace international
 
@@ -32777,7 +32782,9 @@ namespace ins
     const std::string sym{unit_symbol(R.unit(), enc)};
     if (sym.empty())
       return s;
-    return s + (detail::space_before(R.unit()) ? " " : "") + sym;
+    const bool space{enc == text_encoding::ascii ? detail::space_before_ascii(R.unit())
+                                                 : detail::space_before(R.unit())};
+    return s + (space ? " " : "") + sym;
   }
 
   template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>

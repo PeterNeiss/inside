@@ -26,7 +26,7 @@ alone. A quantity in metres prints in 232 characters instead of 404.
 - Every type is `id<key K>`: `inside<G, P>`, `quantity<R, Rep>`,
   `quantity_point<R, O, Rep>` and `basic_quantity` are gone. Write the text
   (`id<"[0..100] clamp">`, `id<"[0..300] [km/h]">`,
-  `id<"[-40..125] [`C] @ice_point">`), or for a type computed from values
+  `id<"[-40..125] [deg_C] @ice_point">`), or for a type computed from values
   `id<key{G, P}>`, `id<quantity_key<R, Rep>>` and `id<point_key<R, O, Rep>>`.
   `tools/convert_ids.py` rewrites a code base: every spelling it can read as
   text, as written, the rest in the computed form; with `--check` it writes
@@ -41,7 +41,7 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   the policy as before. Hooks (`on_wrap`, `on_clamp`, `on_error`) get the
   quantity as its own type.
 - A string `_ins` literal with an origin is a point:
-  `"21.5 [-40..125] 1/10 [`C] @ice_point"_ins`.
+  `"21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins`.
 - A quantity's unit needs a text that reads back to it where the type is
   formed, or the quantity does not compile: give a unit of your own a symbol
   the catalog does not read, and a prefixed unit of your own a tag
@@ -52,6 +52,11 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   in ASCII by that one: the speed of light is `c_0`, Boltzmann's constant
   `k_B`, Planck's `h_P`, Faraday's `F_Faraday` (`text_encoding::ascii`; the
   symbols print as before).
+- ℃ and ℉ are `deg_C` and `deg_F` in ASCII (were `` `C `` and `` `F ``), the
+  arcminute and the arcsecond `arcmin` and `arcsec` (were `'` and `''`, which
+  a number's digit separator kept from reading back), so a type spells
+  `id<"[-40..125] [deg_C] @ice_point">`; `℃`, `′` and `″` still read. In ASCII
+  output a symbol of its own takes a space: `90 deg`, `30 arcmin`.
 - Two units equal in every respect with one symbol (a unit declared twice,
   as a named definition and as a one-liner) are one quantity type: a type
   spells its unit by its symbol.
@@ -84,7 +89,7 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   | `id<"[0..1] <1000>">` | 136 → 103 → 111 | 148 → 133 → 34 |
   | `id<"[0..100] [m]">` | 373 → 206 → 107 | 404 → 232 → 33 |
   | `id<"[0..100] [km/h]">` | 377 → 350 → 124 | 429 → 448 → 36 |
-  | `id<"[-50..50] [`C] @ice_point">` | 469 → 260 → 178 | 508 → 276 → 46 |
+  | `id<"[-50..50] [deg_C] @ice_point">` | 469 → 260 → 178 | 508 → 276 → 46 |
 
   A mangled name holds about 5 characters per character of the text, so a
   long text (flag words) mangles longer than the grid numbers did. The 12

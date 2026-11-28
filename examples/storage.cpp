@@ -31,8 +31,8 @@ int main()
   using half_steps     = id<"[-5..5] 0.5">;      // uint8_t index: a fractional notch is offset-encoded
   // A unit adds no byte: a quantity, or a point, stores its number.
   using percentage     = id<"[0..100] [%]">;                    // uint8_t, raw == value
-  using celsius        = id<"[-40..85] [`C] @ice_point">; // int8_t, raw == value (signed)
-  using altitude       = id<"[-500..9000] [m]">;              // int16_t
+  using celsius        = id<"[-40..85] [deg_C] @ice_point">;    // int8_t, raw == value (signed)
+  using altitude       = id<"[-500..9000] [m]">;                // int16_t
   static_assert(sizeof(half_steps) == 1 && sizeof(percentage) == 1 && sizeof(celsius) == 1
                 && sizeof(altitude) == 2);
   const celsius cold{-12, deg_C};

@@ -102,7 +102,7 @@ to a difference, a point and a difference add to a point, and two points do
 not add. A point type takes a number in its own unit, as a quantity does:
 
 ```cpp
-using celsius = id<"[-40..60] 0.5 [`C] @ice_point">;
+using celsius = id<"[-40..60] 0.5 [deg_C] @ice_point">;
 std::vector<celsius> temps = {{21.5, si::degree_Celsius}, {-5, si::degree_Celsius}};
 ```
 

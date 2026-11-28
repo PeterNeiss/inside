@@ -30,7 +30,7 @@ using radians  = id<"[0..7] 1/1000 [rad] round_half_away">;
 using degrees  = id<"[0..360] [deg]">;
 using kelvins  = id<"[0..100] 1/10 [K]">;
 using rounding = id<"[0..100] 1/100 [m] round_half_away">;
-using celsius  = id<"[-300..300] <180> [`C] @ice_point">;
+using celsius  = id<"[-300..300] <180> [deg_C] @ice_point">;
 
 inline constexpr auto level_kind = kind<"level", isq::dimensionless, {.distinct = true}>;
 inline constexpr auto dB         = unit<"dB", one, {.kind = level_kind}>;
@@ -72,7 +72,7 @@ TEST(UnitsTextTest, to_string_reads_back) {
         19.99_ins, units_text_other::USD / units_text_other::item});
     check(id<"[0..1000] [us]">{250, si::micro(si::second)});
     check(celsius{21.5, si::degree_Celsius});
-    check(id<"[0..600] [`F] @zeroth_degree_Fahrenheit">{350, international::degree_Fahrenheit});
+    check(id<"[0..600] [deg_F] @zeroth_degree_Fahrenheit">{350, international::degree_Fahrenheit});
     // The common unit of a sum: a scaled unit, [1/381 ft].
     check(international::foot + si::metre);
     // Unit one prints no unit, and reads a bare number.
@@ -144,10 +144,22 @@ TEST(UnitsTextTest, the_number_type_stores) {
 
 TEST(UnitsTextTest, points_shift_exactly) {
     EXPECT_EQ(to_string(*parse<celsius>("21.5 ℃")), "21.5 ℃");
-    EXPECT_EQ(to_string(*parse<celsius>("21.5 `C")), "21.5 ℃");
+    EXPECT_EQ(to_string(*parse<celsius>("21.5 deg_C")), "21.5 ℃");
     EXPECT_EQ(to_string(*parse<celsius>("350 ℉")), "530/3 ℃");
     EXPECT_EQ(to_string(*parse<celsius>("300 K")), "26.85 ℃");
     EXPECT_EQ(to_string(*parse<celsius>("300000 mK")), "26.85 ℃");
+}
+
+// The arcminute and the arcsecond have ASCII names of their own (' is a digit separator), and a word takes a space.
+TEST(UnitsTextTest, arcminutes_read_back) {
+    using arcminutes = id<"[0..60] [arcmin]">;
+    const arcminutes m{30, si::arcminute};
+    EXPECT_EQ(to_string(m), "30′");
+    EXPECT_EQ(to_string(m, text_encoding::ascii), "30 arcmin");
+    EXPECT_EQ(to_string(*parse<arcminutes>("30 arcmin")), "30′");
+    EXPECT_EQ(to_string(*parse<arcminutes>("30′")), "30′");
+    EXPECT_EQ(to_string(id<"[0..360] [deg]">{90, si::degree}, text_encoding::ascii), "90 deg");
+    EXPECT_EQ(to_string(*parse<id<"[0..60] [arcsec]">>("15 arcsec")), "15″");
 }
 
 TEST(UnitsTextTest, a_stream_reads_into_an_expected) {

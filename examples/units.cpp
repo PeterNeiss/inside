@@ -41,7 +41,7 @@ int main()
     return 1;
 
   // 2. 20 ℃ as a point: 293.15 K counted from absolute zero, and 68 ℉, on shifted grids.
-  using celsius = id<"[-50..50] 1/10 [`C] @ice_point round_half_away">;
+  using celsius = id<"[-50..50] 1/10 [deg_C] @ice_point round_half_away">;
   const celsius room{20, si::degree_Celsius}; // to 0.1 ℃
   const auto k   {room.point_for(si::absolute_zero).in(si::kelvin)};
   const auto f   {room.point_for(international::zeroth_degree_Fahrenheit).in(international::degree_Fahrenheit)};
@@ -78,7 +78,7 @@ int main()
   // 350 ℉ into a ℃ point. A bare number, another dimension or a unit nothing defines is an error, not a guess.
   using read_minutes = id<"[0..600] 1/10 [min]">;
   using read_speed   = id<"[0..100] 1/100 [m/s]">;
-  using oven         = id<"[0..300] <9> [`C] @ice_point">;
+  using oven         = id<"[0..300] <9> [deg_C] @ice_point">;
   const auto hours  {parse<read_minutes>("1.5 h")};
   const auto seconds{parse<read_minutes>("90 s")};
   const auto pace   {parse<read_speed>("36 km/h")};

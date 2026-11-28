@@ -46,12 +46,12 @@ after `@`
 ins::id<ins::key{"[0..100] [km/h]"}>
 ins::id<ins::key{"[0..100] [m]{height}"}>
 ins::id<ins::key{"[1..81] [m*s]{any duration*length}"}>
-ins::id<ins::key{"[-40..125] [`C] @ice_point"}>
+ins::id<ins::key{"[-40..125] [deg_C] @ice_point"}>
 ```
 
 | Text | Means |
 |---|---|
-| `[km/h]` | the unit: symbols with powers, `*` and `/`, in ASCII (`us` for µs, `` `C `` for ℃, `ohm` for Ω); a scaled unit in brackets (`[[1/381*ft]]`); `[1]` the unit one |
+| `[km/h]` | the unit: symbols with powers, `*` and `/`, in ASCII (`us` for µs, `deg_C` for ℃, `ohm` for Ω); a scaled unit in brackets (`[[1/381*ft]]`); `[1]` the unit one |
 | `{height}` | exactly that kind (`isq::height[si::metre]`); no braces for the unit's own kind, any of it |
 | `{any duration*length}` | the kinds a product or quotient is made of, `any` when any kind of each will do |
 | `{none}`, `{any}` | no kind; any kind of the dimension |

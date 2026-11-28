@@ -65,7 +65,7 @@ number; here the readings are ℃ points:
 
 ```cpp
 constexpr auto deg_C = si::degree_Celsius;
-using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;
+using celsius = id<"[-40..60] 0.5 [deg_C] @ice_point round_half_away">;
 std::vector<celsius> temps = {{21.5, deg_C}, {-5.0, deg_C}, {37.0, deg_C}, {0.0, deg_C}, {15.5, deg_C}};
 std::ranges::sort(temps);
 auto hot      = std::ranges::count_if(temps, [](celsius c) { return c > celsius{30, deg_C}; });

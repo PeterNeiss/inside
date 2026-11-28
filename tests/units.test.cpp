@@ -317,7 +317,7 @@ TEST(UnitsTest, points_shift_their_grid_between_origins) {
 }
 
 TEST(UnitsTest, points_from_a_number_and_their_unit) {
-    using celsius = id<"[-40..60] 1/2 [`C] @ice_point round_half_away">;
+    using celsius = id<"[-40..60] 1/2 [deg_C] @ice_point round_half_away">;
     const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding
     EXPECT_EQ(to_string(room), "21.5 ℃");
     EXPECT_TRUE(room == point<si::degree_Celsius>(just<43, 2>));
@@ -501,7 +501,7 @@ TEST(UnitsApiTest, quantities_compare_only_with_compatible_quantities) {
     using kilometres = id<"[0..10] [km]">;
     using percents   = id<"[0..100] [%]">;
     using ones       = id<"[0..10] [1]">;
-    using celsius_q  = id<"[0..10] [`C]">;
+    using celsius_q  = id<"[0..10] [deg_C]">;
     using celsius_pt = decltype(point<si::degree_Celsius>(plain{}));
     using kelvin_pt  = decltype(point<si::kelvin>(id<"[0..400]">{}));
     // Only a plain inside compares with a standard integer (a double is rejected by design).
@@ -616,11 +616,11 @@ TEST(UnitsApiTest, points_from_zero_and_their_constraints) {
 
 // (A quantity's type spells its unit by symbol, found among the tags at namespace scope.)
 namespace {
-inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "`R", .origin = si::absolute_zero}>;
+inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "deg_R", .origin = si::absolute_zero}>;
 } // namespace
 
 TEST(UnitsApiTest, unit_options) {
-    EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "`R");
+    EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "deg_R");
     EXPECT_EQ(to_string(point<rankine>(just<9>).point_in(si::kelvin)), "5 K"); // counted from absolute zero
     EXPECT_EQ(to_string(just<1> * turn_unit), "1tr");
     static_assert(kind_of(rpm_unit.value)->Name == "frequency");

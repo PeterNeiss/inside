@@ -313,7 +313,7 @@ namespace ins
     inline constexpr auto     tesla = defined_by<tesla_def>;
     inline constexpr unit_def henry_def{"H", si::weber / si::ampere};
     inline constexpr auto     henry = defined_by<henry_def>;
-    inline constexpr unit_def degree_Celsius_def{"℃", si::kelvin, {.ascii = "`C", .origin = si::ice_point}};
+    inline constexpr unit_def degree_Celsius_def{"℃", si::kelvin, {.ascii = "deg_C", .origin = si::ice_point}};
     inline constexpr auto     degree_Celsius = defined_by<degree_Celsius_def>;
     inline constexpr unit_def lumen_def{"lm", si::candela * si::steradian, {.kind = isq::luminous_flux}};
     inline constexpr auto     lumen = defined_by<lumen_def>;
@@ -341,10 +341,10 @@ namespace ins
                                          {.ascii = "deg", .space_before = false}};
     inline constexpr auto     degree = defined_by<degree_def>;
     inline constexpr unit_def arcminute_def{"′", detail::mag<1_g / 60_g> * si::degree,
-                                            {.ascii = "'", .space_before = false}};
+                                            {.ascii = "arcmin", .space_before = false}};
     inline constexpr auto     arcminute = defined_by<arcminute_def>;
     inline constexpr unit_def arcsecond_def{"″", detail::mag<1_g / 60_g> * si::arcminute,
-                                            {.ascii = "''", .space_before = false}};
+                                            {.ascii = "arcsec", .space_before = false}};
     inline constexpr auto     arcsecond = defined_by<arcsecond_def>;
     inline constexpr unit_def are_def{"a", square(si::deca(si::metre))};
     inline constexpr auto     are = defined_by<are_def>;
@@ -421,7 +421,7 @@ namespace ins
                                                              si::absolute_zero + just<45967, 180> * si::kelvin};
     inline constexpr auto       zeroth_degree_Fahrenheit = defined_by<zeroth_degree_Fahrenheit_def>;
     inline constexpr unit_def degree_Fahrenheit_def{
-      "℉", detail::mag<5_g / 9_g> * si::kelvin, {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit}};
+      "℉", detail::mag<5_g / 9_g> * si::kelvin, {.ascii = "deg_F", .origin = international::zeroth_degree_Fahrenheit}};
     inline constexpr auto     degree_Fahrenheit = defined_by<degree_Fahrenheit_def>;
   } // namespace international
 

@@ -1219,10 +1219,15 @@ namespace ins
     {
       return u.size() == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one();
     }
-    // Whether a quantity's text puts a space before the unit (not before °).
+    // Whether a quantity's text puts a space before the unit (not before °), and in ASCII (before deg, a word of
+    // its own: 90 deg, 30 arcmin).
     consteval bool space_before(const unit_value& u)
     {
       return !(is_single_named(u) && !u.Atoms[0].U->SpaceBefore);
+    }
+    consteval bool space_before_ascii(const unit_value& u)
+    {
+      return space_before(u) || u.Atoms[0].U->ascii() != u.Atoms[0].U->Utf8;
     }
   } // namespace detail
 

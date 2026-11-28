@@ -215,7 +215,9 @@ namespace ins
     const std::string sym{unit_symbol(R.unit(), enc)};
     if (sym.empty())
       return s;
-    return s + (detail::space_before(R.unit()) ? " " : "") + sym;
+    const bool space{enc == text_encoding::ascii ? detail::space_before_ascii(R.unit())
+                                                 : detail::space_before(R.unit())};
+    return s + (space ? " " : "") + sym;
   }
 
   template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>

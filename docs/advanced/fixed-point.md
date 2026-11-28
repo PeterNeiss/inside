@@ -96,7 +96,7 @@ A unit puts a meaning on the same raw at no cost (see [Units](../guide/units.md)
 #include <inside/units.hpp>
 using namespace ins;
 
-using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;   // a 0.5 ℃ step, a uint8_t
+using celsius = id<"[-40..60] 0.5 [deg_C] @ice_point round_half_away">;   // a 0.5 ℃ step, a uint8_t
 celsius room{21.4, si::degree_Celsius};                      // 21.5 ℃: rounded onto the step
 celsius body{37, si::degree_Celsius};
 auto    diff = body - room;                                  // 15.5 ℃, a temperature difference

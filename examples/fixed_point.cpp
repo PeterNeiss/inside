@@ -52,7 +52,7 @@ int main()
 
   // A 0.5 ℃ grid with its unit: a reading is a point on the ℃ scale,
   // and body − room is a difference, 15.5 ℃.
-  using celsius = id<"[-40..60] 0.5 [`C] @ice_point round_half_away">;
+  using celsius = id<"[-40..60] 0.5 [deg_C] @ice_point round_half_away">;
   const celsius room{21.4, si::degree_Celsius}; // stored by the type's rounding: 21.5
   const celsius body{37, si::degree_Celsius};
   std::cout << "room " << room << ", body - room " << body - room << " = " << (body - room).in(si::kelvin) << "\n";

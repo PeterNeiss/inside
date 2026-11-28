@@ -115,13 +115,13 @@ A point, a quantity counted from an origin, names its origin after the unit,
 `@0` for the implicit zero of the dimension:
 
 ```cpp
-using celsius = ins::id<"[-40..125] 1/10 [`C] @ice_point">;   // id<point_key<si::degree_Celsius, si::ice_point, …>>
+using celsius = ins::id<"[-40..125] 1/10 [deg_C] @ice_point">;   // id<point_key<si::degree_Celsius, si::ice_point, …>>
 static_assert(std::is_same_v<decltype(ins::point<ins::si::metre>(ins::id<"[0..9]">{3})),
                              ins::id<"[0..9] [m] @0">>);
-constexpr auto t{"21.5 [-40..125] 1/10 [`C] @ice_point"_ins};  // 21.5 ℃
+constexpr auto t{"21.5 [-40..125] 1/10 [deg_C] @ice_point"_ins};  // 21.5 ℃
 ```
 
-Without `@`, the type is a quantity: `id<"[-165..165] [`C]">` is a difference
+Without `@`, the type is a quantity: `id<"[-165..165] [deg_C]">` is a difference
 of temperatures. Origin names are identifiers, as kind names are.
 
 ### Which unit a symbol names
