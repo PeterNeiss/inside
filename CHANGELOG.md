@@ -149,6 +149,12 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   inside expressions unchanged, `inside.hpp` +0.1 %, `arithmetic.test.cpp`
   +0.4 %. Run time: the instruction counts of the perf workload are
   unchanged.
+- `_q` and `std::cw<V>` in place of `_ins` and `just` (GCC 16, `perf stat`
+  instructions): `inside.hpp` and `units.hpp` +0.2 %, 200 inside expressions
+  +1.3 % (half the literals' parse, half the operators' test for a wrapper),
+  200 quantity expressions +0.8 %, `units.test.cpp` +0.8 %,
+  `arithmetic.test.cpp` +2.8 %. The 12 injected errors of `examples/` print
+  0.3 % more. Run time: unchanged.
 
 ### Fixed
 
