@@ -32,7 +32,7 @@ and the text above are one type.
 | `[3]` | a point: one value, held in the type (`[3..3]` is a grid of step 1 with one value) |
 | `0x1p70`, `0x3fffffffffffffffff` | a number past 64 bits, in hexadecimal, as m·2^e where shorter |
 | `clamp`, `wrap`, `round_half_away`, `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`, `unsafe` | the policy, joined by `\|`; no word is `checked`, the default |
-| `cursor` | a `cursor<T, Step>` |
+| `cursor` | the number of a `cursor<T, Step>` (the library's mark: a text of your own cannot spell it) |
 | `bits_N` | policy bits no flag names: a type the library rejects |
 
 ## Decoding a quantity
@@ -93,7 +93,7 @@ reference{ref_form{ref_parts{(& isq::velocity_def),
 
 A unit or kind of your own declared in one line is spelled by its content
 instead: `(& definition<unit_def, symbol_text{"ftm", 3}, …>::value)`, with
-what it is defined by, and `(& kind_holder<symbol_text{"depth", 5}, …>::value)`.
+what it is defined by, and `(& definition<kind_def, symbol_text{"depth", 5}, …>::value)`.
 Declare it as a named definition, as the catalog does, and it prints by name
 ([units of your own](../guide/units.md#units-of-your-own)):
 

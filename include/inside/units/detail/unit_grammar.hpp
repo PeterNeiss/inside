@@ -126,6 +126,19 @@ namespace ins::detail
     {"µ", -6},  {"μ", -6},  {"u", -6},  {"m", -3},  {"c", -2},  {"d", -1},  {"h", 2},   {"k", 3},   {"M", 6},
     {"G", 9},   {"T", 12},  {"P", 15},  {"E", 18},  {"Z", 21},  {"Y", 24},  {"R", 27},  {"Q", 30}};
 
+  // The symbol of the prefix 10^p (the first of the table: µ in UTF-8, u in ASCII); empty for none, and for p = 0.
+  constexpr std::string_view prefix_text(int p, bool ascii)
+  {
+    if (p != 0)
+      for (const text_prefix& x : text_prefixes)
+        if (x.Pow == p && (!ascii || x.Sym != "µ" && x.Sym != "μ"))
+          return x.Sym;
+    return {};
+  }
+
+  // The superscript digits and the superscript minus (⁻).
+  inline constexpr std::string_view text_superscripts[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "⁻"};
+
   // Whether w is the symbol of the unit u with the prefix p: the prefix's symbol (µ, μ or u for micro) and the
   // unit's ASCII symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its
   // own is only printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
@@ -159,11 +172,10 @@ namespace ins::detail
   // A superscript at i: its digit, 10 for ⁻, -1 for none; len its bytes.
   constexpr int superscript_at(std::string_view t, std::size_t i, std::size_t& len)
   {
-    constexpr std::string_view sup[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "⁻"};
     for (int d = 0; d < 11; ++d)
-      if (t.substr(i, sup[d].size()) == sup[d])
+      if (t.substr(i, text_superscripts[d].size()) == text_superscripts[d])
       {
-        len = sup[d].size();
+        len = text_superscripts[d].size();
         return d;
       }
     return -1;

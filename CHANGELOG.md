@@ -57,6 +57,10 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   your own unit tags. No prefix is read into a symbol any more (`"5 Mm"`,
   `"5 rd"` are unknown units unless a tag names them), and a symbol two of
   your own units share is unknown instead of read with a prefix.
+- A unit's symbol (and its ASCII one) holds no space, `*`, `/`, `^`, bracket
+  or parenthesis: the unit's definition says so (was: the quantity's type,
+  later). `cursor` is no word of a type's text of your own (it marks a
+  cursor's number, which `cursor<T, Step>` makes).
 - ℃ and ℉ are `deg_C` and `deg_F` in ASCII (were `` `C `` and `` `F ``), the
   arcminute and the arcsecond `arcmin` and `arcsec` (were `'` and `''`, which
   a number's digit separator kept from reading back), so a type spells

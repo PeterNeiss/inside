@@ -69,6 +69,16 @@ namespace ins
 
   namespace detail
   {
+    // B's grid under the flags F: the type a store under one-shot flags is checked against.
+    template <insidable B, policy_flag F>
+    using with_flags_t = id<key{grid_of<B>, F}>;
+    // B's policy without a cursor's mark: the policy its values and its results carry.
+    template <class B>
+    inline constexpr policy_flag value_policy = policy_of<B> & ~cursor_marker;
+  } // namespace detail
+
+  namespace detail
+  {
     // The policy of an arithmetic result (and of the common type): the one both operands share,
     // where a default-policy point (just<…>, 0_ins) is neutral, so (a + 0_ins) / 2_ins rounds as a / 2_ins does.
     // Different policies give the default. A cursor's marker never carries over.

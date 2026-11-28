@@ -21,13 +21,7 @@ using I                   = id<key{grid{0, 100}}>;
 
 // The text a type's key holds.
 template <class T>
-struct text_of_t;
-template <key K>
-struct text_of_t<id<K>> {
-    static constexpr std::string_view value = K.text();
-};
-template <class T>
-constexpr std::string_view text_of = text_of_t<T>::value;
+constexpr std::string_view text_of = detail::key_v<T>.text();
 
 TEST(IdQuantityTest, a_unit_with_a_text_names_the_type) {
     static_assert(std::is_same_v<id<quantity_key<si::metre, I>>, id<"[0..100] [m]">>);

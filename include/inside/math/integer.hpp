@@ -425,7 +425,7 @@ namespace ins::math
       return t;
     }();
 
-#define INSIDE_WHY_count(fn) "ins::math::" #fn ": the counts are insides on the integers from 0 (inside<{0, 20}>)"
+#define INSIDE_WHY_count(fn) "ins::math::" #fn ": the counts are insides on the integers from 0 (id<\"[0..20]\">)"
 #define INSIDE_WHY_too_large(fn)                                                                      \
   "ins::math::" #fn ": the result would pass 16384 bits (math::detail::max_count_bits) - narrow the " \
   "input grids"

@@ -95,20 +95,6 @@ namespace ins
     Offset   = detail::offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio;
   }
 
-  template <symbol_text Name, kind_options O, auto Parent>
-  struct kind_holder
-  {
-    static constexpr kind_def value{Name.view(), Parent, O};
-  };
-
-  // An origin is absolute (named by a kind or a dimension: the zero of that dimension)
-  // or lies at a point of another origin.
-  template <symbol_text Name, auto Def>
-  struct origin_holder
-  {
-    static constexpr origin_def value{Name.view(), Def};
-  };
-
   // unit<"sym", definition, options>: a unit of your own.
   // The definition is the quantity it equals (1.8288_ins * si::metre), another unit (si::joule / si::second),
   // or a kind, whose base unit it then is.
@@ -120,7 +106,7 @@ namespace ins
   // The parent is a kind (depth under length), a product of kinds (speed: length / duration)
   // or a dimension (a base quantity).
   template <symbol_text Name, auto Parent, kind_options O = {}>
-  inline constexpr auto kind = detail::kind_tag<kind_holder<Name, O, Parent>::value>;
+  inline constexpr auto kind = detail::kind_tag<definition<kind_def, Name, Parent, O>::value>;
 
   // base_dimension<"name">: a dimension of your own, which mixes with no other.
   template <symbol_text Name>
@@ -135,7 +121,7 @@ namespace ins
   // An absolute origin is named by a kind or a dimension; any other lies at a point of one:
   // origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>.
   template <symbol_text Name, auto Def>
-  inline constexpr auto origin = detail::origin_tag<origin_holder<Name, Def>::value>;
+  inline constexpr auto origin = detail::origin_tag<definition<origin_def, Name, Def>::value>;
 
   namespace detail
   {

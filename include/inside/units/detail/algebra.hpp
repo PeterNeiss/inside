@@ -53,6 +53,25 @@ namespace ins
 
   namespace detail
   {
+    // A name of a kind or an origin: letters, digits and _ (a quantity's type spells it: [m]{height}, @ice_point).
+    constexpr bool identifier_name(std::string_view s)
+    {
+      for (char c : s)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
+          return false;
+      return !s.empty();
+    }
+    // A unit's symbol (and its ASCII one), as a quantity's type spells it: no space, '*', '/', '^', bracket or
+    // parenthesis ([km/h]).
+    constexpr std::string_view unit_symbol_of(std::string_view s)
+    {
+      for (char c : s)
+        if (c == ' ' || c == '*' || c == '/' || c == '^' || c == '[' || c == ']' || c == '(' || c == ')')
+          constexpr_error<"units: a unit's symbol holds no space, '*', '/', '^', bracket or parenthesis (a "
+                          "quantity's type spells it, [km/h])">();
+      return s;
+    }
+
     consteval basis_rule geometric_rule(int square)
     {
       if (square != 1 && square != -1 && square != 0)
@@ -598,10 +617,9 @@ namespace ins
     {
       if (name.empty())
         ins::detail::constexpr_error<"units: a kind needs a name">();
-      for (char c : name)
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
-          ins::detail::constexpr_error<"units: a kind's name is letters, digits and _ (a quantity's type spells it, "
-                                       "[m]{height})">();
+      if (!detail::identifier_name(name))
+        ins::detail::constexpr_error<"units: a kind's name is letters, digits and _ (a quantity's type spells it, "
+                                     "[m]{height})">();
       return name;
     }
   };
@@ -820,10 +838,9 @@ namespace ins
     {
       if (name.empty())
         ins::detail::constexpr_error<"units: an origin needs a name">();
-      for (char c : name)
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
-          ins::detail::constexpr_error<"units: an origin's name is letters, digits and _ (a point's type spells it, "
-                                       "@ice_point)">();
+      if (!detail::identifier_name(name))
+        ins::detail::constexpr_error<"units: an origin's name is letters, digits and _ (a point's type spells it, "
+                                     "@ice_point)">();
       return name;
     }
   };
@@ -966,7 +983,11 @@ namespace ins
       : unit_def{sym, mag_t<magnitude{}>{}, kind_t<K>{}, o} {}
     template <magnitude M, const kind_def* K>
     constexpr unit_def(std::string_view sym, mag_t<M>, kind_t<K>, unit_options o = {})
-      : Utf8{sym}, Ascii{o.ascii}, Dim{K->Dim}, Mag{M}, Kind{K}, SpaceBefore{o.space_before}, Origin{o.origin} {}
+      : Utf8{detail::unit_symbol_of(sym)}, Ascii{o.ascii}, Dim{K->Dim}, Mag{M}, Kind{K}, SpaceBefore{o.space_before},
+        Origin{o.origin}
+    {
+      (void)detail::unit_symbol_of(Ascii.view());
+    }
     // A unit defined by others: unit_def{"N", kg * m / s², isq::force}.
     // Its kind is the given one, else .kind, else its one factor's (min: 60 s).
     template <unit_value U>
@@ -985,7 +1006,10 @@ namespace ins
     friend struct basis_vector_def;
     // A basis vector's unit, its dimension set by basis_vector.
     constexpr unit_def(std::string_view sym, unit_options o)
-      : Utf8{sym}, Ascii{o.ascii}, SpaceBefore{o.space_before} {}
+      : Utf8{detail::unit_symbol_of(sym)}, Ascii{o.ascii}, SpaceBefore{o.space_before}
+    {
+      (void)detail::unit_symbol_of(Ascii.view());
+    }
   };
 
   // basis_vector_def: the definition of a basis vector (basis_vector<"e₁", geometric<+1>>):
@@ -1248,7 +1272,7 @@ namespace ins
 
   template <unit_value U>
   constexpr unit_def::unit_def(std::string_view sym, unit_t<U>, unit_options o)
-    : Utf8{sym},
+    : Utf8{detail::unit_symbol_of(sym)},
       Ascii{o.ascii},
       Dim{dimension_of(U)},
       Mag{magnitude_of(U)},
@@ -1256,6 +1280,7 @@ namespace ins
       SpaceBefore{o.space_before},
       Origin{o.origin}
   {
+    (void)detail::unit_symbol_of(Ascii.view());
     if (detail::has(Kind) && !(Kind->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
     if (detail::has(Origin) && !(Origin->Dim == Dim))
@@ -1633,7 +1658,7 @@ namespace ins
         if constexpr (policy_of<decltype(x)> == policy_of<V>)
           return x;
         else
-          return id<key{grid_of<decltype(x)>, policy_of<V>}>::from_raw(x.raw(), unsafe);
+          return with_flags_t<decltype(x), policy_of<V>>::from_raw(x.raw(), unsafe);
       }
     }
 

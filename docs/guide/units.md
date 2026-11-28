@@ -136,9 +136,11 @@ auto price = just<5> * EUR + just<20> * ct;                // 520 ct
 A kind of your own is `kind<"depth", isq::length>`, an origin
 `origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>`.
 
-Compilers print a one-line unit by its whole definition. For short type
-names, name the definition and take its unit with `defined_by`, as the catalog
-does ([named definitions](../advanced/units-model.md#named-definitions-short-type-names)):
+A quantity's type prints as its text either way (`id<"[0..100] [ftm]">`).
+Where a unit itself shows (a unit tag's type, a diagnostic that spells a
+reference), a one-line unit is spelled by its whole definition; name the
+definition and take its unit with `defined_by`, as the catalog does, and it
+shows by name ([named definitions](../advanced/units-model.md#named-definitions-short-symbols)):
 
 ```cpp
 inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};

@@ -105,13 +105,13 @@ namespace ins
       rational    Exact{};       // an integer or a rational
 
       template <std::floating_point X>
-        requires inside_assignable<id<key{grid_of<B>, F}>, X, F>
+        requires inside_assignable<with_flags_t<B, F>, X, F>
       consteval constant_value(X x) : Floating{true}, Float{x}
       {
         trial(x);
       }
       template <class X>
-        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<id<key{grid_of<B>, F}>, X, F>
+        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<with_flags_t<B, F>, X, F>
       consteval constant_value(const X& x) : Exact{x}
       {
         trial(x);
@@ -127,8 +127,8 @@ namespace ins
       template <class X>
       static consteval void trial(const X& x)
       {
-        id<key{grid_of<B>, F}> twin;
-        assignment<id<key{grid_of<B>, F}>, X>::assign(twin, x, make_policy<F>());
+        with_flags_t<B, F> twin;
+        assignment<with_flags_t<B, F>, X>::assign(twin, x, make_policy<F>());
       }
     };
 

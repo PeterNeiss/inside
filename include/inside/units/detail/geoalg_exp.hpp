@@ -1515,8 +1515,7 @@ namespace ins::detail::gaexp
                   "math::exp: a deduced output takes the argument's notch - its parts need one, or name it: "
                   "exp<per<K>>(x)");
     static constexpr policy_flag flags = ::ins::math::detail::spec_flags(
-      ::ins::detail::with_default_rounding(policy_of<num_t<std::tuple_element_t<0, typename D::DP>>>
-                                           & ~::ins::detail::cursor_marker),
+      ::ins::detail::with_default_rounding(::ins::detail::value_policy<num_t<std::tuple_element_t<0, typename D::DP>>>),
       S);
     static consteval grid_number limit(double m)
     {

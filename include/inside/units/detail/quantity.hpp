@@ -69,7 +69,7 @@ namespace ins
       using A = std::remove_cvref_t<N>;
       using P = std::remove_cvref_t<Pol>;
       constexpr policy_flag F{override_flags(policy_of<Rep>, policy_of<P>)};
-      return insidable<A> || store_proven<id<key{grid_of<Rep>, F}>, A, F> || reports_into_errc<P>;
+      return insidable<A> || store_proven<with_flags_t<Rep, F>, A, F> || reports_into_errc<P>;
     }
   } // namespace detail
 

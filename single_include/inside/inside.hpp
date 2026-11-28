@@ -5420,7 +5420,8 @@ namespace ins::detail
     constexpr void room(std::size_t n) const
     {
       if (Size + n >= Cap)
-        constexpr_error<"inside: an id's text passes 2048 characters (detail::key_capacity)">();
+        constexpr_error<"inside: an id's text passes 2048 characters (detail::key_capacity), or a quantity's unit, "
+                        "kind or origin its 255">();
     }
     constexpr void put(char c)
     {
@@ -5958,7 +5959,8 @@ namespace ins::detail
         std::size_t i{0};
         while (i < std::size(id_flags) && id_flags[i].Word != w)
           ++i;
-        if (i == std::size(id_flags))
+        // (cursor is the library's mark: it spells a cursor's number, which cursor<T, Step> makes.)
+        if (i == std::size(id_flags) || (check && id_flags[i].Bits == policy_flag{cursor_marker}))
           return stop(at, id_flag_list);
         const id_flag& found{id_flags[i]};
         if (check && found.Mode && ++modes > 1)
@@ -6320,6 +6322,16 @@ namespace ins
   // or of a named flag; none for anything else, such as an action.
   template <typename X>
   inline constexpr policy_flag policy_of = detail::policy_of_impl<std::remove_cvref_t<X>>;
+
+  namespace detail
+  {
+    // B's grid under the flags F: the type a store under one-shot flags is checked against.
+    template <insidable B, policy_flag F>
+    using with_flags_t = id<key{grid_of<B>, F}>;
+    // B's policy without a cursor's mark: the policy its values and its results carry.
+    template <class B>
+    inline constexpr policy_flag value_policy = policy_of<B> & ~cursor_marker;
+  } // namespace detail
 
   namespace detail
   {
@@ -10572,13 +10584,13 @@ namespace ins
       rational    Exact{};       // an integer or a rational
 
       template <std::floating_point X>
-        requires inside_assignable<id<key{grid_of<B>, F}>, X, F>
+        requires inside_assignable<with_flags_t<B, F>, X, F>
       consteval constant_value(X x) : Floating{true}, Float{x}
       {
         trial(x);
       }
       template <class X>
-        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<id<key{grid_of<B>, F}>, X, F>
+        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<with_flags_t<B, F>, X, F>
       consteval constant_value(const X& x) : Exact{x}
       {
         trial(x);
@@ -10594,8 +10606,8 @@ namespace ins
       template <class X>
       static consteval void trial(const X& x)
       {
-        id<key{grid_of<B>, F}> twin;
-        assignment<id<key{grid_of<B>, F}>, X>::assign(twin, x, make_policy<F>());
+        with_flags_t<B, F> twin;
+        assignment<with_flags_t<B, F>, X>::assign(twin, x, make_policy<F>());
       }
     };
 
@@ -11967,9 +11979,9 @@ namespace ins
 
     // What *t yields for a cursor on G: G without its end point and no cursor, a value of T,
     // which assigns into T.
-    template <grid G, policy_flag P>
+    template <class T>
     using cursor_value_t =
-      id<key{grid{interval{G.Lower, G.Upper - G.Notch}, G.Notch}, P & ~cursor_marker}>;
+      id<key{grid{interval{grid_of<T>.Lower, grid_of<T>.Upper - grid_of<T>.Notch}, grid_of<T>.Notch}, value_policy<T>}>;
 
     // (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
 
@@ -12673,7 +12685,7 @@ namespace ins
     template <std::integral T>
     static constexpr auto as_step_inside(T n)
     {
-      return id<key{grid{interval_of<T>, grid_number{1}}}>{n};
+      return detail::lifted_t<T>{n};
     }
 
   public:
@@ -13233,7 +13245,7 @@ namespace ins
       requires(has_flag(P, detail::cursor_marker))
     {
       // Past the end is a precondition: the policy reports it to the handler.
-      using value_t = detail::cursor_value_t<G, P>;
+      using value_t = detail::cursor_value_t<id>;
       value_t v;
       detail::assignment<value_t, id>::assign(v, *this, make_policy<policy_of<value_t>>());
       return v;
@@ -13499,7 +13511,7 @@ template <ins::key K>
   requires(ins::detail::inside_key<K> && ins::has_flag(ins::detail::key_policy<K>, ins::detail::cursor_marker))
 struct std::indirectly_readable_traits<ins::id<K>>
 {
-  using value_type = ins::detail::cursor_value_t<ins::detail::key_grid<K>, ins::detail::key_policy<K>>;
+  using value_type = ins::detail::cursor_value_t<ins::id<K>>;
 };
 
 
@@ -14815,9 +14827,9 @@ namespace ins
     concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
   } // namespace detail
 
-#define INSIDE_SCALAR_MSG                                                              \
-  "an inside cannot be combined with a raw scalar: give the scalar a grid — "          \
-  "`1_ins`, `just<1>`, or `inside<{lo,hi}>::try_make(n)` for a run-time value with a " \
+#define INSIDE_SCALAR_MSG                                                                \
+  "an inside cannot be combined with a raw scalar: give the scalar a grid — "            \
+  "`1_ins`, `just<1>`, or `id<\"[lo..hi]\">::try_make(n)` for a run-time value with a " \
   "known range"
 #define INSIDE_NO_SCALAR(op)                                  \
   template <insidable B, detail::builtin_arithmetic A>        \
@@ -16416,7 +16428,7 @@ namespace ins
     {
       static_assert(
         (index_inside<Is> && ...),
-        "extents_of<I...>: each I is an index type - an inside on non-negative integers (inside<{0, 479}>)");
+        "extents_of<I...>: each I is an index type - an inside on non-negative integers (id<\"[0..479]\">)");
       using type = std::extents<std::size_t, extent_of_index<Is>...>;
     };
 
@@ -16757,7 +16769,7 @@ namespace ins
     }
     template <insidable N, std::size_t Count>
       requires notched<N> || point_grid<N>
-    using n_fold_sum_t = id<key{n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker}>;
+    using n_fold_sum_t = id<key{n_fold_grid(grid_of<N>, Count), value_policy<N>}>;
     // The same for an element (an inside or a quantity): its kind on that number.
     template <class E, std::size_t Count>
     using n_fold_t = typename element_traits<E>::template rebind<n_fold_sum_t<element_number_t<E>, Count>>;
@@ -19378,7 +19390,7 @@ namespace ins::math::detail::engine
 
   // Policy of a deduced output: the input's (no cursor), rounding to nearest unless the input names a mode.
   template <insidable In>
-  inline constexpr policy_flag result_policy = with_default_rounding(policy_of<In> & ~cursor_marker);
+  inline constexpr policy_flag result_policy = with_default_rounding(ins::detail::value_policy<In>);
 
   // A deduced output on notch N.
   template <insidable In, grid_number N, grid_number Lo, grid_number Hi>
@@ -20686,7 +20698,7 @@ namespace ins::math
       return t;
     }();
 
-#define INSIDE_WHY_count(fn) "ins::math::" #fn ": the counts are insides on the integers from 0 (inside<{0, 20}>)"
+#define INSIDE_WHY_count(fn) "ins::math::" #fn ": the counts are insides on the integers from 0 (id<\"[0..20]\">)"
 #define INSIDE_WHY_too_large(fn)                                                                      \
   "ins::math::" #fn ": the result would pass 16384 bits (math::detail::max_count_bits) - narrow the " \
   "input grids"
@@ -23894,7 +23906,7 @@ namespace ins::math::detail::entry
         return x;
       else
         return id<key{grid{grid_of<In>.interval(), grid_of<In>.value_unit()},
-                      policy_of<In> & ~::ins::detail::cursor_marker}>{x};
+                      ::ins::detail::value_policy<In>}>{x};
     }
 
     template <insidable Out>
@@ -24722,7 +24734,7 @@ namespace ins::math
 
     // Policy of an auto-deduced output: the input's (a cursor's output is no cursor).
     template <insidable In>
-    inline constexpr policy_flag out_policy = policy_of<In> & ~cursor_marker;
+    inline constexpr policy_flag out_policy = value_policy<In>;
 
     // A 64-bit grid operation's result through Out's assignment.
     template <insidable Out, typename V>
@@ -25334,6 +25346,25 @@ namespace ins
 
   namespace detail
   {
+    // A name of a kind or an origin: letters, digits and _ (a quantity's type spells it: [m]{height}, @ice_point).
+    constexpr bool identifier_name(std::string_view s)
+    {
+      for (char c : s)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
+          return false;
+      return !s.empty();
+    }
+    // A unit's symbol (and its ASCII one), as a quantity's type spells it: no space, '*', '/', '^', bracket or
+    // parenthesis ([km/h]).
+    constexpr std::string_view unit_symbol_of(std::string_view s)
+    {
+      for (char c : s)
+        if (c == ' ' || c == '*' || c == '/' || c == '^' || c == '[' || c == ']' || c == '(' || c == ')')
+          constexpr_error<"units: a unit's symbol holds no space, '*', '/', '^', bracket or parenthesis (a "
+                          "quantity's type spells it, [km/h])">();
+      return s;
+    }
+
     consteval basis_rule geometric_rule(int square)
     {
       if (square != 1 && square != -1 && square != 0)
@@ -25879,10 +25910,9 @@ namespace ins
     {
       if (name.empty())
         ins::detail::constexpr_error<"units: a kind needs a name">();
-      for (char c : name)
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
-          ins::detail::constexpr_error<"units: a kind's name is letters, digits and _ (a quantity's type spells it, "
-                                       "[m]{height})">();
+      if (!detail::identifier_name(name))
+        ins::detail::constexpr_error<"units: a kind's name is letters, digits and _ (a quantity's type spells it, "
+                                     "[m]{height})">();
       return name;
     }
   };
@@ -26101,10 +26131,9 @@ namespace ins
     {
       if (name.empty())
         ins::detail::constexpr_error<"units: an origin needs a name">();
-      for (char c : name)
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
-          ins::detail::constexpr_error<"units: an origin's name is letters, digits and _ (a point's type spells it, "
-                                       "@ice_point)">();
+      if (!detail::identifier_name(name))
+        ins::detail::constexpr_error<"units: an origin's name is letters, digits and _ (a point's type spells it, "
+                                     "@ice_point)">();
       return name;
     }
   };
@@ -26247,7 +26276,11 @@ namespace ins
       : unit_def{sym, mag_t<magnitude{}>{}, kind_t<K>{}, o} {}
     template <magnitude M, const kind_def* K>
     constexpr unit_def(std::string_view sym, mag_t<M>, kind_t<K>, unit_options o = {})
-      : Utf8{sym}, Ascii{o.ascii}, Dim{K->Dim}, Mag{M}, Kind{K}, SpaceBefore{o.space_before}, Origin{o.origin} {}
+      : Utf8{detail::unit_symbol_of(sym)}, Ascii{o.ascii}, Dim{K->Dim}, Mag{M}, Kind{K}, SpaceBefore{o.space_before},
+        Origin{o.origin}
+    {
+      (void)detail::unit_symbol_of(Ascii.view());
+    }
     // A unit defined by others: unit_def{"N", kg * m / s², isq::force}.
     // Its kind is the given one, else .kind, else its one factor's (min: 60 s).
     template <unit_value U>
@@ -26266,7 +26299,10 @@ namespace ins
     friend struct basis_vector_def;
     // A basis vector's unit, its dimension set by basis_vector.
     constexpr unit_def(std::string_view sym, unit_options o)
-      : Utf8{sym}, Ascii{o.ascii}, SpaceBefore{o.space_before} {}
+      : Utf8{detail::unit_symbol_of(sym)}, Ascii{o.ascii}, SpaceBefore{o.space_before}
+    {
+      (void)detail::unit_symbol_of(Ascii.view());
+    }
   };
 
   // basis_vector_def: the definition of a basis vector (basis_vector<"e₁", geometric<+1>>):
@@ -26529,7 +26565,7 @@ namespace ins
 
   template <unit_value U>
   constexpr unit_def::unit_def(std::string_view sym, unit_t<U>, unit_options o)
-    : Utf8{sym},
+    : Utf8{detail::unit_symbol_of(sym)},
       Ascii{o.ascii},
       Dim{dimension_of(U)},
       Mag{magnitude_of(U)},
@@ -26537,6 +26573,7 @@ namespace ins
       SpaceBefore{o.space_before},
       Origin{o.origin}
   {
+    (void)detail::unit_symbol_of(Ascii.view());
     if (detail::has(Kind) && !(Kind->Dim == Dim))
       ins::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
     if (detail::has(Origin) && !(Origin->Dim == Dim))
@@ -26914,7 +26951,7 @@ namespace ins
         if constexpr (policy_of<decltype(x)> == policy_of<V>)
           return x;
         else
-          return id<key{grid_of<decltype(x)>, policy_of<V>}>::from_raw(x.raw(), unsafe);
+          return with_flags_t<decltype(x), policy_of<V>>::from_raw(x.raw(), unsafe);
       }
     }
 
@@ -27143,6 +27180,19 @@ namespace ins::detail
     {"µ", -6},  {"μ", -6},  {"u", -6},  {"m", -3},  {"c", -2},  {"d", -1},  {"h", 2},   {"k", 3},   {"M", 6},
     {"G", 9},   {"T", 12},  {"P", 15},  {"E", 18},  {"Z", 21},  {"Y", 24},  {"R", 27},  {"Q", 30}};
 
+  // The symbol of the prefix 10^p (the first of the table: µ in UTF-8, u in ASCII); empty for none, and for p = 0.
+  constexpr std::string_view prefix_text(int p, bool ascii)
+  {
+    if (p != 0)
+      for (const text_prefix& x : text_prefixes)
+        if (x.Pow == p && (!ascii || x.Sym != "µ" && x.Sym != "μ"))
+          return x.Sym;
+    return {};
+  }
+
+  // The superscript digits and the superscript minus (⁻).
+  inline constexpr std::string_view text_superscripts[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "⁻"};
+
   // Whether w is the symbol of the unit u with the prefix p: the prefix's symbol (µ, μ or u for micro) and the
   // unit's ASCII symbol, or its symbol where that is not ASCII (µs, Ω, ℃). A plain symbol with an ASCII one of its
   // own is only printed: Boltzmann's k reads as k_B, so that k stays free (a quaternion's).
@@ -27176,11 +27226,10 @@ namespace ins::detail
   // A superscript at i: its digit, 10 for ⁻, -1 for none; len its bytes.
   constexpr int superscript_at(std::string_view t, std::size_t i, std::size_t& len)
   {
-    constexpr std::string_view sup[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "⁻"};
     for (int d = 0; d < 11; ++d)
-      if (t.substr(i, sup[d].size()) == sup[d])
+      if (t.substr(i, text_superscripts[d].size()) == text_superscripts[d])
       {
-        len = sup[d].size();
+        len = text_superscripts[d].size();
         return d;
       }
     return -1;
@@ -27392,15 +27441,6 @@ namespace ins::detail
     const auto p{std::define_static_array(prefixes)};
     const auto e{std::define_static_array(ends)};
     return {u.data(), p.data(), e.data(), e.size(), u.size()};
-  }
-
-  // A name of a kind or an origin: letters, digits and _ (a key's text spells it).
-  constexpr bool identifier_name(std::string_view s)
-  {
-    for (char c : s)
-      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
-        return false;
-    return !s.empty();
   }
 
   // ---- Reading ----
@@ -27698,38 +27738,13 @@ namespace ins::detail
   // A unit's canonical text: its symbols (the ASCII one where it has one, with an ASCII prefix: us, not µs) in the
   // unit's order, those with a positive exponent first, then '/' and the others; a unit with a basis vector all in
   // its order (e1*e2); a scale in brackets; 1 for the unit one.
-  // False for a symbol no text reads (a space, '*', '/', '^', a bracket or a parenthesis in it), or a prefix that
-  // has no symbol.
+  // False for an empty symbol, or a prefix that has no symbol (a unit's definition rejects a symbol no text reads).
   consteval bool write_unit_text(text_out& t, const unit_value& u)
   {
-    const auto readable = [](std::string_view s)
-    {
-      for (char c : s)
-        if (c == ' ' || c == '*' || c == '/' || c == '^' || c == '[' || c == ']' || c == '(' || c == ')')
-          return false;
-      return !s.empty();
-    };
-    const auto ascii = [](std::string_view s)
-    {
-      for (char c : s)
-        if (static_cast<unsigned char>(c) >= 0x80)
-          return false;
-      return true;
-    };
     const auto prefix = [&](int p, std::string_view& sym)
     {
-      if (p == 0)
-      {
-        sym = {};
-        return true;
-      }
-      for (const text_prefix& x : text_prefixes)
-        if (x.Pow == p && ascii(x.Sym))
-        {
-          sym = x.Sym;
-          return true;
-        }
-      return false;
+      sym = prefix_text(p, true);
+      return p == 0 || !sym.empty();
     };
     const std::int8_t n{u.size()};
     int               num{0};
@@ -27737,7 +27752,7 @@ namespace ins::detail
     for (std::int8_t i = 0; i < n; ++i)
     {
       std::string_view p;
-      if (!readable(u.Atoms[i].U->ascii()) || !prefix(u.Atoms[i].Prefix, p))
+      if (u.Atoms[i].U->ascii().empty() || !prefix(u.Atoms[i].Prefix, p))
         return false;
       num += u.Atoms[i].Exp > 0;
       blades = blades || is_basis_atom(u.Atoms[i]);
@@ -27815,7 +27830,7 @@ namespace ins::detail
 
   // A reference's kind when it is not its unit's own: none, any, [any] a name, or [any] a recipe
   // (those with a positive exponent first, then '/' and the others, in the recipe's order: by name).
-  // Nothing for the unit's own kind. False for a kind whose name is no identifier.
+  // Nothing for the unit's own kind. (A kind's definition makes its name an identifier.)
   consteval bool write_kind_text(text_out& t, const reference& r)
   {
     if (r == reference_of(r.unit()))
@@ -27830,18 +27845,12 @@ namespace ins::detail
       t.put("any ");
     if (has(r.kind()))
     {
-      if (!identifier_name(r.kind()->Name))
-        return false;
       t.put(r.kind()->Name);
       return true;
     }
     int pos{0};
     for (std::int8_t i = 0; i < f.Size; ++i)
-    {
-      if (!identifier_name(f.F[i].Kind->Name))
-        return false;
       pos += f.F[i].Exp > 0;
-    }
     bool first{true};
     for (const int sign : {1, -1})
       for (std::int8_t i = 0; i < f.Size; ++i)
@@ -27865,17 +27874,10 @@ namespace ins::detail
     return true;
   }
 
-  // A point's origin: its name, or 0 for the zero of the dimension. False for a name that is no identifier.
+  // A point's origin: its name (its definition makes it an identifier), or 0 for the zero of the dimension.
   consteval bool write_origin_text(text_out& t, origin_ref o)
   {
-    if (!has(o))
-    {
-      t.put('0');
-      return true;
-    }
-    if (!identifier_name(o->Name))
-      return false;
-    t.put(o->Name);
+    t.put(has(o) ? o->Name : "0");
     return true;
   }
 
@@ -27989,8 +27991,8 @@ namespace ins::detail
     quantity_name n;
     const auto    copy = [](unit_name& out, std::string_view text)
     {
-      for (std::size_t i = 0; i < text.size() && i + 1 < sizeof out.Text; ++i)
-        out.Text[i] = text[i];
+      text_out t{out.Text, sizeof out.Text};
+      t.put(text);
     };
     copy(n.Unit, s.Unit);
     copy(n.Kind, s.Kind);
@@ -28091,7 +28093,7 @@ namespace ins
       using A = std::remove_cvref_t<N>;
       using P = std::remove_cvref_t<Pol>;
       constexpr policy_flag F{override_flags(policy_of<Rep>, policy_of<P>)};
-      return insidable<A> || store_proven<id<key{grid_of<Rep>, F}>, A, F> || reports_into_errc<P>;
+      return insidable<A> || store_proven<with_flags_t<Rep, F>, A, F> || reports_into_errc<P>;
     }
   } // namespace detail
 
@@ -30282,20 +30284,6 @@ namespace ins
     Offset   = detail::offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio;
   }
 
-  template <symbol_text Name, kind_options O, auto Parent>
-  struct kind_holder
-  {
-    static constexpr kind_def value{Name.view(), Parent, O};
-  };
-
-  // An origin is absolute (named by a kind or a dimension: the zero of that dimension)
-  // or lies at a point of another origin.
-  template <symbol_text Name, auto Def>
-  struct origin_holder
-  {
-    static constexpr origin_def value{Name.view(), Def};
-  };
-
   // unit<"sym", definition, options>: a unit of your own.
   // The definition is the quantity it equals (1.8288_ins * si::metre), another unit (si::joule / si::second),
   // or a kind, whose base unit it then is.
@@ -30307,7 +30295,7 @@ namespace ins
   // The parent is a kind (depth under length), a product of kinds (speed: length / duration)
   // or a dimension (a base quantity).
   template <symbol_text Name, auto Parent, kind_options O = {}>
-  inline constexpr auto kind = detail::kind_tag<kind_holder<Name, O, Parent>::value>;
+  inline constexpr auto kind = detail::kind_tag<definition<kind_def, Name, Parent, O>::value>;
 
   // base_dimension<"name">: a dimension of your own, which mixes with no other.
   template <symbol_text Name>
@@ -30322,7 +30310,7 @@ namespace ins
   // An absolute origin is named by a kind or a dimension; any other lies at a point of one:
   // origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>.
   template <symbol_text Name, auto Def>
-  inline constexpr auto origin = detail::origin_tag<origin_holder<Name, Def>::value>;
+  inline constexpr auto origin = detail::origin_tag<definition<origin_def, Name, Def>::value>;
 
   namespace detail
   {
@@ -32658,19 +32646,11 @@ namespace ins
 
   namespace detail
   {
+    // A prefix's symbol (unit_grammar.hpp's table), "?" for a power of ten no prefix has.
     constexpr std::string_view prefix_symbol(int p, text_encoding e)
     {
-      // 10^-2 … 10^2, then 10^-30 … 10^30 in steps of 3.
-      constexpr std::string_view near_one[]  = {"c", "d", "", "da", "h"};
-      constexpr std::string_view thousands[] = {"q", "r", "y", "z", "a", "f", "p", "n", "µ", "m", "",
-                                                "k", "M", "G", "T", "P", "E", "Z", "Y", "R", "Q"};
-      if (p == -6 && e == text_encoding::ascii)
-        return "u";
-      if (p >= -2 && p <= 2)
-        return near_one[p + 2];
-      if (p >= -30 && p <= 30 && p % 3 == 0)
-        return thousands[(p + 30) / 3];
-      return "?";
+      const std::string_view s{prefix_text(p, e == text_encoding::ascii)};
+      return p != 0 && s.empty() ? "?" : s;
     }
 
     inline void append_exponent(std::string& s, int e, text_encoding enc)
@@ -32683,15 +32663,14 @@ namespace ins
         s += std::to_string(e);
         return;
       }
-      static constexpr std::string_view sup[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"};
       if (e < 0)
       {
-        s += "⁻";
+        s += text_superscripts[10];
         e = -e;
       }
       const std::string digits{std::to_string(e)};
       for (char c : digits)
-        s += sup[c - '0'];
+        s += text_superscripts[c - '0'];
     }
 
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
@@ -32738,7 +32717,7 @@ namespace ins
     }
     if (!u.Scale.is_one())
     {
-      // "1/1250", "π", "2π", "π⁻¹" (ASCII "pi^-1").
+      // The ratio as a number prints ("0.0008", "1/3"), then "π", "2π", "π⁻¹" (ASCII "pi^-1").
       std::string scale{u.Scale.Pi != 0 && u.Scale.Ratio == grid_number{1} ? "" : ins::to_string(u.Scale.Ratio)};
       if (u.Scale.Pi != 0)
       {
@@ -35461,8 +35440,7 @@ namespace ins::detail::gaexp
                   "math::exp: a deduced output takes the argument's notch - its parts need one, or name it: "
                   "exp<per<K>>(x)");
     static constexpr policy_flag flags = ::ins::math::detail::spec_flags(
-      ::ins::detail::with_default_rounding(policy_of<num_t<std::tuple_element_t<0, typename D::DP>>>
-                                           & ~::ins::detail::cursor_marker),
+      ::ins::detail::with_default_rounding(::ins::detail::value_policy<num_t<std::tuple_element_t<0, typename D::DP>>>),
       S);
     static consteval grid_number limit(double m)
     {
@@ -36056,8 +36034,7 @@ namespace ins::detail::gaexp
                   "math::log, math::sqrt: a deduced output takes the argument's notch - its parts need one, or name "
                   "it: log<per<K>>(x)");
     static constexpr policy_flag flags = ::ins::math::detail::spec_flags(
-      ::ins::detail::with_default_rounding(policy_of<num_t<std::tuple_element_t<0, typename D::DP>>>
-                                           & ~::ins::detail::cursor_marker),
+      ::ins::detail::with_default_rounding(::ins::detail::value_policy<num_t<std::tuple_element_t<0, typename D::DP>>>),
       S);
     static consteval grid_number limit(double m)
     {

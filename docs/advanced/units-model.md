@@ -205,25 +205,24 @@ inline constexpr auto decibel = unit<"dB", one, {.kind = level}>;
 so (`just<1, 180> * pi * si::radian` is the degree), and `pi * q` is the
 quantity `q` in a unit scaled by π.
 
-### Named definitions: short type names
+### Named definitions: short symbols
 
-A one-line entry is spelled by its content wherever its type is printed: in
-diagnostics, and in the symbols of functions that take its quantities. The
-catalog instead declares each entry as a named definition object and its
-name, and diagnostics spell `si::volt` as `(& ins::si::volt_def)`. Yours can
-be declared the same way; `unit_def`, `kind_def`, `origin_def` and
-`basis_vector_def` take the arguments of `unit<…>`, `kind<…>`, `origin<…>`
-and `basis_vector<…>`:
+A quantity's type prints as its text however its unit is declared
+(`id<"[0..100] [ftm]">`). A unit itself, though, is spelled by its content
+where it is a template argument: a unit tag's type (`unit_t<…>`), the
+symbols of functions that take it, and diagnostics that show a reference. The
+catalog declares each entry as a named definition object and its name, so
+these spell `si::volt` as `(& ins::si::volt_def)`. Yours can be declared the
+same way; `unit_def`, `kind_def`, `origin_def` and `basis_vector_def` take the
+arguments of `unit<…>`, `kind<…>`, `origin<…>` and `basis_vector<…>`:
 
 ```cpp
 inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
 inline constexpr auto     fathom = defined_by<fathom_def>;
 ```
 
-A quantity in fathoms then prints in about 220 characters instead of 520, and
-one in a base unit of your own (a named kind and unit) in 220 instead of
-770 (`tools/symbol_lengths.sh`). In a header, declare the definition
-`inline constexpr`, so that every translation unit has the same one.
+In a header, declare the definition `inline constexpr`, so that every
+translation unit has the same one.
 
 ### Base dimensions of your own
 

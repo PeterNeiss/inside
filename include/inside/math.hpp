@@ -38,7 +38,7 @@ namespace ins::math
 
     // Policy of an auto-deduced output: the input's (a cursor's output is no cursor).
     template <insidable In>
-    inline constexpr policy_flag out_policy = policy_of<In> & ~cursor_marker;
+    inline constexpr policy_flag out_policy = value_policy<In>;
 
     // A 64-bit grid operation's result through Out's assignment.
     template <insidable Out, typename V>

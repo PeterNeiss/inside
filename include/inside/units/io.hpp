@@ -111,19 +111,11 @@ namespace ins
 
   namespace detail
   {
+    // A prefix's symbol (unit_grammar.hpp's table), "?" for a power of ten no prefix has.
     constexpr std::string_view prefix_symbol(int p, text_encoding e)
     {
-      // 10^-2 … 10^2, then 10^-30 … 10^30 in steps of 3.
-      constexpr std::string_view near_one[]  = {"c", "d", "", "da", "h"};
-      constexpr std::string_view thousands[] = {"q", "r", "y", "z", "a", "f", "p", "n", "µ", "m", "",
-                                                "k", "M", "G", "T", "P", "E", "Z", "Y", "R", "Q"};
-      if (p == -6 && e == text_encoding::ascii)
-        return "u";
-      if (p >= -2 && p <= 2)
-        return near_one[p + 2];
-      if (p >= -30 && p <= 30 && p % 3 == 0)
-        return thousands[(p + 30) / 3];
-      return "?";
+      const std::string_view s{prefix_text(p, e == text_encoding::ascii)};
+      return p != 0 && s.empty() ? "?" : s;
     }
 
     inline void append_exponent(std::string& s, int e, text_encoding enc)
@@ -136,15 +128,14 @@ namespace ins
         s += std::to_string(e);
         return;
       }
-      static constexpr std::string_view sup[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"};
       if (e < 0)
       {
-        s += "⁻";
+        s += text_superscripts[10];
         e = -e;
       }
       const std::string digits{std::to_string(e)};
       for (char c : digits)
-        s += sup[c - '0'];
+        s += text_superscripts[c - '0'];
     }
 
     // The atoms of one sign with |exponent| (sign ±1), or all of them with their own exponent (sign 0).
@@ -191,7 +182,7 @@ namespace ins
     }
     if (!u.Scale.is_one())
     {
-      // "1/1250", "π", "2π", "π⁻¹" (ASCII "pi^-1").
+      // The ratio as a number prints ("0.0008", "1/3"), then "π", "2π", "π⁻¹" (ASCII "pi^-1").
       std::string scale{u.Scale.Pi != 0 && u.Scale.Ratio == grid_number{1} ? "" : ins::to_string(u.Scale.Ratio)};
       if (u.Scale.Pi != 0)
       {

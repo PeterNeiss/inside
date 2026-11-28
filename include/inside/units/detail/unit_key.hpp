@@ -129,15 +129,6 @@ namespace ins::detail
     return {u.data(), p.data(), e.data(), e.size(), u.size()};
   }
 
-  // A name of a kind or an origin: letters, digits and _ (a key's text spells it).
-  constexpr bool identifier_name(std::string_view s)
-  {
-    for (char c : s)
-      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
-        return false;
-    return !s.empty();
-  }
-
   // ---- Reading ----
 
   // A quantity's text read into its reference and origin.
@@ -433,38 +424,13 @@ namespace ins::detail
   // A unit's canonical text: its symbols (the ASCII one where it has one, with an ASCII prefix: us, not µs) in the
   // unit's order, those with a positive exponent first, then '/' and the others; a unit with a basis vector all in
   // its order (e1*e2); a scale in brackets; 1 for the unit one.
-  // False for a symbol no text reads (a space, '*', '/', '^', a bracket or a parenthesis in it), or a prefix that
-  // has no symbol.
+  // False for an empty symbol, or a prefix that has no symbol (a unit's definition rejects a symbol no text reads).
   consteval bool write_unit_text(text_out& t, const unit_value& u)
   {
-    const auto readable = [](std::string_view s)
-    {
-      for (char c : s)
-        if (c == ' ' || c == '*' || c == '/' || c == '^' || c == '[' || c == ']' || c == '(' || c == ')')
-          return false;
-      return !s.empty();
-    };
-    const auto ascii = [](std::string_view s)
-    {
-      for (char c : s)
-        if (static_cast<unsigned char>(c) >= 0x80)
-          return false;
-      return true;
-    };
     const auto prefix = [&](int p, std::string_view& sym)
     {
-      if (p == 0)
-      {
-        sym = {};
-        return true;
-      }
-      for (const text_prefix& x : text_prefixes)
-        if (x.Pow == p && ascii(x.Sym))
-        {
-          sym = x.Sym;
-          return true;
-        }
-      return false;
+      sym = prefix_text(p, true);
+      return p == 0 || !sym.empty();
     };
     const std::int8_t n{u.size()};
     int               num{0};
@@ -472,7 +438,7 @@ namespace ins::detail
     for (std::int8_t i = 0; i < n; ++i)
     {
       std::string_view p;
-      if (!readable(u.Atoms[i].U->ascii()) || !prefix(u.Atoms[i].Prefix, p))
+      if (u.Atoms[i].U->ascii().empty() || !prefix(u.Atoms[i].Prefix, p))
         return false;
       num += u.Atoms[i].Exp > 0;
       blades = blades || is_basis_atom(u.Atoms[i]);
@@ -550,7 +516,7 @@ namespace ins::detail
 
   // A reference's kind when it is not its unit's own: none, any, [any] a name, or [any] a recipe
   // (those with a positive exponent first, then '/' and the others, in the recipe's order: by name).
-  // Nothing for the unit's own kind. False for a kind whose name is no identifier.
+  // Nothing for the unit's own kind. (A kind's definition makes its name an identifier.)
   consteval bool write_kind_text(text_out& t, const reference& r)
   {
     if (r == reference_of(r.unit()))
@@ -565,18 +531,12 @@ namespace ins::detail
       t.put("any ");
     if (has(r.kind()))
     {
-      if (!identifier_name(r.kind()->Name))
-        return false;
       t.put(r.kind()->Name);
       return true;
     }
     int pos{0};
     for (std::int8_t i = 0; i < f.Size; ++i)
-    {
-      if (!identifier_name(f.F[i].Kind->Name))
-        return false;
       pos += f.F[i].Exp > 0;
-    }
     bool first{true};
     for (const int sign : {1, -1})
       for (std::int8_t i = 0; i < f.Size; ++i)
@@ -600,17 +560,10 @@ namespace ins::detail
     return true;
   }
 
-  // A point's origin: its name, or 0 for the zero of the dimension. False for a name that is no identifier.
+  // A point's origin: its name (its definition makes it an identifier), or 0 for the zero of the dimension.
   consteval bool write_origin_text(text_out& t, origin_ref o)
   {
-    if (!has(o))
-    {
-      t.put('0');
-      return true;
-    }
-    if (!identifier_name(o->Name))
-      return false;
-    t.put(o->Name);
+    t.put(has(o) ? o->Name : "0");
     return true;
   }
 
@@ -724,8 +677,8 @@ namespace ins::detail
     quantity_name n;
     const auto    copy = [](unit_name& out, std::string_view text)
     {
-      for (std::size_t i = 0; i < text.size() && i + 1 < sizeof out.Text; ++i)
-        out.Text[i] = text[i];
+      text_out t{out.Text, sizeof out.Text};
+      t.put(text);
     };
     copy(n.Unit, s.Unit);
     copy(n.Kind, s.Kind);

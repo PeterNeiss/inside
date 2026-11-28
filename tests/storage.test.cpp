@@ -492,13 +492,6 @@ using namespace ins;
 using namespace ins::formats;
 
 namespace {
-// A cursor's own policy: policy_of drops the cursor marker.
-template <class>
-struct policy_param;
-template <key K>
-struct policy_param<id<K>> {
-    static constexpr policy_flag value = detail::key_policy<K>;
-};
 using cur = cursor<id<"[0..60] round_floor">, 5>;
 using pt  = decltype(point<si::degree_Celsius>(id<"[-50..50]">{0}));
 template <class T>
@@ -512,7 +505,7 @@ template struct ins::id<"[0..1] 1/4 clamp|round_half_away">;
 template struct ins::id<"[-1..1] <8> wrap">;
 template struct ins::id<"[0..0x1p70] 1/4">;
 template struct ins::id<"[7]">;
-template struct ins::id<key{grid_of<cur>, policy_param<cur>::value}>;
+template struct ins::id<detail::key_v<cur>>; // a cursor's number
 
 // Quantities and a point.
 template struct ins::id<"[0..100] [m]">;
