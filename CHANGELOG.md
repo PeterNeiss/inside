@@ -35,8 +35,8 @@ alone. A quantity in metres prints in 232 characters instead of 404.
   f(inside<G, P>)`, `quantity_like Q` (with `Q::reference` and `Q::rep`)
   for `quantity<R, Rep>`, and `point_like P` (with `P::reference`,
   `P::origin` and `P::rep`) for `quantity_point<R, O, Rep>`. A partial
-  specialization on a quantity takes `detail::basic_of_t<Q>` or a
-  constraint on `quantity_like`; an explicit instantiation is
+  specialization on a quantity is constrained on `quantity_like`
+  (`template <quantity_like Q> struct trait<Q>`); an explicit instantiation is
   `template struct id<…>`. `grid_of<T>` and `policy_of<T>` read the grid and
   the policy as before. Hooks (`on_wrap`, `on_clamp`, `on_error`) get the
   quantity as its own type.

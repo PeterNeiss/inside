@@ -489,15 +489,10 @@ namespace ins
     {
       using type = T;
     };
-    template <reference R, class V>
-    struct part_number<quantity_parts<R, V>>
+    template <quantity_like Q>
+    struct part_number<Q>
     {
-      using type = V;
-    };
-    template <key K>
-      requires unit_key<K>
-    struct part_number<id<K>> : part_number<basic_of_t<id<K>>>
-    {
+      using type = typename Q::rep;
     };
     // Whether part T is made from its source in PX (or from 0), with policies.
     template <class T, class PX, class... Pol>
@@ -706,7 +701,7 @@ namespace ins
     template <class A, class B>
     concept mv_addable = mergeable<std::remove_cvref_t<A>, std::remove_cvref_t<B>>();
     // Subsumes the deleted overloads of units/core.hpp.
-    template <reference A>
+    template <class Q>
     concept geoalg_included = true;
   } // namespace detail
 
@@ -742,47 +737,44 @@ namespace ins
                                                "their blades), or parts of one blade that do not add");
 
   // Two quantities of different blades, and a number and a quantity of a blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
-            reference B = QB::reference, class VB = typename QB::rep>
-    requires detail::blade_sum<A, B> && detail::geoalg_included<A>
+  template <quantity_like QA, quantity_like QB>
+    requires detail::blade_sum<QA, QB> && detail::geoalg_included<QA>
   [[nodiscard]] constexpr auto operator+(const QA& a, const QB& b)
   {
     return detail::mv_add(a, b);
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
-            reference B = QB::reference, class VB = typename QB::rep>
-    requires detail::blade_sum<A, B> && detail::geoalg_included<A>
+  template <quantity_like QA, quantity_like QB>
+    requires detail::blade_sum<QA, QB> && detail::geoalg_included<QA>
   [[nodiscard]] constexpr auto operator-(const QA& a, const QB& b)
   {
     return detail::mv_add(a, -b);
   }
-  template <quantity_like QA, quantity_like QB, reference A = QA::reference, class VA = typename QA::rep,
-            reference B = QB::reference, class VB = typename QB::rep>
-    requires detail::blade_sum<A, B> && detail::geoalg_included<A>
+  template <quantity_like QA, quantity_like QB>
+    requires detail::blade_sum<QA, QB> && detail::geoalg_included<QA>
   [[nodiscard]] constexpr bool operator==(const QA& a, const QB& b)
   {
     return detail::mv_equal(a, b);
   }
-  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
-    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+  template <insidable V, quantity_like QA>
+    requires detail::number_blade_sum<QA> && detail::geoalg_included<QA>
   [[nodiscard]] constexpr auto operator+(const V& v, const QA& a)
   {
     return detail::mv_add(v, a);
   }
-  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
-    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+  template <quantity_like QA, insidable V>
+    requires detail::number_blade_sum<QA> && detail::geoalg_included<QA>
   [[nodiscard]] constexpr auto operator+(const QA& a, const V& v)
   {
     return detail::mv_add(a, v);
   }
-  template <insidable V, quantity_like QA, reference A = QA::reference, class VA = typename QA::rep>
-    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+  template <insidable V, quantity_like QA>
+    requires detail::number_blade_sum<QA> && detail::geoalg_included<QA>
   [[nodiscard]] constexpr auto operator-(const V& v, const QA& a)
   {
     return detail::mv_add(v, -a);
   }
-  template <quantity_like QA, insidable V, reference A = QA::reference, class VA = typename QA::rep>
-    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+  template <quantity_like QA, insidable V>
+    requires detail::number_blade_sum<QA> && detail::geoalg_included<QA>
   [[nodiscard]] constexpr auto operator-(const QA& a, const V& v)
   {
     return detail::mv_add(a, detail::as_part(-v));

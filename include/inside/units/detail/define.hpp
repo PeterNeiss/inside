@@ -165,17 +165,17 @@ namespace ins
   inline constexpr auto pi = detail::mag_pi * one;
   // A quantity times or over pi: the same number, in a unit scaled by π (pi * (2 * si::second) is 2 [π s]);
   // value_cast rounds it once.
-  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  template <quantity_like QR>
   [[nodiscard]] constexpr auto operator*(decltype(pi), const QR& q)
   {
     return detail::mag_pi * q;
   }
-  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  template <quantity_like QR>
   [[nodiscard]] constexpr auto operator*(const QR& q, decltype(pi))
   {
     return q * detail::mag_pi;
   }
-  template <quantity_like QR, reference R = QR::reference, class V = typename QR::rep>
+  template <quantity_like QR>
   [[nodiscard]] constexpr auto operator/(const QR& q, decltype(pi))
   {
     return q / detail::mag_pi;
