@@ -60,7 +60,7 @@ gcd of the numerators over the lcm of the denominators): the coarsest 1/k that
 keeps every integer and both limits on the lattice. Integer limits give 1.
 The exact gcd is kept, however large its denominator. A floating-point limit is its exact
 binary value, so a `double` that would need a notch finer than 1/1024 (0.1 is
-3602879701896397/2⁵⁵) is rejected in favour of `0.1_ins` or an explicit notch.
+3602879701896397/2⁵⁵) is rejected in favour of `0.1_q` or an explicit notch.
 
 **Open limits.** `grid{lo, hi, bounds::half_open}` (or `bounds::open`, or with
 a notch) moves each open limit in by one notch at construction. The grid is
@@ -74,7 +74,7 @@ grid (Lower above Upper, a negative notch, a notch that does not divide the
 interval, a continuous grid without a bound) is a compile error naming the
 rule.
 
-**Point operands.** A point (`just<c>`, `1_ins`: Lower == Upper, notch 0) in a
+**Point operands.** A point (`std::cw<c>`, `1_q`: Lower == Upper, notch 0) in a
 product scales the other operand's lattice: `grid × point{c}` has notch N·|c|
 rather than 0, so the product keeps integer storage, and
 `multiplication::point_scale` reuses the operand's offset as the result's
@@ -419,7 +419,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | Header | Holds |
 |---|---|
 | `inside/detail/config.hpp` | the build options and platform features (`__int128`, FMA, exceptions); the C++26-reflection `#error`; included first everywhere |
-| `inside/detail/core.hpp` | `id<key{G, P}>`: construction, compound assignment, `++`/`--`, `to<T>`, `parse(first, last)`, hooks, `just`, `_ins` |
+| `inside/detail/core.hpp` | `id<key{G, P}>`: construction, compound assignment, `++`/`--`, `to<T>`, `parse(first, last)`, hooks, `detail::point_v`, `_q` |
 | `inside/detail/numbers.hpp` | the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `wide_builtin`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `error`, `error_message`, `inside_error` (compile time only), the error handler, `raise`, `constexpr_error` |
@@ -482,7 +482,7 @@ common quantity types spell short; the constructors make the one form.
 
 **A conversion is a rescale.** `conversion_factor<From, To>` is the ratio of
 the two magnitudes. `detail::rescale<M>(v)` multiplies an inside by the
-rational M as `v * just<M>`, which scales the grid and keeps the raw (§1, point
+rational M as `v * std::cw<M>`, which scales the grid and keeps the raw (§1, point
 operands), then re-wraps it in v's policy. So km → mm on `id<"[0..10]">` is
 the same `uint8_t`. A factor with π has no exact grid; `in()` refuses it, and
 `value_cast` across π goes through `engine::pi_scale_core`, which multiplies by π

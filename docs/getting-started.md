@@ -55,11 +55,12 @@ integers a{70}, b{58};
 auto s = a + b;        // id<"[0..200]">: 128
 auto d = a - b;        // id<"[-100..100]">: 12
 auto p = a * b;        // id<"[0..10000]">: 4060
-auto t = a + 1_ins;    // a plain 1 has no grid: write 1_ins
+auto t = a + 1_q;      // a plain 1 has no grid: write 1_q
 ```
 
 `a + 1` does not compile, because a plain `int` says nothing about its range.
-`1_ins` is the number 1 as an inside of one point; `just<1>` is the same.
+`1_q` is the number 1 as an inside of one point; `0.25_q` and `"2/3"_q` are
+exact fractions, and `std::cw<N>` is a number the code computes while compiling.
 
 Division is exact. When the divisor's grid cannot hold 0, the result is a plain
 value; when it can, the result is a `std::expected` that you check:
@@ -126,7 +127,7 @@ using namespace ins;
 
 constexpr auto km = si::kilo(si::metre);
 id<"[0..500] 1/1000 [km]"> leg{12.5, km};                    // 12.5 km, to the metre
-auto total = leg + just<800> * si::metre;                    // 13300 m, exact
+auto total = leg + 800_q * si::metre;                        // 13300 m, exact
 total.in(km);                                                // 13.300 km
 // leg + si::second;                                         // does not compile
 // id<"[0..500] [km]"> bad{12};                   // does not compile: name the unit
@@ -134,7 +135,7 @@ total.in(km);                                                // 13.300 km
 
 A unit conversion only rescales the grid, so it is exact and costs nothing at
 run time. A quantity compares only with a quantity of its kind
-(`total > just<10> * km`), never with a bare number. Temperatures are points
+(`total > 10_q * km`), never with a bare number. Temperatures are points
 on a scale:
 
 ```cpp
@@ -163,7 +164,7 @@ With `<inside/units/math.hpp>`, angles can be in degrees, and the
 reduction is exact: the sine of 30° is exactly 1/2.
 
 ```cpp
-math::sin<per<1000>>(just<30> * si::degree);   // 0.500
+math::sin<per<1000>>(30_q * si::degree);   // 0.500
 ```
 
 ## How a value flows

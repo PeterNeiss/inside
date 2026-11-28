@@ -12,7 +12,7 @@ using namespace ins;
 
 constexpr auto km = si::kilo(si::metre);
 id<"[0..500] 1/1000 [km]"> leg{12.5, km};                    // 12.5 km, to the metre
-auto total = leg + just<800> * si::metre;                    // 13300 m, exact
+auto total = leg + 800_q * si::metre;                        // 13300 m, exact
 auto speed = total / id<"[1..600] [min]">{20, si::minute};
 std::cout << speed.in(km / si::hour);                        // 39.9 km/h
 ```
@@ -24,12 +24,12 @@ A number goes in with its unit named, where the value is written:
 
 ```cpp
 id<"[0..100] [m]"> d{42, si::metre};                      // a number and its unit
-auto c = just<800> * si::metre;                           // a constant: a one-point inside times a unit
+auto c = 800_q * si::metre;                               // a constant: a one-point inside times a unit
 ```
 
 `d{42}` names no unit and does not compile. Neither does `42 * si::metre`,
 since a plain number has no grid, nor does `d * 2`. The error messages say
-what to write: `d{42, si::metre}`, `just<42>` and `just<2>`. An inside in
+what to write: `d{42, si::metre}`, `42_q` and `2_q`. An inside in
 another unit of the same quantity converts exactly first. A number comes out
 with its unit named too: `d.numerical_value_in(si::metre)`.
 
@@ -67,7 +67,7 @@ of itself, in comparisons and in arithmetic: `len > si::metre` is
 `len > 1 m`, `jar += international::pound` adds a pound, `divmod(t, si::hour)`
 counts hours, and `-si::metre` is −1 m. Only a plain inside compares with a
 number: not even a percentage or a quantity of unit `one` takes `== 5`; write
-`p == just<5> * percent`.
+`p == 5_q * percent`.
 
 Quantities of different dimensions never mix:
 
@@ -112,14 +112,14 @@ A unit of your own is one declaration: its symbol, and the quantity it
 equals. Then it works like the catalog's:
 
 ```cpp
-inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;   // a fathom is 1.8288 m
+inline constexpr auto fathom = unit<"ftm", 1.8288_q * si::metre>;   // a fathom is 1.8288 m
 
-auto depth = just<3> * fathom;
+auto depth = 3_q * fathom;
 depth.in(si::metre);                                       // 5.4864 m
 ```
 
 (The definition is a template argument: a one-point inside such as
-`1.8288_ins` or `just<5>`, a quantity of one and a point of one are
+`1.8288_q` or `5_q`, a quantity of one and a point of one are
 structural types, so your own templates can take them too.)
 
 For something that is not a physical quantity at all, such as money, hit
@@ -128,13 +128,13 @@ own. It then never mixes with anything else:
 
 ```cpp
 inline constexpr auto EUR = base_unit<"EUR", "currency">;   // a new dimension, and its unit
-inline constexpr auto ct  = unit<"ct", 0.01_ins * EUR>;
+inline constexpr auto ct  = unit<"ct", 0.01_q * EUR>;
 
-auto price = just<5> * EUR + just<20> * ct;                // 520 ct
+auto price = 5_q * EUR + 20_q * ct;                // 520 ct
 ```
 
 A kind of your own is `kind<"depth", isq::length>`, an origin
-`origin<"ice_point", si::absolute_zero + 273.15_ins * si::kelvin>`.
+`origin<"ice_point", si::absolute_zero + 273.15_q * si::kelvin>`.
 
 A quantity's type prints as its text either way (`id<"[0..100] [ftm]">`).
 Where a unit itself shows (a unit tag's type, a diagnostic that spells a
@@ -143,7 +143,7 @@ definition and take its unit with `defined_by`, as the catalog does, and it
 shows by name ([named definitions](../advanced/units-model.md#named-definitions-short-symbols)):
 
 ```cpp
-inline constexpr unit_def fathom_def{"ftm", 1.8288_ins * si::metre};
+inline constexpr unit_def fathom_def{"ftm", 1.8288_q * si::metre};
 inline constexpr auto     fathom = defined_by<fathom_def>;   // printed as (& fathom_def)
 ```
 [`own_units.cpp`](../../examples/own_units.cpp) adds a depth kind, °R with an
@@ -164,8 +164,8 @@ inline constexpr auto         e2 = basis_vector<"e₂", geometric<+1>>;
 // i·i = -1 follows
 inline constexpr auto         i = unit<"i", e1 * e2>;
 
-auto z = (just<3> + just<4> * i) * (just<1> - just<2> * i);      // 11 - 2 i
-auto v = (just<2> * si::metre * e1 + si::metre * e2) * i;        // -1 m·e₁ + 2 m·e₂
+auto z = (3_q + 4_q * i) * (1_q - 2_q * i);                // 11 - 2 i
+auto v = (2_q * si::metre * e1 + si::metre * e2) * i;      // -1 m·e₁ + 2 m·e₂
 ```
 
 Two other rules share the machinery: `basis_vector<"R", inner>` is a vector
@@ -186,7 +186,7 @@ quantities in any unit of the right kind, converted exactly first:
 ```cpp
 id<"[0..60) [s] wrap"> s{50, si::second};
 id<"[0..60) [min] wrap"> m{0, si::minute};
-s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::minute;
+s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += 2_q * si::minute;
 // s == 50 s (170 s folds to 50 s), m == 2 min
 ```
 

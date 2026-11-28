@@ -24,13 +24,13 @@ A plain `int` or `double` says nothing about its range, so `a + 1` and
 `a * 2.5` do not compile. Give the constant a grid:
 
 ```cpp
-auto c = a + 1_ins;        // a one-point inside: the sum widens by 1
-auto d = a * just<5, 2>;   // the exact factor 5/2
+auto c = a + 1_q;     // a one-point inside: the sum widens by 1
+auto d = a * 2.5_q;   // the exact factor 5/2
 // auto e = a + 1;         // does not compile; the message says what to write
 ```
 
 A runtime value gets its range from a type: `a + small{n}`. Comparisons need no
-grid: `a == 5` and `a < 1.5_ins` are exact. A `double` does not compare with an
+grid: `a == 5` and `a < 1.5_q` are exact. A `double` does not compare with an
 inside, because 0.1 is not 1/10 in binary.
 
 Multiplying by a constant scales by an exact fraction, and a store rounds the
@@ -41,7 +41,7 @@ result where the type allows it. Money is a quantity in a currency of your own
 inline constexpr auto USD = base_unit<"USD", "dollar">;
 using money = id<"[0..1'000'000] 1/100 [USD] round_half_away">;
 money subtotal{45.07, USD};
-money tax{subtotal * just<8, 100>};   // 3.61 USD: 8 %, rounded once to the cent
+money tax{subtotal * 0.08_q};   // 3.61 USD: 8 %, rounded once to the cent
 ```
 
 ## Division
@@ -55,7 +55,7 @@ using val = id<"[0..100]">;
 val x{7};
 auto e = x / val{3};                // std::expected: val's grid holds 0
 auto f = x / id<"[1..10]">{3};      // a plain value, 7/3: this divisor cannot be 0
-auto g = x / 5_ins;                 // a plain value, 1.4, on notch 1/5
+auto g = x / 5_q;                   // a plain value, 1.4, on notch 1/5
 ```
 
 A `std::expected` result carries `error::division_by_zero` when the divisor
@@ -85,8 +85,8 @@ using ether   = id<"[0..1'000'000'000] 1e-18 [ETH]">;   // to the wei
 using price   = id<"[0..100'000'000] 1/100 [USD/ETH]">;
 using dollars = id<"[0..100'000'000'000'000'000] 1/100 [USD] round_half_away">;   // holds every product
 
-ether   balance{just<15, 10>, ETH};
-price   rate{just<345678, 100>, USD / ETH};
+ether   balance{1.5_q, ETH};
+price   rate{3456.78_q, USD / ETH};
 dollars value = mul<dollars>(balance, rate);                   // 5185.17 USD
 auto    share = div<id<"[0..100] round_floor">>(val{50}, id<"[1..10]">{3});   // 16
 ```
@@ -103,11 +103,11 @@ the divisor's grid holds 0.
 
 ```cpp
 val n{17};
-auto r1 = n % 5_ins;                  // id<"[0..4]">: 2
+auto r1 = n % 5_q;                    // id<"[0..4]">: 2
 auto r2 = n % id<"[1..10]">{5};       // id<"[0..9]">: 2
 auto r3 = n % val{5};                 // std::expected: val's grid holds 0
 auto [q, rest] = divmod(n, id<"[1..10]">{5});   // 3 and 2, from one division
-auto r4 = id<"[0..8] 1/2">{7.5} % id<"[1..4] 1/3">{just<4, 3>};  // 7.5 − 5·4/3 = 5/6
+auto r4 = id<"[0..8] 1/2">{7.5} % id<"[1..4] 1/3">{"4/3"_q};  // 7.5 − 5·4/3 = 5/6
 ```
 
 The remainder belongs to the rounded quotient: under `round_floor`,
@@ -144,7 +144,7 @@ using bounded = id<"[0..100] clamp|round_toward_zero">;
 bounded p{50};
 p += 30;         // 80
 p *= 2;          // 100: clamped
-p /= 3_ins;      // 33: 100/3, rounded toward zero
+p /= 3_q;        // 33: 100/3, rounded toward zero
 ++p;             // 34: one notch up
 ```
 
@@ -153,7 +153,7 @@ p /= 3_ins;      // 33: 100/3, rounded toward zero
 needs no grid of its own; it counts as an inside on the whole range of its
 type, and the store back follows the same rules (a `clamp` or `wrap` type
 takes it, a checked one names a channel: `x.on_error(ec) += n`). Everything
-else on the right is an inside (`p += 0.5_ins`, `p /= 3_ins`), never a
+else on the right is an inside (`p += 0.5_q`, `p /= 3_q`), never a
 `double`, and a division takes no builtin integer, whose
 range holds 0. `++` and `--` move one notch: ±1/4 on
 `id<"[0..2] 1/4">`.

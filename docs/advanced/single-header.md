@@ -52,14 +52,14 @@ int main() {
 
     // units: a conversion rescales the grid, so mixed units add exactly.
     id<"[0..500] 1/1000 [km]"> leg{12.5, si::kilo(si::metre)};
-    auto total = leg + just<800> * si::metre;   // runs in metres
+    auto total = leg + 800_q * si::metre;   // runs in metres
     auto speed = total / id<"[1..600] [min]">{20, si::minute};
     std::cout << "12.5 km + 800 m = " << total << '\n'
               << "in 20 min       = " << speed.in(si::kilo(si::metre) / si::hour) << '\n';
 
     // math: correctly rounded onto the output grid, the same bits everywhere.
     using amplitude = id<"[-1..1] 1/1000 round_half_away">;
-    auto s = math::sin<amplitude>(just<30> * si::degree);
+    auto s = math::sin<amplitude>(30_q * si::degree);
     auto r = math::sqrt(id<"[0..10] 1/1000 round_half_away">{2});
     std::cout << "sin 30°         = " << s << '\n'
               << "sqrt 2          = " << r << '\n';

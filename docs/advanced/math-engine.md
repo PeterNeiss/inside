@@ -205,12 +205,12 @@ angle onto 2⁻²⁰); `value_cast` across π takes the same tier:
 #include <inside/units/math.hpp>
 using namespace ins;
 
-inline constexpr auto       slot = unit<"slot", just<1, 32768> * pi * si::radian>;           // 2π/65536 rad
+inline constexpr auto       slot = unit<"slot", "1/32768"_q * pi * si::radian>;           // 2π/65536 rad
 
 id<"[0..65535] [slot] wrap"> phase{0, slot};                   // wraps at exactly one turn
-phase += just<16384> * slot;                                   // a quarter turn
+phase += 16384_q * slot;                                       // a quarter turn
 math::sin<per<(1 << 14)>>(phase);                              // exactly 1
-math::cos<per<(1 << 14)>, round_floor>(just<120> * si::degree); // exactly −1/2, even under round_floor
+math::cos<per<(1 << 14)>, round_floor>(120_q * si::degree); // exactly −1/2, even under round_floor
 ```
 
 [`oscillator.cpp`](../../examples/oscillator.cpp) runs a phase counter this
@@ -229,7 +229,7 @@ folds every 6.296875 rad, so each revolution shifts the angle by about
 0.014 rad.
 
 Carry a wrapping phase in a unit with a factor of π instead, a slot as above
-or a turn (`unit<"tr", just<2> * pi * si::radian>`): its period is exact, and
+or a turn (`unit<"tr", 2_q * pi * si::radian>`): its period is exact, and
 `sin` and `cos` reduce it exactly, so no 2π is ever rounded.
 
 ## Without floating point
