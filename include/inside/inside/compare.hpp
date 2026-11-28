@@ -90,33 +90,26 @@ namespace ins
     }
   } // namespace detail
 
-  template <insidable L, insidable R>
-  [[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs)
+  namespace detail
   {
-    return detail::compare(lhs, rhs, detail::three_way);
-  }
+    // Two insides, or an inside and a std::cw<V>, its point (inside/detail/constant.hpp): x <= std::cw<upper_of<T>>.
+    template <class L, class R>
+    concept compared_insides =
+      (insidable<L> && insidable<R>) || (constant_operands<L, R> && (insidable<L> || insidable<R>));
+  } // namespace detail
 
-  template <insidable L, insidable R>
-  [[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs)
-  {
-    return detail::compare(lhs, rhs, detail::equal_to);
-  }
-
-  // With a std::cw<V>: its point (inside/detail/constant.hpp), x <= std::cw<upper_of<T>>.
   template <class L, class R>
-    requires detail::constant_operands<L, R>
-          && requires(const L& l, const R& r) { detail::operand(l) <=> detail::operand(r); }
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs)
   {
-    return detail::operand(lhs) <=> detail::operand(rhs);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::three_way);
   }
 
   template <class L, class R>
-    requires detail::constant_operands<L, R>
-          && requires(const L& l, const R& r) { detail::operand(l) == detail::operand(r); }
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs)
   {
-    return detail::operand(lhs) == detail::operand(rhs);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::equal_to);
   }
 
   namespace detail
@@ -194,11 +187,14 @@ namespace ins
 #define INSIDE_WHY_float_compare                                                                        \
   "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
   "0.1_q or an inside"
-  template <insidable B, class A>
-    requires std::floating_point<A> || detail::floating_constant<A>
+  namespace detail
+  {
+    template <class A>
+    concept floating_scalar = bool(std::is_floating_point_v<A> || floating_constant<A>);
+  } // namespace detail
+  template <insidable B, detail::floating_scalar A>
   auto operator<=>(const B&, A) = delete (INSIDE_WHY_float_compare);
-  template <insidable B, class A>
-    requires std::floating_point<A> || detail::floating_constant<A>
+  template <insidable B, detail::floating_scalar A>
   bool operator==(const B&, A) = delete (INSIDE_WHY_float_compare);
 #undef INSIDE_WHY_float_compare
 } // namespace ins

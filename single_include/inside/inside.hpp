@@ -13639,33 +13639,26 @@ namespace ins
     }
   } // namespace detail
 
-  template <insidable L, insidable R>
-  [[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs)
+  namespace detail
   {
-    return detail::compare(lhs, rhs, detail::three_way);
-  }
+    // Two insides, or an inside and a std::cw<V>, its point (inside/detail/constant.hpp): x <= std::cw<upper_of<T>>.
+    template <class L, class R>
+    concept compared_insides =
+      (insidable<L> && insidable<R>) || (constant_operands<L, R> && (insidable<L> || insidable<R>));
+  } // namespace detail
 
-  template <insidable L, insidable R>
-  [[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs)
-  {
-    return detail::compare(lhs, rhs, detail::equal_to);
-  }
-
-  // With a std::cw<V>: its point (inside/detail/constant.hpp), x <= std::cw<upper_of<T>>.
   template <class L, class R>
-    requires detail::constant_operands<L, R>
-          && requires(const L& l, const R& r) { detail::operand(l) <=> detail::operand(r); }
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr auto operator<=>(const L& lhs, const R& rhs)
   {
-    return detail::operand(lhs) <=> detail::operand(rhs);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::three_way);
   }
 
   template <class L, class R>
-    requires detail::constant_operands<L, R>
-          && requires(const L& l, const R& r) { detail::operand(l) == detail::operand(r); }
+    requires detail::compared_insides<L, R>
   [[nodiscard]] constexpr bool operator==(const L& lhs, const R& rhs)
   {
-    return detail::operand(lhs) == detail::operand(rhs);
+    return detail::compare(detail::operand(lhs), detail::operand(rhs), detail::equal_to);
   }
 
   namespace detail
@@ -13743,11 +13736,14 @@ namespace ins
 #define INSIDE_WHY_float_compare                                                                        \
   "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
   "0.1_q or an inside"
-  template <insidable B, class A>
-    requires std::floating_point<A> || detail::floating_constant<A>
+  namespace detail
+  {
+    template <class A>
+    concept floating_scalar = bool(std::is_floating_point_v<A> || floating_constant<A>);
+  } // namespace detail
+  template <insidable B, detail::floating_scalar A>
   auto operator<=>(const B&, A) = delete (INSIDE_WHY_float_compare);
-  template <insidable B, class A>
-    requires std::floating_point<A> || detail::floating_constant<A>
+  template <insidable B, detail::floating_scalar A>
   bool operator==(const B&, A) = delete (INSIDE_WHY_float_compare);
 #undef INSIDE_WHY_float_compare
 } // namespace ins
@@ -14848,34 +14844,47 @@ namespace ins
     template <class T>
     inline constexpr bool lift_operand_v = insidable<T>;
 
+    // An expected operand, or a std::cw<V> on exactly one side, which is its point (inside/detail/constant.hpp):
+    // x * std::cw<N>, std::cw<v> * si::metre, e * std::cw<2> with e an expected.
+    // (Without these an integer inside and a wrapper would both convert to builtins.)
     template <class L, class R>
-    concept expected_operands = (expected_like<L> || expected_like<R>) && !constant_number<L> && !constant_number<R>
-                             && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>);
+    concept lift_operands = constant_operands<L, R>
+                         || ((expected_like<L> || expected_like<R>)
+                             && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>));
+
+    // An operand's value as the lift operators combine it: an expected's value, a wrapper's point.
+    template <class T>
+    struct operand_of
+    {
+      using type = unwrap_t<T>;
+    };
+    template <constant_number C>
+    struct operand_of<C>
+    {
+      using type = point_of_t<C>;
+    };
+    template <class T>
+    using operand_t = typename operand_of<std::remove_cvref_t<T>>::type;
   } // namespace detail
 
-  // A std::cw<V> operand is its point (inside/detail/constant.hpp), in the same family:
-  // x * std::cw<N>, std::cw<v> * si::metre, e * std::cw<2> with e an expected, x += std::cw<1>.
-  // (Without these an integer inside and a wrapper would both convert to builtins.)
-#define INSIDE_LIFT_OP(op)                                                                         \
-  template <class L, class R>                                                                      \
-    requires detail::expected_operands<L, R>                                                       \
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }                    \
-  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)                             \
-  {                                                                                                \
-    return detail::lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs);            \
-  }                                                                                                \
-  template <class L, class R>                                                                      \
-    requires detail::constant_operands<L, R>                                                       \
-          && requires(const L& l, const R& r) { detail::operand(l) op detail::operand(r); }        \
-  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)                             \
-  {                                                                                                \
-    return detail::operand(lhs) op detail::operand(rhs);                                           \
-  }                                                                                                \
-  template <class B, detail::constant_number C>                                                    \
-    requires requires(B&& b) { std::forward<B>(b) op##= detail::point_of_t<C>{}; }                 \
-  constexpr decltype(auto) operator op##=(B&& b, C)                                                \
-  {                                                                                                \
-    return std::forward<B>(b) op##= detail::point_of_t<C>{};                                       \
+  // A compound assignment takes a std::cw<V> as its point too: x += std::cw<1>.
+#define INSIDE_LIFT_OP(op)                                                         \
+  template <class L, class R>                                                      \
+    requires detail::lift_operands<L, R>                                           \
+          && requires(detail::operand_t<L> l, detail::operand_t<R> r) { l op r; }  \
+  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)             \
+  {                                                                                \
+    if constexpr (detail::expected_like<L> || detail::expected_like<R>)            \
+      return detail::lift([](auto const& l, auto const& r) { return l op r; },     \
+                          detail::operand(lhs), detail::operand(rhs));             \
+    else                                                                           \
+      return detail::operand(lhs) op detail::operand(rhs);                         \
+  }                                                                                \
+  template <class B, detail::constant_number C>                                    \
+    requires requires(B&& b) { std::forward<B>(b) op##= detail::point_of_t<C>{}; } \
+  constexpr decltype(auto) operator op##=(B&& b, C)                                \
+  {                                                                                \
+    return std::forward<B>(b) op##= detail::point_of_t<C>{};                       \
   }
 
   INSIDE_LIFT_OP(+)
@@ -14895,9 +14904,10 @@ namespace ins
   // as for every other operation that cannot compile.
   namespace detail
   {
-    // (With a std::cw of a double: its binary value, not the decimal written.)
+    // (And a std::cw of a double: its binary value, not the decimal written. One atomic constraint, so a
+    // diagnostic explains it in one line.)
     template <typename A>
-    concept builtin_arithmetic = std::integral<A> || std::floating_point<A> || floating_constant<A>;
+    concept builtin_arithmetic = bool(std::is_arithmetic_v<A> || floating_constant<A>);
   } // namespace detail
 
 #define INSIDE_SCALAR_MSG                                                                    \
